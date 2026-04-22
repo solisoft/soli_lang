@@ -232,6 +232,63 @@ end</code></pre>
 end</code></pre>
     </section>
 
+    <!-- @ sigil -->
+    <section id="section-at-sigil" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-indigo-400">@</code> Sigil</h2>
+
+        <p class="text-gray-400 mb-3">
+            Inside any instance method, <code class="text-indigo-400">@name</code> is shorthand for <code class="text-indigo-400">this.name</code>. Reads, writes, compound assignment, method calls, and chained access all work.
+        </p>
+
+        <pre data-filename="counter.sl"><code class="language-soli text-sm">class Counter
+    n: Int
+
+    new()
+        @n = 0          # same as this.n = 0
+    end
+
+    def bump
+        @n += 1         # read + write via sugar
+    end
+
+    def value -> Int
+        @n              # bare read, same as this.n
+    end
+end</code></pre>
+
+        <p class="text-gray-400 mb-3">Supported forms:</p>
+        <ul class="space-y-1 text-gray-400 text-sm mb-6 list-disc list-inside">
+            <li><code class="text-indigo-300">@foo</code> — read</li>
+            <li><code class="text-indigo-300">@foo = x</code> — write</li>
+            <li><code class="text-indigo-300">@foo += 1</code> — compound assignment (also <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code>)</li>
+            <li><code class="text-indigo-300">@foo()</code> — calls <code>this.foo()</code></li>
+            <li><code class="text-indigo-300">@foo.bar</code>, <code class="text-indigo-300">@items[0]</code> — chained access and indexing</li>
+            <li><code class="text-indigo-300">@foo++</code>, <code class="text-indigo-300">@foo--</code> — postfix increment/decrement</li>
+        </ul>
+
+        <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+            <p class="text-amber-200/80 text-sm">
+                <strong>Not supported:</strong> <code>@@foo</code> (Ruby-style class variables) is rejected at parse time — use a <code>static</code> field instead. And <code>@foo</code> outside a class method fails the same way <code>this.foo</code> would, because <code>this</code> isn't in scope.
+            </p>
+        </div>
+
+        <p class="text-gray-400 mb-3">
+            <strong class="text-white">In controllers:</strong> fields set on the controller instance during an action (via <code class="text-indigo-400">@foo = ...</code> or <code class="text-indigo-400">this.foo = ...</code>) are automatically exposed as view locals in the template that action renders — no data hash needed.
+        </p>
+
+        <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends Controller
+    def show(req)
+        @post = Post.find(req.params["id"])
+        @comments = Comment.where({"post_id": @post.id}).all
+        render("posts/show")    # view sees `post` and `comments`
+    end
+end</code></pre>
+
+        <p class="text-gray-400 mb-3">
+            Explicit <code class="text-indigo-400">render("view", {...})</code> data always wins over auto-exposed fields. Framework fields (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never re-exposed this way. Auto-exposure is scoped to the action currently running.
+        </p>
+    </section>
+
     <!-- Multi-level Inheritance -->
     <section id="section-multi-level-inheritance" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

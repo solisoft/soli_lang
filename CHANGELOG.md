@@ -9,6 +9,9 @@
 * **coverage:** show relative paths in coverage report
 * **expectations:** add chainable expect().to_*() assertion API (to_be, to_equal, to_be_greater_than, etc.)
 * **view helpers:** inject view helpers into template builtins env on hot reload
+* **@sigil:** add `@foo` sugar syntax for `this.foo` instance field access
+* **views:** expose controller instance fields as view locals (e.g., `@title` in action becomes `title` local in view)
+* **repl:** fix tab completion for `@` sigil (no spurious suggestions)
 
 ### Bug Fixes
 
@@ -24,6 +27,8 @@
 
 * **skills:** reorganize skills from .skills/ to .opencode/skills/ structure ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
 * **blog:** add spreadsheet functions documentation ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
+* **@sigil:** document `@foo` sugar syntax for `this.foo` instance field access
+* **expect:** document expect().to_*() chainable assertion API
 
 ### Features
 

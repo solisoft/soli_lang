@@ -427,6 +427,31 @@ fn inject_request_context(data: &Value) {
     }
 }
 
+/// Expose the current controller's instance fields as view locals.
+/// Mirrors Rails' `@ivar → view local` behavior, scoped to the action currently running.
+/// Skips framework-injected fields already supplied by `inject_request_context` and
+/// never clobbers keys the action passed explicitly to `render(...)`.
+fn inject_controller_instance_vars(data: &Value) {
+    let Value::Hash(hash) = data else { return };
+    let Some(ctrl) = crate::interpreter::builtins::controller::registry::get_current_controller()
+    else {
+        return;
+    };
+    let Value::Instance(inst) = ctrl else { return };
+
+    let inst_ref = inst.borrow();
+    let mut h = hash.borrow_mut();
+    for (name, value) in &inst_ref.fields {
+        if matches!(name.as_str(), "req" | "params" | "session" | "headers") {
+            continue;
+        }
+        let key = HashKey::String(name.clone());
+        if !h.contains_key(&key) {
+            h.insert(key, value.clone());
+        }
+    }
+}
+
 /// Register static template helpers into an Environment (called once per thread).
 /// These helpers (range, public_path, html_escape, etc.) are created once and
 /// shared via the thread-local builtins Rc, avoiding ~20 NativeFunction allocations per render.
@@ -954,6 +979,10 @@ pub fn register_template_builtins(env: &mut Environment) {
             // This allows views to access req.params, req.query, etc.
             inject_request_context(&data);
 
+            // Expose controller instance fields (e.g. `@title = "..."` in the action
+            // becomes a bare `title` local in the view). Explicit render() data wins.
+            inject_controller_instance_vars(&data);
+
             // Inject template helper functions into data context (in-place, no clone)
             inject_template_helpers(&data);
 
@@ -1241,4 +1270,115 @@ pub fn register_template_builtins(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::builtins::controller::registry::{
+        clear_current_controller, set_current_controller,
+    };
+    use crate::interpreter::value::{Class, Instance};
+
+    fn make_instance(fields: &[(&str, Value)]) -> Value {
+        let class = Rc::new(Class {
+            name: "TestController".to_string(),
+            ..Default::default()
+        });
+        let mut inst = Instance::new(class);
+        for (k, v) in fields {
+            inst.fields.insert(k.to_string(), v.clone());
+        }
+        Value::Instance(Rc::new(RefCell::new(inst)))
+    }
+
+    fn empty_data() -> Value {
+        Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    fn get_str(data: &Value, key: &str) -> Option<String> {
+        let Value::Hash(h) = data else { return None };
+        h.borrow()
+            .get(&HashKey::String(key.to_string()))
+            .and_then(|v| match v {
+                Value::String(s) => Some(s.clone()),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn injects_instance_fields_as_view_locals() {
+        set_current_controller(make_instance(&[
+            ("title", Value::String("Hi".into())),
+            ("count", Value::Int(3)),
+        ]));
+        let data = empty_data();
+        inject_controller_instance_vars(&data);
+        assert_eq!(get_str(&data, "title").as_deref(), Some("Hi"));
+        let Value::Hash(h) = &data else {
+            unreachable!()
+        };
+        assert!(h
+            .borrow()
+            .contains_key(&HashKey::String("count".to_string())));
+        clear_current_controller();
+    }
+
+    #[test]
+    fn explicit_render_data_wins_over_instance_field() {
+        set_current_controller(make_instance(&[(
+            "title",
+            Value::String("from_instance".into()),
+        )]));
+        let data = empty_data();
+        if let Value::Hash(h) = &data {
+            h.borrow_mut().insert(
+                HashKey::String("title".to_string()),
+                Value::String("from_render".into()),
+            );
+        }
+        inject_controller_instance_vars(&data);
+        assert_eq!(get_str(&data, "title").as_deref(), Some("from_render"));
+        clear_current_controller();
+    }
+
+    #[test]
+    fn skips_framework_injected_fields() {
+        // req/params/session/headers are populated by setup_controller_context on
+        // the instance. The template layer already injects request context separately,
+        // so these must not be re-exposed as top-level view locals from the instance.
+        set_current_controller(make_instance(&[
+            ("req", Value::String("should_not_leak".into())),
+            ("params", Value::String("should_not_leak".into())),
+            ("session", Value::String("should_not_leak".into())),
+            ("headers", Value::String("should_not_leak".into())),
+            ("title", Value::String("ok".into())),
+        ]));
+        let data = empty_data();
+        inject_controller_instance_vars(&data);
+        assert_eq!(get_str(&data, "title").as_deref(), Some("ok"));
+        let Value::Hash(h) = &data else {
+            unreachable!()
+        };
+        let h = h.borrow();
+        for k in ["req", "params", "session", "headers"] {
+            assert!(
+                !h.contains_key(&HashKey::String(k.to_string())),
+                "framework field {} leaked into view locals",
+                k
+            );
+        }
+        clear_current_controller();
+    }
+
+    #[test]
+    fn noop_when_no_current_controller() {
+        clear_current_controller();
+        let data = empty_data();
+        inject_controller_instance_vars(&data);
+        let Value::Hash(h) = &data else {
+            unreachable!()
+        };
+        assert!(h.borrow().is_empty());
+    }
 }

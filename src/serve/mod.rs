@@ -3000,6 +3000,20 @@ fn call_oop_controller_action(
         &headers,
     );
 
+    // Publish the instance as the thread-local "current controller" so `render(...)`
+    // can auto-expose its fields as view locals. The guard clears it on every exit
+    // path (success, error, panic unwind) to avoid leaking state across requests.
+    crate::interpreter::builtins::controller::registry::set_current_controller(
+        controller_instance.clone(),
+    );
+    struct CurrentControllerGuard;
+    impl Drop for CurrentControllerGuard {
+        fn drop(&mut self) {
+            crate::interpreter::builtins::controller::registry::clear_current_controller();
+        }
+    }
+    let _current_controller_guard = CurrentControllerGuard;
+
     // Call the action method on the class
     // For OOP controllers, the method is inside the class, not in the global environment
     let action_result = call_class_method(

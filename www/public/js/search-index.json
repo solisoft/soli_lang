@@ -1333,6 +1333,123 @@
       "keywords": ["test", "assert", "expect"]
     },
     {
+      "title": "expect",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect",
+      "signature": "expect(value)",
+      "description": "Creates an expectation with a value, chain with to_*() methods",
+      "keywords": ["test", "expect", "assert", "chain"]
+    },
+    {
+      "title": "expect.to_be",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be",
+      "signature": "expect(value).to_be(expected)",
+      "description": "Asserts value is the same as expected (identity check)",
+      "keywords": ["test", "expect", "assert", "be", "identity"]
+    },
+    {
+      "title": "expect.to_equal",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-equal",
+      "signature": "expect(value).to_equal(expected)",
+      "description": "Asserts value equals expected (value equality)",
+      "keywords": ["test", "expect", "assert", "equal", "equals"]
+    },
+    {
+      "title": "expect.to_not_be",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-not-be",
+      "signature": "expect(value).to_not_be(expected)",
+      "description": "Asserts value is not the same as expected",
+      "keywords": ["test", "expect", "assert", "not", "be"]
+    },
+    {
+      "title": "expect.to_not_equal",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-not-equal",
+      "signature": "expect(value).to_not_equal(expected)",
+      "description": "Asserts value does not equal expected",
+      "keywords": ["test", "expect", "assert", "not", "equal"]
+    },
+    {
+      "title": "expect.to_be_null",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-null",
+      "signature": "expect(value).to_be_null()",
+      "description": "Asserts value is null",
+      "keywords": ["test", "expect", "assert", "null", "nil"]
+    },
+    {
+      "title": "expect.to_not_be_null",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-not-be-null",
+      "signature": "expect(value).to_not_be_null()",
+      "description": "Asserts value is not null",
+      "keywords": ["test", "expect", "assert", "not", "null", "nil"]
+    },
+    {
+      "title": "expect.to_be_greater_than",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-gt",
+      "signature": "expect(value).to_be_greater_than(n)",
+      "description": "Asserts value is greater than n",
+      "keywords": ["test", "expect", "assert", "greater", "than", "comparison"]
+    },
+    {
+      "title": "expect.to_be_less_than",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-lt",
+      "signature": "expect(value).to_be_less_than(n)",
+      "description": "Asserts value is less than n",
+      "keywords": ["test", "expect", "assert", "less", "than", "comparison"]
+    },
+    {
+      "title": "expect.to_be_greater_than_or_equal",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-gte",
+      "signature": "expect(value).to_be_greater_than_or_equal(n)",
+      "description": "Asserts value is greater than or equal to n",
+      "keywords": ["test", "expect", "assert", "greater", "equal", "comparison"]
+    },
+    {
+      "title": "expect.to_be_less_than_or_equal",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-lte",
+      "signature": "expect(value).to_be_less_than_or_equal(n)",
+      "description": "Asserts value is less than or equal to n",
+      "keywords": ["test", "expect", "assert", "less", "equal", "comparison"]
+    },
+    {
+      "title": "expect.to_contain",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-contain",
+      "signature": "expect(value).to_contain(item)",
+      "description": "Asserts array or string contains item",
+      "keywords": ["test", "expect", "assert", "contain", "includes"]
+    },
+    {
+      "title": "expect.to_be_valid_json",
+      "type": "function",
+      "category": "Testing",
+      "path": "/docs/builtins/testing#def-expect-to-be-valid-json",
+      "signature": "expect(string).to_be_valid_json()",
+      "description": "Asserts string is valid JSON",
+      "keywords": ["test", "expect", "assert", "json", "valid"]
+    },
+    {
       "title": "assert_eq",
       "type": "function",
       "category": "Testing",

@@ -1480,9 +1480,21 @@ impl TuiRepl {
         {
             start -= 1;
         }
+        // Include a leading `@` so `@foo<TAB>` is treated as a single token rather
+        // than completing `foo` against keywords/locals.
+        if start > 0 && chars[start - 1] == '@' {
+            start -= 1;
+        }
 
         let prefix: String = chars[start..].iter().collect();
         if prefix.is_empty() {
+            return (vec![], 0);
+        }
+
+        // Instance-field sigil: we don't track live instance fields in the REPL,
+        // so don't suggest anything — but also don't fall through to keyword/local
+        // completion, which would suggest nonsense like `@fn`.
+        if prefix.starts_with('@') {
             return (vec![], 0);
         }
 

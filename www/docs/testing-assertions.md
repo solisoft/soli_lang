@@ -71,6 +71,129 @@ assert_not_nil(response.body, "response should have body");
 
 **Returns:** `{passed: boolean, message: string, expected: "not nil", actual: Any}`
 
+## Expect API
+
+Soli provides a chainable `expect()` API for more expressive assertions:
+
+### expect(value)
+
+Creates an expectation with the given value. Chain with `to_*()` methods:
+
+```soli
+expect(42).to_equal(42);
+expect("hello").to_contain("ell");
+expect(10).to_be_greater_than(5);
+expect(user).to_not_be_null();
+```
+
+### to_be(expected)
+
+Asserts that the actual value is the same as expected (identity check):
+
+```soli
+expect(42).to_be(42);
+expect(true).to_be(true);
+```
+
+### to_equal(expected)
+
+Asserts that the actual value equals expected (value equality):
+
+```soli
+expect(42).to_equal(42);
+expect("hello").to_equal("hello");
+```
+
+### to_not_be(expected)
+
+Asserts that the actual value is not the same as expected:
+
+```soli
+expect(42).to_not_be(43);
+expect("hello").to_not_be("world");
+```
+
+### to_not_equal(expected)
+
+Asserts that the actual value does not equal expected:
+
+```soli
+expect(42).to_not_equal(43);
+expect("hello").to_not_equal("world");
+```
+
+### to_be_null()
+
+Asserts that the actual value is null:
+
+```soli
+expect(result.error).to_be_null();
+expect(user.deleted_at).to_be_null();
+```
+
+### to_not_be_null()
+
+Asserts that the actual value is not null:
+
+```soli
+expect(user.id).to_not_be_null();
+expect(response.body).to_not_be_null();
+```
+
+### to_be_greater_than(expected)
+
+Asserts that the actual number is greater than expected:
+
+```soli
+expect(10).to_be_greater_than(5);
+expect(count).to_be_greater_than(0);
+```
+
+### to_be_less_than(expected)
+
+Asserts that the actual number is less than expected:
+
+```soli
+expect(5).to_be_less_than(10);
+expect(len(items)).to_be_less_than(100);
+```
+
+### to_be_greater_than_or_equal(expected)
+
+Asserts that the actual number is greater than or equal to expected:
+
+```soli
+expect(10).to_be_greater_than_or_equal(10);
+expect(count).to_be_greater_than_or_equal(1);
+```
+
+### to_be_less_than_or_equal(expected)
+
+Asserts that the actual number is less than or equal to expected:
+
+```soli
+expect(5).to_be_less_than_or_equal(5);
+expect(len(items)).to_be_less_than_or_equal(10);
+```
+
+### to_contain(item)
+
+Asserts that the actual value (array or string) contains the given item:
+
+```soli
+expect([1, 2, 3]).to_contain(2);
+expect("hello world").to_contain("world");
+```
+
+### to_be_valid_json()
+
+Asserts that the actual string is valid JSON:
+
+```soli
+expect('{"name": "Alice"}').to_be_valid_json();
+expect(response.body).to_be_valid_json();
+```
+
 ## Result Structure
 
 All assertion functions return a result hash with the following structure:

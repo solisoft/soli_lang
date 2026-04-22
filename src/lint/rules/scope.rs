@@ -752,3 +752,50 @@ fn collect_pattern_bindings(body: &Expr, out: &mut HashSet<String>) {
     }
     walk(body, out);
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::lexer::Scanner;
+    use crate::lint::Linter;
+    use crate::parser::Parser;
+
+    fn lint_rules(src: &str) -> Vec<String> {
+        let tokens = Scanner::new(src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        Linter::new(src)
+            .lint(&program)
+            .into_iter()
+            .map(|d| d.rule.to_string())
+            .collect()
+    }
+
+    // `@foo` desugars to `Member { This, "foo" }` at parse time, so the
+    // undefined-local scope check (which only fires on bare Variables) should
+    // never see it and must stay silent.
+    #[test]
+    fn at_sigil_does_not_trigger_undefined_local() {
+        let src = r#"
+class Widget {
+    value: Int;
+
+    new(v: Int) {
+        this.value = v;
+    }
+
+    fn peek() -> Int {
+        @value
+    }
+
+    fn bump() {
+        @value = @value + 1;
+    }
+}
+"#;
+        let rules = lint_rules(src);
+        assert!(
+            !rules.iter().any(|r| r == "smell/undefined-local"),
+            "unexpected undefined-local diagnostic on @foo: {:?}",
+            rules
+        );
+    }
+}

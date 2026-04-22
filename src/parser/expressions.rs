@@ -113,6 +113,30 @@ impl Parser {
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
 
             TokenKind::Identifier(name) => {
+                // `@foo` is sugar for `this.foo`. `@@foo` (Ruby class vars) is intentionally rejected.
+                if let Some(rest) = name.strip_prefix('@') {
+                    if rest.starts_with('@') {
+                        return Err(ParserError::general(
+                            format!("class variables (`{}`) are not supported; use a static field or a module-level constant", name),
+                            start_span,
+                        ));
+                    }
+                    if rest.is_empty() {
+                        return Err(ParserError::general(
+                            "expected identifier after `@` (class variables `@@x` are not supported; use a static field)",
+                            start_span,
+                        ));
+                    }
+                    let this_expr = Expr::new(ExprKind::This, start_span);
+                    return Ok(Expr::new(
+                        ExprKind::Member {
+                            object: Box::new(this_expr),
+                            name: rest.to_string(),
+                        },
+                        start_span,
+                    ));
+                }
+
                 // Command-style calls: identifier followed by argument on the SAME LINE
                 // e.g., print x, print "hello", puts result
                 // Same-line requirement prevents ambiguity with multi-line bodies:
@@ -1696,5 +1720,111 @@ impl Parser {
         }
 
         Ok(arguments)
+    }
+}
+
+#[cfg(test)]
+mod at_sigil_tests {
+    use crate::ast::expr::ExprKind;
+    use crate::ast::stmt::StmtKind;
+    use crate::ast::Program;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    fn parse(src: &str) -> Result<Program, String> {
+        let tokens = Scanner::new(src)
+            .scan_tokens()
+            .map_err(|e| format!("lex: {:?}", e))?;
+        Parser::new(tokens)
+            .parse()
+            .map_err(|e| format!("parse: {:?}", e))
+    }
+
+    fn first_expr(program: &Program) -> &ExprKind {
+        match &program.statements[0].kind {
+            StmtKind::Expression(e) => &e.kind,
+            other => panic!("expected expression statement, got {:?}", other),
+        }
+    }
+
+    // `@foo` must desugar to the same AST as `this.foo` so the rest of the
+    // toolchain (linter, interpreter, VM) treats both identically.
+    #[test]
+    fn at_sigil_desugars_to_this_member() {
+        let program = parse("@title").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Member { object, name } => {
+                assert_eq!(name, "title");
+                assert!(matches!(object.kind, ExprKind::This));
+            }
+            other => panic!("expected Member {{ This, \"title\" }}, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn at_sigil_assignment_becomes_member_assignment() {
+        let program = parse("@count = 5").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Assign { target, .. } => match &target.kind {
+                ExprKind::Member { object, name } => {
+                    assert_eq!(name, "count");
+                    assert!(matches!(object.kind, ExprKind::This));
+                }
+                other => panic!("expected Member target, got {:?}", other),
+            },
+            other => panic!("expected Assign, got {:?}", other),
+        }
+    }
+
+    // Ruby class variables (`@@x`) aren't backed by any Soli feature, so the
+    // parser must reject them loudly rather than silently turning them into a
+    // field named `"@x"`.
+    #[test]
+    fn double_at_is_parse_error() {
+        let err = parse("@@shared").expect_err("must not parse");
+        assert!(
+            err.contains("not supported") || err.contains("expected identifier after `@`"),
+            "expected class-var rejection, got: {}",
+            err
+        );
+    }
+
+    // `@foo()` must compose the sugar with the postfix call form, producing a
+    // call on the desugared member access.
+    #[test]
+    fn at_sigil_with_call_composes_postfix() {
+        let program = parse("@greet()").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Member { object, name } => {
+                    assert_eq!(name, "greet");
+                    assert!(matches!(object.kind, ExprKind::This));
+                }
+                other => panic!("expected Member callee, got {:?}", other),
+            },
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
+
+    // `@foo.bar` must chain — outer Member wraps the desugared `this.foo`.
+    #[test]
+    fn at_sigil_chains_member_access() {
+        let program = parse("@inner.label").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Member { object, name } => {
+                assert_eq!(name, "label");
+                match &object.kind {
+                    ExprKind::Member {
+                        object: inner_obj,
+                        name: inner_name,
+                    } => {
+                        assert_eq!(inner_name, "inner");
+                        assert!(matches!(inner_obj.kind, ExprKind::This));
+                    }
+                    other => panic!("expected inner Member, got {:?}", other),
+                }
+            }
+            other => panic!("expected Member, got {:?}", other),
+        }
     }
 }

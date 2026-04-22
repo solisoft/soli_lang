@@ -326,6 +326,40 @@ fn index(req)
 end
 ```
 
+### Instance Fields Auto-Exposed to Views
+
+Any field set on the controller instance during an action — via either `this.foo = ...` or the `@foo` shorthand — is automatically available as a bare local in the view that action renders. You can drop the data hash entirely when you just want to pass data through.
+
+```soli
+class PostsController extends Controller
+    fn show(req)
+        @post = Post.find(req.params["id"]);
+        @comments = Comment.where({"post_id": @post.id}).all;
+        render("posts/show")    # view sees `post` and `comments` with no data hash
+    end
+end
+```
+
+```erb
+<%# app/views/posts/show.html.erb %>
+<h1><%= post.title %></h1>
+<%= post.body %>
+
+<h2>Comments (<%= comments.length %>)</h2>
+<% for c in comments %>
+    <p><%= c.body %></p>
+<% end %>
+```
+
+Rules:
+
+- **Explicit render data wins.** `render("v", {"post": other})` overrides `@post`.
+- **Framework fields are never re-exposed** via this path: `req`, `params`, `session`, `headers` always flow through their normal channels, so an action can't accidentally shadow them.
+- **Scoped to the current action.** No cross-action, cross-controller, or cross-request leakage — a fresh controller instance is created per request.
+- **Partials are not auto-exposed.** Always pass data to `render_partial(...)` / `partial(...)` explicitly.
+
+> **Note on `@foo`:** `@foo` is a general language shorthand for `this.foo` inside any class method, not a controller-only feature. See [Soli Language → The `@` Sigil](./soli-language.md#the--sigil--shorthand-for-this) for the full rules.
+
 ### Render with Custom Layout
 
 Set the layout in your controller:

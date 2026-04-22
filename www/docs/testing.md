@@ -199,9 +199,15 @@ soli test --jobs=1           # Sequential (debug)
 soli test --coverage                 # Generate coverage
 soli test --coverage=html            # HTML report
 soli test --coverage=json            # JSON for CI
-soli test --coverage=xml             # Cobertura XML
+soli test --coverage=xml              # Cobertura XML
 soli test --coverage-min=80          # Fail if < 80%
 ```
+
+### Coverage Features
+
+- **Tests excluded**: The `tests/` directory is automatically excluded from coverage reports
+- **Relative paths**: Coverage reports display relative paths for easier reading
+- **Global tracker**: HTTP request coverage tracking via global coverage tracker for test server
 
 ### Coverage Output
 
@@ -210,7 +216,7 @@ Coverage: 87.5% (1250/1428 lines) ✓
 
 src/controllers/users.sl     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  94.2%
 src/models/user.sl           ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  91.1%
-src/controllers/posts.sl     ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░  78.5%
+src/controllers/posts.sl     ▓▓▓▓▓▓░░░░░░░░░░░░░░░  78.5%
 ```
 
 ### Coverage Configuration

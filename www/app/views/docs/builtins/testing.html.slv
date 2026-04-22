@@ -350,6 +350,134 @@
         </div>
     </section>
 
+    <!-- Expect API -->
+    <section id="section-expect" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Expect API</h2>
+        <p class="text-gray-400 mb-6">Chainable assertion API for expressive testing. Use <code class="text-indigo-400">expect(value)</code> followed by chainable methods.</p>
+
+        <section id="def-expect" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-expect" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">expect(value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Creates an expectation with the given value. Chain with <code class="text-indigo-400">to_*()</code> methods.</p>
+                <div class="mt-4">
+                    <pre data-filename="Example"><code class="language-soli text-sm">expect(42).to_equal(42);
+expect("hello").to_contain("ell");
+expect(10).to_be_greater_than(5);
+expect(user).to_not_be_null();</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Equality Assertions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-expect-to-be" class="scroll-mt-20">
+                    <a href="#def-expect-to-be" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be(expected)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value is same as expected (identity)</p>
+                </section>
+
+                <section id="def-expect-to-equal" class="scroll-mt-20">
+                    <a href="#def-expect-to-equal" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_equal(expected)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value equals expected (value equality)</p>
+                </section>
+
+                <section id="def-expect-to-not-be" class="scroll-mt-20">
+                    <a href="#def-expect-to-not-be" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_not_be(expected)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value is not the same as expected</p>
+                </section>
+
+                <section id="def-expect-to-not-equal" class="scroll-mt-20">
+                    <a href="#def-expect-to-not-equal" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_not_equal(expected)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value does not equal expected</p>
+                </section>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Null Assertions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-expect-to-be-null" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-null" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be_null()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value is null</p>
+                </section>
+
+                <section id="def-expect-to-not-be-null" class="scroll-mt-20">
+                    <a href="#def-expect-to-not-be-null" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_not_be_null()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value is not null</p>
+                </section>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Comparison Assertions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-expect-to-be-gt" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-gt" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be_greater_than(n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value > n</p>
+                </section>
+
+                <section id="def-expect-to-be-lt" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-lt" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be_less_than(n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value < n</p>
+                </section>
+
+                <section id="def-expect-to-be-gte" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-gte" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be_greater_than_or_equal(n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value >= n</p>
+                </section>
+
+                <section id="def-expect-to-be-lte" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-lte" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_be_less_than_or_equal(n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts value <= n</p>
+                </section>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Collection/String Assertions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-expect-to-contain" class="scroll-mt-20">
+                    <a href="#def-expect-to-contain" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(value).to_contain(item)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts array or string contains item</p>
+                </section>
+
+                <section id="def-expect-to-be-valid-json" class="scroll-mt-20">
+                    <a href="#def-expect-to-be-valid-json" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">expect(string).to_be_valid_json()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts string is valid JSON</p>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <!-- Factory Functions -->
     <section id="section-factories" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Factory Functions</h2>

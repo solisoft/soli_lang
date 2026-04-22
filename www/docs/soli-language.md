@@ -1640,6 +1640,77 @@ alice.have_birthday();
 print(alice.age);          # 31
 ```
 
+### The `@` Sigil — Shorthand for `this.`
+
+Inside any instance method, `@name` is sugar for `this.name`. Ruby developers will feel at home, and it drops the noise in constructor/field-heavy code.
+
+```soli
+class Counter
+    n: Int;
+
+    new()
+        @n = 0;            # same as this.n = 0
+    end
+
+    fn bump()
+        @n += 1;           # read + write via sugar
+    end
+
+    fn double_it()
+        @n = @n * 2;
+    end
+
+    fn value() -> Int
+        @n                 # bare read, same as this.n
+    end
+end
+```
+
+**What works:**
+
+- Reads: `@foo`
+- Writes: `@foo = x`
+- Compound assignment: `@foo += 1`, `@foo *= 2`, etc.
+- Method calls: `@greet()` (calls `this.greet()`)
+- Chained access: `@inner.label`, `@items[0]`
+- Postfix ops: `@foo++`, `@foo--`
+- Inheritance: `@foo` resolves to fields set by a parent class's constructor
+
+**What doesn't:**
+
+- `@@foo` (Ruby-style class variables) — rejected at parse time. Use a `static` field instead.
+- `@foo` outside a class method — fails the same way a literal `this.foo` would, because `this` isn't in scope.
+
+### Controllers: Instance Fields Auto-Exposed to Views
+
+In MVC controllers, fields set on the controller (via `@foo = ...` or `this.foo = ...`) inside an action are automatically exposed as view locals in the template that action renders — no data hash needed.
+
+```soli
+class PostsController extends Controller
+    fn show(req)
+        @post = Post.find(req.params["id"]);
+        @related = Post.where({"category_id": @post.category_id}).limit(5);
+        render("posts/show")    # no data hash — view sees `post` and `related`
+    end
+end
+```
+
+```erb
+<%# app/views/posts/show.html.erb %>
+<h1><%= post.title %></h1>
+<%= post.body %>
+
+<h2>Related</h2>
+<% for p in related %>
+    <%= link_to(p.title, "/posts/" + str(p.id)) %>
+<% end %>
+```
+
+- Explicit `render("view", {...})` data **always wins** over the auto-exposed fields.
+- The framework-injected fields `req`, `params`, `session`, and `headers` are never re-exposed this way — those flow through their usual channels.
+- Auto-exposure is scoped to the action currently running. No cross-action, cross-controller, or cross-request leakage.
+- Partials (`render_partial`, `partial`) are unaffected — pass data to them explicitly.
+
 ### Constructors and Factory Methods
 
 ```soli
