@@ -623,6 +623,31 @@ fn get_or_compile_handler(wrapped_source: &str) -> Result<crate::ast::Program, S
 /// Compile and execute a before/after action handler source code.
 /// Returns the result of executing the handler.
 /// Uses thread-local cache to avoid re-parsing on every request.
+/// Work around a parser quirk where `fn(x) { }; <next_stmt>` fails to parse
+/// when the body is empty. If the body between the first `{` after `fn(...)`
+/// and the matching closing `}` is only whitespace, substitute `{ null }`.
+/// An empty hook is effectively a no-op anyway, so this preserves semantics.
+fn normalize_empty_handler_body(src: &str) -> String {
+    let Some(open) = src.find('{') else {
+        return src.to_string();
+    };
+    let Some(close) = src.rfind('}') else {
+        return src.to_string();
+    };
+    if close <= open {
+        return src.to_string();
+    }
+    let body = &src[open + 1..close];
+    if body.chars().all(|c| c.is_whitespace()) {
+        let mut out = String::with_capacity(src.len() + 6);
+        out.push_str(&src[..open]);
+        out.push_str("{ null }");
+        out.push_str(&src[close + 1..]);
+        return out;
+    }
+    src.to_string()
+}
+
 pub fn execute_handler_source(
     handler_source: &str,
     interpreter: &mut Interpreter,
@@ -631,7 +656,7 @@ pub fn execute_handler_source(
     // Create a wrapper that defines the function, calls it, and stores the result
     let wrapped_source = format!(
         "let __handler = {}; let __result = __handler(req);",
-        handler_source
+        normalize_empty_handler_body(handler_source)
     );
 
     {
@@ -678,7 +703,7 @@ pub fn execute_after_handler_source(
     // Create a wrapper that defines the function, calls it, and stores the result
     let wrapped_source = format!(
         "let __handler = {}; let __result = __handler(req, response);",
-        handler_source
+        normalize_empty_handler_body(handler_source)
     );
 
     {
@@ -830,6 +855,32 @@ fn call_function_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Parser quirk: `fn(x) { }; <next_stmt>` fails to parse when the body is
+    // empty, so a hook stub written as `fn(req) { }` used to 500 every
+    // request with "Unexpected token 'EOF'". Normalize empty bodies to
+    // `{ null }` so they parse and behave as a no-op.
+    #[test]
+    fn normalize_empty_handler_body_substitutes_null() {
+        assert_eq!(
+            normalize_empty_handler_body("fn(req) { }"),
+            "fn(req) { null }"
+        );
+        assert_eq!(
+            normalize_empty_handler_body("fn(req) {\n    \n}"),
+            "fn(req) { null }"
+        );
+        // Non-empty body is preserved verbatim.
+        assert_eq!(
+            normalize_empty_handler_body("fn(req) { return req; }"),
+            "fn(req) { return req; }"
+        );
+        // Body containing only a hash literal isn't "empty" — leave it alone.
+        assert_eq!(
+            normalize_empty_handler_body("fn(req) { {\"a\": 1} }"),
+            "fn(req) { {\"a\": 1} }"
+        );
+    }
 
     #[test]
     fn to_controller_name_strips_controller_suffix() {

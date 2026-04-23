@@ -471,6 +471,19 @@ pub(crate) fn load_controllers_in_worker(
             }
         }
     }
+
+    // Rescan controller metadata (before/after hooks, layout, inheritance) so
+    // `--dev` hot-reload picks up edits to hook bodies and filter lists.
+    // Without this, the registry keeps the stale ControllerInfo from startup
+    // and edits to `this.before_action = fn(req) {...}` require a restart.
+    if let Err(e) =
+        crate::interpreter::builtins::controller::registry::scan_controllers(controllers_dir)
+    {
+        eprintln!(
+            "Worker {}: Error rescanning controller metadata: {}",
+            worker_id, e
+        );
+    }
 }
 
 /// Define DSL helpers for routes in the interpreter.
@@ -561,6 +574,19 @@ pub(crate) fn reload_controllers_in_worker(
                 e
             );
         }
+    }
+
+    // Rescan controller metadata (before/after hooks, layout, inheritance) so
+    // `--dev` hot-reload picks up changes to hook bodies and filter lists.
+    // Without this, the registry keeps the stale ControllerInfo from startup
+    // and edits to `this.before_action = fn(req) {...}` require a restart.
+    if let Err(e) =
+        crate::interpreter::builtins::controller::registry::scan_controllers(controllers_dir)
+    {
+        eprintln!(
+            "Worker {}: Error rescanning controller metadata: {}",
+            worker_id, e
+        );
     }
 }
 
