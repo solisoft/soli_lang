@@ -405,10 +405,29 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
-    let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(1, AHasher::default());
+    // Compute a content-derived ETag so the shipped hover-prefetch feature
+    // actually delivers "instant navigation": Chrome reuses the prefetched
+    // body on the actual click as long as the server returns 304 on the
+    // revalidation (see `Cache-Control: no-cache` below). The hash runs
+    // after all script injections so the ETag reflects the exact bytes we
+    // send over the wire.
+    let etag = etag_for_body(&body);
+
+    let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
     headers.insert(
         HashKey::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),
+    );
+    headers.insert(
+        HashKey::String("ETag".to_string()),
+        Value::String(etag),
+    );
+    // `private`: browser may cache, shared caches (CDN, reverse proxy) may not.
+    // `no-cache`: cache entry must be revalidated with If-None-Match before
+    // reuse — so any prefetched response survives, but a stale one doesn't.
+    headers.insert(
+        HashKey::String("Cache-Control".to_string()),
+        Value::String("private, no-cache".to_string()),
     );
 
     let mut result: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
@@ -420,6 +439,28 @@ pub fn html_response(body: String, status: i64) -> Value {
     result.insert(HashKey::String("body".to_string()), Value::String(body));
 
     Value::Hash(Rc::new(RefCell::new(result)))
+}
+
+/// Compute a deterministic ETag for an HTML response body using FNV-1a 64-bit.
+///
+/// Deterministic within AND across processes — no random seed — so a prefetch
+/// stored by one worker can be revalidated against another worker's render
+/// without unnecessary body re-delivery. FNV is not cryptographically strong;
+/// that's fine: the ETag is a cache validator, not an auth token. Collision
+/// probability between two different bodies is ~2^-32, which means one false
+/// 304 per ~4 billion distinct renders — far below anything that matters for
+/// navigation caching.
+///
+/// Format: quoted 16-hex-digit strong validator (RFC 7232 §2.3).
+fn etag_for_body(body: &str) -> String {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for &b in body.as_bytes() {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    format!("\"{:016x}\"", hash)
 }
 
 /// Check if a template path is a markdown file.
@@ -767,5 +808,60 @@ mod tests {
 
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn test_html_response_sets_etag_and_cache_headers() {
+        // Default HTML responses must carry an ETag + `Cache-Control:
+        // private, no-cache`. Without those, the shipped hover-prefetch
+        // feature never delivers "instant navigation" — browsers treat an
+        // uncached prefetched response as unusable for the real click.
+        let resp = html_response("<html><body>hi</body></html>".to_string(), 200);
+
+        let Value::Hash(ref map) = resp else {
+            panic!("html_response must return a Hash, got {:?}", resp);
+        };
+        let Value::Hash(ref hdrs) = map.borrow()[&HashKey::String("headers".to_string())] else {
+            panic!("headers key must be a Hash");
+        };
+        let hdrs = hdrs.borrow();
+
+        let etag = match &hdrs[&HashKey::String("ETag".to_string())] {
+            Value::String(s) => s.clone(),
+            v => panic!("ETag must be a String, got {:?}", v),
+        };
+        // RFC 7232 strong validator: quoted opaque string. Ours is exactly
+        // 16 hex chars wrapped in quotes (18 chars total).
+        assert_eq!(etag.len(), 18, "ETag should be \"<16 hex>\", got {}", etag);
+        assert!(etag.starts_with('"') && etag.ends_with('"'), "ETag must be quoted");
+
+        let cc = match &hdrs[&HashKey::String("Cache-Control".to_string())] {
+            Value::String(s) => s.clone(),
+            v => panic!("Cache-Control must be a String, got {:?}", v),
+        };
+        assert_eq!(cc, "private, no-cache");
+    }
+
+    #[test]
+    fn test_html_response_etag_is_deterministic_and_content_derived() {
+        // Same body ⇒ same ETag. Different bodies ⇒ different ETags.
+        // This is the contract that makes 304 revalidation correct.
+        let a = html_response("<html><body>X</body></html>".to_string(), 200);
+        let b = html_response("<html><body>X</body></html>".to_string(), 200);
+        let c = html_response("<html><body>Y</body></html>".to_string(), 200);
+
+        fn etag_of(v: &Value) -> String {
+            let Value::Hash(ref m) = v else { unreachable!() };
+            let Value::Hash(ref h) = m.borrow()[&HashKey::String("headers".to_string())] else {
+                unreachable!()
+            };
+            let Value::String(s) = h.borrow()[&HashKey::String("ETag".to_string())].clone() else {
+                unreachable!()
+            };
+            s
+        }
+
+        assert_eq!(etag_of(&a), etag_of(&b), "same body must produce same ETag");
+        assert_ne!(etag_of(&a), etag_of(&c), "different body must change ETag");
     }
 }

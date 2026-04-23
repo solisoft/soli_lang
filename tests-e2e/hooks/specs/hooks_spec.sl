@@ -294,6 +294,41 @@ describe("ERB partial calls with reserved-word hash keys (end-to-end)", fn() {
     });
 });
 
+describe("HTML response caching (end-to-end)", fn() {
+    test("controller render() emits ETag + Cache-Control; If-None-Match returns 304", fn() {
+        // The framework now sets `ETag: "<hash>"` and
+        // `Cache-Control: private, no-cache` on every HTML response out of
+        // `render()`. This is what lets the shipped hover-prefetch feature
+        // actually deliver "instant navigation" — the browser stores the
+        // prefetched body and, on the real click, revalidates cheaply.
+        let first = get("/");
+        assert_status(first, 200);
+        let etag = first.headers["etag"];
+        // First response must carry an ETag + private/no-cache directives.
+        assert(etag != null && etag != "");
+        assert(first.headers["cache-control"].contains("private"));
+        assert(first.headers["cache-control"].contains("no-cache"));
+
+        // Revalidate with the ETag — same body, no content change — and
+        // expect 304 with no body but the validator headers preserved.
+        let revalidate = HTTP.request("GET", BASE + "/", { "If-None-Match": etag });
+        assert_status(revalidate, 304);
+        assert_eq(revalidate.body, "");
+        assert_eq(revalidate.headers["etag"], etag);
+    });
+
+    test("If-None-Match with a stale ETag falls through to 200 with fresh body", fn() {
+        // If the client sends an ETag we didn't emit, the server must NOT
+        // return 304 — it returns a fresh 200 with the real body so the
+        // browser can update its cache.
+        let stale = HTTP.request("GET", BASE + "/", {
+            "If-None-Match": "\"0000000000000000\""
+        });
+        assert_status(stale, 200);
+        assert(stale.body.length() > 0);
+    });
+});
+
 describe("partial `locals` hash (end-to-end)", fn() {
     test("bare identifiers and locals[...] both resolve partial context", fn() {
         // The template engine binds a `locals` hash to every partial's

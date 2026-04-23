@@ -1846,6 +1846,12 @@ async fn handle_hyper_request(
         }
     }
 
+    // Keep the conditional-GET validator around so the response-assembly
+    // block below can short-circuit to 304 when the controller's rendered
+    // ETag matches the browser's cached copy. `headers` is about to be
+    // moved into `RequestData`.
+    let if_none_match = headers.get("if-none-match").cloned();
+
     // Read body - skip for GET/HEAD requests (usually empty)
     let (body, body_bytes_opt, multipart_form, multipart_files) =
         if method == "GET" || method == "HEAD" {
@@ -1926,6 +1932,44 @@ async fn handle_hyper_request(
     // Wait for response
     match response_rx.await {
         Ok(resp_data) => {
+            // Conditional-GET short-circuit: if the controller produced an
+            // ETag matching the browser's If-None-Match, return 304 with
+            // just the validator headers. Enables the hover-prefetch feature
+            // to deliver "instant navigation" — the body is already in the
+            // prefetched-resources cache; revalidation costs one tiny round
+            // trip instead of re-sending tens of KB of HTML.
+            if let Some(ref client_etag) = if_none_match {
+                if let Some(server_etag) = resp_data.headers.iter().find_map(|(k, v)| {
+                    if k.eq_ignore_ascii_case("etag") {
+                        Some(v.as_str())
+                    } else {
+                        None
+                    }
+                }) {
+                    fn strip_weak(s: &str) -> &str {
+                        s.trim_start_matches("W/").trim()
+                    }
+                    if strip_weak(client_etag) == strip_weak(server_etag) {
+                        let mut b304 = Response::builder()
+                            .status(StatusCode::NOT_MODIFIED)
+                            .header("Server", "soliMVC");
+                        // RFC 7232 §4.1: 304 MUST include the ETag it validated
+                        // against and SHOULD include Cache-Control so the
+                        // browser knows the freshness semantics for the next
+                        // reuse.
+                        for (key, value) in &resp_data.headers {
+                            if key.eq_ignore_ascii_case("etag")
+                                || key.eq_ignore_ascii_case("cache-control")
+                                || key.eq_ignore_ascii_case("vary")
+                            {
+                                b304 = b304.header(key.as_str(), value.as_str());
+                            }
+                        }
+                        return Ok(b304.body(Full::new(Bytes::new())).unwrap());
+                    }
+                }
+            }
+
             let mut builder = Response::builder()
                 .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK))
                 .header("Server", "soliMVC");

@@ -27,28 +27,32 @@
         return true;
     }
 
-    // Use `<link rel="prefetch">` (no `as` attribute). The browser fetches the
-    // URL at low priority and stores it in the **prefetched-resources cache**,
-    // which navigations consume *before* checking the HTTP cache. This is the
-    // mechanism `<link rel="prefetch">` is designed for and is how Turbo Drive,
-    // instant.page, and Quicklink all warm navigations.
+    // Use `<link rel="prefetch" as="document">`. The browser fetches the URL
+    // at low priority and stores it in the **document-prefetch cache**, which
+    // top-level navigations consume before hitting the HTTP cache. This is
+    // the only form Chromium actually promotes to a navigation response in
+    // current versions — bare `rel="prefetch"` (no `as`) lands in a
+    // subresource cache that navigations skip, so the prefetched body is
+    // never reused.
     //
     // Why not `fetch()`: a `fetch()` response goes into the HTTP cache with
     // `Sec-Fetch-Mode: cors`/`no-cors`. The subsequent navigation has
-    // `Sec-Fetch-Mode: navigate` — cache partitioning treats these as different
-    // requests and the prefetch doesn't reuse on click.
+    // `Sec-Fetch-Mode: navigate` — cache partitioning treats these as
+    // different requests and the prefetch doesn't reuse on click.
     //
-    // Why not `as="document"`: that routes into Chromium's stricter
-    // document-prefetch cache with extra reuse conditions (COEP, etc.); plain
-    // `rel="prefetch"` is simpler and works in Chromium, Firefox, and Safari.
+    // Reuse semantics at click time:
+    //   - Fresh entry (`max-age > 0` and within TTL) → served directly.
+    //   - Stale or `no-cache` → browser issues a conditional GET with
+    //     `If-None-Match` against the prefetched body's ETag. Server can
+    //     respond 304 and the prefetched bytes get promoted as the nav
+    //     response — which is exactly what `html_response` now emits.
     function prefetch(url) {
         seen.add(url);
         try {
             var link = document.createElement("link");
             link.rel = "prefetch";
+            link.as = "document";
             link.href = url;
-            // Don't set `as` — let the browser treat it as a generic prefetch
-            // that any future navigation can consume.
             document.head.appendChild(link);
         } catch (e) { /* ignore */ }
     }

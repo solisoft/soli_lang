@@ -18,18 +18,41 @@ use hyper::Response;
 
 use crate::serve::live_reload::rfind_ascii_case_insensitive;
 
-/// Client JS — compiled into the binary so there's no filesystem dependency
-/// and no cache-busting headache (it's pinned to the Soli build version).
+/// Client JS — compiled into the binary so there's no filesystem dependency.
 pub const PREFETCH_SCRIPT: &str = include_str!("prefetch.js");
 
 /// Marker used to make injection idempotent when the same body is rewrapped
 /// (e.g. by a middleware that re-enters `html_response`).
 const INJECTED_MARKER: &str = "__soli_prefetch_injected";
 
-/// Tag injected into responses. The comment marker immediately before the
-/// `<script>` lets us detect prior injection without parsing the HTML.
-const PREFETCH_TAG: &str =
-    "<!-- __soli_prefetch_injected --><script src=\"/__soli/prefetch.js\" defer></script>";
+/// Lazily-computed `<script>` tag with a content-derived query-string version.
+/// Gives us "immutable with cache-bust" semantics: old binaries served their
+/// old JS under `?v=OLD`; the new binary hands out `?v=NEW` URLs so every
+/// browser loads the fresh script on the next page load. No hard-reload dance.
+fn prefetch_tag() -> &'static str {
+    use std::sync::OnceLock;
+    static TAG: OnceLock<String> = OnceLock::new();
+    TAG.get_or_init(|| {
+        let hash = fnv1a_64(PREFETCH_SCRIPT.as_bytes());
+        format!(
+            "<!-- __soli_prefetch_injected --><script src=\"/__soli/prefetch.js?v={:016x}\" defer></script>",
+            hash
+        )
+    })
+}
+
+/// FNV-1a 64-bit over the embedded script bytes. Cheap, deterministic per
+/// binary, collision-free for our single-file cache-buster use case.
+fn fnv1a_64(bytes: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
 
 /// Is the hover-prefetch feature enabled? Reads `SOLI_PREFETCH` env var at
 /// every call (cheap; std::env::var is ~a few syscalls and we only hit this
@@ -56,21 +79,21 @@ pub fn inject_prefetch_tag(html: &str) -> String {
     if html.contains(INJECTED_MARKER) {
         return html.to_string();
     }
-
+    let tag = prefetch_tag();
     if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + PREFETCH_TAG.len());
+        let mut out = String::with_capacity(html.len() + tag.len());
         out.push_str(&html[..pos]);
-        out.push_str(PREFETCH_TAG);
+        out.push_str(tag);
         out.push_str(&html[pos..]);
         out
     } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + PREFETCH_TAG.len());
+        let mut out = String::with_capacity(html.len() + tag.len());
         out.push_str(&html[..pos]);
-        out.push_str(PREFETCH_TAG);
+        out.push_str(tag);
         out.push_str(&html[pos..]);
         out
     } else {
-        format!("{}{}", html, PREFETCH_TAG)
+        format!("{}{}", html, tag)
     }
 }
 
@@ -146,7 +169,7 @@ mod tests {
     fn inject_before_body() {
         let html = "<html><body><h1>Hi</h1></body></html>";
         let result = inject_prefetch_tag(html);
-        let script_pos = result.find(PREFETCH_TAG).expect("tag inserted");
+        let script_pos = result.find(prefetch_tag()).expect("tag inserted");
         let body_pos = result.find("</body>").expect("body still there");
         assert!(script_pos < body_pos, "tag must land before </body>");
         assert!(result.contains("<h1>Hi</h1>"), "existing content preserved");
@@ -157,7 +180,7 @@ mod tests {
         let html = "<HTML><BODY><h1>Hi</h1></BODY></HTML>";
         let result = inject_prefetch_tag(html);
         assert!(
-            result.contains(PREFETCH_TAG),
+            result.contains(prefetch_tag()),
             "tag missing in uppercase HTML"
         );
     }
@@ -168,14 +191,14 @@ mod tests {
         let once = inject_prefetch_tag(html);
         let twice = inject_prefetch_tag(&once);
         assert_eq!(once, twice, "second inject must be a no-op");
-        assert_eq!(once.matches(PREFETCH_TAG).count(), 1);
+        assert_eq!(once.matches(prefetch_tag()).count(), 1);
     }
 
     #[test]
     fn inject_no_body_tag_falls_back_to_html_close() {
         let html = "<html><h1>hi</h1></html>";
         let result = inject_prefetch_tag(html);
-        let script_pos = result.find(PREFETCH_TAG).expect("tag inserted");
+        let script_pos = result.find(prefetch_tag()).expect("tag inserted");
         let html_pos = result.find("</html>").unwrap();
         assert!(script_pos < html_pos);
     }
@@ -185,7 +208,7 @@ mod tests {
         let html = "<h1>Bare fragment</h1>";
         let result = inject_prefetch_tag(html);
         assert!(result.starts_with(html));
-        assert!(result.ends_with(PREFETCH_TAG));
+        assert!(result.ends_with(prefetch_tag()));
     }
 
     #[test]
@@ -214,14 +237,17 @@ mod tests {
 
     #[test]
     fn script_is_non_empty_iife() {
-        // Smoke-check the embedded JS is wrapped and uses `<link rel="prefetch">`
-        // (no `as`) as the mechanism — navigations consume from the prefetched-
-        // resources cache, which is the semantic we need.
+        // Smoke-check the embedded JS is wrapped and uses
+        // `<link rel="prefetch" as="document">` — the form Chromium promotes
+        // to a top-level navigation response. Plain `rel="prefetch"` (no
+        // `as`) lands in a subresource cache that navigations skip, so the
+        // prefetch never accelerates anything.
         assert!(PREFETCH_SCRIPT.contains("__soliPrefetchInstalled"));
         assert!(PREFETCH_SCRIPT.contains("link.rel = \"prefetch\""));
-        // Guard against regressing to `as="document"` — that routes into a
-        // stricter document-prefetch cache with extra reuse conditions.
-        assert!(!PREFETCH_SCRIPT.contains("link.as ="));
+        assert!(
+            PREFETCH_SCRIPT.contains("link.as = \"document\""),
+            "must set `as=\"document\"` so navigations consume the prefetched body"
+        );
     }
 
     #[test]

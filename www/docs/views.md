@@ -182,13 +182,31 @@ SOLI_PREFETCH=off soli serve .
 
 `off`, `false`, `0`, and `no` all disable. Anything else (or unset) keeps it on.
 
-**Cache-header gotcha:** the prefetch is only reused on click if the response is cacheable. The browser consults its HTTP cache for the navigation, so:
+**Caching defaults:** every response out of `render(...)` now carries two headers automatically so the prefetch actually delivers instant navigation:
 
-- **`Cache-Control: no-store`** disables the cache entirely — prefetch still fires but the browser re-fetches on click. Avoid on GET pages you want to feel instant.
-- **No `Cache-Control` at all** (Soli's default from `render(...)`) falls back to heuristic freshness. This works for the hover→click window (a second or two) on most browsers but isn't guaranteed.
-- **`Cache-Control: private, max-age=30`** is a safe explicit opt-in for auth'd pages — the entry is reused for 30 seconds and not shared across users.
+- **`ETag: "<16-hex>"`** — a content-derived strong validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection so it reflects the exact bytes on the wire).
+- **`Cache-Control: private, no-cache`** — the browser may cache, shared caches (CDN, reverse proxy) may not; the entry must be revalidated before reuse.
 
-For pages with per-request `Set-Cookie` headers, the `Vary: Cookie` requirement can still cause a cache miss even with good `Cache-Control`. In that case the prefetch at least warms the TCP/TLS connection and server-side caches, so the click is still faster.
+On the actual click, the browser sends `If-None-Match: "<etag>"`. If the rendered body would be identical, the framework short-circuits to **`304 Not Modified`** with just the validator headers — no body re-transmission. Result: the prefetched body is consumed as the navigation response, so the click feels instant.
+
+**Override per response** when the defaults don't fit. Set your own `Cache-Control` (and optionally `ETag`) in the response headers and the framework defaults step aside:
+
+```soli
+fn downloads(req)
+    # One-shot download — never reuse; always re-fetch.
+    return {
+        "status": 200,
+        "headers": {"Cache-Control": "no-store", "Content-Type": "text/csv"},
+        "body": csv_bytes
+    }
+end
+```
+
+**Gotchas:**
+
+- **`Cache-Control: no-store`** (explicit, in your response) disables the cache entirely — prefetch still fires but the browser re-fetches on click. Use for sensitive one-shot pages.
+- **POST/PUT/DELETE responses** aren't cached regardless, so nothing special is needed there.
+- Per-request **`Set-Cookie`** headers (flash messages, CSRF token rotation) can cause some browsers to ignore the cache entry even with good `Cache-Control`. In that case the prefetch still warms the TCP/TLS connection and any server-side caches, so the click is at least faster.
 
 ### DateTime Functions
 

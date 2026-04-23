@@ -480,18 +480,41 @@
     <pre data-filename="shell"><code class="language-bash text-sm">SOLI_PREFETCH=off soli serve .</code></pre>
     <p class="text-gray-400 text-sm mt-2 mb-6"><code>off</code>, <code>false</code>, <code>0</code>, and <code>no</code> all disable; anything else (or unset) keeps it on.</p>
 
-    <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
-        <p class="text-amber-200/80 text-sm mb-2">
-            <strong>Cache-Control gotcha:</strong> the prefetch is only reused on click if the response is cacheable &mdash; the browser consults its HTTP cache for the navigation.
+    <div class="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
+        <p class="text-emerald-200/80 text-sm mb-2">
+            <strong>Caching defaults:</strong> every response out of <code>render(...)</code> carries two headers automatically so the prefetch actually delivers instant navigation on click.
         </p>
-        <ul class="text-amber-200/80 text-sm space-y-1 list-disc list-inside">
-            <li><code>Cache-Control: no-store</code> &mdash; disables the cache entirely. Prefetch still fires but the browser re-fetches on click.</li>
-            <li>No <code>Cache-Control</code> (Soli's default) &mdash; heuristic freshness covers the hover&rarr;click window on most browsers but isn't guaranteed.</li>
-            <li><code>Cache-Control: private, max-age=30</code> &mdash; safe explicit opt-in for auth'd pages.</li>
+        <ul class="text-emerald-200/80 text-sm space-y-1 list-disc list-inside">
+            <li><code>ETag: "&lt;16-hex&gt;"</code> &mdash; content-derived strong validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection).</li>
+            <li><code>Cache-Control: private, no-cache</code> &mdash; browser may cache, shared caches (CDN, reverse proxy) may not; the entry must be revalidated before reuse.</li>
         </ul>
-        <p class="text-amber-200/80 text-sm mt-2">
-            For pages with per-request <code>Set-Cookie</code> + <code>Vary: Cookie</code>, the cache match may still fail. The prefetch at least warms the TCP/TLS connection and any server-side caches.
+        <p class="text-emerald-200/80 text-sm mt-2">
+            On click, the browser sends <code>If-None-Match: "&lt;etag&gt;"</code>. If the render would produce the same bytes, Soli short-circuits to <code>304 Not Modified</code> with just the validator headers &mdash; no body re-transmission. The prefetched body is consumed as the navigation response, so the click feels instant.
         </p>
+    </div>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Override per response</strong> when the defaults don't fit. Set your own <code>Cache-Control</code> (and optionally <code>ETag</code>) in the response headers hash and the framework defaults step aside:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Controller</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn downloads(req)
+    # One-shot download &mdash; never reuse; always re-fetch.
+    return {
+        "status": 200,
+        "headers": { "Cache-Control": "no-store", "Content-Type": "text/csv" },
+        "body": csv_bytes
+    }
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-200/80 text-sm mb-2"><strong>Gotchas:</strong></p>
+        <ul class="text-amber-200/80 text-sm space-y-1 list-disc list-inside">
+            <li><code>Cache-Control: no-store</code> (explicit, in your response) disables the cache entirely &mdash; prefetch still fires but the browser re-fetches on click. Use for sensitive one-shot pages.</li>
+            <li>POST/PUT/DELETE responses aren't cached regardless, so nothing special is needed there.</li>
+            <li>Per-request <code>Set-Cookie</code> headers (flash messages, CSRF rotation) can cause some browsers to ignore the cache entry even with good <code>Cache-Control</code>. The prefetch still warms the TCP/TLS connection and server-side caches, so the click is at least faster.</li>
+        </ul>
     </div>
     </div>
 
