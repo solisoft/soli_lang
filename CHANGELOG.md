@@ -4,6 +4,10 @@
 
 ### Features
 
+* **static-block:** add `#` and `//` comment handling in static block extraction to fix phantom string literal bug ([699a32a](https://github.com/solisoft/soli_lang/commit/699a32a))
+* **controller:** add controller inheritance with `extends` keyword
+* **controller:** add `after_action` hooks for post-response mutation
+* **views:** add defensive `defined()` pattern support in partials via universal method fix on Function values
 * **functions:** add universal methods (nil?, blank?, present?, class, inspect) on function values ([b2e66fe](https://github.com/solisoft/soli_lang/commit/b2e66fe))
 * **defined:** add `defined("varname")` builtin to check if a variable exists in the current scope chain ([89e3755](https://github.com/solisoft/soli_lang/commit/89e3755))
 * **prefetch:** add hover-preload that injects `<link rel="prefetch">` on mouseover/touchstart for faster page loads; opt out via `SOLI_PREFETCH=off` or `data-no-prefetch` ([3e4e9a9](https://github.com/solisoft/soli_lang/commit/3e4e9a9))
