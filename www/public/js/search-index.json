@@ -46,6 +46,15 @@
       "keywords": ["instanceof", "typeof", "introspection", "reflection", "class", "type check"]
     },
     {
+      "title": "defined",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#fn-defined",
+      "signature": "defined(name)",
+      "description": "Checks if a variable is defined in the current scope chain. Returns true if the variable exists, false otherwise.",
+      "keywords": ["exists", "scope", "variable", "check", "isset"]
+    },
+    {
       "title": "str",
       "type": "function",
       "category": "Core",

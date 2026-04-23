@@ -95,6 +95,26 @@ user.is_a?("String")    # false
 [1, 2].is_a?("Array")   # true
 ```
 
+#### defined(name)
+
+Checks if a variable is defined in the current scope chain. Returns `true` if the variable exists, `false` otherwise.
+
+**Parameters:**
+- `name` (String) - The variable name to check
+
+**Returns:** Bool
+
+**Example:**
+```soli
+let x = 42;
+defined("x");        # true
+defined("y");        # false
+
+fn check(val) {
+    if defined("val") { "exists" } else { "not set" }
+}
+```
+
 #### str(value)
 
 Converts a value to a string.
