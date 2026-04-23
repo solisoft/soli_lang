@@ -17,6 +17,7 @@
 
 ### Bug Fixes
 
+* **controller:** handle empty hook bodies (work around parser quirk where `fn(x) { }; <next>` fails); rescan controller metadata on hot-reload so hook edits take effect without restart ([0965817](https://github.com/solisoft/soli_lang/commit/0965817))
 * **controller:** bind `this` in before_action/after_action hooks so `@sigil` writes reach the controller instance ([3be976e](https://github.com/solisoft/soli_lang/commit/3be976e))
 * **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
 * **coverage:** fix deadlock in record_line_hit when global tracker and local tracker are same Arc
