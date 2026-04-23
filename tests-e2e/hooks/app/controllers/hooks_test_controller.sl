@@ -11,7 +11,7 @@ class HooksTestController < Controller
 
         # Action-filtered: `:locked` short-circuits with 403.
         this.before_action(:locked) = fn(req) {
-            return error(403, "Forbidden");
+            return halt(403, "Forbidden");
         }
 
         # Action-filtered empty body: must not crash, request proceeds.

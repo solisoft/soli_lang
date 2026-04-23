@@ -31,7 +31,7 @@
         let id = req.params["id"]
         let post = Post.find(id)
         if post == null
-            return error(404, "Post not found")
+            return halt(404, "Post not found")
         end
 
         render("posts/show", {
@@ -75,7 +75,7 @@ end</code></pre>
         # Run before SPECIFIC actions only
         this.before_action(:show, :edit) = fn(req) {
             let post = Post.find(req.params["id"]);
-            return error(404, "Not Found") if post == null;
+            return halt(404, "Not Found") if post == null;
             req["post"] = post;
             req
         }
@@ -128,7 +128,7 @@ class PostsController extends BaseController
         # Add controller-specific hook (runs after parent's before_action)
         this.before_action(:show, :edit) = fn(req) {
             let post = Post.find(req.params["id"]);
-            return error(404, "Not Found") if post == null;
+            return halt(404, "Not Found") if post == null;
             req["post"] = post;
             req
         }
@@ -259,17 +259,17 @@ redirect("/posts/" + post["id"])</code></pre>
             </div>
         </section>
 
-        <section id="fn-error" class="scroll-mt-20">
+        <section id="fn-halt" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#fn-error" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">error(status, message)</code>
+                <a href="#fn-halt" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">halt(status, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Return an error response with the given HTTP status code and message.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">error(404, "Page Not Found")
-error(403, "Forbidden")</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">halt(404, "Page Not Found")
+halt(403, "Forbidden")</code></pre>
             </div>
         </section>
     </div>

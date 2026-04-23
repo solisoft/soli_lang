@@ -1242,19 +1242,24 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
-    // error(status, message) - Build a plain error response hash. Used to
-    // short-circuit before_action hooks (`return error(403, "Forbidden")`) and
+    // halt(status, message) - Build a plain error response hash. Used to
+    // short-circuit before_action hooks (`return halt(403, "Forbidden")`) and
     // from actions that want a terse error page. The return value is a
     // response hash with `status`/`headers`/`body`, so it's recognized by
     // `check_for_response` and terminates the request immediately.
+    //
+    // Named `halt` (Sinatra convention) specifically because `error` is the
+    // most common local name in form/validation partials, and having a global
+    // builtin with that name caused silent collisions in defensive lookup
+    // patterns like `defined("error") && !error.nil?`.
     env.define(
-        "error".to_string(),
-        Value::NativeFunction(NativeFunction::new("error", Some(2), |args| {
+        "halt".to_string(),
+        Value::NativeFunction(NativeFunction::new("halt", Some(2), |args| {
             let status = match &args[0] {
                 Value::Int(n) => *n,
                 other => {
                     return Err(format!(
-                        "error() expects Int status as first argument, got {}",
+                        "halt() expects Int status as first argument, got {}",
                         other.type_name()
                     ))
                 }

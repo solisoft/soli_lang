@@ -15,7 +15,7 @@ describe("before_action + @ auto-inject (end-to-end via HTTP)", fn() {
         assert(res.body.contains("user=alice"));
     });
 
-    test("filtered :locked before_action short-circuits with 403 via error()", fn() {
+    test("filtered :locked before_action short-circuits with 403 via halt()", fn() {
         let res = HTTP.request("GET", BASE + "/locked", {});
         assert_eq(res.status, 403);
         assert_eq(res.body, "Forbidden");

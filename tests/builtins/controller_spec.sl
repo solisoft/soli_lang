@@ -54,19 +54,20 @@ describe("Controller Base Class", fn() {
         assert(true);
     });
 
-    test("error(status, message) builds a response hash the short-circuit logic accepts", fn() {
-        // Hooks use `return error(403, "Forbidden")` to abort a request.
+    test("halt(status, message) builds a response hash the short-circuit logic accepts", fn() {
+        // Hooks use `return halt(403, "Forbidden")` to abort a request.
         // The return value must be a hash with a `status` field so
         // `check_for_response` in serve/mod.rs treats it as a response, not as
         // a modified request hash. Regression guard against the builtin going
         // missing (it was undefined for a while, causing hooks to silently
-        // no-op and let requests through).
-        let r = error(403, "Forbidden");
+        // no-op and let requests through). Named `halt` rather than `error`
+        // because `error` collides with the common local name in form partials.
+        let r = halt(403, "Forbidden");
         assert_eq(r["status"], 403);
         assert_eq(r["body"], "Forbidden");
         assert_eq(r["headers"]["Content-Type"], "text/plain; charset=utf-8");
 
-        let r2 = error(422, "Bad payload");
+        let r2 = halt(422, "Bad payload");
         assert_eq(r2["status"], 422);
         assert_eq(r2["body"], "Bad payload");
     });

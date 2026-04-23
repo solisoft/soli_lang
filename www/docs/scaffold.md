@@ -92,7 +92,7 @@ class UsersController extends Controller
         let id = req.params["id"];
         let user = Users.find(id);
         if user == null
-            return error(404, "User not found");
+            return halt(404, "User not found");
         end
         return render("users/show", { "user": user });
     end

@@ -133,7 +133,7 @@ class PostsController extends ApplicationController
         this.before_action(:show, :edit, :update, :delete) = fn(req) {
             let post = Post.find(req.params["id"]);
             if post == null {
-                return error(404, "Post not found");
+                return halt(404, "Post not found");
             }
             req["post"] = post;
             req
@@ -171,7 +171,7 @@ class AdminController extends ApplicationController
         this.before_action = fn(req) {
             # Parent's before_action already ran (authentication)
             if req["current_user"]["role"] != "admin" {
-                return error(403, "Forbidden");
+                return halt(403, "Forbidden");
             }
             req
         }
@@ -214,7 +214,7 @@ class PostsController extends Controller
         this.before_action(:show, :edit, :delete) = fn(req) {
             let post = Post.find(req.params["id"]);
             if post == null {
-                return error(404, "Post not found");
+                return halt(404, "Post not found");
             }
             req["post"] = post;
             req
@@ -447,11 +447,11 @@ end
 fn show(req)
     let id = req.params["id"];
     if id == "" {
-        return error(400, "Missing ID");
+        return halt(400, "Missing ID");
     }
     let user = find_user(id);
     if user == null {
-        return error(404, "User not found");
+        return halt(404, "User not found");
     }
     render("users/show", {"user": user})
 end
