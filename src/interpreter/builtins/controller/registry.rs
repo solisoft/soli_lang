@@ -123,14 +123,6 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
                             }
                         }
 
-                        println!(
-                            "Registered controller: {} with actions: {:?}",
-                            info.name,
-                            info.actions
-                                .iter()
-                                .map(|a| &a.action_name)
-                                .collect::<Vec<_>>()
-                        );
                         registry.register(info);
                     }
                     Err(e) => {
