@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.79.0](https://github.com/solisoft/soli_lang/compare/v0.78.1...v0.79.0) (2026-04-23)
 
 ### Features
 
@@ -8,18 +8,6 @@
 * **controller:** add controller inheritance with `extends` keyword
 * **controller:** add `after_action` hooks for post-response mutation
 * **views:** add defensive `defined()` pattern support in partials via universal method fix on Function values
-* **functions:** add universal methods (nil?, blank?, present?, class, inspect) on function values ([b2e66fe](https://github.com/solisoft/soli_lang/commit/b2e66fe))
-* **defined:** add `defined("varname")` builtin to check if a variable exists in the current scope chain ([89e3755](https://github.com/solisoft/soli_lang/commit/89e3755))
-* **prefetch:** add hover-preload that injects `<link rel="prefetch">` on mouseover/touchstart for faster page loads; opt out via `SOLI_PREFETCH=off` or `data-no-prefetch` ([3e4e9a9](https://github.com/solisoft/soli_lang/commit/3e4e9a9))
-* **coverage:** add global coverage tracker for test server HTTP request coverage tracking
-* **coverage:** exclude tests/ files from coverage report
-* **coverage:** show relative paths in coverage report
-* **expectations:** add chainable expect().to_*() assertion API (to_be, to_equal, to_be_greater_than, etc.)
-* **view helpers:** inject view helpers into template builtins env on hot reload
-* **@sigil:** add `@foo` sugar syntax for `this.foo` instance field access
-* **views:** expose controller instance fields as view locals (e.g., `@title` in action becomes `title` local in view)
-* **repl:** fix tab completion for `@` sigil (no spurious suggestions)
-* **views:** add `current_path()`, `current_method()`, and `current_path?()` view helpers for request context
 
 ### Refactoring
 
@@ -28,14 +16,18 @@
 ### Bug Fixes
 
 * **controller:** remove debug `println` from controller registry ([c60d83f](https://github.com/solisoft/soli_lang/commit/c60d83f))
-* **prefetch:** skip prefetch when user has data-saving mode enabled (`navigator.connection.saveData`) to avoid wasting bandwidth ([c1bd548](https://github.com/solisoft/soli_lang/commit/c1bd548))
-* **http:** allow SSRF filter to be bypassed when `APP_ENV=test` so specs can reach their own test server
-* **prefetch:** switch from `<link rel="prefetch">` to `fetch()` for more reliable browser HTTP cache reuse; add `Purpose: prefetch` header; skip self-links; respect `X-Soli-Prefetch` custom header
-* **controller:** handle empty hook bodies (work around parser quirk where `fn(x) { }; <next>` fails); rescan controller metadata on hot-reload so hook edits take effect without restart ([0965817](https://github.com/solisoft/soli_lang/commit/0965817))
+
+## [Unreleased]
+
+### Bug Fixes
+
 * **controller:** bind `this` in before_action/after_action hooks so `@sigil` writes reach the controller instance ([3be976e](https://github.com/solisoft/soli_lang/commit/3be976e))
 * **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
 * **coverage:** fix deadlock in record_line_hit when global tracker and local tracker are same Arc
 * **coverage:** fix path inconsistency by canonicalizing paths in set_source_path and register_executable_lines_from_source
+
+### Features
+
 * **expectations:** implement expect().to_*() chainable assertion methods (were previously not implemented)
 * **view helpers:** fix view helpers not being available in templates after hot reload - now properly injected into builtins env
 * **controller registry:** refactor controller registry to support action-specific before_action filters
@@ -43,14 +35,8 @@
 
 ### Documentation
 
-* **skills:** reorganize skills from .skills/ to .opencode/skills/ structure ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
-* **blog:** add spreadsheet functions documentation ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
 * **@sigil:** document `@foo` sugar syntax for `this.foo` instance field access
 * **expect:** document expect().to_*() chainable assertion API
-
-### Features
-
-* **builtins:** add spreadsheet functions (SPREADSHEET, SPREADSHEET_INFO) ([08ab36a](https://github.com/solisoft/soli_lang/commit/08ab36a))
 
 ## [0.64.1](https://github.com/solisoft/soli_lang/compare/v0.64.0...v0.64.1) (2026-04-21)
 
