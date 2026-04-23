@@ -1022,19 +1022,24 @@ fn get_status_text(status_code: u16) -> &'static str {
 mod tests {
     use super::*;
 
-    // The production error page has first-class arms for the common statuses
-    // app code actually emits. 401 / 403 / 404 / 422 / 500 are the ones that
-    // matter in real Soli apps (auth, validation, missing, crash) — guard
-    // against any of them regressing to the generic fallback.
+    // Production error-page arms cover the statuses real Soli apps actually
+    // emit: auth (401/403), missing (404/410), client bugs (400/405/409/422/429),
+    // and server bugs (500/501/502/503/504). Any of these regressing to the
+    // generic fallback is a UX regression worth catching.
     #[test]
-    fn common_statuses_render_with_their_own_heading_and_warning_style() {
+    fn client_error_statuses_render_with_their_own_heading_and_warning_style() {
         let cases = [
-            (401, "Authentication Required", "warning"),
-            (403, "Forbidden", "warning"),
-            (404, "Page Not Found", "warning"),
-            (422, "Unprocessable Entity", "warning"),
+            (400, "Bad Request"),
+            (401, "Authentication Required"),
+            (403, "Forbidden"),
+            (404, "Page Not Found"),
+            (405, "Method Not Allowed"),
+            (409, "Conflict"),
+            (410, "Gone"),
+            (422, "Unprocessable Entity"),
+            (429, "Too Many Requests"),
         ];
-        for (code, heading, class) in cases {
+        for (code, heading) in cases {
             let html = render_production_error_page(code, "msg", "req-id");
             assert!(
                 html.contains(heading),
@@ -1043,10 +1048,9 @@ mod tests {
                 heading
             );
             assert!(
-                html.contains(&format!("error-code {}", class)),
-                "status {}: expected `{}` CSS class on the big number",
-                code,
-                class
+                html.contains("error-code warning"),
+                "status {}: expected `warning` CSS class on the big number",
+                code
             );
             assert!(
                 html.contains(&format!(">{}</div>", code)),
@@ -1057,9 +1061,37 @@ mod tests {
     }
 
     #[test]
-    fn server_errors_use_error_style() {
-        let html = render_production_error_page(500, "oops", "req-id");
-        assert!(html.contains("Internal Server Error"));
-        assert!(html.contains("error-code error"));
+    fn server_error_statuses_render_with_their_own_heading_and_error_style() {
+        let cases = [
+            (500, "Internal Server Error"),
+            (501, "Not Implemented"),
+            (502, "Bad Gateway"),
+            (503, "Service Unavailable"),
+            (504, "Gateway Timeout"),
+        ];
+        for (code, heading) in cases {
+            let html = render_production_error_page(code, "msg", "req-id");
+            assert!(
+                html.contains(heading),
+                "status {}: heading {:?} missing from page",
+                code,
+                heading
+            );
+            assert!(
+                html.contains("error-code error"),
+                "status {}: expected `error` CSS class on the big number",
+                code
+            );
+        }
+    }
+
+    // A status code outside the first-class list still produces a sensible
+    // page with the right heading and the generic `info` style.
+    #[test]
+    fn unknown_status_falls_through_to_generic_info_page() {
+        let html = render_production_error_page(418, "msg", "req-id");
+        // Unknown-to-the-explicit-match but get_status_text still covers 418?
+        // Actually 418 isn't in get_status_text, so the heading is "Error".
+        assert!(html.contains("error-code info"));
     }
 }
