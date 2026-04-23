@@ -106,7 +106,12 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     }
 
     if is_blocked_host(host) {
-        return Err("Access to private/localhost addresses is not allowed".to_string());
+        // Under the test runner (`APP_ENV=test` is set by `soli test`), allow
+        // loopback/private hosts so specs can reach their own test server.
+        // Production/dev requests remain blocked.
+        if std::env::var("APP_ENV").as_deref() != Ok("test") {
+            return Err("Access to private/localhost addresses is not allowed".to_string());
+        }
     }
 
     Ok(())

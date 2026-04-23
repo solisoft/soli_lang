@@ -449,7 +449,7 @@
 
     <h3 class="text-xl font-semibold text-white mb-4">Hover Preload</h3>
     <p class="text-gray-400 mb-4">
-        Soli auto-injects a small <code>&lt;script&gt;</code> tag into every HTML response that listens for <code>mouseover</code> on links and fires <code>&lt;link rel="prefetch"&gt;</code>, so the next page is already in the browser cache by the time the user clicks. The script is served at <code>/__soli/prefetch.js</code> &mdash; an external file, not inline, so strict-CSP apps work out of the box.
+        Soli auto-injects a small <code>&lt;script&gt;</code> tag into every HTML response that listens for <code>mouseover</code> on links and fires a same-origin <code>fetch()</code>, so the response is already in the browser's HTTP cache by the time the user clicks. The script is served at <code>/__soli/prefetch.js</code> &mdash; an external file, not inline, so strict-CSP apps work out of the box. The prefetch request carries a <code>Purpose: prefetch</code> header so your backend can log or differentiate it if needed.
     </p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -481,8 +481,16 @@
     <p class="text-gray-400 text-sm mt-2 mb-6"><code>off</code>, <code>false</code>, <code>0</code>, and <code>no</code> all disable; anything else (or unset) keeps it on.</p>
 
     <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
-        <p class="text-amber-200/80 text-sm">
-            <strong>Cache-Control gotcha:</strong> for the prefetched response to be reused on click, your app must not set <code>Cache-Control: no-store</code> on those GET pages. Soli's default <code>render(...)</code> emits no <code>Cache-Control</code>, which is fine. If middleware adds <code>no-store</code> for auth'd pages, the prefetch still fires but the browser will re-fetch on click.
+        <p class="text-amber-200/80 text-sm mb-2">
+            <strong>Cache-Control gotcha:</strong> the prefetch is only reused on click if the response is cacheable &mdash; the browser consults its HTTP cache for the navigation.
+        </p>
+        <ul class="text-amber-200/80 text-sm space-y-1 list-disc list-inside">
+            <li><code>Cache-Control: no-store</code> &mdash; disables the cache entirely. Prefetch still fires but the browser re-fetches on click.</li>
+            <li>No <code>Cache-Control</code> (Soli's default) &mdash; heuristic freshness covers the hover&rarr;click window on most browsers but isn't guaranteed.</li>
+            <li><code>Cache-Control: private, max-age=30</code> &mdash; safe explicit opt-in for auth'd pages.</li>
+        </ul>
+        <p class="text-amber-200/80 text-sm mt-2">
+            For pages with per-request <code>Set-Cookie</code> + <code>Vary: Cookie</code>, the cache match may still fail. The prefetch at least warms the TCP/TLS connection and any server-side caches.
         </p>
     </div>
     </div>

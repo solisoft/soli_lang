@@ -214,8 +214,21 @@ mod tests {
 
     #[test]
     fn script_is_non_empty_iife() {
-        // Smoke-check the embedded JS starts with our IIFE wrapper.
+        // Smoke-check the embedded JS is wrapped and uses fetch() as the
+        // warm-up mechanism (we moved off `<link rel="prefetch" as="document">`
+        // because the document-prefetch cache failed to serve the follow-up
+        // navigation in practice; plain same-origin fetch populates the HTTP
+        // cache that the browser actually consults on click).
         assert!(PREFETCH_SCRIPT.contains("__soliPrefetchInstalled"));
-        assert!(PREFETCH_SCRIPT.contains("rel = \"prefetch\""));
+        assert!(PREFETCH_SCRIPT.contains("fetch("));
+        assert!(PREFETCH_SCRIPT.contains("credentials"));
+    }
+
+    #[test]
+    fn script_skips_self_links() {
+        // Regression: `<a href="/foo">` on `/foo` used to prefetch itself.
+        // The fix compares pathname + search (ignoring hash) against location.
+        assert!(PREFETCH_SCRIPT.contains("a.pathname === location.pathname"));
+        assert!(PREFETCH_SCRIPT.contains("a.search === location.search"));
     }
 }

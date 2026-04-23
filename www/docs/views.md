@@ -150,7 +150,7 @@ For prefix matches (e.g. any path under `/users`), compose with `current_path().
 
 ### Hover Preload
 
-Soli auto-injects a small `<script>` tag into every HTML response that listens for `mouseover` on links and fires `<link rel="prefetch">` so the next page is already in the browser cache by the time the user clicks. The script is served at `/__soli/prefetch.js` — an external file, not inline, so apps with strict CSP (no `unsafe-inline`) work out of the box.
+Soli auto-injects a small `<script>` tag into every HTML response that listens for `mouseover` on links and fires a same-origin `fetch()` so the response is already in the browser's HTTP cache by the time the user clicks. The script is served at `/__soli/prefetch.js` — an external file, not inline, so apps with strict CSP (no `unsafe-inline`) work out of the box. The prefetch request carries a `Purpose: prefetch` header so your backend can log or differentiate it if needed.
 
 **What you get for free:**
 
@@ -182,7 +182,13 @@ SOLI_PREFETCH=off soli serve .
 
 `off`, `false`, `0`, and `no` all disable. Anything else (or unset) keeps it on.
 
-**Cache-header gotcha:** for the prefetched response to be reused on the subsequent click, your app must not set `Cache-Control: no-store` on those GET pages. Soli's default `render(...)` emits no `Cache-Control`, which is fine — the browser's heuristic cache covers the hover→click window. If you add `Cache-Control: no-store` in middleware for auth'd pages, the prefetch still fires but the browser will re-fetch on click.
+**Cache-header gotcha:** the prefetch is only reused on click if the response is cacheable. The browser consults its HTTP cache for the navigation, so:
+
+- **`Cache-Control: no-store`** disables the cache entirely — prefetch still fires but the browser re-fetches on click. Avoid on GET pages you want to feel instant.
+- **No `Cache-Control` at all** (Soli's default from `render(...)`) falls back to heuristic freshness. This works for the hover→click window (a second or two) on most browsers but isn't guaranteed.
+- **`Cache-Control: private, max-age=30`** is a safe explicit opt-in for auth'd pages — the entry is reused for 30 seconds and not shared across users.
+
+For pages with per-request `Set-Cookie` headers, the `Vary: Cookie` requirement can still cause a cache miss even with good `Cache-Control`. In that case the prefetch at least warms the TCP/TLS connection and server-side caches, so the click is still faster.
 
 ### DateTime Functions
 
