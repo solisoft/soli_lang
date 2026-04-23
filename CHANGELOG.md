@@ -17,6 +17,9 @@
 
 ### Bug Fixes
 
+* **prefetch:** skip prefetch when user has data-saving mode enabled (`navigator.connection.saveData`) to avoid wasting bandwidth ([c1bd548](https://github.com/solisoft/soli_lang/commit/c1bd548))
+* **http:** allow SSRF filter to be bypassed when `APP_ENV=test` so specs can reach their own test server
+* **prefetch:** switch from `<link rel="prefetch">` to `fetch()` for more reliable browser HTTP cache reuse; add `Purpose: prefetch` header; skip self-links; respect `X-Soli-Prefetch` custom header
 * **controller:** handle empty hook bodies (work around parser quirk where `fn(x) { }; <next>` fails); rescan controller metadata on hot-reload so hook edits take effect without restart ([0965817](https://github.com/solisoft/soli_lang/commit/0965817))
 * **controller:** bind `this` in before_action/after_action hooks so `@sigil` writes reach the controller instance ([3be976e](https://github.com/solisoft/soli_lang/commit/3be976e))
 * **coverage:** fix `soli test --coverage` - was reporting inflated percentages due to double counting hits in end_test()
