@@ -456,10 +456,9 @@ fn get_current_controller_registered_layout() -> Option<Value> {
         return None;
     };
     let class_name = inst.borrow().class.name.clone();
-    let registry =
-        crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
-            .read()
-            .ok()?;
+    let registry = crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
+        .read()
+        .ok()?;
     let info = registry.get_by_name(&class_name)?;
     info.layout.clone().map(Value::String)
 }
