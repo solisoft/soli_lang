@@ -418,10 +418,7 @@ pub fn html_response(body: String, status: i64) -> Value {
         HashKey::String("Content-Type".to_string()),
         Value::String("text/html; charset=utf-8".to_string()),
     );
-    headers.insert(
-        HashKey::String("ETag".to_string()),
-        Value::String(etag),
-    );
+    headers.insert(HashKey::String("ETag".to_string()), Value::String(etag));
     // `private`: browser may cache, shared caches (CDN, reverse proxy) may not.
     // `no-cache`: cache entry must be revalidated with If-None-Match before
     // reuse — so any prefetched response survives, but a stale one doesn't.
@@ -833,7 +830,10 @@ mod tests {
         // RFC 7232 strong validator: quoted opaque string. Ours is exactly
         // 16 hex chars wrapped in quotes (18 chars total).
         assert_eq!(etag.len(), 18, "ETag should be \"<16 hex>\", got {}", etag);
-        assert!(etag.starts_with('"') && etag.ends_with('"'), "ETag must be quoted");
+        assert!(
+            etag.starts_with('"') && etag.ends_with('"'),
+            "ETag must be quoted"
+        );
 
         let cc = match &hdrs[&HashKey::String("Cache-Control".to_string())] {
             Value::String(s) => s.clone(),
@@ -851,7 +851,9 @@ mod tests {
         let c = html_response("<html><body>Y</body></html>".to_string(), 200);
 
         fn etag_of(v: &Value) -> String {
-            let Value::Hash(ref m) = v else { unreachable!() };
+            let Value::Hash(ref m) = v else {
+                unreachable!()
+            };
             let Value::Hash(ref h) = m.borrow()[&HashKey::String("headers".to_string())] else {
                 unreachable!()
             };
