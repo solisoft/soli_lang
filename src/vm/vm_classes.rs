@@ -117,20 +117,18 @@ impl Vm {
                     span,
                 })
             }
-            Value::Function(_) | Value::NativeFunction(_) => {
-                match name {
-                    "nil?" => Ok(Value::Bool(false)),
-                    "blank?" => Ok(Value::Bool(false)),
-                    "present?" => Ok(Value::Bool(true)),
-                    "class" => Ok(Value::String("Function".to_string())),
-                    "inspect" => Ok(Value::String("<function>".to_string())),
-                    _ => Err(RuntimeError::NoSuchProperty {
-                        value_type: object.type_name().to_string(),
-                        property: name.to_string(),
-                        span,
-                    }),
-                }
-            }
+            Value::Function(_) | Value::NativeFunction(_) => match name {
+                "nil?" => Ok(Value::Bool(false)),
+                "blank?" => Ok(Value::Bool(false)),
+                "present?" => Ok(Value::Bool(true)),
+                "class" => Ok(Value::String("Function".to_string())),
+                "inspect" => Ok(Value::String("<function>".to_string())),
+                _ => Err(RuntimeError::NoSuchProperty {
+                    value_type: object.type_name().to_string(),
+                    property: name.to_string(),
+                    span,
+                }),
+            },
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: object.type_name().to_string(),
                 property: name.to_string(),
