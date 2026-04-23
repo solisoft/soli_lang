@@ -851,6 +851,12 @@ pub(super) fn render_production_error_page(
                 .to_string(),
             "warning".to_string(),
         ),
+        401 => (
+            "401 Unauthorized".to_string(),
+            "Authentication Required".to_string(),
+            "You need to sign in to access this resource.".to_string(),
+            "warning".to_string(),
+        ),
         403 => (
             "403 Forbidden".to_string(),
             "Forbidden".to_string(),
@@ -869,10 +875,43 @@ pub(super) fn render_production_error_page(
             "The HTTP method used is not allowed for this resource.".to_string(),
             "warning".to_string(),
         ),
+        409 => (
+            "409 Conflict".to_string(),
+            "Conflict".to_string(),
+            "This request conflicts with the current state of the resource. Reload and try again."
+                .to_string(),
+            "warning".to_string(),
+        ),
+        410 => (
+            "410 Gone".to_string(),
+            "Gone".to_string(),
+            "This resource used to exist but has been permanently removed.".to_string(),
+            "warning".to_string(),
+        ),
+        422 => (
+            "422 Unprocessable Entity".to_string(),
+            "Unprocessable Entity".to_string(),
+            "The request was well-formed but could not be processed due to validation errors."
+                .to_string(),
+            "warning".to_string(),
+        ),
+        429 => (
+            "429 Too Many Requests".to_string(),
+            "Too Many Requests".to_string(),
+            "You've sent too many requests too quickly. Please slow down and try again shortly."
+                .to_string(),
+            "warning".to_string(),
+        ),
         500 => (
             "500 Internal Server Error".to_string(),
             "Internal Server Error".to_string(),
             "Something went wrong on our end. Please try again later.".to_string(),
+            "error".to_string(),
+        ),
+        501 => (
+            "501 Not Implemented".to_string(),
+            "Not Implemented".to_string(),
+            "This feature isn't available yet.".to_string(),
             "error".to_string(),
         ),
         502 => (
@@ -885,6 +924,12 @@ pub(super) fn render_production_error_page(
             "503 Service Unavailable".to_string(),
             "Service Unavailable".to_string(),
             "The service is temporarily unavailable. Please try again later.".to_string(),
+            "error".to_string(),
+        ),
+        504 => (
+            "504 Gateway Timeout".to_string(),
+            "Gateway Timeout".to_string(),
+            "An upstream server didn't respond in time. Please try again.".to_string(),
             "error".to_string(),
         ),
         _ => {
@@ -970,5 +1015,51 @@ fn get_status_text(status_code: u16) -> &'static str {
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The production error page has first-class arms for the common statuses
+    // app code actually emits. 401 / 403 / 404 / 422 / 500 are the ones that
+    // matter in real Soli apps (auth, validation, missing, crash) — guard
+    // against any of them regressing to the generic fallback.
+    #[test]
+    fn common_statuses_render_with_their_own_heading_and_warning_style() {
+        let cases = [
+            (401, "Authentication Required", "warning"),
+            (403, "Forbidden", "warning"),
+            (404, "Page Not Found", "warning"),
+            (422, "Unprocessable Entity", "warning"),
+        ];
+        for (code, heading, class) in cases {
+            let html = render_production_error_page(code, "msg", "req-id");
+            assert!(
+                html.contains(heading),
+                "status {}: heading {:?} missing from page",
+                code,
+                heading
+            );
+            assert!(
+                html.contains(&format!("error-code {}", class)),
+                "status {}: expected `{}` CSS class on the big number",
+                code,
+                class
+            );
+            assert!(
+                html.contains(&format!(">{}</div>", code)),
+                "status {}: big number missing from page",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn server_errors_use_error_style() {
+        let html = render_production_error_page(500, "oops", "req-id");
+        assert!(html.contains("Internal Server Error"));
+        assert!(html.contains("error-code error"));
     }
 }
