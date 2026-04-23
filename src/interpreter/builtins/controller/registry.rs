@@ -377,7 +377,11 @@ fn extract_static_block(source: &str) -> Result<String, String> {
             continue;
         }
 
-        // Walk the block body, tracking string literals and nested braces.
+        // Walk the block body, tracking string literals, line comments, and
+        // nested braces. Line comments matter because a Soli `#` comment
+        // containing an apostrophe (e.g. `doesn't`) would otherwise open a
+        // phantom string literal that never closes, leaving the scanner stuck
+        // in string mode and misreporting "Unclosed static block".
         let body_start = i + 1;
         let mut depth = 1;
         let mut in_string = false;
@@ -391,6 +395,21 @@ fn extract_static_block(source: &str) -> Result<String, String> {
                 }
             } else {
                 match b {
+                    b'#' => {
+                        // `#` starts a line comment; skip to end of line.
+                        while j < bytes.len() && bytes[j] != b'\n' {
+                            j += 1;
+                        }
+                        // Don't consume the newline — let the outer loop see it.
+                        continue;
+                    }
+                    b'/' if j + 1 < bytes.len() && bytes[j + 1] == b'/' => {
+                        // `//` line comment (Soli also accepts these).
+                        while j < bytes.len() && bytes[j] != b'\n' {
+                            j += 1;
+                        }
+                        continue;
+                    }
                     b'"' | b'\'' => {
                         in_string = true;
                         string_char = b;

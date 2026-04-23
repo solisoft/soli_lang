@@ -1,0 +1,6 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p id="params-type">params_type=<%= type(params) %></p>
+</body>
+</html>

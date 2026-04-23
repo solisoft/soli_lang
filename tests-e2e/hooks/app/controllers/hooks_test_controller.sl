@@ -1,6 +1,8 @@
-# End-to-end fixture for before_action + `@` sigil + empty hook + prefetch.
+# End-to-end fixture for before_action + `@` sigil + empty hook + prefetch +
+# inheritance + halt-in-action + render-precedence + redirect + after_action
+# + framework-field shadowing.
 
-class HooksTestController < Controller
+class HooksTestController extends ParentController
     static {
         # Unfiltered: runs on every action. Setting `@current_user` here should
         # reach the view as a bare `current_user` local via auto-injection.
@@ -14,7 +16,23 @@ class HooksTestController < Controller
             return halt(403, "Forbidden");
         }
 
+        # Action-filtered: tries to shadow the framework-injected `params` field.
+        # The view should still see the real params hash, not the string.
+        this.before_action(:param_shadow) = fn(req) {
+            @params = "HIJACKED_BY_HOOK";
+            req
+        }
+
+        # Action-filtered after_action: appends a marker to the response body
+        # so the HTTP caller can see the after_action ran.
+        this.after_action(:after_marked) = fn(req, response) {
+            response["body"] = response["body"] + "<!--AFTER_ACTION_MARK-->";
+            response
+        }
+
         # Action-filtered empty body: must not crash, request proceeds.
+        # Kept last in the static block — the parser doesn't accept an empty
+        # `fn(x) { }` body followed by another statement in the same block.
         this.before_action(:empty_hook) = fn(req) {
 
         }
@@ -30,5 +48,38 @@ class HooksTestController < Controller
 
     fn empty_hook(req)
         render("hooks_test/index")
+    end
+
+    # Returns a halt() response from an action body (not a before_action hook).
+    fn halt_in_action(req)
+        return halt(404, "Not Here")
+    end
+
+    # Sets @title on the instance, then passes an explicit data hash to render().
+    # Explicit render data must win over the @-auto-injected field.
+    fn render_with_data(req)
+        @title = "from_instance";
+        render("hooks_test/render_with_data", {"title": "from_render"})
+    end
+
+    # Redirect to /after_redirect.
+    fn redirect_elsewhere(req)
+        redirect("/after_redirect")
+    end
+
+    # Destination for the redirect test.
+    fn after_redirect(req)
+        render("hooks_test/index")
+    end
+
+    # Action exercising after_action filter — the marker appears in the body.
+    fn after_marked(req)
+        render("hooks_test/index")
+    end
+
+    # Used by the param-shadowing test. The view asserts `params` is still a
+    # hash (not the string the before_action wrote to `@params`).
+    fn param_shadow(req)
+        render("hooks_test/param_shadow")
     end
 end

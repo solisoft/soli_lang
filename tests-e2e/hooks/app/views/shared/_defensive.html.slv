@@ -1,0 +1,6 @@
+<!-- Regression guard for .nil? on Function values.
+     halt is a global Soli builtin (NativeFunction). A defensive pattern like
+     defined(name) and not name.nil? used to crash when the name collided with
+     a Function builtin because .nil? wasn't implemented on Function values. -->
+<% let _val = defined("halt") && !halt.nil? ? "caught" : "fallback" %>
+<p id="defensive">defensive=<%= _val %></p>

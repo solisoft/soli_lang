@@ -2,7 +2,9 @@
 <html>
 <body>
 <p id="who">user=<%= current_user %></p>
+<p id="parent">parent=<%= from_parent %></p>
 <p id="path">path=<%= current_path() %></p>
 <p id="active-home" class="<%= current_path?("/") ? "active" : "" %>">home</p>
+<%= render_partial("shared/defensive") %>
 </body>
 </html>

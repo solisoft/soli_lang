@@ -1,3 +1,9 @@
 get("/", "hooks_test#index");
 get("/locked", "hooks_test#locked");
 get("/empty_hook", "hooks_test#empty_hook");
+get("/halt_in_action", "hooks_test#halt_in_action");
+get("/render_with_data", "hooks_test#render_with_data");
+get("/redirect_elsewhere", "hooks_test#redirect_elsewhere");
+get("/after_redirect", "hooks_test#after_redirect");
+get("/after_marked", "hooks_test#after_marked");
+get("/param_shadow", "hooks_test#param_shadow");
