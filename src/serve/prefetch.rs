@@ -214,14 +214,14 @@ mod tests {
 
     #[test]
     fn script_is_non_empty_iife() {
-        // Smoke-check the embedded JS is wrapped and uses fetch() as the
-        // warm-up mechanism (we moved off `<link rel="prefetch" as="document">`
-        // because the document-prefetch cache failed to serve the follow-up
-        // navigation in practice; plain same-origin fetch populates the HTTP
-        // cache that the browser actually consults on click).
+        // Smoke-check the embedded JS is wrapped and uses `<link rel="prefetch">`
+        // (no `as`) as the mechanism — navigations consume from the prefetched-
+        // resources cache, which is the semantic we need.
         assert!(PREFETCH_SCRIPT.contains("__soliPrefetchInstalled"));
-        assert!(PREFETCH_SCRIPT.contains("fetch("));
-        assert!(PREFETCH_SCRIPT.contains("credentials"));
+        assert!(PREFETCH_SCRIPT.contains("link.rel = \"prefetch\""));
+        // Guard against regressing to `as="document"` — that routes into a
+        // stricter document-prefetch cache with extra reuse conditions.
+        assert!(!PREFETCH_SCRIPT.contains("link.as ="));
     }
 
     #[test]

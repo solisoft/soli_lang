@@ -27,23 +27,29 @@
         return true;
     }
 
-    // Use `fetch()` instead of `<link rel="prefetch">`. Same-origin `fetch`
-    // runs at normal priority (higher than prefetch) and populates the HTTP
-    // cache reliably — which is what the browser consults on the subsequent
-    // navigation. `<link rel="prefetch" as="document">` routes into Chromium's
-    // stricter document-prefetch cache with extra reuse conditions, and we
-    // saw it fail to serve the follow-up click in practice.
-    // `credentials: "same-origin"` is the default but we spell it out: auth'd
-    // apps need cookies on the prefetch for the HTTP cache entry to match the
-    // navigation request.
+    // Use `<link rel="prefetch">` (no `as` attribute). The browser fetches the
+    // URL at low priority and stores it in the **prefetched-resources cache**,
+    // which navigations consume *before* checking the HTTP cache. This is the
+    // mechanism `<link rel="prefetch">` is designed for and is how Turbo Drive,
+    // instant.page, and Quicklink all warm navigations.
+    //
+    // Why not `fetch()`: a `fetch()` response goes into the HTTP cache with
+    // `Sec-Fetch-Mode: cors`/`no-cors`. The subsequent navigation has
+    // `Sec-Fetch-Mode: navigate` — cache partitioning treats these as different
+    // requests and the prefetch doesn't reuse on click.
+    //
+    // Why not `as="document"`: that routes into Chromium's stricter
+    // document-prefetch cache with extra reuse conditions (COEP, etc.); plain
+    // `rel="prefetch"` is simpler and works in Chromium, Firefox, and Safari.
     function prefetch(url) {
         seen.add(url);
         try {
-            fetch(url, {
-                credentials: "same-origin",
-                redirect: "manual",   // don't follow 302s; they'd prefetch login pages
-                headers: { "Purpose": "prefetch", "X-Soli-Prefetch": "1" }
-            }).catch(function () {});
+            var link = document.createElement("link");
+            link.rel = "prefetch";
+            link.href = url;
+            // Don't set `as` — let the browser treat it as a generic prefetch
+            // that any future navigation can consume.
+            document.head.appendChild(link);
         } catch (e) { /* ignore */ }
     }
 
