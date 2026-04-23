@@ -292,6 +292,7 @@ throw RuntimeError.new("Something failed");
 ### Templates
 - `render(template_name, data)` - render template with data
 - `partial(template_name, data)` - include partial
+- `locals` - hash bound inside every partial, mirrors the passed-in data (use `locals["class"]` for keys whose names are reserved words or builtins)
 
 ### HTML/Escaping
 - `html_escape(string)` - escape `<`, `>`, `&`, `"`, `'` for safe HTML output
@@ -737,6 +738,7 @@ Use get/post/put/delete helpers
 | `h()` | `<%= h(text) %>` | HTML escape |
 | `datetime_format()` | `<%= datetime_format(date, "%Y-%m-%d") %>` | Format DateTime |
 | `render_partial()` | `<%= render_partial("path", data) %>` | Include partial |
+| `locals` | `<%= locals["class"] %>` | Partial context hash; use for keys that collide with reserved words or builtins |
 
 ### AI Agent Quick Reference
 

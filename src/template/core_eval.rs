@@ -58,13 +58,27 @@ pub fn reset_builtins_rc() {
 /// Create a template interpreter populated with data.
 /// Uses shared builtins (no clone) + data hash reference (no copy).
 /// Data variables are looked up directly in the hash via zero-alloc StrKey.
+///
+/// Also binds `locals` to the passed-in hash (or an empty hash if none)
+/// so partials can read reserved-word keys via `locals["class"]` etc.,
+/// mirroring Rails' `local_assigns`. Bare-identifier access keeps working
+/// for non-reserved keys; `locals` is the escape hatch for the rest.
 pub fn create_template_interpreter(data: &Value) -> Interpreter {
+    use crate::interpreter::value::HashPairs;
+
     let builtins = get_builtins_rc();
-    let data_env = if let Value::Hash(map) = data {
-        Environment::with_enclosing_and_data(builtins, map.clone())
+    let (mut data_env, locals_value) = if let Value::Hash(map) = data {
+        (
+            Environment::with_enclosing_and_data(builtins, map.clone()),
+            data.clone(),
+        )
     } else {
-        Environment::with_enclosing(builtins)
+        (
+            Environment::with_enclosing(builtins),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+        )
     };
+    data_env.define("locals".to_string(), locals_value);
     Interpreter::with_environment(Rc::new(RefCell::new(data_env)))
 }
 

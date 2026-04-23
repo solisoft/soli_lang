@@ -1,0 +1,10 @@
+<!-- Partial exercising both access paths to locals:
+       * bare identifier — `title` for non-reserved keys
+       * `locals["..."]` — escape hatch for reserved words (`class`) and
+         builtin-colliding names (`type`)
+     Output is assertion-friendly key=value lines so the spec can grep. -->
+bare_title=<%= title %>
+locals_title=<%= locals["title"] %>
+locals_class=<%= locals["class"] %>
+locals_type=<%= locals["type"] %>
+missing_is_nil=<%= locals["nope"].nil? %>

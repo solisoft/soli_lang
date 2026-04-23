@@ -8,6 +8,7 @@ get("/after_redirect", "hooks_test#after_redirect");
 get("/after_marked", "hooks_test#after_marked");
 get("/param_shadow", "hooks_test#param_shadow");
 get("/render_with_hash_arg", "hooks_test#render_with_hash_arg");
+get("/locals_access", "hooks_test#locals_access");
 
 # Coverage-expansion routes: JSON APIs, sessions, form POST, error paths.
 post("/api/echo", "api_test#echo_json");

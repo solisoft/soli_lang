@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+* **feat(template): bind `locals` hash to every partial context (Rails-style `local_assigns`)** — partials can now read keys whose names collide with reserved words (`class`) or builtin functions (`type`) via `locals["class"]` / `locals["type"]`. Bare-identifier access is unchanged and remains the idiom for non-reserved keys; `locals` is the escape hatch.
+
 ## [0.80.1](https://github.com/solisoft/soli_lang/compare/0.80.0...0.80.1) (2026-04-23)
 
 ### Other

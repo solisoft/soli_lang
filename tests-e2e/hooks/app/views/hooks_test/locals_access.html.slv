@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<body>
+<%- render_partial("shared/locals_partial", {
+    "title": "PAGE_TITLE",
+    "class": "css-class-str",
+    "type": "email"
+}) %>
+</body>
+</html>

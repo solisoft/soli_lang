@@ -1725,7 +1725,7 @@ end
 - Explicit `render("view", {...})` data **always wins** over the auto-exposed fields.
 - The framework-injected fields `req`, `params`, `session`, and `headers` are never re-exposed this way — those flow through their usual channels.
 - Auto-exposure is scoped to the action currently running. No cross-action, cross-controller, or cross-request leakage.
-- Partials (`render_partial`, `partial`) are unaffected — pass data to them explicitly.
+- Partials (`render_partial`, `partial`) are unaffected — pass data to them explicitly. Inside the partial, read the data back via bare identifiers or the `locals` hash (`locals["class"]`) for keys whose names collide with reserved words or builtins. See [Views → The `locals` hash](./views.md#the-locals-hash) for the full semantics.
 
 ### Constructors and Factory Methods
 

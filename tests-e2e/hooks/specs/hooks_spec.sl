@@ -294,6 +294,31 @@ describe("ERB partial calls with reserved-word hash keys (end-to-end)", fn() {
     });
 });
 
+describe("partial `locals` hash (end-to-end)", fn() {
+    test("bare identifiers and locals[...] both resolve partial context", fn() {
+        // The template engine binds a `locals` hash to every partial's
+        // context (Rails-style `local_assigns`). Non-reserved keys stay
+        // readable as bare identifiers; reserved words (`class`) and
+        // builtin-colliding names (`type`) are read via `locals["..."]`.
+        //
+        // See tests-e2e/hooks/app/views/shared/_locals_partial.html.slv
+        // for the fixture — it emits one key=value line per access path so
+        // the assertions below can grep directly.
+        let res = get("/locals_access");
+        assert_status(res, 200);
+        // Both access paths agree on the same value for a non-reserved key.
+        assert_body_contains(res, "bare_title=PAGE_TITLE");
+        assert_body_contains(res, "locals_title=PAGE_TITLE");
+        // Reserved word — bare `class` would fail to parse. locals[...] works.
+        assert_body_contains(res, "locals_class=css-class-str");
+        // Builtin collision — bare `type` resolves to the NativeFunction.
+        // locals["type"] bypasses the enclosing env and returns the key.
+        assert_body_contains(res, "locals_type=email");
+        // Missing keys are null, not "undefined variable" errors.
+        assert_body_contains(res, "missing_is_nil=true");
+    });
+});
+
 describe("error paths (end-to-end)", fn() {
     test("unknown route returns 404", fn() {
         let res = get("/definitely_not_a_route_xyz");

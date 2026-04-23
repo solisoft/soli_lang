@@ -713,4 +713,53 @@ mod tests {
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
     }
+
+    #[test]
+    fn test_locals_binding_exposes_partial_context() {
+        // The template engine binds `locals` to the partial's hash so
+        // reserved words (`class`) and builtin-colliding names (`type`)
+        // remain readable from inside the partial. Bare-identifier access
+        // stays available for non-reserved keys — both paths must coexist.
+        use crate::interpreter::builtins::template::clear_view_helpers;
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+        fs::write(
+            views.join("_probe.html.slv"),
+            "bare=<%= title %>|\
+             locals_title=<%= locals[\"title\"] %>|\
+             locals_class=<%= locals[\"class\"] %>|\
+             missing_is_nil=<%= locals[\"nope\"].nil? %>",
+        )
+        .unwrap();
+
+        let mut ctx = HashPairs::default();
+        ctx.insert(HashKey::String("title".to_string()), Value::String("hi".to_string()));
+        ctx.insert(HashKey::String("class".to_string()), Value::String("red".to_string()));
+        let ctx = Value::Hash(Rc::new(RefCell::new(ctx)));
+
+        let cache = TemplateCache::new(&views);
+        let result = cache.render_partial("probe", &ctx).unwrap();
+        assert_eq!(
+            result.trim(),
+            "bare=hi|locals_title=hi|locals_class=red|missing_is_nil=true"
+        );
+
+        // `locals` must also exist (as an empty hash) when the partial is
+        // rendered without a data hash, so `locals[...]` never blows up.
+        fs::write(
+            views.join("_no_data.html.slv"),
+            "no_data_locals_nil=<%= locals[\"anything\"].nil? %>",
+        )
+        .unwrap();
+        let result = cache.render_partial("no_data", &Value::Null).unwrap();
+        assert_eq!(result.trim(), "no_data_locals_nil=true");
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+    }
 }

@@ -699,6 +699,47 @@ Include partials — use `partial(...)` as the short alias for `render_partial(.
 <%= render_partial("partials/user_card", {"user": current_user}) %>
 ```
 
+### The `locals` hash
+
+Partials expose their entire context hash as a `locals` variable, mirroring
+Rails' `local_assigns`. You don't need this for everyday partials — bare
+identifiers work and read better:
+
+```erb
+<!-- Caller -->
+<%= partial("user_card", {"user": current_user, "size": "lg"}) %>
+
+<!-- Inside the partial -->
+<div class="user-card user-card--<%= size %>">
+    <h3><%= user.name %></h3>
+</div>
+```
+
+Reach for `locals[...]` when a key would collide with a reserved word or a
+builtin function. For example, `class` is reserved and bare `class` fails to
+parse; `type` is a global builtin, so bare `type` resolves to the function
+and auto-calls with zero args. In both cases, bracket access returns the
+string the caller passed:
+
+```erb
+<!-- Caller -->
+<%= partial("shared/icon", {"name": "bell", "class": "h-6 w-6"}) %>
+
+<!-- Inside shared/_icon.html.slv -->
+<svg class="<%= locals["class"] %>" data-icon="<%= name %>">…</svg>
+```
+
+Missing keys return `null`, so the usual `.nil?` pattern applies without
+guards:
+
+```erb
+<% let css = locals["class"].nil? ? "h-5 w-5" : locals["class"] %>
+```
+
+`locals` is always defined, even when the partial is rendered without a
+data hash — in that case it's an empty hash, so `locals[anything]` is safe
+and returns `null`.
+
 ## Passing Data
 
 Controllers pass data to views:

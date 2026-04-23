@@ -356,7 +356,7 @@ Rules:
 - **Explicit render data wins.** `render("v", {"post": other})` overrides `@post`.
 - **Framework fields are never re-exposed** via this path: `req`, `params`, `session`, `headers` always flow through their normal channels, so an action can't accidentally shadow them.
 - **Scoped to the current action.** No cross-action, cross-controller, or cross-request leakage — a fresh controller instance is created per request.
-- **Partials are not auto-exposed.** Always pass data to `render_partial(...)` / `partial(...)` explicitly.
+- **Partials are not auto-exposed.** Always pass data to `render_partial(...)` / `partial(...)` explicitly. Inside the partial, read keys as bare identifiers (`<%= name %>`) or via the `locals` hash (`<%= locals["class"] %>`) — see [Views → The `locals` hash](./views.md#the-locals-hash).
 
 > **Note on `@foo`:** `@foo` is a general language shorthand for `this.foo` inside any class method, not a controller-only feature. See [Soli Language → The `@` Sigil](./soli-language.md#the--sigil--shorthand-for-this) for the full rules.
 

@@ -91,4 +91,12 @@ class HooksTestController extends ParentController
     fn render_with_hash_arg(req)
         render("hooks_test/render_with_hash_arg")
     end
+
+    # Exercises the `locals` hash bound into every partial context (Rails-
+    # style `local_assigns`). Non-reserved keys stay readable as bare
+    # identifiers (`<%= title %>`); reserved words (`class`) and builtin-
+    # colliding names (`type`) are read via `locals["..."]`.
+    fn locals_access(req)
+        render("hooks_test/locals_access")
+    end
 end
