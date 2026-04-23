@@ -764,8 +764,11 @@ impl Interpreter {
                     ));
                 }
 
+                // Set current env so `defined()` can inspect the scope chain
+                crate::interpreter::executor::variables::set_current_env(self.environment.clone());
                 let result = (native.func)(all_args)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
+                crate::interpreter::executor::variables::clear_current_env();
 
                 // Check if this is the http_server_listen marker
                 if let Some(port) = is_server_listen_marker(&result) {
@@ -1045,8 +1048,10 @@ impl Interpreter {
                         return Err(RuntimeError::wrong_arity(arity, arguments.len(), span));
                     }
                 }
+                crate::interpreter::executor::variables::set_current_env(self.environment.clone());
                 let result = (native.func)(arguments)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
+                crate::interpreter::executor::variables::clear_current_env();
 
                 if let Some(port) = is_server_listen_marker(&result) {
                     let thread_name = std::thread::current().name().map(|s| s.to_string());

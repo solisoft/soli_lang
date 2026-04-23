@@ -146,6 +146,24 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         })),
     );
 
+    // defined(name) - Check if a variable is defined in the current scope chain
+    env.define(
+        "defined".to_string(),
+        Value::NativeFunction(NativeFunction::new("defined", Some(1), |args| {
+            let name = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "defined() expects a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let exists = crate::interpreter::executor::is_defined(&name);
+            Ok(Value::Bool(exists))
+        })),
+    );
+
     // ===== Universal collection functions =====
 
     // len(array|string|hash) - Get length (auto-resolves Futures)

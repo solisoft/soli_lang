@@ -1,9 +1,11 @@
 //! Variable access expression evaluation.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use crate::ast::Expr;
 use crate::error::RuntimeError;
+use crate::interpreter::environment::Environment;
 use crate::interpreter::value::Value;
 
 use super::{Interpreter, RuntimeResult};
@@ -13,6 +15,33 @@ thread_local! {
     /// Set by the template renderer while walking template ASTs so that
     /// optional locals (e.g. `flash`) don't crash the whole response.
     static TEMPLATE_LENIENT_VARS: Cell<bool> = const { Cell::new(false) };
+}
+
+thread_local! {
+    /// Holds the current Environment during function call execution.
+    /// Used by the `defined()` builtin to check if a variable exists.
+    static CURRENT_ENV: RefCell<Option<Rc<RefCell<Environment>>>> = const { RefCell::new(None) };
+}
+
+/// Set the current environment (used by `defined()`).
+pub fn set_current_env(env: Rc<RefCell<Environment>>) {
+    CURRENT_ENV.with(|c: &RefCell<Option<Rc<RefCell<Environment>>>>| *c.borrow_mut() = Some(env));
+}
+
+/// Clear the current environment.
+pub fn clear_current_env() {
+    CURRENT_ENV.with(|c: &RefCell<Option<Rc<RefCell<Environment>>>>| *c.borrow_mut() = None);
+}
+
+/// Check if a variable is defined in the current environment chain.
+pub fn is_defined(name: &str) -> bool {
+    CURRENT_ENV.with(|c: &RefCell<Option<Rc<RefCell<Environment>>>>| {
+        if let Some(env_ref) = c.borrow().as_ref() {
+            env_ref.borrow().get(name).is_some()
+        } else {
+            false
+        }
+    })
 }
 
 /// Temporarily enter lenient-variable mode. Returns a guard; drop it to

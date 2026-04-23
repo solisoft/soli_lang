@@ -244,6 +244,15 @@ impl TypeEnvironment {
             },
         );
 
+        // defined(String) -> Bool - Check if a variable is defined
+        self.functions.insert(
+            "defined".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
         // HTTP client functions
         // http_get(String) -> String
         self.functions.insert(

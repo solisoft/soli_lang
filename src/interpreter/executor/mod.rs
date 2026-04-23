@@ -7,7 +7,10 @@ mod pattern_matching;
 mod statements;
 mod variables;
 
-pub use variables::{enter_template_lenient_vars, TemplateLenientVarsGuard};
+pub use variables::{
+    enter_template_lenient_vars, is_defined, set_current_env, clear_current_env,
+    TemplateLenientVarsGuard,
+};
 
 pub mod access;
 pub mod calls;
