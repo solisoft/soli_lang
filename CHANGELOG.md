@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Testing
+
+* **error_pages:** expand tests to cover all explicit status arms ([3ac2995](https://github.com/solisoft/soli_lang/commit/3ac29956b7e3f40c2a7e7f40d03a9e03a2c0d3c0))
+
 ## [0.1.1](https://github.com/solisoft/soli_lang/compare/0.1.0...0.1.1) (2026-01-27)
 
 ### Bug Fixes
