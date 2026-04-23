@@ -276,6 +276,24 @@ describe("middleware (end-to-end)", fn() {
     });
 });
 
+describe("ERB partial calls with reserved-word hash keys (end-to-end)", fn() {
+    test("render(...) and render_partial(...) with \"class\" as a hash key parse and render", fn() {
+        // Regression for the parse bug where
+        //   <%= render("p", { "class": "..." }) %>
+        // got routed through a Rails-style DSL parser that choked on `"class"`.
+        // Fixed by routing paren-form render(...) through the core expression
+        // parser. render_partial(...) already went through the core path but
+        // is exercised here for parity and regression coverage.
+        let res = get("/render_with_hash_arg");
+        assert_status(res, 200);
+        assert_body_contains(res, "icon-partial");
+        // Both partial calls rendered — neither the render() nor
+        // render_partial() version errored at parse time.
+        assert_body_contains(res, "alert");
+        assert_body_contains(res, "alert-rp");
+    });
+});
+
 describe("error paths (end-to-end)", fn() {
     test("unknown route returns 404", fn() {
         let res = get("/definitely_not_a_route_xyz");

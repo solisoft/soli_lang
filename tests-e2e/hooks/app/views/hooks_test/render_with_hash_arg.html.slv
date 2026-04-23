@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div id="r1"><%= render("shared/icon_collision", { "name": "alert", "class": "h-6 w-6" }) %></div>
+<div id="r2"><%= render_partial("shared/icon_collision", { "name": "alert-rp", "class": "h-6 w-6" }) %></div>
+</body>
+</html>

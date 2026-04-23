@@ -612,7 +612,11 @@ fn parse_output_token(token: &Token) -> Result<TemplateNode, String> {
         Token::OutputEscaped(expr, line) => {
             if expr == "yield" {
                 Ok(TemplateNode::Yield)
-            } else if expr.starts_with("render ") || expr.starts_with("render(") {
+            } else if expr.starts_with("render ") && !expr.starts_with("render (") {
+                // Rails-style DSL form: `render "foo"` / `render "foo", ctx`.
+                // Paren-form `render(...)` is a regular function call —
+                // `render` is a real builtin — and is handled by the core
+                // parser below, which lexes hash keys like `"class"` correctly.
                 parse_partial_call(expr, *line)
             } else {
                 let core_expr = parse_core_expr(expr, *line)?;

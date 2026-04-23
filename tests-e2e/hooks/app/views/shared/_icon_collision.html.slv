@@ -1,0 +1,4 @@
+<!-- Partial used by the regression test for "class" as a hash key.
+     Body is intentionally trivial: if this partial renders at all, the outer
+     render()/render_partial() call compiled without the old parse error. -->
+<span data-name="<%= name %>">icon-partial</span>

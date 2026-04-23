@@ -82,4 +82,13 @@ class HooksTestController extends ParentController
     fn param_shadow(req)
         render("hooks_test/param_shadow")
     end
+
+    # Regression: a nested `render("partial", {"class": "x"})` inside an ERB
+    # tag used to fail at parse time because the template router fed any
+    # `render(...)` call through a Rails-style DSL parser that choked on the
+    # `"class"` hash key. Now paren-form render() goes through the normal
+    # expression parser. The wrapper view itself does the render().
+    fn render_with_hash_arg(req)
+        render("hooks_test/render_with_hash_arg")
+    end
 end
