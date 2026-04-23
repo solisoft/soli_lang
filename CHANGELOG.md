@@ -17,8 +17,13 @@
 * **repl:** fix tab completion for `@` sigil (no spurious suggestions)
 * **views:** add `current_path()`, `current_method()`, and `current_path?()` view helpers for request context
 
+### Refactoring
+
+* **halt:** rename `error()` builtin to `halt()` to avoid collisions with local variables named `error` in user code ([d2cc358](https://github.com/solisoft/soli_lang/commit/d2cc358))
+
 ### Bug Fixes
 
+* **controller:** remove debug `println` from controller registry ([c60d83f](https://github.com/solisoft/soli_lang/commit/c60d83f))
 * **prefetch:** skip prefetch when user has data-saving mode enabled (`navigator.connection.saveData`) to avoid wasting bandwidth ([c1bd548](https://github.com/solisoft/soli_lang/commit/c1bd548))
 * **http:** allow SSRF filter to be bypassed when `APP_ENV=test` so specs can reach their own test server
 * **prefetch:** switch from `<link rel="prefetch">` to `fetch()` for more reliable browser HTTP cache reuse; add `Purpose: prefetch` header; skip self-links; respect `X-Soli-Prefetch` custom header
