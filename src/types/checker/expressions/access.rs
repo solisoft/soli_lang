@@ -62,6 +62,8 @@ impl TypeChecker {
             Type::Any | Type::Unknown => Ok(Type::Any),
             // Primitive types support methods via the OO method dispatch system
             Type::Int | Type::Float | Type::Bool | Type::Null => Ok(Type::Any),
+            // Functions support universal methods (nil?, blank?, present?, class, inspect)
+            Type::Function { .. } => Ok(Type::Any),
             _ => Err(TypeError::NoSuchMember {
                 type_name: format!("{}", obj_type),
                 member: name.to_string(),
