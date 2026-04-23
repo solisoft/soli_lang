@@ -738,8 +738,14 @@ mod tests {
         .unwrap();
 
         let mut ctx = HashPairs::default();
-        ctx.insert(HashKey::String("title".to_string()), Value::String("hi".to_string()));
-        ctx.insert(HashKey::String("class".to_string()), Value::String("red".to_string()));
+        ctx.insert(
+            HashKey::String("title".to_string()),
+            Value::String("hi".to_string()),
+        );
+        ctx.insert(
+            HashKey::String("class".to_string()),
+            Value::String("red".to_string()),
+        );
         let ctx = Value::Hash(Rc::new(RefCell::new(ctx)));
 
         let cache = TemplateCache::new(&views);
