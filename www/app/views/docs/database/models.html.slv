@@ -135,7 +135,13 @@ user.save()
 
 # Or use .update() to push current fields to DB
 user.name = "Alice Smith"
-user.update()</code></pre>
+user.update()
+
+# Instance method with bulk-update hash — merge-then-persist in one call
+user.save({ "name": "Alice Smith", "age": 31 })
+
+# `.update(hash)` is equivalent on an existing record
+user.update({ "name": "Alice Smith", "age": 31 })</code></pre>
         </div>
 
         <div>
@@ -173,12 +179,12 @@ user.delete()</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.save()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Insert (if new) or update (if existing). Returns the instance with <code>_key</code> populated.</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.save(hash?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert (if new) or update (if existing). Optional hash is merged onto the instance before validation &amp; persist. Returns the instance with <code>_key</code> populated.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.update()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Persist current non-<code>_</code> fields to DB. Requires <code>_key</code>.</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.update(hash?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Persist current non-<code>_</code> fields to DB. Optional hash is merged first. Requires <code>_key</code>.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">instance.delete()</code></td>
@@ -230,11 +236,54 @@ user.delete()</code></pre>
         </div>
     </div>
 
-    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+    <h3 class="text-lg font-semibold text-white mb-3">Bulk attribute updates</h3>
+    <p class="text-gray-400 mb-4">
+        Both <code>.save()</code> and <code>.update()</code> accept an optional hash of attributes that get merged onto the instance <em>before</em> validations and the DB write run. One call replaces N assignments + save:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Instead of:
+user.name = "Alice"
+user.email = "alice@example.com"
+user.role = "admin"
+user.save()
+
+# Write:
+user.save({
+    "name":  "Alice",
+    "email": "alice@example.com",
+    "role":  "admin"
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        Merge semantics: keys you don't pass keep their current instance value; keys you do pass overwrite. Mix it with direct assignment too — hash wins on conflict:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Partial update
+let p = Product.find(id)
+p.update({ "price": 99.00 })    # only price changes
+
+# Mix pre-assignment + hash
+let p = Product.new()
+p.name = "Widget"               # will survive
+p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-4">
         <p class="text-yellow-300 text-sm">
-            <strong>Read-only fields:</strong> Fields starting with <code>_</code> (<code>_key</code>, <code>_id</code>, <code>_rev</code>, etc.) are read-only on model instances. They are set automatically by the database and cannot be assigned directly.
+            <strong>Read-only fields:</strong> Fields starting with <code>_</code> (<code>_key</code>, <code>_id</code>, <code>_rev</code>, etc.) are read-only on model instances. They're set automatically by the database and cannot be assigned directly &mdash; and are silently skipped when included in a bulk-update hash.
         </p>
     </div>
+
+    <p class="text-gray-400 text-sm mb-12">
+        A non-hash argument raises <code>expected a Hash of attributes, got &lt;type&gt;</code>. Validations run after the merge, so errors surface on <code>instance.errors</code> identically to the assignment-then-save pattern.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Static Methods Reference</h2>
     <div class="overflow-x-auto mb-12">

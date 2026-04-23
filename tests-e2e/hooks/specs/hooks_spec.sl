@@ -329,6 +329,40 @@ describe("HTML response caching (end-to-end)", fn() {
     });
 });
 
+describe("controller-registered layout (end-to-end)", fn() {
+    test("render() without explicit layout falls back to `static { this.layout = ... }`", fn() {
+        // LayoutTestController declares `this.layout = "custom_layout_e2e"`
+        // in its static block. The `default` action calls `render(...)`
+        // with no `layout` key — the framework must fall back to the
+        // controller-registered layout, wrapping the view body with
+        // `<!--CUSTOM_LAYOUT_TOP-->` / `<!--CUSTOM_LAYOUT_BOTTOM-->`.
+        let res = get("/layout_test/default");
+        assert_status(res, 200);
+        assert_body_contains(res, "CUSTOM_LAYOUT_TOP");
+        assert_body_contains(res, "layout-test-view-body");
+        assert_body_contains(res, "CUSTOM_LAYOUT_BOTTOM");
+        // Order matters: layout wraps the view, so top comes before body.
+        let top = res.body.index_of("CUSTOM_LAYOUT_TOP");
+        let body = res.body.index_of("layout-test-view-body");
+        let bot = res.body.index_of("CUSTOM_LAYOUT_BOTTOM");
+        assert(top != -1 and body != -1 and bot != -1);
+        assert(top < body);
+        assert(body < bot);
+    });
+
+    test("explicit `layout: false` still wins over registered layout", fn() {
+        // The registered layout is the *last* fallback — an explicit
+        // `{"layout": false}` in the render data must bypass it and
+        // return an unwrapped body.
+        let res = get("/layout_test/explicit_none");
+        assert_status(res, 200);
+        assert_body_contains(res, "layout-test-view-body");
+        // The custom-layout markers must NOT be present.
+        assert_eq(res.body.index_of("CUSTOM_LAYOUT_TOP"), -1);
+        assert_eq(res.body.index_of("CUSTOM_LAYOUT_BOTTOM"), -1);
+    });
+});
+
 describe("partial `locals` hash (end-to-end)", fn() {
     test("bare identifiers and locals[...] both resolve partial context", fn() {
         // The template engine binds a `locals` hash to every partial's

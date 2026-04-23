@@ -85,10 +85,25 @@ let results = User.where("doc.age >= @min_age AND doc.role == @role", {
 ### Updating Records
 
 ```soli
+# Static method: update by ID
 User.update("user123", {
     "name": "Alice Smith",
     "age": 31
 });
+
+# Instance method: modify fields and save
+let user = User.find("user123");
+user.name = "Alice Smith";
+user.age = 31;
+user.save();
+
+# Instance method with bulk-update hash (same merge-then-persist path,
+# one call instead of N assignments + save)
+let user = User.find("user123");
+user.save({ "name": "Alice Smith", "age": 31 });
+
+# `.update(hash)` is equivalent on an existing record
+user.update({ "name": "Alice Smith", "age": 31 });
 ```
 
 ### Deleting Records
@@ -517,6 +532,52 @@ user.touch();  # Updates _updated_at
 # Refresh from database
 user.reload();
 ```
+
+### Bulk attribute updates: `.save(hash)` and `.update(hash)`
+
+Both `.save()` and `.update()` accept an optional hash of attributes that are
+applied to the instance before the persist pipeline runs. This collapses the
+common "set multiple fields, then save" pattern into a single call:
+
+```soli
+# Instead of:
+user.name = "Alice";
+user.email = "alice@example.com";
+user.role = "admin";
+user.save();
+
+# Write:
+user.save({
+    "name": "Alice",
+    "email": "alice@example.com",
+    "role": "admin"
+});
+```
+
+The hash is merged onto the instance — keys you don't pass keep their current
+value, keys you do pass overwrite. Validations run *after* the merge, so
+errors surface on `.errors` the same way as individual field assignments:
+
+```soli
+# Partial update — only `price` changes, `name` is preserved
+let p = Product.find(id);
+p.update({ "price": 99.00 });
+
+# Mix field assignment with hash — pre-assigned fields fall back when hash
+# omits them, hash wins on conflict.
+let p = Product.new();
+p.name = "Widget";            # will survive
+p.save({ "price": 12.50 });   # name stays "Widget", price becomes 12.50
+```
+
+Framework-internal fields (`_key`, `_id`, `_rev`, `_errors`, etc.) are
+silently skipped when they appear in the hash — you can't overwrite them via
+bulk update. A non-hash argument raises:
+`expected a Hash of attributes, got <type>`.
+
+`.update(hash)` is effectively sugar for `.save(hash)` on an existing record
+(requires `_key` to be set); the two share the exact same validation and DB
+write path.
 
 ## Scopes
 

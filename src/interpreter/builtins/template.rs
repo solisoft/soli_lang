@@ -444,6 +444,26 @@ fn current_request_string_field(field: &str) -> Value {
     }
 }
 
+/// Read the current controller's registered layout (from its
+/// `static { this.layout = "..." }` block) as a `Value::String`, or `None`
+/// if no controller is active, the instance has no class metadata, or the
+/// controller didn't register a layout. Used by `render(...)` as the
+/// third-tier fallback (after the explicit `layout` key in options/data)
+/// before the "application" default.
+fn get_current_controller_registered_layout() -> Option<Value> {
+    let ctrl = crate::interpreter::builtins::controller::registry::get_current_controller()?;
+    let Value::Instance(inst) = ctrl else {
+        return None;
+    };
+    let class_name = inst.borrow().class.name.clone();
+    let registry =
+        crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
+            .read()
+            .ok()?;
+    let info = registry.get_by_name(&class_name)?;
+    info.layout.clone().map(Value::String)
+}
+
 /// Expose the current controller's instance fields as view locals.
 /// Mirrors Rails' `@ivar → view local` behavior, scoped to the action currently running.
 /// Skips framework-injected fields already supplied by `inject_request_context` and
@@ -999,6 +1019,17 @@ pub fn register_template_builtins(env: &mut Environment) {
                 } else {
                     None
                 }
+            } else {
+                layout
+            };
+
+            // Still nothing? Fall back to the controller's registered
+            // layout — the `static { this.layout = "..." }` declaration on
+            // the controller class. This is the last stop before the
+            // "application" default, so an explicit `layout` in the
+            // `render()` call or data hash always wins.
+            let layout = if layout.is_none() {
+                get_current_controller_registered_layout()
             } else {
                 layout
             };

@@ -20,7 +20,7 @@ end
 let __db_available = false;
 try
     let __probe = Product.create({ "name": "__probe__", "price": 0 });
-    if __probe.is_a?(Hash) and __probe["valid"]
+    if !__probe.nil? and __probe["valid"]
         __db_available = true;
         __probe["record"].delete();
     end
@@ -342,6 +342,130 @@ describe("Instance .save()", fn() {
         assert_eq(len(product.errors), 0);
 
         product.delete();
+    });
+});
+
+describe("Instance .save(hash)", fn() {
+    test("applies hash attributes then inserts", fn() {
+        let p = Product.new();
+        let ok = p.save({ "name": "BulkSave", "price": 12.50 });
+        assert_eq(ok, true);
+        assert_not_null(p._key);
+        assert_eq(p.name, "BulkSave");
+        assert_eq(p.price, 12.50);
+
+        let found = Product.find(p._key);
+        assert_eq(found.name, "BulkSave");
+
+        p.delete();
+    });
+
+    test("merges hash onto pre-assigned fields without overwriting unmentioned", fn() {
+        let p = Product.new();
+        p.name = "Original";
+        let ok = p.save({ "price": 99.00 });
+        assert_eq(ok, true);
+        assert_eq(p.name, "Original");
+        assert_eq(p.price, 99.00);
+
+        p.delete();
+    });
+
+    test("hash value wins over pre-assigned field on conflict", fn() {
+        let p = Product.new();
+        p.name = "Old";
+        p.save({ "name": "New" });
+        assert_eq(p.name, "New");
+
+        p.delete();
+    });
+
+    test("updates existing record when _key is present", fn() {
+        let result = Product.create({ "name": "SaveHashSeed", "price": 1.00 });
+        let p = result["record"];
+
+        let ok = p.save({ "name": "SaveHashRenamed", "price": 2.00 });
+        assert_eq(ok, true);
+
+        let found = Product.find(p._key);
+        assert_eq(found.name, "SaveHashRenamed");
+        assert_eq(found.price, 2.00);
+
+        found.delete();
+    });
+
+    test("surfaces validation errors when hash produces invalid state", fn() {
+        let item = ValidatedItem.new();
+        let ok = item.save({ "title": "" });
+        assert_eq(ok, false);
+        assert(len(item.errors) > 0);
+    });
+
+    test("non-hash argument raises", fn() {
+        let p = Product.new();
+        let raised = false;
+        try
+            p.save("not a hash");
+        catch e
+            raised = true;
+        end
+        assert_eq(raised, true);
+    });
+});
+
+describe("Instance .update(hash)", fn() {
+    test("applies hash then updates existing record", fn() {
+        let result = Product.create({ "name": "UpdHashSeed", "price": 1.00 });
+        let p = result["record"];
+
+        let ok = p.update({ "name": "UpdHashRenamed", "price": 2.00 });
+        assert_eq(ok, true);
+        assert_eq(p.name, "UpdHashRenamed");
+        assert_eq(p.price, 2.00);
+
+        let found = Product.find(p._key);
+        assert_eq(found.name, "UpdHashRenamed");
+        assert_eq(found.price, 2.00);
+
+        found.delete();
+    });
+
+    test("no-arg update() still works (backcompat)", fn() {
+        let result = Product.create({ "name": "UpdBackcompat", "price": 1.00 });
+        let p = result["record"];
+
+        p.name = "UpdBackcompatRenamed";
+        let ok = p.update();
+        assert_eq(ok, true);
+
+        p.delete();
+    });
+
+    test("surfaces validation errors when hash produces invalid state", fn() {
+        let result = ValidatedItem.create({ "title": "Valid Title" });
+        let item = result["record"];
+
+        let ok = item.update({ "title": "" });
+        assert_eq(ok, false);
+        assert(len(item.errors) > 0);
+
+        item.update({ "title": "Valid Title" });
+        item.delete();
+    });
+
+    test("non-hash argument raises", fn() {
+        let result = Product.create({ "name": "UpdHashArgType", "price": 1.00 });
+        let p = result["record"];
+
+        let raised = false;
+        try
+            p.update(42);
+        catch e
+            raised = true;
+        end
+        assert_eq(raised, true);
+
+        p.delete();
     });
 });
 

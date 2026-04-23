@@ -366,6 +366,39 @@ fn instance_fields_to_hash(
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
 
+/// Apply every entry of a `Value::Hash` onto an instance's fields,
+/// matching direct assignment (`inst.field = ...`). Framework-internal
+/// `_`-prefixed keys (`_key`, `_errors`, `_pending_translations`) are
+/// skipped — callers must never overwrite those via bulk update.
+///
+/// Non-Hash argument returns an error; non-String hash keys are silently
+/// skipped (instances only have string-keyed fields).
+fn apply_hash_to_instance(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    hash: &Value,
+) -> Result<(), String> {
+    use crate::interpreter::value::HashKey;
+    let pairs = match hash {
+        Value::Hash(p) => p,
+        other => {
+            return Err(format!(
+                "expected a Hash of attributes, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let mut inst_mut = inst.borrow_mut();
+    for (k, v) in pairs.borrow().iter() {
+        if let HashKey::String(field) = k {
+            if field.starts_with('_') {
+                continue;
+            }
+            inst_mut.set(field.clone(), v.clone());
+        }
+    }
+    Ok(())
+}
+
 pub struct Model;
 
 impl Model {
@@ -1675,7 +1708,7 @@ impl Model {
             "update".to_string(),
             Rc::new(NativeFunction::new(
                 "Model#update",
-                Some(0),
+                None,
                 #[allow(clippy::collapsible_match)]
                 |args| {
                     use super::validation::run_validations;
@@ -1686,6 +1719,22 @@ impl Model {
                         Value::Instance(inst) => inst.clone(),
                         _ => return Err("Expected instance".to_string()),
                     };
+
+                    // Optional hash of attributes: `inst.update({...})`
+                    // applies the hash to instance fields before running
+                    // the existing persist pipeline, so no-arg callers keep
+                    // working unchanged.
+                    match args.len() {
+                        1 => {}
+                        2 => apply_hash_to_instance(&instance, &args[1])?,
+                        n => {
+                            return Err(format!(
+                                "update takes 0 or 1 arguments (a hash of attributes), got {}",
+                                n - 1
+                            ))
+                        }
+                    }
+
                     let inst_ref = instance.borrow();
                     let class_name = inst_ref.class.name.clone();
                     let collection = class_name_to_collection(&class_name);
@@ -1808,13 +1857,15 @@ impl Model {
             )),
         );
 
-        // instance.save() - Insert or update depending on whether _key exists
+        // instance.save([hash]) - Insert or update depending on whether _key
+        // exists. Optional hash argument applies bulk attribute assignments
+        // before the persist pipeline, so zero-arg callers keep working.
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "save".to_string(),
             Rc::new(NativeFunction::new(
                 "Model#save",
-                Some(0),
+                None,
                 #[allow(clippy::collapsible_match)]
                 |args| {
                     use super::validation::run_validations;
@@ -1825,6 +1876,21 @@ impl Model {
                         Value::Instance(inst) => inst.clone(),
                         _ => return Err("Expected instance".to_string()),
                     };
+
+                    // Optional hash of attributes: `inst.save({...})` applies
+                    // the hash to instance fields before running the existing
+                    // persist pipeline, so no-arg callers keep working.
+                    match args.len() {
+                        1 => {}
+                        2 => apply_hash_to_instance(&instance, &args[1])?,
+                        n => {
+                            return Err(format!(
+                                "save takes 0 or 1 arguments (a hash of attributes), got {}",
+                                n - 1
+                            ))
+                        }
+                    }
+
                     let inst_ref = instance.borrow();
                     let class_name = inst_ref.class.name.clone();
                     let collection = class_name_to_collection(&class_name);

@@ -1161,6 +1161,21 @@ fn worker_loop(
             last_controllers_version = current_controllers;
             // Re-load all controllers
             load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
+            // Re-scan controller metadata registry (before/after hooks,
+            // layout, inheritance). Without this rescan, modifying an
+            // existing hook body updates via the class binding but ADDING
+            // a new hook entry would not take effect — the registry used
+            // by `execute_before_actions` / `execute_after_actions` keeps
+            // its stale startup snapshot and only a full restart picks up
+            // the new entry.
+            if let Err(e) = crate::interpreter::builtins::controller::registry::scan_controllers(
+                &controllers_dir,
+            ) {
+                eprintln!(
+                    "Worker {}: Error rescanning controller metadata: {}",
+                    worker_id, e
+                );
+            }
             // Re-define DSL helpers (controllers may shadow get/post/put/delete/patch)
             if let Err(e) = define_routes_dsl(interpreter) {
                 eprintln!("Worker {}: Error redefining routes DSL: {}", worker_id, e);
