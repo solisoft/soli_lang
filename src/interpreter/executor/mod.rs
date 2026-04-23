@@ -8,7 +8,7 @@ mod statements;
 mod variables;
 
 pub use variables::{
-    enter_template_lenient_vars, is_defined, set_current_env, clear_current_env,
+    clear_current_env, enter_template_lenient_vars, is_defined, set_current_env,
     TemplateLenientVarsGuard,
 };
 
