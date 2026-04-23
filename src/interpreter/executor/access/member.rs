@@ -152,8 +152,32 @@ impl Interpreter {
             Value::Bool(b) => Self::bool_member_access(b, name, span),
             Value::Null => Self::null_member_access(name, span),
             Value::Decimal(ref d) => Self::decimal_member_access(d, name, span),
+            // Universal methods must work on functions too — they're values like
+            // anything else. Without this, defensive view-partial patterns like
+            // `type(x) != "function" && !x.nil?` crash because short-circuit
+            // isn't in play and `.nil?` hits the catch-all NoSuchProperty.
+            Value::Function(_) | Value::NativeFunction(_) => {
+                Self::function_member_access(name, span, obj_val.type_name().to_string())
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: obj_val.type_name().to_string(),
+                property: name.to_string(),
+                span,
+            }),
+        }
+    }
+
+    /// Member access on Function/NativeFunction values. Only the universal
+    /// "is this thing x?" predicates make sense — a function has no fields.
+    fn function_member_access(name: &str, span: Span, type_name: String) -> RuntimeResult<Value> {
+        match name {
+            "nil?" => Ok(Value::Bool(false)),
+            "blank?" => Ok(Value::Bool(false)),
+            "present?" => Ok(Value::Bool(true)),
+            "class" => Ok(Value::String("Function".to_string())),
+            "inspect" => Ok(Value::String("<function>".to_string())),
+            _ => Err(RuntimeError::NoSuchProperty {
+                value_type: type_name,
                 property: name.to_string(),
                 span,
             }),

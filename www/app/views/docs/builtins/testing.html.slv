@@ -65,21 +65,21 @@
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
-            <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", def() {
-    test("adds numbers", def() {
+            <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", fn() {
+    test("adds numbers", fn() {
         assert_eq(add(1, 2), 3)
     })
 
-    it("subtracts numbers", def() {
+    it("subtracts numbers", fn() {
         assert_eq(subtract(5, 3), 2)
     })
 
-    describe("division", def() {
-        it("divides numbers", def() {
+    describe("division", fn() {
+        it("divides numbers", fn() {
             assert_eq(divide(10, 2), 5)
         })
 
-        it("handles division by zero", def() {
+        it("handles division by zero", fn() {
             # Test error handling
         })
     })

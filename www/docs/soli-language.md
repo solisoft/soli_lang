@@ -1142,6 +1142,22 @@ print(format_list(["apple", "banana", "cherry"]));  # "apple, banana and cherry"
 print(format_list(["one", "two"]));                 # "one and two"
 ```
 
+### Universal Methods on Function Values
+
+Functions are first-class values, and the universal predicates available on every other type work on them too. Useful in defensive view partials where a local might resolve to a function, a string, or be undefined.
+
+```soli
+let f = fn(x) { x + 1 };
+
+f.nil?       # false — a function value is never null
+f.blank?     # false
+f.present?   # true
+f.class      # "Function"
+f.inspect    # "<function>"
+```
+
+**Zero-arg caveat:** a zero-parameter function auto-invokes on bare access. `let g = fn() { 42 }; g.class` evaluates `g()` first, so `.class` sees the return value, not the function itself. Use a multi-arg function if you need to inspect the function value.
+
 ---
 
 ## Collections

@@ -214,8 +214,8 @@ end</code></pre>
             <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm"># Pipeline
 value |> transform() |> format
 # Collections
-arr.map(def(x)
-x * 2)hash.filter(def(p)
+arr.map(fn(x)
+x * 2)hash.filter(fn(p)
 p[1] > 0);</code></pre>
         </div>
     </section>
