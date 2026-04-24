@@ -986,20 +986,50 @@ impl Interpreter {
             return Ok(value);
         }
 
-        // ClassName.new or ClassName.new() — instantiate
+        // ClassName.new() — instantiate, with an optional hash of attributes
+        // that are bulk-assigned to the new instance's fields. Framework-
+        // internal `_`-prefixed keys are skipped.
         if name == "new" {
             let class_val = class_val.clone();
             return Ok(Value::NativeFunction(NativeFunction::new(
                 "new",
-                Some(0),
-                move |_args| {
+                None,
+                move |args| {
+                    if args.len() > 1 {
+                        return Err(format!(
+                            "new() expects 0 or 1 arguments, got {}",
+                            args.len()
+                        ));
+                    }
                     let class_rc = match &class_val {
                         Value::Class(c) => c.clone(),
                         _ => unreachable!(),
                     };
-                    Ok(Value::Instance(Rc::new(RefCell::new(
+                    let instance = Rc::new(RefCell::new(
                         crate::interpreter::value::Instance::new(class_rc),
-                    ))))
+                    ));
+                    match args.first() {
+                        None | Some(Value::Null) => {}
+                        Some(Value::Hash(pairs)) => {
+                            use crate::interpreter::value::HashKey;
+                            let mut inst_mut = instance.borrow_mut();
+                            for (k, v) in pairs.borrow().iter() {
+                                if let HashKey::String(field) = k {
+                                    if field.starts_with('_') {
+                                        continue;
+                                    }
+                                    inst_mut.set(field.clone(), v.clone());
+                                }
+                            }
+                        }
+                        Some(other) => {
+                            return Err(format!(
+                                "new() expects a Hash of attributes, got {}",
+                                other.type_name()
+                            ));
+                        }
+                    }
+                    Ok(Value::Instance(instance))
                 },
             )));
         }

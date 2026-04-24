@@ -147,9 +147,7 @@ impl Compiler {
 
         let line = func.span.map(|s| s.line).unwrap_or(0);
         compiler.begin_scope();
-        for stmt in &func.body {
-            compiler.compile_stmt(stmt)?;
-        }
+        compiler.compile_function_body(&func.body)?;
         compiler.end_scope(line);
 
         compiler.emit(Op::Null, line);
