@@ -160,7 +160,11 @@ pub fn prepare_source(code: &str) -> String {
         return code.to_string();
     }
 
-    let passthrough = trimmed.ends_with('}') || trimmed.ends_with(';') || trimmed.ends_with("end");
+    // `@sdql{ ... }` is an expression even though it ends in `}`, so don't
+    // treat it as passthrough — otherwise the REPL never prints its result.
+    let passthrough = (trimmed.ends_with('}') && !trimmed.starts_with("@sdql{"))
+        || trimmed.ends_with(';')
+        || trimmed.ends_with("end");
 
     if should_print_result(code) && !passthrough {
         let expr = strip_trailing_comment(trimmed);
@@ -210,5 +214,24 @@ mod tests {
         assert_eq!(count_block_balance("end"), -1);
         assert_eq!(count_block_balance("for i in range(1, 10)"), 1);
         assert_eq!(count_block_balance("println(i)"), 0);
+    }
+
+    #[test]
+    fn test_prepare_source_wraps_sdql_block() {
+        // `@sdql{ ... }` is an expression and must be wrapped in println(_.inspect)
+        // even though it ends with `}`. Otherwise the REPL evaluates the query and
+        // silently discards the result.
+        let prepared = prepare_source("@sdql{ FOR o IN organisations RETURN o }");
+        assert!(
+            prepared.contains("println(_.inspect)"),
+            "expected @sdql block to be print-wrapped, got: {prepared}"
+        );
+
+        let multiline = "@sdql{\n    FOR o IN organisations\n    RETURN o\n}";
+        let prepared = prepare_source(multiline);
+        assert!(
+            prepared.contains("println(_.inspect)"),
+            "expected multi-line @sdql block to be print-wrapped, got: {prepared}"
+        );
     }
 }
