@@ -418,13 +418,57 @@ if enable_coverage {
         } else {
             failed += 1;
             println!(
-                "  {}{} {:>8} {:>6} ✗ {}",
+                "  {}{} {:>8} {:>6} ✗",
                 display_path,
                 " ".repeat(pad),
                 duration_str,
-                assertions,
-                error
+                assertions
             );
+
+            let error_msg = error.trim();
+            if error_msg.starts_with("Runtime error:") {
+                let body = error_msg.strip_prefix("Runtime error:").unwrap().trim();
+                if body.starts_with("Test failed:") {
+                    let test_info = body.strip_prefix("Test failed:").unwrap().trim();
+                    println!("  ┌─ ✗ {}", test_info);
+                    println!("  └─");
+                } else if body.contains("tests failed:") {
+                    let parts: Vec<&str> = body.splitn(2, "tests failed:").collect();
+                    let count = parts[0].trim();
+                    let failures = parts[1].trim();
+                    println!("  ┌─ {} test failure{}", count, if count == "1" { "" } else { "s" });
+                    for line in failures.lines() {
+                        let line = line.trim();
+                        if line.starts_with("- ") {
+                            if let Some(rest) = line.strip_prefix("- ") {
+                                if let Some(at_pos) = rest.find(": ") {
+                                    let test_name = &rest[..at_pos];
+                                    let error_detail = &rest[at_pos + 2..];
+                                    println!("  │");
+                                    println!("  │  ✗ {}", test_name);
+                                    println!("  │     → {}", error_detail);
+                                } else {
+                                    println!("  │  • {}", rest);
+                                }
+                            }
+                        } else {
+                            println!("  │ {}", line);
+                        }
+                    }
+                    println!("  └─");
+                } else {
+                    println!("  ┌─ {}", body);
+                    println!("  └─");
+                }
+            } else {
+                let first_line = error_msg.lines().next().unwrap_or(error_msg);
+                println!("  ┌─ ✗ {}", first_line);
+                for line in error_msg.lines().skip(1) {
+                    println!("  │ {}", line);
+                }
+                println!("  └─");
+            }
+            println!();
         }
         std::io::stdout().flush().unwrap();
     }
