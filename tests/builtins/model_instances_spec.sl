@@ -20,9 +20,9 @@ end
 let __db_available = false;
 try
     let __probe = Product.create({ "name": "__probe__", "price": 0 });
-    if !__probe.nil? and __probe["valid"]
+    if !__probe.nil? and !__probe._errors
         __db_available = true;
-        __probe["record"].delete();
+        __probe.delete();
     end
 catch e
 end
@@ -74,18 +74,58 @@ describe("Instance .save() with validation errors (no DB)", fn() {
     });
 });
 
+describe("Model.create return shape on validation failure (no DB)", fn() {
+    test("returns a class instance (not a hash)", fn() {
+        let item = ValidatedItem.create({ "title": "" });
+        assert_eq(item.class, "ValidatedItem");
+    });
+
+    test("instance is not persisted — no _key", fn() {
+        let item = ValidatedItem.create({ "title": "" });
+        assert_null(item._key);
+    });
+
+    test("_errors is an array of {field, message} entries", fn() {
+        let item = ValidatedItem.create({ "title": "" });
+        assert_not_null(item._errors);
+        assert(len(item._errors) > 0);
+        assert_eq(item._errors[0]["field"], "title");
+    });
+
+    test("user-supplied attributes still present on failed instance", fn() {
+        let item = ValidatedItem.create({ "title": "ab" });  // min_length 3
+        assert_eq(item.title, "ab");
+        assert_not_null(item._errors);
+    });
+});
+
 // ============================================================================
 // Tests that REQUIRE a DB connection
 // ============================================================================
 
 if __db_available
 
+describe("Model.create return shape on success (DB)", fn() {
+    test("_errors is nil on successful create", fn() {
+        let product = Product.create({ "name": "ShapeOk", "price": 1.00 });
+        assert_null(product._errors);
+        product.delete();
+    });
+
+    test("_key and id are populated on success", fn() {
+        let product = Product.create({ "name": "ShapeIds", "price": 1.00 });
+        assert_not_null(product._key);
+        assert_not_null(product.id);
+        product.delete();
+    });
+});
+
 describe("Model _id key normalization", fn() {
     test("Model.find uses normalized key from _id", fn() {
         let result = Product.create({ "name": "Widget", "price": 9.99 });
-        assert(result["valid"]);
+        assert_null(result._errors);
 
-        let record = result["record"];
+        let record = result;
         let id = record._id;
         let key = record._key;
 
@@ -102,7 +142,7 @@ describe("Model _id key normalization", fn() {
 
     test("Model.update works with _id composite key", fn() {
         let result = Product.create({ "name": "Gadget", "price": 19.99 });
-        let record = result["record"];
+        let record = result;
 
         Product.update(record._id, { "name": "Updated Gadget" });
 
@@ -114,21 +154,26 @@ describe("Model _id key normalization", fn() {
 
     test("Model.delete works with _id composite key", fn() {
         let result = Product.create({ "name": "Temporary", "price": 1.00 });
-        let record = result["record"];
+        let record = result;
 
         Product.delete(record._id);
 
-        let deleted = Product.find(record._key);
-        assert_null(deleted);
+        let raised = false;
+        try
+            Product.find(record._key);
+        catch e
+            raised = true;
+        end
+        assert_eq(raised, true);
     });
 });
 
 describe("Model.create returns instance", fn() {
     test("record is a class instance", fn() {
         let result = Product.create({ "name": "Test Item", "price": 5.00 });
-        assert(result["valid"]);
+        assert_null(result._errors);
 
-        let record = result["record"];
+        let record = result;
         assert(record.is_a?(Product));
         assert_eq(record.name, "Test Item");
         assert_not_null(record._key);
@@ -140,7 +185,7 @@ describe("Model.create returns instance", fn() {
 describe("Model.find returns instance", fn() {
     test("returns a class instance", fn() {
         let result = Product.create({ "name": "Findable", "price": 7.00 });
-        let key = result["record"]._key;
+        let key = result._key;
 
         let found = Product.find(key);
         assert(found.is_a?(Product));
@@ -150,9 +195,18 @@ describe("Model.find returns instance", fn() {
         found.delete();
     });
 
-    test("returns null for missing document", fn() {
-        let found = Product.find("nonexistent_key_12345");
-        assert_null(found);
+    test("raises RecordNotFound for missing document", fn() {
+        let raised = false;
+        let message = "";
+        try
+            Product.find("nonexistent_key_12345");
+        catch e
+            raised = true;
+            message = str(e);
+        end
+        assert_eq(raised, true);
+        assert(message.contains("Product"));
+        assert(message.contains("nonexistent_key_12345"));
     });
 });
 
@@ -169,15 +223,15 @@ describe("Model.all returns instances", fn() {
         assert_not_null(first._key);
         assert_not_null(first.name);
 
-        r1["record"].delete();
-        r2["record"].delete();
+        r1.delete();
+        r2.delete();
     });
 });
 
 describe("Instance .update()", fn() {
     test("persists changed fields to DB", fn() {
         let result = Product.create({ "name": "Original", "price": 10.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "Modified";
         let ok = product.update();
@@ -193,20 +247,25 @@ describe("Instance .update()", fn() {
 describe("Instance .delete()", fn() {
     test("removes document from DB", fn() {
         let result = Product.create({ "name": "Deletable", "price": 3.00 });
-        let product = result["record"];
+        let product = result;
         let key = product._key;
 
         product.delete();
 
-        let gone = Product.find(key);
-        assert_null(gone);
+        let raised = false;
+        try
+            Product.find(key);
+        catch e
+            raised = true;
+        end
+        assert_eq(raised, true);
     });
 });
 
 describe("Model.update with instance data", fn() {
     test("accepts instance as data argument", fn() {
         let result = Product.create({ "name": "StaticUpdate", "price": 15.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "StaticUpdated";
         Product.update(product._key, product);
@@ -238,8 +297,8 @@ describe("QueryBuilder returns instances", fn() {
         assert(len(results) >= 2);
         assert(results[0].is_a?(Product));
 
-        r1["record"].delete();
-        r2["record"].delete();
+        r1.delete();
+        r2.delete();
     });
 
     test("order().first returns an instance", fn() {
@@ -250,8 +309,8 @@ describe("QueryBuilder returns instances", fn() {
         assert_not_null(first);
         assert(first.is_a?(Product));
 
-        r1["record"].delete();
-        r2["record"].delete();
+        r1.delete();
+        r2.delete();
     });
 
     test("limit returns instances", fn() {
@@ -262,15 +321,15 @@ describe("QueryBuilder returns instances", fn() {
         assert_eq(len(results), 1);
         assert(results[0].is_a?(Product));
 
-        r1["record"].delete();
-        r2["record"].delete();
+        r1.delete();
+        r2.delete();
     });
 });
 
 describe("Instance field access", fn() {
     test("can read all fields from instance", fn() {
         let result = Product.create({ "name": "FieldAccess", "price": 25.00 });
-        let product = result["record"];
+        let product = result;
 
         assert_eq(product.name, "FieldAccess");
         assert_not_null(product._key);
@@ -281,7 +340,7 @@ describe("Instance field access", fn() {
 
     test("can set fields on instance", fn() {
         let result = Product.create({ "name": "SetField", "price": 30.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "NewName";
         assert_eq(product.name, "NewName");
@@ -310,7 +369,7 @@ describe("Instance .save()", fn() {
 
     test("updates existing record when _key present, returns true", fn() {
         let result = Product.create({ "name": "SaveExisting", "price": 10.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "SaveUpdated";
         let ok = product.save();
@@ -382,7 +441,7 @@ describe("Instance .save(hash)", fn() {
 
     test("updates existing record when _key is present", fn() {
         let result = Product.create({ "name": "SaveHashSeed", "price": 1.00 });
-        let p = result["record"];
+        let p = result;
 
         let ok = p.save({ "name": "SaveHashRenamed", "price": 2.00 });
         assert_eq(ok, true);
@@ -416,7 +475,7 @@ describe("Instance .save(hash)", fn() {
 describe("Instance .update(hash)", fn() {
     test("applies hash then updates existing record", fn() {
         let result = Product.create({ "name": "UpdHashSeed", "price": 1.00 });
-        let p = result["record"];
+        let p = result;
 
         let ok = p.update({ "name": "UpdHashRenamed", "price": 2.00 });
         assert_eq(ok, true);
@@ -432,7 +491,7 @@ describe("Instance .update(hash)", fn() {
 
     test("no-arg update() still works (backcompat)", fn() {
         let result = Product.create({ "name": "UpdBackcompat", "price": 1.00 });
-        let p = result["record"];
+        let p = result;
 
         p.name = "UpdBackcompatRenamed";
         let ok = p.update();
@@ -443,7 +502,7 @@ describe("Instance .update(hash)", fn() {
 
     test("surfaces validation errors when hash produces invalid state", fn() {
         let result = ValidatedItem.create({ "title": "Valid Title" });
-        let item = result["record"];
+        let item = result;
 
         let ok = item.update({ "title": "" });
         assert_eq(ok, false);
@@ -455,7 +514,7 @@ describe("Instance .update(hash)", fn() {
 
     test("non-hash argument raises", fn() {
         let result = Product.create({ "name": "UpdHashArgType", "price": 1.00 });
-        let p = result["record"];
+        let p = result;
 
         let raised = false;
         try
@@ -472,7 +531,7 @@ describe("Instance .update(hash)", fn() {
 describe("Instance .update() returns boolean", fn() {
     test("returns true on success", fn() {
         let result = Product.create({ "name": "UpdateBool", "price": 10.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "UpdatedBool";
         let ok = product.update();
@@ -486,7 +545,7 @@ describe("Instance .update() returns boolean", fn() {
 
     test("errors is empty after successful update", fn() {
         let result = Product.create({ "name": "UpdateNoErr", "price": 10.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "UpdatedNoErr";
         product.update();
@@ -499,8 +558,8 @@ describe("Instance .update() returns boolean", fn() {
 describe("Instance .save() with validation errors (DB)", fn() {
     test("returns false when validation fails on update", fn() {
         let result = ValidatedItem.create({ "title": "Valid Title" });
-        assert(result["valid"]);
-        let item = result["record"];
+        assert_null(result._errors);
+        let item = result;
 
         item.title = "";
         let ok = item.update();
@@ -531,7 +590,7 @@ describe("Instance .save() with validation errors (DB)", fn() {
 describe("Instance .errors (DB)", fn() {
     test("returns empty array after successful operations", fn() {
         let result = Product.create({ "name": "ErrTest", "price": 5.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "ErrTestUpdated";
         product.save();
@@ -544,7 +603,7 @@ describe("Instance .errors (DB)", fn() {
 describe("Instance .reload()", fn() {
     test("refreshes fields from DB", fn() {
         let result = Product.create({ "name": "ReloadMe", "price": 10.00 });
-        let product = result["record"];
+        let product = result;
 
         product.name = "LocalOnly";
         assert_eq(product.name, "LocalOnly");
@@ -557,7 +616,7 @@ describe("Instance .reload()", fn() {
 
     test("picks up changes made by others", fn() {
         let result = Product.create({ "name": "BeforeUpdate", "price": 20.00 });
-        let product = result["record"];
+        let product = result;
 
         Product.update(product._key, { "name": "AfterUpdate" });
 
@@ -571,7 +630,7 @@ describe("Instance .reload()", fn() {
 
     test("returns the instance itself", fn() {
         let result = Product.create({ "name": "ReloadReturn", "price": 5.00 });
-        let product = result["record"];
+        let product = result;
 
         let reloaded = product.reload();
         assert(reloaded.is_a?(Product));

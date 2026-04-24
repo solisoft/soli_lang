@@ -238,27 +238,3 @@ pub fn run_validations(
 
     Ok(errors)
 }
-
-/// Build a validation result hash.
-pub fn build_validation_result(
-    valid: bool,
-    errors: Vec<ValidationError>,
-    record: Option<Value>,
-) -> Value {
-    let mut pairs: HashPairs = HashPairs::default();
-    pairs.insert(HashKey::String("valid".into()), Value::Bool(valid));
-
-    if !valid {
-        let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
-        pairs.insert(
-            HashKey::String("errors".into()),
-            Value::Array(Rc::new(RefCell::new(error_values))),
-        );
-    }
-
-    if let Some(rec) = record {
-        pairs.insert(HashKey::String("record".into()), rec);
-    }
-
-    Value::Hash(Rc::new(RefCell::new(pairs)))
-}

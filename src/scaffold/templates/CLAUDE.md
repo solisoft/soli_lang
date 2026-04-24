@@ -52,11 +52,11 @@ end
 
 def create(req: Any) do
     let params = req["json"];
-    let result = Post.create(params);
-    if result["valid"] do
-        return redirect("/posts/" + str(result["id"]));
+    let post = Post.create(params);
+    if post._errors do
+        return {"status": 422, "body": json_stringify(post._errors)};
     end
-    return {"status": 422, "body": json_stringify(result["errors"])};
+    return redirect("/posts/" + str(post.id));
 end
 ```
 

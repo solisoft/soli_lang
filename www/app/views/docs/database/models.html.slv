@@ -80,17 +80,18 @@ end</code></pre>
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">CREATE</span>
                 Creating Records
             </h3>
-            <pre><code class="language-soli text-sm">let result = User.create({
+            <pre><code class="language-soli text-sm">let user = User.create({
     "email": "alice@example.com",
     "name": "Alice",
     "age": 30
 })
-# Returns: { "valid": true, "record": <User instance> }
-# Or: { "valid": false, "errors": [...] }
+# Returns a User instance. On success, user._errors is nil.
+# On validation or DB failure the instance is NOT persisted and
+# user._errors is an array of error entries.
 
-let user = result["record"]
-user.name  # => "Alice"
-user._key  # => "abc123" (auto-generated)</code></pre>
+user.name    # => "Alice"
+user._key    # => "abc123" (auto-generated)
+user._errors # => nil</code></pre>
         </div>
 
         <div>
@@ -297,7 +298,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
             <tbody class="divide-y divide-white/5">
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.create(data)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Insert a new document, returns <code>{ "valid": bool, "record": instance }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert a new document. Returns a class instance; on failure <code>instance._errors</code> is an array and the record is not persisted, on success <code>instance._errors</code> is <code>nil</code>.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.create_many([data, ...])</code></td>
@@ -305,11 +306,11 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Get document by ID, returns instance or <code>null</code></td>
+                    <td class="py-3 px-4 text-gray-400"><strong class="text-white">Raises</strong> <code>RecordNotFound</code> when the id is missing (auto-mapped to a <strong class="text-white">404</strong> HTTP response). Use <code>find_by</code> for optional lookups.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.find_by(field, value)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Find first record by field value</td>
+                    <td class="py-3 px-4 text-gray-400">Find first record by field value, returns <code>null</code> when missing.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.first_by(field, value)</code></td>
@@ -467,15 +468,14 @@ class UsersController < Controller
     end
 
     def create(req: Any)
-        let result = User.create({
+        let user = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"]
         })
-        if result["valid"]
-            let user = result["record"]
-            return redirect("/users/" + user._key)
+        if user._errors
+            render("users/new", { "errors": user._errors })
         else
-            render("users/new", { "errors": result["errors"] })
+            return redirect("/users/" + user._key)
         end
     end
 

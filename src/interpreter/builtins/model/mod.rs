@@ -14,9 +14,10 @@
 //! # CRUD Operations
 //!
 //! ```soli
-//! // Create
+//! // Create — returns an instance. On failure the instance is NOT persisted
+//! // and carries an `_errors` array; on success `_errors` is null.
 //! let user = User.create({ "name": "Alice", "email": "alice@example.com" });
-//! let result = User.create({ "name": "Bob" });  // result["valid"], result["record"]
+//! if user._errors { /* not persisted — inspect user._errors */ }
 //!
 //! // Batch create
 //! let batch = User.create_many([{ "name": "A" }, { "name": "B" }]);
@@ -279,9 +280,7 @@ pub use relations::{
     build_relation, classify, get_relation, get_relations, register_relation, singularize,
     RelationDef, RelationType,
 };
-pub use validation::{
-    build_validation_result, register_validation, run_validations, ValidationError, ValidationRule,
-};
+pub use validation::{register_validation, run_validations, ValidationError, ValidationRule};
 
 // Re-export value_to_json from value module for backward compatibility
 pub use crate::interpreter::value::value_to_json;

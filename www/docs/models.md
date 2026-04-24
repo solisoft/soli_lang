@@ -144,8 +144,8 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
 | `Model.create_many([data, ...])` | Batch insert multiple documents, returns `{ created, errors }` |
-| `Model.find(id)` | Get document by ID |
-| `Model.find_by(field, value)` | Find first record by field value |
+| `Model.find(id)` | Get document by ID. **Raises** `RecordNotFound` if missing (auto-mapped to a 404 HTTP response). Use `find_by` for optional lookups. |
+| `Model.find_by(field, value)` | Find first record by field value. Returns `null` when missing. |
 | `Model.first_by(field, value)` | Find first record by field with ordering |
 | `Model.find_or_create_by(field, value, data?)` | Find by field, or create if not found |
 | `Model.where(filter, bind_vars)` | Query with SDBQL filter (returns QueryBuilder) |
@@ -233,18 +233,19 @@ end
 
 ### Validation Results
 
-`Model.create()` returns a validation result hash:
+`Model.create()` always returns an instance of the class. On validation or
+database failure, the instance is **not persisted** and its `_errors` field
+holds an array of error entries. On success, `_errors` is `nil`.
 
 ```soli
-let result = User.create({ "email": "" });
+let user = User.create({ "email": "" });
 
-if result["valid"]
-    let user = result["record"];
-    print("Created user: " + user["id"]);
-else
-    for error in result["errors"]
+if user._errors
+    for error in user._errors
         print(error["field"] + ": " + error["message"]);
     end
+else
+    print("Created user: " + user.id);
 end
 ```
 
@@ -809,16 +810,16 @@ class UsersController extends Controller
     end
 
     fn create(req)
-        let result = User.create({
+        let user = User.create({
             "name": req["params"]["name"],
             "email": req["params"]["email"],
             "age": req["params"]["age"]
         });
 
-        if result["valid"]
-            redirect("/users/" + result["record"]["id"])
+        if user._errors
+            render("users/new", { "errors": user._errors })
         else
-            render("users/new", { "errors": result["errors"] })
+            redirect("/users/" + user.id)
         end
     end
 end
@@ -904,17 +905,17 @@ Key points:
 ```soli
 describe("User model", fn()
     test("creates user with valid data", fn()
-        let result = User.create({
+        let user = User.create({
             "email": "test@example.com",
             "name": "Test User"
         });
-        expect(result["valid"]).to_equal(true);
-        expect(result["record"]["email"]).to_equal("test@example.com");
+        expect(user._errors).to_equal(null);
+        expect(user.email).to_equal("test@example.com");
     end)
 
     test("fails validation for invalid data", fn()
-        let result = User.create({ "email": "" });
-        expect(result["valid"]).to_equal(false);
+        let user = User.create({ "email": "" });
+        expect(user._errors).not_to_equal(null);
     end)
 
     test("finds users with where clause", fn()

@@ -86,27 +86,28 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Validation Results</h2>
     <p class="text-gray-400 mb-4">
-        Operations like <code>Model.create()</code> return a result hash indicating success or failure.
-        When validation fails, the <code>"errors"</code> key contains an array of error objects with <code>"field"</code> and <code>"message"</code> keys.
+        <code>Model.create()</code> always returns an instance of the class. On validation or database
+        failure, the returned instance is <strong class="text-white">not</strong> persisted and its
+        <code>_errors</code> field holds an array of <code>{ "field", "message" }</code> entries.
+        On success, <code>_errors</code> is <code>nil</code>.
     </p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let result = User.create({ "email": "" })
-if result["valid"]
-    let user = result["record"]
-    print("Created user: " + user._key)
-else
-    for error in result["errors"]
+            <pre><code class="language-soli text-sm">let user = User.create({ "email": "" })
+if user._errors
+    for error in user._errors
         print(error["field"] + ": " + error["message"])
     end
+else
+    print("Created user: " + user._key)
 end</code></pre>
         </div>
     </div>
 
     <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
         <p class="text-indigo-300 text-sm">
-            <strong>Tip:</strong> Always check <code>result["valid"]</code> before accessing the record. When validations fail, the record is <strong class="text-white">not</strong> persisted to the database.
+            <strong>Tip:</strong> Always check <code>user._errors</code> before treating the record as persisted. When validations fail, the record is <strong class="text-white">not</strong> persisted to the database.
         </p>
     </div>
 
@@ -254,7 +255,7 @@ end</code></pre>
 end
 
 # Creating a user with validation
-let result = User.create({
+let user = User.create({
     "email": "Alice@Example.com",
     "name": "Alice",
     "age": 30,
@@ -262,8 +263,7 @@ let result = User.create({
     "role": "admin"
 })
 
-if result["valid"]
-    let user = result["record"]
+if !user._errors
     print(user.email)       # => "alice@example.com" (normalized by before_save)
     print(user.is_admin)    # => true
     print(user.full_name()) # => "Alice "
@@ -284,7 +284,7 @@ end</code></pre>
             <li><strong>Keep callbacks focused</strong> - Each callback method should do one thing well</li>
             <li><strong>Avoid heavy logic in callbacks</strong> - Don't put slow operations in <code>before_save</code> or <code>before_create</code></li>
             <li><strong>Use custom validations</strong> - For complex rules that can't be expressed with built-in options</li>
-            <li><strong>Check validation results</strong> - Always inspect <code>result["valid"]</code> after <code>create</code></li>
+            <li><strong>Check validation results</strong> - Always inspect <code>user._errors</code> after <code>create</code></li>
         </ul>
     </div>
 

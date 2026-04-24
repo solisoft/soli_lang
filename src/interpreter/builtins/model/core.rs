@@ -898,9 +898,13 @@ impl Model {
         // CRUD Methods
         // ====================================================================
 
-        // Model.create(data) - Insert document with validation, returns instance in record
+        // Model.create(data) - Insert document with validation. Always returns
+        // an instance of the class. On success, `_errors` is unset (reads as
+        // null). On validation or DB failure, the instance is NOT persisted
+        // and `_errors` is populated as an Array — of {field, message} hashes
+        // for validation errors, or of String messages for DB errors.
         use super::crud::{exec_insert, json_to_value};
-        use super::validation::{build_validation_result, run_validations};
+        use super::validation::run_validations;
         use crate::interpreter::value::value_to_json;
         native_static_methods.insert(
             "create".to_string(),
@@ -914,10 +918,22 @@ impl Model {
                     .cloned()
                     .ok_or_else(|| "Model.create() requires data argument".to_string())?;
 
-                // Run validations
+                // Build a base instance from the input attributes so the
+                // returned object carries the user's data even on failure.
+                let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
+                    class.clone(),
+                )));
+                apply_hash_to_instance(&instance, &data)?;
+
+                // Run validations against the raw input
                 let errors = run_validations(&class_name, &data, None)?;
                 if !errors.is_empty() {
-                    return Ok(build_validation_result(false, errors, None));
+                    let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
+                    instance.borrow_mut().set(
+                        "_errors".to_string(),
+                        Value::Array(Rc::new(RefCell::new(error_values))),
+                    );
+                    return Ok(Value::Instance(instance));
                 }
 
                 let data_value: Result<serde_json::Value, String> = match &data {
@@ -937,37 +953,27 @@ impl Model {
                 };
                 let data_value = data_value?;
 
-                let result = exec_insert(&collection, None, data_value.clone());
-
-                match result {
+                match exec_insert(&collection, None, data_value) {
                     Ok(id) => {
-                        if let serde_json::Value::Object(mut data_map) = data_value {
-                            // Flatten DB metadata fields from the id response
-                            if let serde_json::Value::Object(ref id_map) = id {
-                                for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"]
-                                {
-                                    if let Some(val) = id_map.get(*field) {
-                                        data_map.insert(field.to_string(), val.clone());
-                                    }
+                        let mut inst_mut = instance.borrow_mut();
+                        if let serde_json::Value::Object(ref id_map) = id {
+                            for field in &["_key", "_id", "_rev", "_created_at", "_updated_at"] {
+                                if let Some(val) = id_map.get(*field) {
+                                    inst_mut.set(field.to_string(), json_to_value(val));
                                 }
                             }
-                            data_map.insert("id".to_string(), id);
-                            let record =
-                                json_doc_to_instance(&class, &serde_json::Value::Object(data_map));
-
-                            let mut result_pairs = crate::interpreter::value::HashPairs::default();
-                            result_pairs
-                                .insert(HashKey::String("valid".to_string()), Value::Bool(true));
-                            result_pairs.insert(HashKey::String("record".to_string()), record);
-                            Ok(Value::Hash(Rc::new(RefCell::new(result_pairs))))
-                        } else {
-                            let mut result_pairs = crate::interpreter::value::HashPairs::default();
-                            result_pairs
-                                .insert(HashKey::String("valid".to_string()), Value::Bool(true));
-                            Ok(Value::Hash(Rc::new(RefCell::new(result_pairs))))
                         }
+                        inst_mut.set("id".to_string(), json_to_value(&id));
+                        drop(inst_mut);
+                        Ok(Value::Instance(instance))
                     }
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => {
+                        instance.borrow_mut().set(
+                            "_errors".to_string(),
+                            Value::Array(Rc::new(RefCell::new(vec![Value::String(e)]))),
+                        );
+                        Ok(Value::Instance(instance))
+                    }
                 }
             })),
         );
@@ -993,8 +999,16 @@ impl Model {
 
                 match exec_get(&collection, &id) {
                     Ok(doc) => Ok(json_doc_to_instance(&class, &doc)),
-                    // Not found or collection error → null (not an application error)
-                    Err(_) => Ok(Value::Null),
+                    // Not found → raise with the RecordNotFound marker so the
+                    // HTTP request handler converts it into a 404 response.
+                    // Callers that want the "or null" shape should use
+                    // find_by / first_by, or wrap in try/catch.
+                    Err(_) => Err(format!(
+                        "{}{} with id '{}' not found",
+                        crate::error::RuntimeError::RECORD_NOT_FOUND_MARKER,
+                        class.name,
+                        id
+                    )),
                 }
             })),
         );
@@ -1723,7 +1737,9 @@ impl Model {
                     // Optional hash of attributes: `inst.update({...})`
                     // applies the hash to instance fields before running
                     // the existing persist pipeline, so no-arg callers keep
-                    // working unchanged.
+                    // working unchanged. Hash-applied mutations are kept on
+                    // the in-memory instance even if validation or the DB
+                    // call later fails.
                     match args.len() {
                         1 => {}
                         2 => apply_hash_to_instance(&instance, &args[1])?,
@@ -1880,6 +1896,8 @@ impl Model {
                     // Optional hash of attributes: `inst.save({...})` applies
                     // the hash to instance fields before running the existing
                     // persist pipeline, so no-arg callers keep working.
+                    // Hash-applied mutations are kept on the in-memory instance
+                    // even if validation or the DB call later fails.
                     match args.len() {
                         1 => {}
                         2 => apply_hash_to_instance(&instance, &args[1])?,

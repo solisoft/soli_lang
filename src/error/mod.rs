@@ -275,6 +275,42 @@ pub enum RuntimeError {
 }
 
 impl RuntimeError {
+    /// Sentinel embedded in the error message when `Model.find` (or any
+    /// future "record not found" path) fails to locate a record. The HTTP
+    /// request handler looks for this marker and converts the error into
+    /// a 404 response instead of the default 500.
+    pub const RECORD_NOT_FOUND_MARKER: &'static str = "__RecordNotFound__:";
+
+    /// Construct a Model.find-style "record not found" runtime error.
+    /// `message` is surfaced as-is after the marker prefix.
+    pub fn record_not_found(message: impl Into<String>, span: Span) -> Self {
+        Self::General {
+            message: format!("{}{}", Self::RECORD_NOT_FOUND_MARKER, message.into()),
+            span,
+        }
+    }
+
+    /// True when this error originated from a record-not-found path.
+    /// Uses `contains` rather than `starts_with` so the marker survives
+    /// error-wrapping layers (e.g. "Error calling method: __RecordNotFound__:...").
+    pub fn is_record_not_found(&self) -> bool {
+        let msg = match self {
+            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            _ => return false,
+        };
+        msg.contains(Self::RECORD_NOT_FOUND_MARKER)
+    }
+
+    /// The user-facing message from a record-not-found error (marker stripped).
+    pub fn record_not_found_message(&self) -> Option<String> {
+        let msg = match self {
+            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            _ => return None,
+        };
+        msg.find(Self::RECORD_NOT_FOUND_MARKER)
+            .map(|idx| msg[idx + Self::RECORD_NOT_FOUND_MARKER.len()..].to_string())
+    }
+
     pub fn new(message: impl Into<String>, span: Span) -> Self {
         Self::General {
             message: message.into(),

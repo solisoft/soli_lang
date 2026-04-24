@@ -25,13 +25,9 @@ class {controller_name} extends Controller {{
         }});
     }}
 
-    // GET /{resource}/:id
+    // GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
     fn show(req) {{
-        let id = req.params["id"];
-        let {model_var} = {model_name}.find(id);
-        if {model_var} == null {{
-            return error(404, "{model_name} not found");
-        }}
+        let {model_var} = {model_name}.find(req.params["id"]);
         return render("{resource}/show", {{
             "{model_var}": {model_var},
             "title": "View {model_name}"
@@ -46,13 +42,9 @@ class {controller_name} extends Controller {{
         }});
     }}
 
-    // GET /{resource}/:id/edit
+    // GET /{resource}/:id/edit — Model.find raises on miss, framework maps to 404.
     fn edit(req) {{
-        let id = req.params["id"];
-        let {model_var} = {model_name}.find(id);
-        if {model_var} == null {{
-            return error(404, "{model_name} not found");
-        }}
+        let {model_var} = {model_name}.find(req.params["id"]);
         return render("{resource}/edit", {{
             "{model_var}": {model_var},
             "title": "Edit {model_name}"
@@ -62,14 +54,14 @@ class {controller_name} extends Controller {{
     // POST /{resource}
     fn create(req) {{
         let permitted = this._permit_params(req.params);
-        let result = {model_name}.create(permitted);
-        if result["valid"] == true {{
-            return redirect("/{resource}");
+        let {model_var} = {model_name}.create(permitted);
+        if {model_var}._errors {{
+            return render("{resource}/new", {{
+                "{model_var}": {model_var},
+                "title": "New {model_name}"
+            }});
         }}
-        return render("{resource}/new", {{
-            "{model_var}": result,
-            "title": "New {model_name}"
-        }});
+        return redirect("/{resource}");
     }}
 
     // PATCH/PUT /{resource}/:id

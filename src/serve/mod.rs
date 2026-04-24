@@ -2838,6 +2838,10 @@ fn call_handler(
                     }
                 }
                 Err(e) => {
+                    if let Some(resp) = record_not_found_response(&e) {
+                        interpreter.pop_frame();
+                        return resp;
+                    }
                     // Capture environment BEFORE popping frame so we can see local variables
                     let captured_env = if dev_mode && e.breakpoint_env_json().is_none() {
                         Some(interpreter.serialize_environment_for_debug())
@@ -3113,7 +3117,9 @@ fn call_oop_controller_action(
             }
         }
         Err(e) => {
-            if dev_mode {
+            if let Some(resp) = record_not_found_response(&e) {
+                resp
+            } else if dev_mode {
                 // Use breakpoint's captured stack trace if available, otherwise get current
                 let stack_trace: Vec<String> = e
                     .breakpoint_stack_trace()
@@ -3449,6 +3455,27 @@ fn execute_after_actions(
 /// Check if a before_action result is a response (short-circuit).
 /// Returns Some(ResponseData) only if the value is a response hash (has "status" field).
 /// Returns None if it's a modified request hash (should continue processing).
+/// If the error came from a record-not-found path (e.g. `Model.find("x")`
+/// where "x" doesn't exist), build a 404 response. Returns None otherwise,
+/// letting the default 500 handling run.
+///
+/// Uses the standard production error-page pipeline so apps can ship a
+/// custom `app/views/errors/404.html.slv` template and have it rendered
+/// automatically (same mechanism the route-not-found 404 uses).
+fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
+    let message = err.record_not_found_message()?;
+    let request_id = Uuid::new_v4().to_string();
+    let body = error_pages::render_production_error_page(404, &message, &request_id);
+    Some(ResponseData {
+        status: 404,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        )],
+        body,
+    })
+}
+
 fn check_for_response(value: &Value) -> Option<ResponseData> {
     // A response is a Hash with a "status" field (and optionally headers, body)
     // A modified request hash has "method", "path", etc. but no "status"
