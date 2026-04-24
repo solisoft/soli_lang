@@ -3,9 +3,15 @@
 ## [Unreleased]
 
 ### Features
+* **feat(model): `Model.create` returns instance (not hash); `_errors` array on failure, `nil` on success** — replaces the old `{ valid: bool, record: instance }` and `{ valid: bool, errors: [] }` hash returns with a single consistent shape. Use `if instance._errors` to distinguish success from failure.
+* **feat(model): `Model.find` raises `RecordNotFound` when id is missing** — the HTTP layer auto-converts this to a 404 response. Use `Model.find_by` or wrap in `try/catch` for optional lookups.
+* **feat(repl): display the result of `@sdql{ ... }` expressions** — the REPL now wraps `@sdql{...}` blocks in `println(_.inspect)` so their result is visible instead of silently discarded. ([1454b22](https://github.com/solisoft/soli_lang/commit/1454b22))
 * **feat(template): bind `locals` hash to every partial context (Rails-style `local_assigns`)** — partials can now read keys whose names collide with reserved words (`class`) or builtin functions (`type`) via `locals["class"]` / `locals["type"]`. Bare-identifier access is unchanged and remains the idiom for non-reserved keys; `locals` is the escape hatch.
 * **feat(serve): conditional-GET revalidation on `render()` HTML responses** — `html_response` now emits `ETag: "<fnv1a-64-hex>"` and `Cache-Control: private, no-cache`; requests carrying `If-None-Match` get a `304 Not Modified` short-circuit at the response boundary. Makes the shipped hover-prefetch feature actually deliver "instant navigation": the prefetched body is reused on click, validated by a tiny round-trip instead of a full re-render. Controllers can override per-response by setting their own `Cache-Control` / `ETag` in the `headers` hash.
 * **feat(model): `instance.save(hash?)` and `instance.update(hash?)` accept bulk-attribute hash** — optional hash argument is merged onto the instance before validations + DB write, so `user.save({ "name": "Alice", "role": "admin" })` replaces N assignments + a save call. Hash wins on conflict, keys you don't pass keep their current value, framework-internal `_`-fields are silently skipped. Zero-arg callers keep working unchanged.
+
+### Bug Fixes
+* **fix(model): fix description** — ([commithash](link))
 
 ## [0.80.1](https://github.com/solisoft/soli_lang/compare/0.80.0...0.80.1) (2026-04-23)
 
