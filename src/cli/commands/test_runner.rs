@@ -23,7 +23,6 @@ fn format_duration(duration: Duration) -> String {
 pub fn run_test(
     path: Option<&str>,
     jobs: usize,
-    coverage: bool,
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
@@ -115,7 +114,7 @@ pub fn run_test(
         test_path.clone()
     };
 
-    let enable_coverage = coverage && !no_coverage;
+    let enable_coverage = !no_coverage;
     // Console is always present; every other accepted name adds its format.
     let output_formats = {
         let mut formats = vec![OutputFormat::Console];
@@ -243,7 +242,7 @@ pub fn run_test(
                     .map(std::process::Stdio::from)
                     .unwrap_or(std::process::Stdio::null()),
             );
-        if enable_coverage {
+if enable_coverage {
             cmd.env("SOLI_COVERAGE_ENABLED", "1");
         }
         let child = cmd.spawn().expect("Failed to spawn test server subprocess");
@@ -491,7 +490,7 @@ pub fn run_test(
                 }
             }
         }
-        if let Some(ref tracker_rc) = tracker {
+if let Some(ref tracker_rc) = tracker {
             let coverage = tracker_rc.lock().unwrap().get_aggregated_coverage();
 
             let app_coverage = AggregatedCoverage {
@@ -513,42 +512,57 @@ pub fn run_test(
                 pending_count: coverage.pending_count,
             };
 
-            let config = CoverageConfig {
-                enabled: true,
-                output_dir: PathBuf::from("coverage"),
-                formats: output_formats.clone(),
-                threshold: coverage_min.or(Some(80.0)),
-                exclude_patterns: Vec::new(),
-                exclude_lines: Vec::new(),
-                show_uncovered: true,
-                per_test: false,
-                root_dir: Some(app_dir.to_path_buf()),
-            };
-            let reporter = CoverageReporter::new(config);
-            reporter.generate_reports(&app_coverage);
-            for fmt in &output_formats {
-                match fmt {
-                    OutputFormat::Html => {
-                        println!("  HTML coverage report: coverage/index.html");
+            if app_coverage.file_coverages.is_empty() && coverage.total_lines() == 0 {
+                let reporter = CoverageReporter::new(CoverageConfig {
+                    enabled: true,
+                    output_dir: PathBuf::from("coverage"),
+                    formats: vec![OutputFormat::Console],
+                    threshold: coverage_min.or(Some(80.0)),
+                    exclude_patterns: Vec::new(),
+                    exclude_lines: Vec::new(),
+                    show_uncovered: true,
+                    per_test: false,
+                    root_dir: Some(app_dir.to_path_buf()),
+                });
+                println!("\nCoverage: N/A (no source files found in app/, config/, lib/)");
+            } else {
+                let config = CoverageConfig {
+                    enabled: true,
+                    output_dir: PathBuf::from("coverage"),
+                    formats: output_formats.clone(),
+                    threshold: coverage_min.or(Some(80.0)),
+                    exclude_patterns: Vec::new(),
+                    exclude_lines: Vec::new(),
+                    show_uncovered: true,
+                    per_test: false,
+                    root_dir: Some(app_dir.to_path_buf()),
+                };
+                let reporter = CoverageReporter::new(config);
+                reporter.generate_reports(&app_coverage);
+                for fmt in &output_formats {
+                    match fmt {
+                        OutputFormat::Html => {
+                            println!("  HTML coverage report: coverage/index.html");
+                        }
+                        OutputFormat::Json => {
+                            println!("  JSON coverage report: coverage/coverage.json");
+                        }
+                        OutputFormat::Xml => {
+                            println!("  Cobertura XML report: coverage/cobertura.xml");
+                        }
+                        OutputFormat::Console => {}
                     }
-                    OutputFormat::Json => {
-                        println!("  JSON coverage report: coverage/coverage.json");
-                    }
-                    OutputFormat::Xml => {
-                        println!("  Cobertura XML report: coverage/cobertura.xml");
-                    }
-                    OutputFormat::Console => {}
                 }
-            }
 
-            if let Some(min) = coverage_min {
-                if app_coverage.total_line_coverage_percent() < min {
-                    eprintln!(
-                        "\n❌ Coverage {:.1}% is below threshold {:.0}%",
-                        app_coverage.total_line_coverage_percent(),
-                        min
-                    );
-                    process::exit(1);
+                if let Some(min) = coverage_min {
+                    if app_coverage.total_line_coverage_percent() < min {
+                        eprintln!(
+                            "\n❌ Coverage {:.1}% is below threshold {:.0}%",
+                            app_coverage.total_line_coverage_percent(),
+                            min
+                        );
+                        process::exit(1);
+                    }
                 }
             }
         }

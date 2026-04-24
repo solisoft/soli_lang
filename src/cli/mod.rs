@@ -49,14 +49,12 @@ pub fn run() {
         Command::Test {
             path,
             jobs,
-            coverage,
             coverage_formats,
             coverage_min,
             no_coverage,
         } => commands::run_test(
             path.as_deref(),
             *jobs,
-            *coverage,
             coverage_formats,
             *coverage_min,
             *no_coverage,

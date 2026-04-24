@@ -30,7 +30,6 @@ pub enum Command {
     Test {
         path: Option<String>,
         jobs: usize,
-        coverage: bool,
         /// Additional output format(s) beyond the console summary. Accepted
         /// via `--coverage=html`, `--coverage=json`, `--coverage=xml`.
         /// Empty = console only.
@@ -658,8 +657,7 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut path: Option<String> = None;
                 let mut jobs: usize = 1;
-                let mut coverage = false;
-                let mut coverage_formats: Vec<String> = Vec::new();
+                let mut coverage_formats: Vec<String> = vec!["console".to_string()];
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
                 while i < args.len() {
@@ -668,7 +666,6 @@ pub fn parse_args() -> Options {
                         // `--coverage=html --coverage=json`, etc. Any non-empty
                         // value implies --coverage.
                         if let Some(rest) = args[i].strip_prefix("--coverage=") {
-                            coverage = true;
                             no_coverage = false;
                             for fmt in rest.split(',') {
                                 let fmt = fmt.trim();
@@ -706,10 +703,13 @@ pub fn parse_args() -> Options {
                                     process::exit(64);
                                 });
                             }
-                            "--coverage" => coverage = true,
+                            "--coverage" => {
+                                if !coverage_formats.iter().any(|f| f == "console") {
+                                    coverage_formats.push("console".to_string());
+                                }
+                            }
                             "--no-coverage" => {
                                 no_coverage = true;
-                                coverage = false;
                             }
                             "--coverage-min" => {
                                 i += 1;
@@ -741,9 +741,8 @@ pub fn parse_args() -> Options {
                 options.command = Command::Test {
                     path,
                     jobs,
-                    coverage: !no_coverage && coverage,
                     coverage_formats: if no_coverage {
-                        Vec::new()
+                        vec![]
                     } else {
                         coverage_formats
                     },

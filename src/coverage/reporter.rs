@@ -51,10 +51,6 @@ impl CoverageReporter {
         let total_lines = coverage.total_lines();
         let covered_lines = coverage.covered_lines();
 
-        if total_lines == 0 {
-            return String::new();
-        }
-
         let status = if total_percent >= self.config.threshold.unwrap_or(0.0) {
             "✓"
         } else {
