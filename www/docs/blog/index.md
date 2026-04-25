@@ -4,6 +4,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [From `_handle_photo` to `uploader("photo", { ... })` — Soli's New Attachment Pipeline](/docs/blog/uploads-and-image-transforms) - The model declares an uploader, the framework ships the controller, the URL drives image transforms (resize, crop, fit, blur, brightness, format conversion). Zero boilerplate per app.
 - [Importing CSV & Excel Files in Soli](/docs/blog/spreadsheet-functions) - Parse and process spreadsheet data with built-in functions for CSV and Excel files
 - [Adding "Sign in with GitHub" to Your Soli App](/docs/blog/github-oauth) - Full OAuth 2.0 flow with GitHub, sessions, JWT tokens, and security best practices
 - [HTMx: The Missing Link Between Traditional MVC and Modern Interactivity](/docs/blog/htmx-integration) - How HTMx brings simplicity to Soli web apps with server-rendered partials

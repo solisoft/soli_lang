@@ -488,6 +488,146 @@ end</code></pre>
         <li><code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code> &mdash; auth skipped if unset</li>
     </ul>
 
+    <h3 class="text-lg font-semibold text-white mb-3">Image transforms via URL</h3>
+    <p class="text-gray-400 mb-4">
+        For image attachments, the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint can resize, crop, recompress, and reformat on the fly. Pass options to <code>upload_url(...)</code> (or the auto-generated <code>&lt;field&gt;_url(...)</code> dot-method) and they're rendered into the URL's query string. The <code>AttachmentsController</code> reads the same params from <code>req["query"]</code>, runs the bytes through the
+        <a href="/docs/builtins/image" class="text-indigo-400 hover:underline">Image class</a>, and returns the transformed payload.
+    </p>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-3 font-semibold text-white">Param</th>
+                    <th class="px-6 py-3 font-semibold text-white">Type</th>
+                    <th class="px-6 py-3 font-semibold text-white">Effect</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">w</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Width. Alone: thumbnail to that max edge (preserves aspect). With <code>h</code>: behaviour depends on <code>fit</code>. Values above 1000 are silently clamped.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">h</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Height. Pair with <code>w</code>. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">thumb</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Square-fit thumbnail at this max edge. Output is at most N×N <strong>preserving aspect</strong> — a 800×400 source becomes 200×100 with <code>thumb=200</code>. Wins over <code>w</code>/<code>h</code> if both supplied. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">square</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Sugar for <code>w=N&amp;h=N&amp;fit=cover</code>. Output is <strong>exactly</strong> N×N, scaled-and-cropped to fill — typical avatar/grid use case. Explicit <code>w</code>/<code>h</code>/<code>fit</code> override the shorthand. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">crop</td><td class="px-6 py-3 text-gray-400">String <code>x,y,w,h</code></td><td class="px-6 py-3 text-gray-400">Crop a rectangular region from the source <strong>before</strong> any resize. e.g. <code>crop=10,20,300,200</code>. Accepts an Array <code>[10,20,300,200]</code> in the options hash. The <code>w</code> and <code>h</code> components are clamped to 1000; <code>x</code>/<code>y</code> offsets are unbounded (out-of-bounds is rejected by the Image lib and falls back to the raw blob).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">fit</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Pairs with <code>w</code> + <code>h</code>: <code>cover</code> = scale to fill then center-crop overflow (output is exactly w×h); <code>contain</code> = scale to fit inside w×h, preserving aspect. Without <code>fit</code>, <code>w + h</code> is an exact resize that may distort.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">flipx</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror horizontally (<code>img.flip_horizontal()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">flipy</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror vertically (<code>img.flip_vertical()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">rot</td><td class="px-6 py-3 text-gray-400">Int <code>90</code>/<code>180</code>/<code>270</code></td><td class="px-6 py-3 text-gray-400">Rotate clockwise. Other values are ignored.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">blur</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Gaussian blur sigma — higher = more blur. <code>blur=3.5</code>.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">bright</td><td class="px-6 py-3 text-gray-400">Int (±)</td><td class="px-6 py-3 text-gray-400">Brightness offset (<code>img.brightness(value)</code>). Positive brightens, negative darkens.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">contrast</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Contrast factor (<code>img.contrast(value)</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">hue</td><td class="px-6 py-3 text-gray-400">Int degrees</td><td class="px-6 py-3 text-gray-400">Hue rotation (<code>img.hue_rotate(degrees)</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">gray</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Convert to grayscale (<code>img.grayscale()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">q</td><td class="px-6 py-3 text-gray-400">Int 1–100</td><td class="px-6 py-3 text-gray-400">JPEG/WebP quality.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-4">All flags are optional. Without any, the original bytes are streamed unmodified (current behaviour).</p>
+
+    <div class="my-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <p class="text-amber-200/80 text-sm">
+            <strong>DoS guardrail.</strong> The dimension params (<code>w</code>, <code>h</code>, <code>thumb</code>, <code>square</code>, and the <code>w</code>/<code>h</code> in <code>crop</code>) are server-side clamped to <strong>1000 px</strong>. A crafted <code>?w=99999</code> won't make the worker allocate gigabytes — it's silently treated as <code>?w=1000</code>. Cap is enforced in the framework prelude regardless of what the URL builder generates.
+        </p>
+    </div>
+
+    <div class="my-4 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-200/80 text-sm mb-2">
+            <strong>Sizing modes — when to use which.</strong> Given a <strong>800×400</strong> source:
+        </p>
+        <ul class="text-indigo-200/80 text-sm space-y-1 ml-5 list-disc">
+            <li><code>w=200</code> alone or <code>thumb=200</code> → <strong>200×100</strong> (fits within 200×200, aspect preserved, smaller dim shrinks too).</li>
+            <li><code>w=200&amp;h=200</code> → <strong>200×200</strong> stretched (squashed, aspect distorted — usually not what you want).</li>
+            <li><code>w=200&amp;h=200&amp;fit=cover</code> or <code>square=200</code> → <strong>200×200</strong> exact (scale-and-crop, content cropped left/right, aspect preserved within the crop).</li>
+            <li><code>w=200&amp;h=200&amp;fit=contain</code> → <strong>200×100</strong> (same as <code>thumb=200</code> here; useful when you want a non-square bounding box).</li>
+        </ul>
+        <p class="text-indigo-200/80 text-sm mt-2">
+            Reach for <code>square=N</code> for avatars and grid tiles where every cell must be the same size. Use <code>thumb=N</code> (or <code>w=N</code>) when you need to bound the larger edge but keep aspect.
+        </p>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">In a view — request a 200 px thumbnail</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">&lt;img src="&lt;%= contact.photo_url({ "thumb": 200 }) %&gt;" alt="..."&gt;
+# →  &lt;img src="/contacts/42/photo?v=abc&amp;thumb=200" alt="..."&gt;</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">A grayscale 800×600 WebP at 80% quality</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">contact.photo_url({
+    "w":    800,
+    "h":    600,
+    "fmt":  "webp",
+    "q":    80,
+    "gray": true
+})
+# →  /contacts/42/photo?v=abc&amp;w=800&amp;h=600&amp;fmt=webp&amp;q=80&amp;gray=1</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Square avatar — shorthand vs. longhand (identical result)</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">contact.photo_url({ "square": 200 })
+# →  /contacts/42/photo?v=abc&amp;square=200
+
+contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
+# →  /contacts/42/photo?v=abc&amp;w=200&amp;h=200&amp;fit=cover
+
+# Both render exactly 200×200, content scaled-and-cropped.</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Crop a region of interest then resize (Array shorthand)</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">contact.photo_url({ "crop": [100, 50, 600, 600], "w": 200 })
+# →  /contacts/42/photo?v=abc&amp;w=200&amp;crop=100%2C50%2C600%2C600
+# (the comma is percent-encoded; the AttachmentsController decodes it.)</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rotate, blur, and brightness adjustment</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">contact.photo_url({
+    "rot":      90,
+    "blur":     2.5,
+    "bright":   15,
+    "contrast": 1.2
+})
+# →  /contacts/42/photo?v=abc&amp;rot=90&amp;blur=2.5&amp;bright=15&amp;contrast=1.2</code></pre>
+        </div>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-gray-500/10 border border-gray-500/20 mb-8">
+        <p class="text-gray-300 text-sm">
+            <strong>Pipeline order.</strong> Transforms are applied in a fixed sequence so identical params always produce identical output (and identical URLs &mdash; cache-key stability for CDNs):
+        </p>
+        <ol class="text-gray-400 text-sm list-decimal ml-6 mt-2 space-y-1">
+            <li><code>crop</code> &mdash; pick the source region first.</li>
+            <li><code>flipx</code>, <code>flipy</code>, <code>rot</code> &mdash; orientation.</li>
+            <li><code>thumb</code> / <code>fit</code> / <code>w</code>+<code>h</code> &mdash; sizing applies to the rotated frame.</li>
+            <li><code>blur</code>, <code>bright</code>, <code>contrast</code>, <code>hue</code>, <code>gray</code>, <code>invert</code> &mdash; effects.</li>
+            <li><code>fmt</code>, <code>q</code> &mdash; encode.</li>
+        </ol>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-8">
+        <p class="text-indigo-200/80 text-sm">
+            <strong>Caching.</strong> Each unique combination of params is a different URL — browsers and CDNs cache them as separate entries. The cache buster (<code>?v=&lt;blob_id&gt;</code>) keeps single-mode URLs unique per blob, so replacing the photo invalidates every transformed variant at once. Transformed responses are served with <code>Cache-Control: public, max-age=86400</code>; the raw passthrough uses <code>private, max-age=300</code>.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        If a transform fails for any reason (corrupted bytes, unsupported source format, invalid params), the controller silently falls back to streaming the original blob — the page never breaks because of a bad query string.
+    </p>
+
     <h3 class="text-lg font-semibold text-white mb-3">Overriding the defaults</h3>
     <p class="text-gray-400 mb-4">
         Define a same-named function or class in <code>app/controllers/</code> and your version wins &mdash; the framework prelude runs before user controllers, so user definitions naturally shadow it.

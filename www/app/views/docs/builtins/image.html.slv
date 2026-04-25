@@ -16,6 +16,13 @@
         </p>
     </div>
 
+    <div class="my-6 p-4 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/20 mb-12">
+        <p class="text-fuchsia-200/80 text-sm">
+            <strong>Tip.</strong> If your image lives on a model declared with <code>uploader(...)</code>, you don't have to write a transform pipeline by hand &mdash; the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint accepts query params (<code>w</code>, <code>h</code>, <code>thumb</code>, <code>square</code>, <code>crop</code>, <code>fit=cover|contain</code>, <code>flipx</code>, <code>flipy</code>, <code>rot=90/180/270</code>, <code>blur</code>, <code>bright</code>, <code>contrast</code>, <code>hue</code>, <code>gray</code>, <code>invert</code>, <code>fmt</code>, <code>q</code>) and runs them through the Image class for you.
+            See <a href="/docs/database/models#image-transforms-via-url" class="text-fuchsia-300 hover:underline font-semibold">Image transforms via URL</a>.
+        </p>
+    </div>
+
     <!-- Quick Reference -->
     <section id="section-quick-reference" class="scroll-mt-20 mb-12">
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">

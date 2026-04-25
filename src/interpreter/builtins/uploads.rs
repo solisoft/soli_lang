@@ -491,6 +491,36 @@ fn upload_blob_to_solidb(
     Ok(UploadResult { blob_id })
 }
 
+/// Build a URL by appending `?key=value&...` if `pairs` is non-empty. Values
+/// are percent-encoded for query strings; keys are assumed to be the small
+/// canonical set defined in `upload_url` and don't need escaping.
+fn append_query(base: &str, pairs: &[(String, String)]) -> String {
+    if pairs.is_empty() {
+        return base.to_string();
+    }
+    let mut out = String::with_capacity(base.len() + pairs.len() * 12);
+    out.push_str(base);
+    let separator = if base.contains('?') { '&' } else { '?' };
+    let mut first = true;
+    for (k, v) in pairs {
+        out.push(if first { separator } else { '&' });
+        out.push_str(k);
+        out.push('=');
+        for ch in v.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '~') {
+                out.push(ch);
+            } else {
+                let mut buf = [0u8; 4];
+                for &byte in ch.encode_utf8(&mut buf).as_bytes() {
+                    out.push_str(&format!("%{:02X}", byte));
+                }
+            }
+        }
+        first = false;
+    }
+    out
+}
+
 /// Register the read-only uploader helpers (`upload_url`, `find_uploaded_file`)
 /// directly in the env so they're available everywhere — including the
 /// template-rendering env that doesn't see app-level Soli definitions.
@@ -518,10 +548,106 @@ fn register_uploader_helpers(env: &mut Environment) {
                 Some(Value::String(s)) => s.clone(),
                 _ => return Err("upload_url() expects a string field name".to_string()),
             };
-            let blob_id_arg = match args.get(2) {
-                Some(Value::String(s)) => Some(s.clone()),
-                _ => None,
-            };
+            // Third arg is polymorphic for ergonomics:
+            //   String → blob_id (multiple-mode shorthand)
+            //   Hash   → options { blob_id?, w?, h?, thumb?, crop?, fit?,
+            //                       fmt?, q?, gray? }
+            //   Null   → no options
+            let mut blob_id_arg: Option<String> = None;
+            let mut transform_params: Vec<(&'static str, String)> = Vec::new();
+            match args.get(2) {
+                Some(Value::String(s)) => blob_id_arg = Some(s.clone()),
+                Some(Value::Hash(h)) => {
+                    for (k, v) in h.borrow().iter() {
+                        if let HashKey::String(key_str) = k {
+                            match key_str.as_str() {
+                                "blob_id" => {
+                                    if let Value::String(s) = v {
+                                        blob_id_arg = Some(s.clone());
+                                    }
+                                }
+                                // Image transform query params recognised by
+                                // the AttachmentsController. Order is fixed
+                                // below so identical option sets produce
+                                // identical URLs (CDN-friendly cache keys).
+                                "w" | "h" | "thumb" | "square" | "crop" | "fit" | "flipx"
+                                | "flipy" | "rot" | "blur" | "bright" | "contrast" | "hue"
+                                | "gray" | "invert" | "fmt" | "q" => {
+                                    let canonical: &'static str = match key_str.as_str() {
+                                        "w" => "w",
+                                        "h" => "h",
+                                        "thumb" => "thumb",
+                                        "square" => "square",
+                                        "crop" => "crop",
+                                        "fit" => "fit",
+                                        "flipx" => "flipx",
+                                        "flipy" => "flipy",
+                                        "rot" => "rot",
+                                        "blur" => "blur",
+                                        "bright" => "bright",
+                                        "contrast" => "contrast",
+                                        "hue" => "hue",
+                                        "gray" => "gray",
+                                        "invert" => "invert",
+                                        "fmt" => "fmt",
+                                        "q" => "q",
+                                        _ => unreachable!(),
+                                    };
+                                    // crop accepts an Array of 4 ints as a
+                                    // shorthand: [10, 20, 300, 200] → "10,20,300,200".
+                                    if canonical == "crop" {
+                                        if let Value::Array(arr) = v {
+                                            let arr_ref = arr.borrow();
+                                            if arr_ref.len() == 4 {
+                                                let parts: Option<Vec<String>> = arr_ref
+                                                    .iter()
+                                                    .map(|item| match item {
+                                                        Value::Int(n) if *n >= 0 => {
+                                                            Some(n.to_string())
+                                                        }
+                                                        _ => None,
+                                                    })
+                                                    .collect();
+                                                if let Some(parts) = parts {
+                                                    transform_params
+                                                        .push((canonical, parts.join(",")));
+                                                    continue;
+                                                }
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                    let value_str = match v {
+                                        Value::Int(n) => n.to_string(),
+                                        Value::Float(f) => {
+                                            // Strip trailing zeros for clean URLs:
+                                            // 3.5 → "3.5", 2.0 → "2".
+                                            if f.fract() == 0.0 && f.is_finite() {
+                                                format!("{}", *f as i64)
+                                            } else {
+                                                let s = format!("{}", f);
+                                                s
+                                            }
+                                        }
+                                        Value::String(s) => s.clone(),
+                                        Value::Bool(b) => {
+                                            if *b {
+                                                "1".to_string()
+                                            } else {
+                                                continue;
+                                            }
+                                        }
+                                        _ => continue,
+                                    };
+                                    transform_params.push((canonical, value_str));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
 
             let inst_ref = inst.borrow();
             let class_name = inst_ref.class.name.clone();
@@ -537,26 +663,42 @@ fn register_uploader_helpers(env: &mut Environment) {
             let resource = format!("{}s", class_name.to_lowercase());
             let base = format!("/{}/{}/{}", resource, key, field);
 
+            // Stable canonical order so identical option hashes yield
+            // identical URLs regardless of insertion order. Grouping:
+            // geometry → orientation → effects → output.
+            const QUERY_ORDER: &[&str] = &[
+                "w", "h", "thumb", "square", "crop", "fit", "flipx", "flipy", "rot", "blur",
+                "bright", "contrast", "hue", "gray", "invert", "fmt", "q",
+            ];
+            let mut query_pairs: Vec<(String, String)> = Vec::new();
+            for &name in QUERY_ORDER {
+                if let Some((_, val)) = transform_params.iter().find(|(k, _)| *k == name) {
+                    query_pairs.push((name.to_string(), val.clone()));
+                }
+            }
+
             if config.multiple {
                 let Some(blob_id) = blob_id_arg else {
                     return Ok(Value::Null);
                 };
-                // Blob id is already in the path → URL changes when the blob
-                // does, so no extra cache-busting query is needed.
-                return Ok(Value::String(format!("{}/{}", base, blob_id)));
+                // Blob id is in the path → URL is unique per blob without a
+                // cache buster. Query string just carries transforms.
+                let path = format!("{}/{}", base, blob_id);
+                return Ok(Value::String(append_query(&path, &query_pairs)));
             }
 
-            // Single mode: route is `/<resource>/:id/<field>` (no blob id in
-            // the path), so we tack `?v=<blob_id>` on so the URL changes
-            // whenever the underlying blob is replaced. Browsers and CDNs
-            // treat URLs with different query strings as different cache
-            // entries, which is the cheapest correct invalidation strategy.
+            // Single mode: tack `?v=<blob_id>` on so the URL changes whenever
+            // the underlying blob is replaced. Browsers / CDNs treat URLs
+            // with different query strings as different cache entries —
+            // cheapest correct invalidation strategy.
             let Some(stored_id) =
                 get_uploader_field_value_as_string(&inst_ref, &format!("{}_blob_id", field))
             else {
                 return Ok(Value::Null);
             };
-            Ok(Value::String(format!("{}?v={}", base, stored_id)))
+            let mut all_pairs = vec![("v".to_string(), stored_id)];
+            all_pairs.extend(query_pairs);
+            Ok(Value::String(append_query(&base, &all_pairs)))
         })),
     );
 

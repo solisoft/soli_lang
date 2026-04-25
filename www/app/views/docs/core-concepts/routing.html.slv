@@ -352,6 +352,11 @@ get("/", "home#index")get("/about", "home#about");</code></pre>
     <p class="text-gray-400 mb-4">
         The shared <code>AttachmentsController</code> ships <strong>with the framework</strong> &mdash; you don't need to add any controller file. It recovers the resource and field segments from the request path, looks up the model class via <code>find_model_class_by_collection</code>, and delegates to the uploader's <code>attach_</code>/<code>detach_</code> methods.
     </p>
+    <p class="text-gray-400 mb-4">
+        For image fields, the <code>show</code> endpoint also supports on-the-fly transforms via query params: <code>?square=200</code> (avatar shorthand), <code>?w=200&amp;h=200&amp;fit=cover</code>, <code>?thumb=100</code>, <code>?crop=10,20,300,200</code>, <code>?rot=90&amp;flipx=1</code>, <code>?blur=2.5&amp;bright=10&amp;contrast=1.2</code>, <code>?gray=1&amp;invert=1</code>, <code>?fmt=webp&amp;q=80</code>. See
+        <a href="/docs/database/models#image-transforms-via-url" class="text-indigo-400 hover:underline">Image transforms via URL</a>
+        in the model docs for the full param list and the matching <code>upload_url(model, field, options)</code> builder.
+    </p>
     <p class="text-gray-400 mb-12">
         To customize behavior (extra auth, alternative response shape, different storage), define your own <code>class AttachmentsController &lt; ApplicationController</code> in <code>app/controllers/attachments_controller.sl</code> &mdash; user controllers load after the framework prelude so your version wins automatically.
     </p>
