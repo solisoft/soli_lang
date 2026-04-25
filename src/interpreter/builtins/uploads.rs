@@ -40,7 +40,10 @@ fn sanitize_filename(filename: &str) -> String {
 }
 
 pub fn get_solidb_address() -> Option<String> {
-    SOLIDB_ADDRESS.read().ok().and_then(|s| s.clone())
+    if let Some(addr) = SOLIDB_ADDRESS.read().ok().and_then(|s| s.clone()) {
+        return Some(addr);
+    }
+    std::env::var("SOLIDB_HOST").ok()
 }
 
 pub fn set_solidb_address(addr: &str) {
@@ -50,6 +53,7 @@ pub fn set_solidb_address(addr: &str) {
 }
 
 pub fn register_upload_builtins(env: &mut Environment) {
+    register_uploader_helpers(env);
     env.define(
         "parse_multipart".to_string(),
         Value::NativeFunction(NativeFunction::new("parse_multipart", Some(1), |args| {
@@ -156,7 +160,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 }
             };
             let solidb_addr = get_solidb_address().ok_or_else(|| {
-                "SoliDB address not configured. Use set_solidb_address() first.".to_string()
+                "SoliDB address not configured. Set SOLIDB_HOST env var or call set_solidb_address().".to_string()
             })?;
 
             let files = match parse_multipart_from_req(req) {
@@ -210,7 +214,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
                     }
                 };
                 let solidb_addr = get_solidb_address().ok_or_else(|| {
-                    "SoliDB address not configured. Use set_solidb_address() first.".to_string()
+                    "SoliDB address not configured. Set SOLIDB_HOST env var or call set_solidb_address().".to_string()
                 })?;
 
                 let files = match parse_multipart_from_req(req) {
@@ -291,7 +295,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
             let base_url = match args.get(2) {
                 Some(Value::String(s)) => s.clone(),
                 _ => get_solidb_address().ok_or_else(|| {
-                    "SoliDB address not configured. Use set_solidb_address() or pass base_url."
+                    "SoliDB address not configured. Set SOLIDB_HOST env var, call set_solidb_address(), or pass base_url."
                         .to_string()
                 })?,
             };
@@ -300,9 +304,12 @@ pub fn register_upload_builtins(env: &mut Environment) {
                 _ => 3600,
             };
 
+            let database =
+                std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solidb".to_string());
             let url = format!(
-                "{}/_api/database/solidb/document/{}/{}",
+                "{}/_api/database/{}/document/{}/{}",
                 base_url.trim_end_matches('/'),
+                database,
                 collection,
                 blob_id
             );
@@ -452,17 +459,163 @@ fn upload_blob_to_solidb(
 ) -> Result<UploadResult, String> {
     use crate::solidb_http::SoliDBClient;
 
-    let client = SoliDBClient::connect(solidb_addr)
+    let mut client = SoliDBClient::connect(solidb_addr)
         .map_err(|e| format!("Failed to connect to SoliDB: {}", e))?;
 
+    if let Ok(db) = std::env::var("SOLIDB_DATABASE") {
+        client.set_database(&db);
+    }
+
+    // Auth priority matches the model layer: API key > cached JWT (from
+    // SOLIDB_USERNAME/PASSWORD login) > basic auth fallback.
+    use crate::interpreter::builtins::model::core::{get_api_key, get_jwt_token};
+    if let Some(api_key) = get_api_key() {
+        client = client.with_api_key(api_key);
+    } else if let Some(jwt) = get_jwt_token() {
+        client = client.with_jwt_token(jwt);
+    } else if let (Ok(user), Ok(pass)) = (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        client = client.with_basic_auth(&user, &pass);
+    }
+
+    let raw_bytes = STANDARD
+        .decode(&file.data_base64)
+        .map_err(|e| format!("Failed to decode multipart data: {}", e))?;
+
     let blob_id = client
-        .store_blob(
-            collection,
-            file.data_base64.as_bytes(),
-            &file.filename,
-            &file.content_type,
-        )
+        .store_blob(collection, &raw_bytes, &file.filename, &file.content_type)
         .map_err(|e| format!("Failed to store blob: {}", e))?;
 
     Ok(UploadResult { blob_id })
+}
+
+/// Register the read-only uploader helpers (`upload_url`, `find_uploaded_file`)
+/// directly in the env so they're available everywhere — including the
+/// template-rendering env that doesn't see app-level Soli definitions.
+/// The mutation helpers (`attach_upload`, `detach_upload`, etc.) live in the
+/// Soli prelude in `serve::uploads_prelude` because they're only invoked from
+/// controllers and benefit from staying overridable in plain Soli.
+fn register_uploader_helpers(env: &mut Environment) {
+    use crate::interpreter::builtins::model::{get_uploader, get_uploader_field_value_as_string};
+
+    env.define(
+        "upload_url".to_string(),
+        Value::NativeFunction(NativeFunction::new("upload_url", None, |args| {
+            // upload_url(model, field_name [, blob_id])
+            let inst = match args.first() {
+                Some(Value::Instance(inst)) => inst.clone(),
+                Some(Value::Null) | None => return Ok(Value::Null),
+                Some(other) => {
+                    return Err(format!(
+                        "upload_url() expects a model instance, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let field = match args.get(1) {
+                Some(Value::String(s)) => s.clone(),
+                _ => return Err("upload_url() expects a string field name".to_string()),
+            };
+            let blob_id_arg = match args.get(2) {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+
+            let inst_ref = inst.borrow();
+            let class_name = inst_ref.class.name.clone();
+            let key = match inst_ref.get("_key") {
+                Some(Value::String(s)) => s,
+                _ => return Ok(Value::Null),
+            };
+
+            let Some(config) = get_uploader(&class_name, &field) else {
+                return Ok(Value::Null);
+            };
+
+            let resource = format!("{}s", class_name.to_lowercase());
+            let base = format!("/{}/{}/{}", resource, key, field);
+
+            if config.multiple {
+                let Some(blob_id) = blob_id_arg else {
+                    return Ok(Value::Null);
+                };
+                // Blob id is already in the path → URL changes when the blob
+                // does, so no extra cache-busting query is needed.
+                return Ok(Value::String(format!("{}/{}", base, blob_id)));
+            }
+
+            // Single mode: route is `/<resource>/:id/<field>` (no blob id in
+            // the path), so we tack `?v=<blob_id>` on so the URL changes
+            // whenever the underlying blob is replaced. Browsers and CDNs
+            // treat URLs with different query strings as different cache
+            // entries, which is the cheapest correct invalidation strategy.
+            let Some(stored_id) =
+                get_uploader_field_value_as_string(&inst_ref, &format!("{}_blob_id", field))
+            else {
+                return Ok(Value::Null);
+            };
+            Ok(Value::String(format!("{}?v={}", base, stored_id)))
+        })),
+    );
+
+    env.define(
+        "find_uploaded_file".to_string(),
+        Value::NativeFunction(NativeFunction::new("find_uploaded_file", Some(2), |args| {
+            // find_uploaded_file(req, field_name) -> Hash | Null
+            let req = match args.first() {
+                Some(Value::Hash(h)) => h.clone(),
+                _ => return Ok(Value::Null),
+            };
+            let field = match args.get(1) {
+                Some(Value::String(s)) => s.clone(),
+                _ => return Err("find_uploaded_file() expects a string field name".to_string()),
+            };
+
+            let req_ref = req.borrow();
+
+            // Multipart guard.
+            let headers_val = req_ref
+                .iter()
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
+                .map(|(_, v)| v.clone());
+            let is_multipart = match headers_val {
+                Some(Value::Hash(h)) => h.borrow().iter().any(|(k, v)| {
+                    matches!(k, HashKey::String(s) if s.eq_ignore_ascii_case("content-type"))
+                        && matches!(v, Value::String(ct) if ct.contains("multipart/form-data"))
+                }),
+                _ => false,
+            };
+            if !is_multipart {
+                return Ok(Value::Null);
+            }
+
+            // files iteration.
+            let files_val = req_ref
+                .iter()
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "files"))
+                .map(|(_, v)| v.clone());
+            let Some(Value::Array(files)) = files_val else {
+                return Ok(Value::Null);
+            };
+            for f in files.borrow().iter() {
+                if let Value::Hash(file) = f {
+                    let file_ref = file.borrow();
+                    let name_match = file_ref.iter().any(|(k, v)| {
+                        matches!(k, HashKey::String(s) if s == "name")
+                            && matches!(v, Value::String(n) if n == &field)
+                    });
+                    let has_filename = file_ref.iter().any(|(k, v)| {
+                        matches!(k, HashKey::String(s) if s == "filename")
+                            && matches!(v, Value::String(n) if !n.is_empty())
+                    });
+                    if name_match && has_filename {
+                        return Ok(f.clone());
+                    }
+                }
+            }
+            Ok(Value::Null)
+        })),
+    );
 }

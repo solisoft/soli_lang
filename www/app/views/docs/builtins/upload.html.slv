@@ -8,6 +8,20 @@
         </p>
     </div>
 
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2">Looking for the model-level DSL?</h4>
+        <p class="text-indigo-200/80 text-sm mb-3">
+            For attachments tied to a model (avatars, document attachments, gallery photos), prefer the
+            <a href="/docs/database/models#uploaders" class="text-indigo-300 hover:underline font-semibold">uploader(...)</a>
+            declaration. It owns validation, storage, and replace-on-update from a single line on the model and pairs with the
+            <a href="/docs/routing#auto-routed-attachments" class="text-indigo-300 hover:underline font-semibold">uploads(resource, field)</a>
+            route helper for show/create/destroy endpoints.
+        </p>
+        <p class="text-indigo-200/80 text-sm">
+            The functions below are the <strong>low-level primitives</strong> the DSL builds on. Use them directly when you need fine-grained control or when the upload isn't model-bound.
+        </p>
+    </div>
+
     <!-- set_solidb_address -->
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">set_solidb_address(addr)</h2>
@@ -181,6 +195,7 @@ let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jp
     <!-- Complete Example -->
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
+        <p class="text-gray-400 mb-4">Manual flow using the primitives on this page:</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code># App initialization (call once)
 set_solidb_address("http://localhost:8529")
@@ -236,5 +251,34 @@ def get_file(req)
     }
 end</code></pre>
         </div>
+
+        <p class="text-gray-400 mt-8 mb-4">Same flow with the model-level <a href="/docs/database/models#uploaders" class="text-indigo-400 hover:underline">uploader DSL</a>:</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># app/models/user.sl
+class User &lt; Model
+    uploader("avatar", {
+        "multiple":      false,
+        "content_types": ["image/jpeg", "image/png"],
+        "max_size":      2_000_000
+    })
+end
+
+# config/routes.sl
+uploads("users", "avatar")  # auto-mounts GET/POST/DELETE /users/:id/avatar
+
+# app/controllers/users_controller.sl — upload from a regular edit form
+def update(req)
+    @user = User.find(params.id)
+    if @user.update(this._permit(params))
+        file = find_uploaded_file(req, "avatar")
+        @user.attach_avatar(file) unless file.nil?
+        return redirect("/users/#{@user._key}")
+    end
+    render("users/edit")
+end</code></pre>
+        </div>
+        <p class="text-gray-400 mt-4 text-sm">
+            The DSL handles validation, base64 encoding, replace-on-upload, and orphan cleanup. Pair it with <code>before_delete("cleanup_uploads")</code> + <code>detach_all_uploads(self)</code> to remove blobs when the record is destroyed.
+        </p>
     </section>
 </div>

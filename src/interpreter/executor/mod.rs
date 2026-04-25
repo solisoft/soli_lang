@@ -744,7 +744,7 @@ impl Interpreter {
                             &mut stream,
                             500,
                             Vec::new(),
-                            format!("Error: {}", e),
+                            format!("Error: {}", e).into_bytes(),
                         )?,
                     }
                 }
@@ -752,11 +752,11 @@ impl Interpreter {
                     &mut stream,
                     500,
                     Vec::new(),
-                    format!("Handler not found: {}", route.handler_name),
+                    format!("Handler not found: {}", route.handler_name).into_bytes(),
                 )?,
             }
         } else {
-            self.build_http_response(&mut stream, 404, Vec::new(), "Not Found".to_string())?;
+            self.build_http_response(&mut stream, 404, Vec::new(), b"Not Found".to_vec())?;
         }
 
         Ok(())
@@ -767,7 +767,7 @@ impl Interpreter {
         stream: &mut std::net::TcpStream,
         status: u16,
         headers: Vec<(String, String)>,
-        body: String,
+        body: Vec<u8>,
     ) -> RuntimeResult<()> {
         let status_text = match status {
             200 => "OK",
@@ -787,13 +787,12 @@ impl Interpreter {
         }
 
         response.push_str("\r\n");
-        response.push_str(&body);
+        let mut bytes = response.into_bytes();
+        bytes.extend_from_slice(&body);
 
-        std::io::Write::write_all(stream, response.as_bytes()).map_err(|e| {
-            RuntimeError::General {
-                message: format!("Failed to send response: {}", e),
-                span: Span::default(),
-            }
+        std::io::Write::write_all(stream, &bytes).map_err(|e| RuntimeError::General {
+            message: format!("Failed to send response: {}", e),
+            span: Span::default(),
         })?;
 
         Ok(())
@@ -804,7 +803,7 @@ impl Interpreter {
         stream: &mut std::net::TcpStream,
         message: &str,
     ) -> RuntimeResult<()> {
-        self.build_http_response(stream, 400, Vec::new(), message.to_string())
+        self.build_http_response(stream, 400, Vec::new(), message.as_bytes().to_vec())
     }
 }
 

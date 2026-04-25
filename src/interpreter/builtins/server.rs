@@ -1020,18 +1020,50 @@ fn build_unified_params_refs(
     all
 }
 
+/// Convert a Soli Value representing a response body into raw bytes.
+/// - `Value::String(s)` → UTF-8 bytes of `s` (covers HTML, JSON, text).
+/// - `Value::Array` of `Int` (0..=255) → the byte sequence itself, used for
+///   binary payloads (image/file bytes served back to the client). Any entry
+///   outside that range is clamped via `as u8`.
+/// - Anything else → `format!("{}", v)` as UTF-8 bytes (fallback).
+fn body_value_to_bytes(v: Value) -> Vec<u8> {
+    match v {
+        Value::String(s) => s.into_bytes(),
+        Value::Array(arr) => {
+            let borrowed = arr.borrow();
+            let mut out = Vec::with_capacity(borrowed.len());
+            let mut all_bytes = true;
+            for item in borrowed.iter() {
+                if let Value::Int(n) = item {
+                    out.push(*n as u8);
+                } else {
+                    all_bytes = false;
+                    break;
+                }
+            }
+            if all_bytes {
+                out
+            } else {
+                drop(borrowed);
+                format!("{}", Value::Array(arr)).into_bytes()
+            }
+        }
+        other => format!("{}", other).into_bytes(),
+    }
+}
+
 /// Extract response data from a response hash returned by a handler.
 /// Checks fast-path thread-local first (set by render_json/render_text).
 /// Returns Vec instead of HashMap since all callers need Vec<(String, String)>.
-pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, String) {
+pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>) {
     // Fast path: if render_json/render_text set a pre-built response, use it directly
     if let Some(fast) = take_fast_path_response() {
-        return (fast.status, fast.headers, fast.body);
+        return (fast.status, fast.headers, fast.body.into_bytes());
     }
 
     let mut status = 200u16;
     let mut headers = Vec::new();
-    let mut body = String::new();
+    let mut body: Vec<u8> = Vec::new();
 
     if let Value::Hash(hash) = response {
         // Try to take sole ownership of the inner map to avoid cloning
@@ -1058,10 +1090,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, String)
                                 }
                             }
                             "body" => {
-                                body = match v {
-                                    Value::String(s) => s.clone(),
-                                    _ => format!("{}", v),
-                                };
+                                body = body_value_to_bytes(v.clone());
                             }
                             _ => {}
                         }
@@ -1100,17 +1129,14 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, String)
                         }
                     }
                     "body" => {
-                        body = match v {
-                            Value::String(s) => s,
-                            _ => format!("{}", v),
-                        };
+                        body = body_value_to_bytes(v);
                     }
                     _ => {}
                 }
             }
         }
     } else {
-        body = format!("{}", response);
+        body = body_value_to_bytes(response);
     }
 
     (status, headers, body)

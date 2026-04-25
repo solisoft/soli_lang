@@ -57,6 +57,13 @@ impl Interpreter {
                 let hash = hash.borrow();
                 Ok(hash_get_value(&hash, key).cloned().unwrap_or(Value::Null))
             }
+            // Instance indexing with a string is dynamic field access — same
+            // result as `instance.<key>` but with a runtime-computed name.
+            // Used by generic helpers (e.g. uploader prelude) that need to
+            // read fields like `<field>_blob_id` where `<field>` is a param.
+            (Value::Instance(inst), Value::String(key)) => {
+                Ok(inst.borrow().get(key).unwrap_or(Value::Null))
+            }
             _ => Err(RuntimeError::type_error(
                 format!(
                     "cannot index {} with {}",

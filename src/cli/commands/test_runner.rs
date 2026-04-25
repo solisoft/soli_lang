@@ -242,7 +242,7 @@ pub fn run_test(
                     .map(std::process::Stdio::from)
                     .unwrap_or(std::process::Stdio::null()),
             );
-if enable_coverage {
+        if enable_coverage {
             cmd.env("SOLI_COVERAGE_ENABLED", "1");
         }
         let child = cmd.spawn().expect("Failed to spawn test server subprocess");
@@ -436,7 +436,11 @@ if enable_coverage {
                     let parts: Vec<&str> = body.splitn(2, "tests failed:").collect();
                     let count = parts[0].trim();
                     let failures = parts[1].trim();
-                    println!("  ┌─ {} test failure{}", count, if count == "1" { "" } else { "s" });
+                    println!(
+                        "  ┌─ {} test failure{}",
+                        count,
+                        if count == "1" { "" } else { "s" }
+                    );
                     for line in failures.lines() {
                         let line = line.trim();
                         if line.starts_with("- ") {
@@ -534,7 +538,7 @@ if enable_coverage {
                 }
             }
         }
-if let Some(ref tracker_rc) = tracker {
+        if let Some(ref tracker_rc) = tracker {
             let coverage = tracker_rc.lock().unwrap().get_aggregated_coverage();
 
             let app_coverage = AggregatedCoverage {
@@ -557,17 +561,6 @@ if let Some(ref tracker_rc) = tracker {
             };
 
             if app_coverage.file_coverages.is_empty() && coverage.total_lines() == 0 {
-                let reporter = CoverageReporter::new(CoverageConfig {
-                    enabled: true,
-                    output_dir: PathBuf::from("coverage"),
-                    formats: vec![OutputFormat::Console],
-                    threshold: coverage_min.or(Some(80.0)),
-                    exclude_patterns: Vec::new(),
-                    exclude_lines: Vec::new(),
-                    show_uncovered: true,
-                    per_test: false,
-                    root_dir: Some(app_dir.to_path_buf()),
-                });
                 println!("\nCoverage: N/A (no source files found in app/, config/, lib/)");
             } else {
                 let config = CoverageConfig {

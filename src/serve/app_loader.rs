@@ -486,10 +486,11 @@ pub(crate) fn load_controllers_in_worker(
     }
 }
 
-/// Define DSL helpers for routes in the interpreter.
-/// This must be called before routes.sl can be executed.
-pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
-    let dsl_source = r#"
+/// Soli source for the routing DSL prelude. Defines `get`/`post`/`resources`/
+/// `namespace`/`uploads`/etc. as plain Soli functions that delegate to the
+/// `router_*` natives. Sourced from one place so initial-load (in `mod.rs`)
+/// and worker hot-reload (in `define_routes_dsl`) can never drift.
+pub(crate) const ROUTES_DSL_SOURCE: &str = r#"
         fn resources(name: Any, block: Any = null) {
             router_resource_enter(name, null);
             if (block != null) { block(); }
@@ -527,9 +528,20 @@ pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), Run
         fn patch(path: Any, action: Any) { router_match("PATCH", path, action); }
 
         fn websocket(path: Any, action: Any) { router_websocket(path, action); }
+
+        fn uploads(resource: Any, field: Any) {
+            router_match("GET", "/" + resource + "/:id/" + field, "attachments#show");
+            router_match("POST", "/" + resource + "/:id/" + field, "attachments#create");
+            router_match("DELETE", "/" + resource + "/:id/" + field, "attachments#destroy");
+            router_match("GET", "/" + resource + "/:id/" + field + "/:blob_id", "attachments#show");
+            router_match("DELETE", "/" + resource + "/:id/" + field + "/:blob_id", "attachments#destroy");
+        }
     "#;
 
-    let tokens = crate::lexer::Scanner::new(dsl_source)
+/// Define DSL helpers for routes in the interpreter.
+/// This must be called before routes.sl can be executed.
+pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
+    let tokens = crate::lexer::Scanner::new(ROUTES_DSL_SOURCE)
         .scan_tokens()
         .map_err(|e| RuntimeError::General {
             message: format!("DSL Lexer error: {}", e),

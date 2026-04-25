@@ -13,6 +13,7 @@ mod middleware;
 pub mod prefetch;
 mod router;
 mod server_constants;
+mod uploads_prelude;
 pub mod websocket;
 
 // Modularized subcomponents
@@ -141,7 +142,7 @@ pub(crate) struct RequestData {
 pub(crate) struct ResponseData {
     pub(crate) status: u16,
     pub(crate) headers: Vec<(String, String)>,
-    pub(crate) body: String,
+    pub(crate) body: Vec<u8>,
 }
 
 // File tracking functions (used by app_loader for initial file tracking in workers)
@@ -285,6 +286,13 @@ pub fn serve_folder_with_options_and_workers(
         }
     }
 
+    // Ship the framework upload helpers + `AttachmentsController` class
+    // BEFORE user controllers so user-defined definitions cleanly override
+    // by being later in the same env.
+    if let Err(e) = uploads_prelude::define_uploads_prelude(&mut interpreter) {
+        eprintln!("Warning: failed to load uploads prelude: {}", e);
+    }
+
     // Scan and load controllers
     let controller_files = scan_controllers(&controllers_dir)?;
     for controller_path in &controller_files {
@@ -356,68 +364,10 @@ pub fn serve_folder_with_options_and_workers(
     // Load routes from config/routes.sl if it exists
     let routes_file = folder.join("config").join("routes.sl");
     if routes_file.exists() {
-        // Define DSL helpers in Soli
-        // Note: Using named functions for blocks since lambda expressions are not supported
-        // IMPORTANT: Function parameters require type annotations in Soli
-        let dsl_source = r#"
-            fn resources(name: Any, block: Any = null) {
-                router_resource_enter(name, null);
-                if (block != null) { block(); }
-                router_resource_exit();
-            }
-
-            fn namespace(name: Any, block: Any) {
-                router_namespace_enter(name);
-                if (block != null) { block(); }
-                router_namespace_exit();
-            }
-
-            fn member(block: Any) {
-                router_member_enter();
-                if (block != null) { block(); }
-                router_member_exit();
-            }
-
-            fn collection(block: Any) {
-                router_collection_enter();
-                if (block != null) { block(); }
-                router_collection_exit();
-            }
-
-            // Scope middleware to a block of routes
-            // middleware("auth", -> { get("/admin", "admin#index"); })
-            fn middleware(mw_names: Any, block: Any) {
-                router_middleware_scope(mw_names);
-                if (block != null) { block(); }
-                router_middleware_scope_exit();
-            }
-
-            fn get(path: Any, action: Any) { router_match("GET", path, action); }
-            fn post(path: Any, action: Any) { router_match("POST", path, action); }
-            fn put(path: Any, action: Any) { router_match("PUT", path, action); }
-            fn delete(path: Any, action: Any) { router_match("DELETE", path, action); }
-            fn patch(path: Any, action: Any) { router_match("PATCH", path, action); }
-
-            // WebSocket route registration
-            // websocket("/path", "controller#handler")
-            fn websocket(path: Any, action: Any) { router_websocket(path, action); }
-        "#;
-
-        // Execute DSL definitions
-        // Lex and Parse DSL
-        let dsl_tokens = crate::lexer::Scanner::new(dsl_source)
-            .scan_tokens()
-            .map_err(|e| RuntimeError::General {
-                message: format!("DSL Lexer error: {}", e),
-                span: Span::default(),
-            })?;
-        let dsl_program = crate::parser::Parser::new(dsl_tokens)
-            .parse()
-            .map_err(|e| RuntimeError::General {
-                message: format!("DSL Parser error: {}", e),
-                span: Span::default(),
-            })?;
-        interpreter.interpret(&dsl_program)?;
+        // Define DSL helpers (resources/get/post/uploads/etc.). Single
+        // source of truth lives in `app_loader::ROUTES_DSL_SOURCE` so
+        // initial load and worker hot-reload can never drift.
+        define_routes_dsl(&mut interpreter)?;
 
         // Clear auto-derived routes to prefer explicit ones
         crate::interpreter::builtins::server::clear_routes();
@@ -1110,13 +1060,22 @@ fn worker_loop(
         eprintln!("Worker {}: Error loading models: {}", worker_id, e);
     }
 
-    // Load controllers in this worker so functions are defined in environment
-    load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
-
     // Define DSL helpers for routes (needed for hot reload)
     if let Err(e) = define_routes_dsl(interpreter) {
         eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
     }
+
+    // Ship the framework upload helpers + `AttachmentsController` class
+    // BEFORE user controllers load, so a user-defined `AttachmentsController`
+    // (or a user `attach_upload`/`detach_upload`/etc.) cleanly overrides the
+    // default by being defined later in the same env.
+    if let Err(e) = uploads_prelude::define_uploads_prelude(interpreter) {
+        eprintln!("Worker {}: Error loading uploads prelude: {}", worker_id, e);
+    }
+
+    // Load controllers in this worker so functions are defined in environment.
+    // Anything user-defined here shadows the framework prelude above.
+    load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
 
     let _worker_routes = get_routes();
 
@@ -1993,13 +1952,18 @@ async fn handle_hyper_request(
                 builder = builder.header(key.as_str(), value.as_str());
             }
 
-            // Inject live reload script for HTML responses (only in dev mode)
-            let body = if reload_tx.is_some() {
+            // Inject live reload script for HTML responses (only in dev mode).
+            // HTML is UTF-8, so we can safely view the body as &str for injection.
+            // Binary responses (images/files) skip this path via the content-type guard.
+            let body: Vec<u8> = if reload_tx.is_some() {
                 let is_html = resp_data.headers.iter().any(|(k, v)| {
                     k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
                 });
                 if is_html {
-                    live_reload::inject_live_reload_script(&resp_data.body)
+                    match std::str::from_utf8(&resp_data.body) {
+                        Ok(html) => live_reload::inject_live_reload_script(html).into_bytes(),
+                        Err(_) => resp_data.body,
+                    }
                 } else {
                     resp_data.body
                 }
@@ -2872,7 +2836,7 @@ fn call_handler(
                                 "Content-Type".to_string(),
                                 "text/html; charset=utf-8".to_string(),
                             )],
-                            body: error_html,
+                            body: error_html.into_bytes(),
                         }
                     } else {
                         let request_id = Uuid::new_v4().to_string();
@@ -2889,7 +2853,7 @@ fn call_handler(
                                 "Content-Type".to_string(),
                                 "text/html; charset=utf-8".to_string(),
                             )],
-                            body: error_html,
+                            body: error_html.into_bytes(),
                         }
                     }
                 }
@@ -2918,7 +2882,7 @@ fn call_handler(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             } else {
                 let request_id = Uuid::new_v4().to_string();
@@ -2935,7 +2899,7 @@ fn call_handler(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             }
         }
@@ -3033,7 +2997,7 @@ fn call_oop_controller_action(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             } else {
                 let request_id = Uuid::new_v4().to_string();
@@ -3050,7 +3014,7 @@ fn call_oop_controller_action(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             });
         }
@@ -3139,7 +3103,7 @@ fn call_oop_controller_action(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             } else {
                 let request_id = Uuid::new_v4().to_string();
@@ -3156,7 +3120,7 @@ fn call_oop_controller_action(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 }
             }
         }
@@ -3388,7 +3352,7 @@ fn execute_before_actions(
                 return Some(ResponseData {
                     status: 500,
                     headers: vec![],
-                    body: format!("Before action error: {}", e),
+                    body: format!("Before action error: {}", e).into_bytes(),
                 });
             }
         }
@@ -3420,7 +3384,16 @@ fn execute_after_actions(
     );
     response_map.insert(
         HashKey::String("body".to_string()),
-        Value::String(response.body.clone()),
+        match std::str::from_utf8(&response.body) {
+            Ok(s) => Value::String(s.to_string()),
+            Err(_) => Value::Array(Rc::new(RefCell::new(
+                response
+                    .body
+                    .iter()
+                    .map(|&b| Value::Int(b as i64))
+                    .collect(),
+            ))),
+        },
     );
     let response_value = Value::Hash(Rc::new(RefCell::new(response_map)));
 
@@ -3472,7 +3445,7 @@ fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
             "Content-Type".to_string(),
             "text/html; charset=utf-8".to_string(),
         )],
-        body,
+        body: body.into_bytes(),
     })
 }
 
@@ -3493,7 +3466,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         }
 
         let mut status = 200i64;
-        let mut body = String::new();
+        let mut body: Vec<u8> = Vec::new();
         let mut headers = Vec::new();
 
         for (key, val) in fields.iter() {
@@ -3504,11 +3477,26 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
                             status = *s;
                         }
                     }
-                    "body" => {
-                        if let Value::String(b) = val {
-                            body = b.clone();
+                    "body" => match val {
+                        Value::String(b) => body = b.clone().into_bytes(),
+                        Value::Array(arr) => {
+                            let borrowed = arr.borrow();
+                            let mut bytes = Vec::with_capacity(borrowed.len());
+                            let mut ok = true;
+                            for item in borrowed.iter() {
+                                if let Value::Int(n) = item {
+                                    bytes.push(*n as u8);
+                                } else {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                            if ok {
+                                body = bytes;
+                            }
                         }
-                    }
+                        _ => {}
+                    },
                     "headers" => {
                         if let Value::Hash(h) = val {
                             for (hk, hv) in h.borrow().iter() {
@@ -3762,7 +3750,7 @@ fn handle_request(
                         "text/html; charset=utf-8".to_string(),
                     )]
                 },
-                body: error_html,
+                body: error_html.into_bytes(),
             };
         }
     };
@@ -3794,7 +3782,7 @@ fn handle_request(
                     "Content-Type".to_string(),
                     "text/html; charset=utf-8".to_string(),
                 )],
-                body: error_html,
+                body: error_html.into_bytes(),
             };
         }
     };
@@ -3922,7 +3910,7 @@ fn handle_request(
                                 "Content-Type".to_string(),
                                 "text/html; charset=utf-8".to_string(),
                             )],
-                            body: error_html,
+                            body: error_html.into_bytes(),
                         });
                     }
                     let request_id = Uuid::new_v4().to_string();
@@ -3938,7 +3926,7 @@ fn handle_request(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
                         )],
-                        body: error_html,
+                        body: error_html.into_bytes(),
                     });
                 }
             },
@@ -3966,7 +3954,7 @@ fn handle_request(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
                         )],
-                        body: error_html,
+                        body: error_html.into_bytes(),
                     });
                 }
                 let request_id = Uuid::new_v4().to_string();
@@ -3983,7 +3971,7 @@ fn handle_request(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 });
             }
         }
@@ -4038,7 +4026,7 @@ fn handle_request(
                                 "Content-Type".to_string(),
                                 "text/html; charset=utf-8".to_string(),
                             )],
-                            body: error_html,
+                            body: error_html.into_bytes(),
                         });
                     }
                     let request_id = Uuid::new_v4().to_string();
@@ -4054,7 +4042,7 @@ fn handle_request(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
                         )],
-                        body: error_html,
+                        body: error_html.into_bytes(),
                     });
                 }
             },
@@ -4078,7 +4066,7 @@ fn handle_request(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
                         )],
-                        body: error_html,
+                        body: error_html.into_bytes(),
                     });
                 }
                 let request_id = Uuid::new_v4().to_string();
@@ -4095,7 +4083,7 @@ fn handle_request(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html,
+                    body: error_html.into_bytes(),
                 });
             }
         }

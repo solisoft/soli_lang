@@ -12,11 +12,44 @@ use crate::interpreter::builtins::model::crud::json_doc_to_instance;
 use crate::interpreter::builtins::model::get_relation;
 use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::builtins::model::relations::RelationType;
+use crate::interpreter::builtins::model::uploaders::get_uploader;
 use crate::interpreter::builtins::model::value_to_json;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
+
+/// Auto-generated method on a model with `uploader(field, ...)`. Maps a
+/// member name like `attach_photo` to `(UploaderMethod::Attach, "photo")`,
+/// `photo_url` to `(UploaderMethod::Url, "photo")`, etc. Returns `None` if
+/// the name doesn't fit any uploader-method pattern.
+///
+/// We don't validate the field exists here — the caller does that with
+/// `get_uploader(class_name, field)` so a method like `attach_xyz` on a
+/// model with no `xyz` uploader falls through to normal lookup.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum UploaderMethod {
+    Attach,
+    Detach,
+    Url,
+    Urls,
+}
+
+pub(crate) fn parse_uploader_method_name(name: &str) -> Option<(UploaderMethod, &str)> {
+    if let Some(field) = name.strip_prefix("attach_") {
+        return Some((UploaderMethod::Attach, field));
+    }
+    if let Some(field) = name.strip_prefix("detach_") {
+        return Some((UploaderMethod::Detach, field));
+    }
+    if let Some(field) = name.strip_suffix("_urls") {
+        return Some((UploaderMethod::Urls, field));
+    }
+    if let Some(field) = name.strip_suffix("_url") {
+        return Some((UploaderMethod::Url, field));
+    }
+    None
+}
 
 fn parse_dynamic_finder(name: &str) -> Result<(Vec<String>, usize), String> {
     let prefix = "find_by_";
@@ -751,6 +784,42 @@ impl Interpreter {
             }
         }
 
+        // Auto-generated uploader methods (attach_<field>, detach_<field>,
+        // <field>_url, <field>_urls). Only kicks in when the model declared
+        // `uploader("<field>", { ... })` AND the user hasn't defined a
+        // method by this name on the class — class methods resolve before
+        // this access path.
+        let inst_ref = inst.borrow();
+        if inst_ref.class.is_model_subclass() {
+            if let Some((kind, candidate_field)) = parse_uploader_method_name(name) {
+                let class_name = inst_ref.class.name.clone();
+                let candidate = candidate_field.to_string();
+                drop(inst_ref);
+                let multiple_required = matches!(kind, UploaderMethod::Urls);
+                if let Some(config) = get_uploader(&class_name, &candidate) {
+                    // `<field>_urls` only exists for `multiple: true`; let
+                    // single-mode fall through so a method named like
+                    // `payments_urls` on a non-uploader field doesn't shadow.
+                    if multiple_required && !config.multiple {
+                        // fall through
+                    } else if !multiple_required
+                        && matches!(kind, UploaderMethod::Url)
+                        && config.multiple
+                    {
+                        // `<field>_url` on a multiple uploader is meaningless
+                        // — caller wants `<field>_urls`. Fall through.
+                    } else {
+                        return Ok(Value::Method(ValueMethod {
+                            receiver: Box::new(Value::Instance(inst.clone())),
+                            method_name: name.to_string(),
+                        }));
+                    }
+                }
+            }
+        } else {
+            drop(inst_ref);
+        }
+
         // Check if this is a translated field
         #[allow(clippy::collapsible_match)]
         let inst_ref = inst.borrow();
@@ -1005,9 +1074,9 @@ impl Interpreter {
                         Value::Class(c) => c.clone(),
                         _ => unreachable!(),
                     };
-                    let instance = Rc::new(RefCell::new(
-                        crate::interpreter::value::Instance::new(class_rc),
-                    ));
+                    let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
+                        class_rc,
+                    )));
                     match args.first() {
                         None | Some(Value::Null) => {}
                         Some(Value::Hash(pairs)) => {
@@ -1187,9 +1256,9 @@ impl Interpreter {
                 let class_rc = Rc::new(class.clone());
                 return Ok(Value::NativeFunction(NativeFunction::new(
                     name,
-                    Some(arity + 1),
+                    Some(arity),
                     move |args: Vec<Value>| -> Result<Value, String> {
-                        execute_dynamic_finder(&class_rc, &attributes, &args[1..])
+                        execute_dynamic_finder(&class_rc, &attributes, &args)
                     },
                 )));
             }

@@ -1,5 +1,5 @@
 //! Access expression modules (member, index, qualified name).
 
 mod index;
-mod member;
+pub(crate) mod member;
 mod qualified;

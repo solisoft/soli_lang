@@ -255,6 +255,7 @@ mod engine_context;
 pub mod query;
 mod registry;
 pub mod relations;
+pub mod uploaders;
 pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
@@ -279,6 +280,10 @@ pub use registry::{
 pub use relations::{
     build_relation, classify, get_relation, get_relations, register_relation, singularize,
     RelationDef, RelationType,
+};
+pub use uploaders::{
+    default_collection as default_upload_collection, get_uploader,
+    get_uploader_field_value_as_string, get_uploaders, register_uploader, UploaderConfig,
 };
 pub use validation::{register_validation, run_validations, ValidationError, ValidationRule};
 

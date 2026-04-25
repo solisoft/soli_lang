@@ -21,6 +21,7 @@ pub use super::registry::{
 
 use super::callbacks::register_callback;
 use super::relations::{build_relation, get_relation, register_relation, RelationType};
+use super::uploaders::{default_collection, get_uploader, register_uploader, UploaderConfig};
 use super::validation::{register_validation, ValidationRule};
 
 /// Get a Transaction class for a specific model.
@@ -328,6 +329,125 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
         Some(Value::Class(class)) => Ok(class.clone()),
         _ => Err("Expected class as first argument".to_string()),
     }
+}
+
+/// Build an `UploaderConfig` from `uploader(class, name, options_hash)` args.
+/// The class is `args[0]`, the field name is `args[1]`, the options hash is
+/// `args[2]`.
+fn build_uploader_config_from_args(
+    class_name: &str,
+    args: &[Value],
+) -> Result<UploaderConfig, String> {
+    use crate::interpreter::value::HashKey;
+
+    let name = match args.get(1) {
+        Some(Value::String(s)) => s.clone(),
+        Some(other) => {
+            return Err(format!(
+                "uploader() expects string field name, got {}",
+                other.type_name()
+            ))
+        }
+        None => return Err("uploader() requires a field name".to_string()),
+    };
+
+    let options = match args.get(2) {
+        Some(Value::Hash(hash)) => hash.borrow().clone(),
+        Some(other) => {
+            return Err(format!(
+                "uploader() expects an options hash, got {}",
+                other.type_name()
+            ))
+        }
+        None => return Err("uploader() requires an options hash".to_string()),
+    };
+
+    let mut multiple = false;
+    let mut content_types: Vec<String> = Vec::new();
+    let mut max_size: Option<u64> = None;
+    let mut collection: Option<String> = None;
+
+    for (k, v) in options {
+        if let HashKey::String(key) = k {
+            match key.as_str() {
+                "multiple" => {
+                    if let Value::Bool(b) = v {
+                        multiple = b;
+                    }
+                }
+                "content_types" => {
+                    if let Value::Array(arr) = v {
+                        for item in arr.borrow().iter() {
+                            if let Value::String(s) = item {
+                                content_types.push(s.clone());
+                            }
+                        }
+                    }
+                }
+                "max_size" => match v {
+                    Value::Int(n) if n >= 0 => max_size = Some(n as u64),
+                    Value::Int(_) => {
+                        return Err("uploader() max_size must be non-negative".to_string())
+                    }
+                    _ => {}
+                },
+                "collection" => {
+                    if let Value::String(s) = v {
+                        collection = Some(s);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if content_types.is_empty() {
+        return Err(format!(
+            "uploader(\"{}\") requires a non-empty content_types array",
+            name
+        ));
+    }
+    let max_size =
+        max_size.ok_or_else(|| format!("uploader(\"{}\") requires a max_size (bytes)", name))?;
+    let collection = collection.unwrap_or_else(|| default_collection(class_name, &name));
+
+    Ok(UploaderConfig {
+        name,
+        multiple,
+        content_types,
+        max_size,
+        collection,
+    })
+}
+
+/// Convert an `UploaderConfig` (or `None`) to a Soli `Value` so Soli code can
+/// inspect it. `None` becomes `Value::Null`.
+fn uploader_config_to_value(config: Option<UploaderConfig>) -> Value {
+    use crate::interpreter::value::{HashKey, HashPairs};
+
+    let Some(c) = config else {
+        return Value::Null;
+    };
+    let mut pairs: HashPairs = HashPairs::default();
+    pairs.insert(HashKey::String("name".to_string()), Value::String(c.name));
+    pairs.insert(
+        HashKey::String("multiple".to_string()),
+        Value::Bool(c.multiple),
+    );
+    let cts: Vec<Value> = c.content_types.into_iter().map(Value::String).collect();
+    pairs.insert(
+        HashKey::String("content_types".to_string()),
+        Value::Array(Rc::new(RefCell::new(cts))),
+    );
+    pairs.insert(
+        HashKey::String("max_size".to_string()),
+        Value::Int(c.max_size as i64),
+    );
+    pairs.insert(
+        HashKey::String("collection".to_string()),
+        Value::String(c.collection),
+    );
+    Value::Hash(Rc::new(RefCell::new(pairs)))
 }
 
 /// Parse the result of a count query into a `Value::Int`.
@@ -641,6 +761,20 @@ impl Model {
                 })),
             );
         }
+
+        // ====================================================================
+        // Uploader DSL: uploader("photo", { multiple, content_types, ... })
+        // ====================================================================
+
+        native_static_methods.insert(
+            "uploader".to_string(),
+            Rc::new(NativeFunction::new("Model.uploader", Some(3), |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let config = build_uploader_config_from_args(&class_name, &args)?;
+                register_uploader(&class_name, config);
+                Ok(Value::Null)
+            })),
+        );
 
         // ====================================================================
         // Translation DSL: translate("field1", "field2", ...)
@@ -2513,6 +2647,111 @@ pub fn register_model_builtins(env: &mut Environment) {
             update_metadata(&class_name, metadata);
             Ok(Value::Null)
         })),
+    );
+
+    // uploader(name, options) - Declare a blob attachment on the model
+    env.define(
+        "uploader".to_string(),
+        Value::NativeFunction(NativeFunction::new("uploader", Some(3), |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let config = build_uploader_config_from_args(&class_name, &args)?;
+            register_uploader(&class_name, config);
+            Ok(Value::Null)
+        })),
+    );
+
+    // model_uploader_config(class_name, field) - Read an uploader config from
+    // Soli code. Used by the CRM `attach_upload`/`detach_upload` helpers and
+    // by the generic AttachmentsController to drive validation + storage.
+    env.define(
+        "model_uploader_config".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "model_uploader_config",
+            Some(2),
+            |args| {
+                let class_name =
+                    match args.first() {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(Value::Class(c)) => c.name.clone(),
+                        _ => return Err(
+                            "model_uploader_config(class_name, field) expects a class or string"
+                                .to_string(),
+                        ),
+                    };
+                let field = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => {
+                        return Err(
+                            "model_uploader_config(class_name, field) expects a string field"
+                                .to_string(),
+                        )
+                    }
+                };
+                Ok(uploader_config_to_value(get_uploader(&class_name, &field)))
+            },
+        )),
+    );
+
+    // model_uploader_fields(class_name) → list of declared uploader field
+    // names (e.g. ["photo"]). Lets generic helpers iterate every attachment
+    // on a model — used by `detach_all_uploads` for destroy-time cleanup.
+    env.define(
+        "model_uploader_fields".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "model_uploader_fields",
+            Some(1),
+            |args| {
+                let class_name = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::Class(c)) => c.name.clone(),
+                    _ => {
+                        return Err(
+                            "model_uploader_fields(class_name) expects a class or string"
+                                .to_string(),
+                        )
+                    }
+                };
+                use super::uploaders::get_uploaders;
+                let names: Vec<Value> = get_uploaders(&class_name)
+                    .into_iter()
+                    .map(|u| Value::String(u.name))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(names))))
+            },
+        )),
+    );
+
+    // find_model_class_by_collection("contacts") → Contact class, or null.
+    // Lets controllers route on URL segments without hardcoding a resource→
+    // class table. Walks the MODEL_CLASSES thread-local (populated when
+    // model files are loaded) and matches on `class_name_to_collection`.
+    env.define(
+        "find_model_class_by_collection".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "find_model_class_by_collection",
+            Some(1),
+            |args| {
+                let collection = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => {
+                        return Err(
+                            "find_model_class_by_collection(name) expects a string".to_string()
+                        )
+                    }
+                };
+                use super::registry::MODEL_CLASSES;
+                let result = MODEL_CLASSES.with(|classes| {
+                    classes.borrow().iter().find_map(|(name, class)| {
+                        if class_name_to_collection(name) == collection {
+                            Some(Value::Class(class.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                });
+                Ok(result.unwrap_or(Value::Null))
+            },
+        )),
     );
 
     // Relation DSL global functions: has_many, has_one, belongs_to

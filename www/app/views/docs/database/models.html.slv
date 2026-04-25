@@ -412,6 +412,130 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         </table>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Uploaders</h2>
+    <p class="text-gray-400 mb-4">
+        Declare a blob attachment on a model with <code>uploader(name, options)</code>. Soli registers the field, validates incoming files against the rules you supply, and stores the blob in SoliDB. The DSL also auto-generates instance methods so the controller is a one-liner.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contact.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Contact &lt; Model
+    uploader("photo", {
+        "multiple":      false,
+        "content_types": ["image/jpeg", "image/png", "image/webp"],
+        "max_size":      2_000_000,
+        "collection":    "contact_photos"   # optional, defaults to &lt;snake&gt;_&lt;field&gt;s
+    })
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Options</h3>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>multiple</code> &mdash; <code>false</code> stores one blob in <code>&lt;name&gt;_blob_id</code>; <code>true</code> stores an array of ids in <code>&lt;name&gt;_blob_ids</code>.</li>
+        <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip.</li>
+        <li><code>max_size</code> &mdash; hard cap in bytes. Same fast-fail.</li>
+        <li><code>collection</code> &mdash; SoliDB collection name. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Auto-generated instance methods</h3>
+    <p class="text-gray-400 mb-4">For each declared uploader, Soli synthesizes:</p>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-3 font-semibold text-white">Method</th>
+                    <th class="px-6 py-3 font-semibold text-white">Behavior</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.attach_photo(file)</td><td class="px-6 py-3 text-gray-400">Validate, store, replace the previous blob (single mode) or append (multiple mode). Sets <code>_errors</code> on failure.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.detach_photo([blob_id])</td><td class="px-6 py-3 text-gray-400">Remove the current blob (single) or the named one (multiple). <code>blob_id</code> is required for multiple uploaders.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.photo_url()</td><td class="px-6 py-3 text-gray-400">Return the proxy URL or <code>null</code>. Single-mode only.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.photo_urls()</td><td class="px-6 py-3 text-gray-400">Return one URL per stored blob_id. Multiple-mode only.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-4">A typical edit flow becomes a single call:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">def update(req)
+    @contact = Contact.find(params.id)
+    if @contact.update(this._permit(params))
+        return @contact.detach_photo() if params["remove_photo"] == "1"
+        file = find_uploaded_file(req, "photo")
+        @contact.attach_photo(file) unless file.nil?
+        # ...
+    end
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Shipped with the framework &mdash; no setup needed</h3>
+    <p class="text-gray-400 mb-4">
+        The upload helpers (<code>find_uploaded_file</code>, <code>attach_upload</code>, <code>detach_upload</code>, <code>detach_all_uploads</code>, <code>upload_url</code>) and the generic <code>AttachmentsController</code> that handles
+        <a href="/docs/routing#auto-routed-attachments" class="text-indigo-400 hover:underline">auto-routed attachments</a>
+        are loaded on every <code>soli serve</code> &mdash; you do <strong>not</strong> need to copy any controller file into <code>app/controllers/</code>. Declaring <code>uploader(...)</code> on a model and <code>uploads("resource", "field")</code> in routes is enough.
+    </p>
+    <p class="text-gray-400 mb-4">
+        SoliDB connection details come from environment variables (with sensible defaults):
+    </p>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>SOLIDB_HOST</code> &mdash; default <code>http://localhost:6745</code></li>
+        <li><code>SOLIDB_DATABASE</code> &mdash; default <code>default</code></li>
+        <li><code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code> &mdash; auth skipped if unset</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Overriding the defaults</h3>
+    <p class="text-gray-400 mb-4">
+        Define a same-named function or class in <code>app/controllers/</code> and your version wins &mdash; the framework prelude runs before user controllers, so user definitions naturally shadow it.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/attachments_controller.sl &mdash; custom auth + response shape</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class AttachmentsController &lt; ApplicationController
+    static {
+        this.before_action(:create, :destroy, fn(req) {
+            return halt(403) unless req["current_user"].is_admin()
+        })
+    }
+    # ... or override individual actions
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">
+        Same trick for <code>solidb_client()</code>: define your own in <code>app/controllers/support.sl</code> and the prelude's default is bypassed.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Cleanup on destroy</h3>
+    <p class="text-gray-400 mb-4">
+        <code>before_delete</code> callbacks aren't yet dispatched by <code>Model.delete(id)</code>, so call <code>detach_all_uploads(record)</code> explicitly before deleting until that lands. The helper iterates every uploader declared on the class.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">def destroy(req)
+    contact = Contact.find(params.id)
+    detach_all_uploads(contact) unless contact.nil?
+    Contact.delete(params.id)
+    redirect("/contacts")
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Reflection helpers</h3>
+    <p class="text-gray-400 mb-4">Inside controllers or generic helpers you can read a model's uploader configuration without hardcoding the rules:</p>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4">
+        <li><code>model_uploader_config(class_or_name, field)</code> &rarr; hash of <code>{ name, multiple, content_types, max_size, collection }</code>, or <code>null</code>.</li>
+        <li><code>model_uploader_fields(class_or_name)</code> &rarr; list of declared field names.</li>
+        <li><code>find_model_class_by_collection(collection)</code> &rarr; the model class whose <code>class_name_to_collection</code> matches, or <code>null</code>.</li>
+    </ul>
+
+    <p class="text-gray-400 mb-12">
+        See <a href="/docs/routing#auto-routed-attachments" class="text-indigo-400 hover:underline">Auto-routed attachments</a> for the matching <code>uploads(resource, field)</code> route helper, which mounts <code>show</code>/<code>create</code>/<code>destroy</code> endpoints driven by the same config.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">

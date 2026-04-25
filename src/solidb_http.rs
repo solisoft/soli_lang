@@ -485,6 +485,14 @@ impl SoliDBClient {
         Ok(response)
     }
 
+    /// Upload a blob using SoliDB's native blob API
+    /// (`POST /_api/blob/{db}/{collection}`). The endpoint chunks the file and
+    /// stores the chunks in the blob collection, so downloads via either the
+    /// blob HTTP API or the DB admin UI see real binary data rather than a
+    /// document with a base64 `data` field. Previously this method posted a
+    /// regular document with the base64-encoded body, which meant blobs
+    /// written from Soli were unreadable from anything that used the real
+    /// blob endpoints.
     pub fn store_blob(
         &self,
         collection: &str,
@@ -492,49 +500,125 @@ impl SoliDBClient {
         filename: &str,
         content_type: &str,
     ) -> Result<String, SoliDBError> {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-        use uuid::Uuid;
+        let db = self.get_db()?.to_string();
+        let url = format!("{}/_api/blob/{}/{}", self.base_url, db, collection);
+        let client = get_http_client().clone();
 
-        let db = self.get_db()?;
-        let blob_id = Uuid::new_v4().to_string();
-        let encoded = STANDARD.encode(data);
+        let data_owned = data.to_vec();
+        let filename = filename.to_string();
+        let content_type = content_type.to_string();
 
-        let document = serde_json::json!({
-            "_key": blob_id,
-            "filename": filename,
-            "content_type": content_type,
-            "size": data.len(),
-            "data": encoded,
-            "created_at": chrono::Utc::now().to_rfc3339()
-        });
+        let jwt = self.jwt_token.clone();
+        let api_key = self.api_key.clone();
+        let basic = self.username.clone().zip(self.password.clone());
 
-        let path = format!("/_api/database/{}/document/{}", db, collection);
-        self.request(reqwest::Method::POST, &path, Some(&document))?;
+        block_on(async move {
+            let part = reqwest::multipart::Part::bytes(data_owned)
+                .file_name(filename)
+                .mime_str(&content_type)
+                .map_err(|e| SoliDBError {
+                    message: format!("Invalid content type: {}", e),
+                    code: None,
+                })?;
+            let form = reqwest::multipart::Form::new().part("file", part);
 
-        Ok(blob_id)
-    }
+            let mut request = client.post(&url).multipart(form);
+            if let Some(jwt) = jwt {
+                request = request.header("Authorization", format!("Bearer {}", jwt));
+            } else if let Some(api_key) = api_key {
+                request = request.header("x-api-key", api_key);
+            } else if let Some((u, p)) = basic {
+                request = request.basic_auth(u, Some(p));
+            }
+            request = request.header("Accept", "application/json");
 
-    pub fn get_blob(&self, collection: &str, blob_id: &str) -> Result<Vec<u8>, SoliDBError> {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-
-        let db = self.get_db()?;
-        let path = format!("/_api/database/{}/document/{}/{}", db, collection, blob_id);
-        let response: Value = self.request(reqwest::Method::GET, &path, None)?;
-
-        let data_str = response
-            .get("data")
-            .and_then(|d| d.as_str())
-            .ok_or_else(|| SoliDBError {
-                message: "Blob data not found".to_string(),
+            let response = request.send().await.map_err(|e| SoliDBError {
+                message: format!("HTTP request failed: {}", e),
                 code: None,
             })?;
 
-        STANDARD.decode(data_str).map_err(|e| SoliDBError {
-            message: format!("Failed to decode blob: {}", e),
-            code: None,
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(SoliDBError {
+                    message: format!("HTTP {} {}: {}", status, url, error_text),
+                    code: Some(status.as_u16() as i32),
+                });
+            }
+
+            let doc: Value = response.json().await.map_err(|e| SoliDBError {
+                message: format!("Failed to parse upload response: {}", e),
+                code: None,
+            })?;
+
+            doc.get("_key")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| SoliDBError {
+                    message: "Blob upload response missing _key".to_string(),
+                    code: None,
+                })
         })
     }
 
+    /// Download a blob's raw bytes via SoliDB's native blob API
+    /// (`GET /_api/blob/{db}/{collection}/{key}`). Returns the unencoded bytes
+    /// the browser (or any client) can use directly.
+    pub fn get_blob(&self, collection: &str, blob_id: &str) -> Result<Vec<u8>, SoliDBError> {
+        let db = self.get_db()?.to_string();
+        let blob_id = blob_id.to_string();
+        let url = format!(
+            "{}/_api/blob/{}/{}/{}",
+            self.base_url, db, collection, blob_id
+        );
+        let client = get_http_client().clone();
+
+        let jwt = self.jwt_token.clone();
+        let api_key = self.api_key.clone();
+        let basic = self.username.clone().zip(self.password.clone());
+
+        block_on(async move {
+            let mut request = client.get(&url);
+            if let Some(jwt) = jwt {
+                request = request.header("Authorization", format!("Bearer {}", jwt));
+            } else if let Some(api_key) = api_key {
+                request = request.header("x-api-key", api_key);
+            } else if let Some((u, p)) = basic {
+                request = request.basic_auth(u, Some(p));
+            }
+
+            let response = request.send().await.map_err(|e| SoliDBError {
+                message: format!("HTTP request failed: {}", e),
+                code: None,
+            })?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(SoliDBError {
+                    message: format!("HTTP {} {}: {}", status, url, error_text),
+                    code: Some(status.as_u16() as i32),
+                });
+            }
+
+            let bytes = response.bytes().await.map_err(|e| SoliDBError {
+                message: format!("Failed to read blob bytes: {}", e),
+                code: None,
+            })?;
+            Ok(bytes.to_vec())
+        })
+    }
+
+    /// Fetch blob metadata (the document that describes a blob — name, type,
+    /// size, chunks, created). Also exposes `filename` and `content_type`
+    /// aliases for callers written against the previous document-backed
+    /// implementation of this client.
     pub fn get_blob_metadata(
         &self,
         collection: &str,
@@ -550,6 +634,19 @@ impl SoliDBClient {
                 if k != "data" {
                     metadata.insert(k.clone(), v.clone());
                 }
+            }
+        }
+        // Compat aliases: the native blob doc uses `name`/`type`, but existing
+        // callers read `filename`/`content_type`. Expose both so we don't
+        // break them.
+        if !metadata.contains_key("filename") {
+            if let Some(name) = metadata.get("name").cloned() {
+                metadata.insert("filename".to_string(), name);
+            }
+        }
+        if !metadata.contains_key("content_type") {
+            if let Some(ty) = metadata.get("type").cloned() {
+                metadata.insert("content_type".to_string(), ty);
             }
         }
 

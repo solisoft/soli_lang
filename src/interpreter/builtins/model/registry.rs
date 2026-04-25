@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 
 use super::callbacks::ModelCallbacks;
 use super::relations::RelationDef;
+use super::uploaders::UploaderConfig;
 use super::validation::ValidationRule;
 use crate::interpreter::value::Class;
 
@@ -18,6 +19,7 @@ pub struct ModelMetadata {
     pub relations: Vec<RelationDef>,
     pub soft_delete: bool,
     pub translated_fields: Vec<String>,
+    pub uploaders: Vec<UploaderConfig>,
 }
 
 lazy_static! {
