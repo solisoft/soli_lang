@@ -33,14 +33,24 @@ fn counter(event_data)
     state
 end
 
-# Metrics component handler - Binary Clock
+# Metrics component handler - Binary Clock.
+# Always recomputes from the current time (cheap), so the very first render
+# (mount, no `tick` event yet) has every `ms*`/`s*`/`m*`/`h*` variable
+# defined in template scope. Without this, the initial paint errored with
+# "Undefined variable 'ms9'" until JS sent the first tick.
 fn metrics(event_data)
     let event = event_data["event"]
     let state = event_data["state"]
 
-    if (event == "tick")
-        # Get current time using DateTime class
-        let now = DateTime.utc()
+    # Skip explicitly-known no-ops so callers can still pass non-tick events
+    # without forcing a re-render. Anything else (including nil / "mount")
+    # falls through to the recompute path below.
+    if (event != nil && event != "" && event != "tick")
+        return state
+    end
+
+    # Get current time using DateTime class
+    let now = DateTime.utc()
         let h = now.hour()
         let m = now.minute()
         let s = now.second()
@@ -150,10 +160,7 @@ fn metrics(event_data)
             "h4": h4, "h3": h3, "h2": h2, "h1": h1, "h0": h0,
             "m5": m5, "m4": m4, "m3": m3, "m2": m2, "m1": m1, "m0": m0,
             "s5": s5, "s4": s4, "s3": s3, "s2": s2, "s1": s1, "s0": s0,
-            "ms9": ms9, "ms8": ms8, "ms7": ms7, "ms6": ms6, "ms5": ms5,
-            "ms4": ms4, "ms3": ms3, "ms2": ms2, "ms1": ms1, "ms0": ms0
-        }
-    end
-
-    null
+        "ms9": ms9, "ms8": ms8, "ms7": ms7, "ms6": ms6, "ms5": ms5,
+        "ms4": ms4, "ms3": ms3, "ms2": ms2, "ms1": ms1, "ms0": ms0
+    }
 end
