@@ -272,6 +272,56 @@ redirect("/posts/" + post["id"])</code></pre>
 halt(403, "Forbidden")</code></pre>
             </div>
         </section>
+
+        <section id="fn-respond_to" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-respond_to" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">respond_to(req, block)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">
+                    Rails-style content negotiation. Picks the right branch based on URL extension, <code>?format=</code>, HTMX/XHR headers, or the <code>Accept</code> header (with q-values). Falls back to <code>406 Not Acceptable</code> if nothing matches and no <code>any</code> branch is registered.
+                </p>
+                <pre data-filename="DSL form"><code class="language-soli text-sm">def show(req)
+    post = Post.find(req["params"]["id"])
+    respond_to(req, fn(format) {
+        format.html(fn()  render("posts/show", { "post": post }))
+        format.json(fn()  render_json(post))
+        format.csv(fn()   render_csv_for(post))
+        format.pdf(fn()   render_pdf_for(post))
+        format.excel(fn() render_xlsx_for(post))
+        format.htmx(fn()  render("posts/_show_partial", { "post": post }, { "layout": false }))
+        format.xhr(fn()   render_json({ "id": post["id"] }))
+        format.any(fn()   render("posts/show", { "post": post }))   # optional catch-all
+    })
+end</code></pre>
+                <p class="text-gray-400 text-sm mt-4 mb-3">A terser hash form is also supported:</p>
+                <pre data-filename="Hash form"><code class="language-soli text-sm">respond_to(req, {
+    "html": fn() render("posts/show", { "post": post }),
+    "json": fn() render_json(post)
+})</code></pre>
+
+                <h4 class="text-white font-semibold mt-5 mb-2">Format detection priority</h4>
+                <ol class="list-decimal pl-5 text-sm text-gray-400 space-y-1">
+                    <li><code>HX-Request: true</code> header &rarr; <code>htmx</code> branch.</li>
+                    <li><code>X-Requested-With: XMLHttpRequest</code> header &rarr; <code>xhr</code> branch.</li>
+                    <li>URL extension: <code>.html</code>, <code>.json</code>, <code>.xml</code>, <code>.csv</code>, <code>.pdf</code>, <code>.xlsx</code>/<code>.xls</code>, <code>.txt</code>.</li>
+                    <li><code>?format=&hellip;</code> query parameter.</li>
+                    <li><code>Accept</code> header &mdash; parsed with q-values; <code>*/*</code> falls through to the first registered handler.</li>
+                </ol>
+
+                <h4 class="text-white font-semibold mt-5 mb-2">Available format tokens</h4>
+                <p class="text-sm text-gray-400">
+                    <code>html</code>, <code>json</code>, <code>xml</code>, <code>csv</code>, <code>pdf</code>, <code>excel</code>, <code>htmx</code>, <code>xhr</code>, <code>text</code>, <code>any</code>. Registering <code>any</code> makes it the catch-all (no 406). Last registration wins on duplicates.
+                </p>
+
+                <p class="text-xs text-gray-500 mt-4">
+                    Note: header keys in <code>req["headers"]</code> are lowercased &mdash; read <code>req["headers"]["accept"]</code>, not <code>"Accept"</code>.
+                </p>
+            </div>
+        </section>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Request-Context Helpers in Views</h2>

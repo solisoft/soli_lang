@@ -441,6 +441,47 @@ fn ping(req)
 end
 ```
 
+### Content Negotiation with `respond_to`
+
+For actions that need to serve multiple formats (HTML, JSON, CSV, PDF, XLSX, partial HTMX, XHR-only JSON, …), use `respond_to`. It picks the right branch based on the request and falls back to `406 Not Acceptable` when no registered format matches.
+
+```soli
+def show(req) {
+    post = Post.find(req["params"]["id"]);
+    respond_to(req, fn(format) {
+        format.html(fn()  render("posts/show", {"post": post}));
+        format.json(fn()  render_json(post));
+        format.csv(fn()   render_csv_for(post));
+        format.pdf(fn()   render_pdf_for(post));
+        format.excel(fn() render_xlsx_for(post));
+        format.htmx(fn()  render("posts/_show_partial", {"post": post}, {"layout": false}));
+        format.xhr(fn()   render_json({"id": post.id}));
+        format.any(fn()   render("posts/show", {"post": post}));  // optional catch-all
+    })
+}
+```
+
+A terser hash form is also supported:
+
+```soli
+respond_to(req, {
+    "html": fn() render("posts/show", {"post": post}),
+    "json": fn() render_json(post)
+})
+```
+
+**Format detection priority** (first match wins):
+
+1. `HX-Request: true` header → `htmx` branch.
+2. `X-Requested-With: XMLHttpRequest` header → `xhr` branch.
+3. URL extension: `.html`, `.json`, `.xml`, `.csv`, `.pdf`, `.xlsx`/`.xls`, `.txt`.
+4. `?format=…` query parameter.
+5. `Accept` header — parsed with q-values; `*/*` falls through to the first registered handler.
+
+**Available format tokens**: `html`, `json`, `xml`, `csv`, `pdf`, `excel`, `htmx`, `xhr`, `text`, `any`. Registering `any` makes it the catch-all (no 406). Last registration wins on duplicates.
+
+> Header keys in `req["headers"]` are lowercased — read `req["headers"]["accept"]`, not `Accept`.
+
 ### Error Response
 
 ```soli

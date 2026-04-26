@@ -629,7 +629,7 @@ impl<'a> EngineMigrationRunner<'a> {
             .any(|c| c.get("name").and_then(|n| n.as_str()) == Some(&collection_name))
         {
             client
-                .create_collection(&collection_name)
+                .create_collection(&collection_name, None)
                 .map_err(|e| format!("Failed to create migrations collection: {}", e))?;
         }
 

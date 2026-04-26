@@ -491,6 +491,99 @@ fn upload_blob_to_solidb(
     Ok(UploadResult { blob_id })
 }
 
+/// Image transform query keys that `upload_url` accepts in its options
+/// hash, in the canonical order we serialise them. Stable order means
+/// identical option sets always produce identical URLs (CDN cache-key
+/// stability). Grouping: geometry → orientation → effects → output.
+const TRANSFORM_QUERY_ORDER: &[&str] = &[
+    "w", "h", "thumb", "square", "crop", "fit", "flipx", "flipy", "rot", "blur", "bright",
+    "contrast", "hue", "gray", "invert", "fmt", "q",
+];
+
+/// Parse the polymorphic 3rd arg of `upload_url(model, field, opts)` into
+/// `(blob_id, transforms)`. The third arg may be:
+///   - `String` → `blob_id` (multiple-mode shorthand)
+///   - `Hash`   → options `{ blob_id?, w?, h?, thumb?, ..., q? }`
+///   - anything else (incl. None / Null) → both empty
+///
+/// `transforms` are returned in the canonical query order so the URL is
+/// deterministic regardless of hash insertion order. Unknown keys are
+/// silently dropped, matching the JS-style "be liberal in what you accept"
+/// that callers benefit from.
+fn parse_upload_url_options(opts: Option<&Value>) -> (Option<String>, Vec<(String, String)>) {
+    let mut blob_id_arg: Option<String> = None;
+    let mut transform_params: Vec<(&'static str, String)> = Vec::new();
+
+    match opts {
+        Some(Value::String(s)) => blob_id_arg = Some(s.clone()),
+        Some(Value::Hash(h)) => {
+            for (k, v) in h.borrow().iter() {
+                let HashKey::String(key_str) = k else {
+                    continue;
+                };
+                if key_str == "blob_id" {
+                    if let Value::String(s) = v {
+                        blob_id_arg = Some(s.clone());
+                    }
+                    continue;
+                }
+                let Some(canonical) = TRANSFORM_QUERY_ORDER
+                    .iter()
+                    .copied()
+                    .find(|&n| n == key_str)
+                else {
+                    continue;
+                };
+                // crop accepts an Array of 4 non-negative ints as a
+                // shorthand: [10, 20, 300, 200] → "10,20,300,200".
+                if canonical == "crop" {
+                    if let Value::Array(arr) = v {
+                        let arr_ref = arr.borrow();
+                        if arr_ref.len() == 4 {
+                            let parts: Option<Vec<String>> = arr_ref
+                                .iter()
+                                .map(|item| match item {
+                                    Value::Int(n) if *n >= 0 => Some(n.to_string()),
+                                    _ => None,
+                                })
+                                .collect();
+                            if let Some(parts) = parts {
+                                transform_params.push((canonical, parts.join(",")));
+                            }
+                        }
+                        continue;
+                    }
+                }
+                let value_str = match v {
+                    Value::Int(n) => n.to_string(),
+                    Value::Float(f) => {
+                        // Strip trailing zeros for clean URLs:
+                        // 3.5 → "3.5", 2.0 → "2".
+                        if f.fract() == 0.0 && f.is_finite() {
+                            format!("{}", *f as i64)
+                        } else {
+                            format!("{}", f)
+                        }
+                    }
+                    Value::String(s) => s.clone(),
+                    Value::Bool(true) => "1".to_string(),
+                    _ => continue,
+                };
+                transform_params.push((canonical, value_str));
+            }
+        }
+        _ => {}
+    }
+
+    let mut query_pairs: Vec<(String, String)> = Vec::new();
+    for &name in TRANSFORM_QUERY_ORDER {
+        if let Some((_, val)) = transform_params.iter().find(|(k, _)| *k == name) {
+            query_pairs.push((name.to_string(), val.clone()));
+        }
+    }
+    (blob_id_arg, query_pairs)
+}
+
 /// Build a URL by appending `?key=value&...` if `pairs` is non-empty. Values
 /// are percent-encoded for query strings; keys are assumed to be the small
 /// canonical set defined in `upload_url` and don't need escaping.
@@ -553,101 +646,7 @@ fn register_uploader_helpers(env: &mut Environment) {
             //   Hash   → options { blob_id?, w?, h?, thumb?, crop?, fit?,
             //                       fmt?, q?, gray? }
             //   Null   → no options
-            let mut blob_id_arg: Option<String> = None;
-            let mut transform_params: Vec<(&'static str, String)> = Vec::new();
-            match args.get(2) {
-                Some(Value::String(s)) => blob_id_arg = Some(s.clone()),
-                Some(Value::Hash(h)) => {
-                    for (k, v) in h.borrow().iter() {
-                        if let HashKey::String(key_str) = k {
-                            match key_str.as_str() {
-                                "blob_id" => {
-                                    if let Value::String(s) = v {
-                                        blob_id_arg = Some(s.clone());
-                                    }
-                                }
-                                // Image transform query params recognised by
-                                // the AttachmentsController. Order is fixed
-                                // below so identical option sets produce
-                                // identical URLs (CDN-friendly cache keys).
-                                "w" | "h" | "thumb" | "square" | "crop" | "fit" | "flipx"
-                                | "flipy" | "rot" | "blur" | "bright" | "contrast" | "hue"
-                                | "gray" | "invert" | "fmt" | "q" => {
-                                    let canonical: &'static str = match key_str.as_str() {
-                                        "w" => "w",
-                                        "h" => "h",
-                                        "thumb" => "thumb",
-                                        "square" => "square",
-                                        "crop" => "crop",
-                                        "fit" => "fit",
-                                        "flipx" => "flipx",
-                                        "flipy" => "flipy",
-                                        "rot" => "rot",
-                                        "blur" => "blur",
-                                        "bright" => "bright",
-                                        "contrast" => "contrast",
-                                        "hue" => "hue",
-                                        "gray" => "gray",
-                                        "invert" => "invert",
-                                        "fmt" => "fmt",
-                                        "q" => "q",
-                                        _ => unreachable!(),
-                                    };
-                                    // crop accepts an Array of 4 ints as a
-                                    // shorthand: [10, 20, 300, 200] → "10,20,300,200".
-                                    if canonical == "crop" {
-                                        if let Value::Array(arr) = v {
-                                            let arr_ref = arr.borrow();
-                                            if arr_ref.len() == 4 {
-                                                let parts: Option<Vec<String>> = arr_ref
-                                                    .iter()
-                                                    .map(|item| match item {
-                                                        Value::Int(n) if *n >= 0 => {
-                                                            Some(n.to_string())
-                                                        }
-                                                        _ => None,
-                                                    })
-                                                    .collect();
-                                                if let Some(parts) = parts {
-                                                    transform_params
-                                                        .push((canonical, parts.join(",")));
-                                                    continue;
-                                                }
-                                            }
-                                            continue;
-                                        }
-                                    }
-                                    let value_str = match v {
-                                        Value::Int(n) => n.to_string(),
-                                        Value::Float(f) => {
-                                            // Strip trailing zeros for clean URLs:
-                                            // 3.5 → "3.5", 2.0 → "2".
-                                            if f.fract() == 0.0 && f.is_finite() {
-                                                format!("{}", *f as i64)
-                                            } else {
-                                                let s = format!("{}", f);
-                                                s
-                                            }
-                                        }
-                                        Value::String(s) => s.clone(),
-                                        Value::Bool(b) => {
-                                            if *b {
-                                                "1".to_string()
-                                            } else {
-                                                continue;
-                                            }
-                                        }
-                                        _ => continue,
-                                    };
-                                    transform_params.push((canonical, value_str));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
+            let (blob_id_arg, query_pairs) = parse_upload_url_options(args.get(2));
 
             let inst_ref = inst.borrow();
             let class_name = inst_ref.class.name.clone();
@@ -662,20 +661,6 @@ fn register_uploader_helpers(env: &mut Environment) {
 
             let resource = format!("{}s", class_name.to_lowercase());
             let base = format!("/{}/{}/{}", resource, key, field);
-
-            // Stable canonical order so identical option hashes yield
-            // identical URLs regardless of insertion order. Grouping:
-            // geometry → orientation → effects → output.
-            const QUERY_ORDER: &[&str] = &[
-                "w", "h", "thumb", "square", "crop", "fit", "flipx", "flipy", "rot", "blur",
-                "bright", "contrast", "hue", "gray", "invert", "fmt", "q",
-            ];
-            let mut query_pairs: Vec<(String, String)> = Vec::new();
-            for &name in QUERY_ORDER {
-                if let Some((_, val)) = transform_params.iter().find(|(k, _)| *k == name) {
-                    query_pairs.push((name.to_string(), val.clone()));
-                }
-            }
 
             if config.multiple {
                 let Some(blob_id) = blob_id_arg else {
@@ -760,4 +745,206 @@ fn register_uploader_helpers(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::HashPairs;
+
+    fn hash(pairs: &[(&str, Value)]) -> Value {
+        let mut map = HashPairs::default();
+        for (k, v) in pairs {
+            map.insert(HashKey::String((*k).to_string()), v.clone());
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    fn array_int(items: &[i64]) -> Value {
+        Value::Array(Rc::new(RefCell::new(
+            items.iter().map(|n| Value::Int(*n)).collect(),
+        )))
+    }
+
+    // ---- append_query ----
+
+    #[test]
+    fn append_query_empty_pairs_returns_base() {
+        assert_eq!(append_query("/a/b", &[]), "/a/b");
+    }
+
+    #[test]
+    fn append_query_appends_with_question_mark() {
+        let pairs = vec![("v".into(), "abc".into()), ("w".into(), "200".into())];
+        assert_eq!(append_query("/a/b", &pairs), "/a/b?v=abc&w=200");
+    }
+
+    #[test]
+    fn append_query_uses_ampersand_when_base_already_has_query() {
+        let pairs = vec![("w".into(), "200".into())];
+        assert_eq!(append_query("/a?x=1", &pairs), "/a?x=1&w=200");
+    }
+
+    #[test]
+    fn append_query_percent_encodes_values() {
+        let pairs = vec![("crop".into(), "10,20,300,200".into())];
+        assert_eq!(append_query("/a", &pairs), "/a?crop=10%2C20%2C300%2C200",);
+    }
+
+    #[test]
+    fn append_query_preserves_unreserved_chars() {
+        let pairs = vec![("k".into(), "abc-_.~".into())];
+        assert_eq!(append_query("/a", &pairs), "/a?k=abc-_.~");
+    }
+
+    // ---- parse_upload_url_options ----
+
+    #[test]
+    fn parse_options_none_returns_empty() {
+        let (id, pairs) = parse_upload_url_options(None);
+        assert_eq!(id, None);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn parse_options_string_is_blob_id_shorthand() {
+        let v = Value::String("blob42".into());
+        let (id, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(id.as_deref(), Some("blob42"));
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn parse_options_hash_blob_id_extracted() {
+        let v = hash(&[("blob_id", Value::String("blob42".into()))]);
+        let (id, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(id.as_deref(), Some("blob42"));
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn parse_options_canonical_order_independent_of_insertion() {
+        // Insert in scrambled order; expect canonical (geometry → effects → output).
+        let v = hash(&[
+            ("q", Value::Int(80)),
+            ("fmt", Value::String("webp".into())),
+            ("h", Value::Int(600)),
+            ("w", Value::Int(800)),
+            ("gray", Value::Bool(true)),
+        ]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        let keys: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys, vec!["w", "h", "gray", "fmt", "q"]);
+    }
+
+    #[test]
+    fn parse_options_unknown_keys_dropped() {
+        let v = hash(&[
+            ("w", Value::Int(200)),
+            ("nope", Value::String("x".into())),
+            ("rotate", Value::Int(90)), // not "rot"
+        ]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(pairs, vec![("w".into(), "200".into())]);
+    }
+
+    #[test]
+    fn parse_options_crop_array_shorthand() {
+        let v = hash(&[("crop", array_int(&[10, 20, 300, 200]))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(pairs, vec![("crop".into(), "10,20,300,200".into())]);
+    }
+
+    #[test]
+    fn parse_options_crop_array_wrong_arity_dropped() {
+        let v = hash(&[("crop", array_int(&[10, 20, 30]))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert!(pairs.is_empty(), "3-element crop should be dropped");
+    }
+
+    #[test]
+    fn parse_options_crop_array_negative_dropped() {
+        let v = hash(&[("crop", array_int(&[-1, 0, 100, 100]))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert!(
+            pairs.is_empty(),
+            "negative crop component should be dropped"
+        );
+    }
+
+    #[test]
+    fn parse_options_crop_string_passthrough() {
+        let v = hash(&[("crop", Value::String("10,20,300,200".into()))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(pairs, vec![("crop".into(), "10,20,300,200".into())]);
+    }
+
+    #[test]
+    fn parse_options_bool_true_emits_one() {
+        let v = hash(&[("gray", Value::Bool(true)), ("invert", Value::Bool(true))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(
+            pairs,
+            vec![("gray".into(), "1".into()), ("invert".into(), "1".into()),]
+        );
+    }
+
+    #[test]
+    fn parse_options_bool_false_dropped() {
+        let v = hash(&[("gray", Value::Bool(false))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert!(pairs.is_empty(), "false flag should not appear in URL");
+    }
+
+    #[test]
+    fn parse_options_float_strips_trailing_zeros() {
+        let v = hash(&[("blur", Value::Float(2.5)), ("contrast", Value::Float(2.0))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        // Canonical order puts blur before contrast.
+        assert_eq!(
+            pairs,
+            vec![
+                ("blur".into(), "2.5".into()),
+                ("contrast".into(), "2".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_options_square_shorthand_emitted_verbatim() {
+        // upload_url emits `square=N` as-is — the controller expands the
+        // shorthand server-side. Worth pinning so we don't accidentally
+        // start emitting `w=N&h=N&fit=cover` from the URL builder, which
+        // would change cache keys for every existing app.
+        let v = hash(&[("square", Value::Int(200))]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(pairs, vec![("square".into(), "200".into())]);
+    }
+
+    #[test]
+    fn parse_options_blob_id_with_transforms_in_hash() {
+        let v = hash(&[
+            ("blob_id", Value::String("blob42".into())),
+            ("w", Value::Int(200)),
+        ]);
+        let (id, pairs) = parse_upload_url_options(Some(&v));
+        assert_eq!(id.as_deref(), Some("blob42"));
+        assert_eq!(pairs, vec![("w".into(), "200".into())]);
+    }
+
+    #[test]
+    fn parse_options_full_url_assembly_via_append_query() {
+        // End-to-end check: a typical multi-option hash, fed through both
+        // the parser and `append_query` exactly as upload_url does.
+        let v = hash(&[
+            ("h", Value::Int(600)),
+            ("w", Value::Int(800)),
+            ("fmt", Value::String("webp".into())),
+            ("q", Value::Int(80)),
+            ("gray", Value::Bool(true)),
+        ]);
+        let (_, pairs) = parse_upload_url_options(Some(&v));
+        let url = append_query("/photos/42/img", &pairs);
+        assert_eq!(url, "/photos/42/img?w=800&h=600&gray=1&fmt=webp&q=80");
+    }
 }

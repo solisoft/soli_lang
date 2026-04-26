@@ -27,7 +27,9 @@
 //! ## Available helpers:
 //!
 //! ### Collections
-//! - `db.create_collection(name)` - Create a new collection
+//! - `db.create_collection(name, type?)` - Create a collection. `type` is optional;
+//!   pass `"blob"`, `"columnar"`, `"timeseries"`, etc. The string is forwarded
+//!   verbatim to SolidB. Default is a regular document collection.
 //! - `db.drop_collection(name)` - Drop a collection
 //! - `db.list_collections()` - List all collections
 //! - `db.collection_stats(name)` - Get collection statistics
@@ -244,7 +246,7 @@ impl MigrationRunner {
             .any(|c| c.get("name").and_then(|n| n.as_str()) == Some("_migrations"))
         {
             client
-                .create_collection("_migrations")
+                .create_collection("_migrations", None)
                 .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
         }
 
@@ -285,7 +287,7 @@ impl MigrationRunner {
             .any(|c| c.get("name").and_then(|n| n.as_str()) == Some("_migrations"))
         {
             client
-                .create_collection("_migrations")
+                .create_collection("_migrations", None)
                 .map_err(|e| format!("Failed to create _migrations collection: {}", e))?;
         }
 
@@ -360,9 +362,16 @@ class MigrationDb {{
         return solidb_query(_db_host, _db_name, sdbql);
     }}
 
-    // Collection management
-    fn create_collection(name: String) -> Any {{
-        return solidb_create_collection(_db, name);
+    // Collection management. `collection_type` is optional — pass any
+    // SolidB-recognized type ("blob", "columnar", "timeseries", …) to
+    // create a typed collection. The string is forwarded verbatim to
+    // SolidB; the server decides what's valid. Default is a regular
+    // document collection.
+    fn create_collection(name: String, collection_type: String = "") -> Any {{
+        if (collection_type == "") {{
+            return solidb_create_collection(_db, name);
+        }}
+        return solidb_create_collection(_db, name, collection_type);
     }}
 
     fn drop_collection(name: String) -> Any {{

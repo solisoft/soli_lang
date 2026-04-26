@@ -281,6 +281,81 @@ end
 | `before_delete` | Before deleting record |
 | `after_delete` | After deleting record |
 
+## Uploaders
+
+Declare a blob attachment with `uploader(name, options)`. Soli registers the field, validates incoming files against the rules, stores the blob in SoliDB, and auto-generates instance methods so the controller stays a one-liner.
+
+**Single attachment:**
+
+```soli
+class Contact extends Model
+    uploader("photo", {
+        "multiple":      false,
+        "content_types": ["image/jpeg", "image/png", "image/webp"],
+        "max_size":      2_000_000,
+        "collection":    "contact_photos"   # optional; defaults to <snake>_<field>s
+    })
+end
+```
+
+Auto-generated on each instance: `attach_<field>(file)`, `detach_<field>([blob_id])`, `<field>_url()` (single), `<field>_urls()` (multiple). Failures populate `_errors` on the record.
+
+**Multiple attachments** (array of blob ids in `<name>_blob_ids`):
+
+```soli
+class Contact extends Model
+    uploader("document", {
+        "multiple":      true,
+        "content_types": ["application/pdf", "image/jpeg", "image/png",
+                          "application/zip", "text/csv"],
+        "max_size":      10_000_000,
+        "collection":    "contact_documents"
+    })
+end
+```
+
+```soli
+# POST /contacts/:id/documents (HTML form → redirect+flash)
+def attach_document(req)
+    contact = Contact.find(params.id)
+    file = find_uploaded_file(req, "document")
+    if file.nil?
+        flash("error", "Pick a file before submitting.")
+    elsif contact.attach_document(file)
+        flash("success", "Document filed.")
+    else
+        flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
+    end
+    redirect("/contacts/#{contact._key}")
+end
+
+# POST /contacts/:id/document/:blob_id/delete
+def detach_document(req)
+    contact = Contact.find(params.id)
+    if contact.detach_document(params.blob_id)
+        flash("success", "Document removed.")
+    else
+        flash("error", "Document not found on this record.")
+    end
+    redirect("/contacts/#{contact._key}")
+end
+```
+
+For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete.
+
+**Cleanup on destroy** — `before_delete` callbacks aren't yet dispatched by `Model.delete(id)`; call `detach_all_uploads(record)` explicitly until that lands. The helper walks every `uploader(...)` field on the class.
+
+```soli
+def destroy(req)
+    contact = Contact.find(params.id)
+    detach_all_uploads(contact) unless contact.nil?
+    Contact.delete(params.id)
+    redirect("/contacts")
+end
+```
+
+**Introspection** — `model_uploader_config(class_or_name, field)` returns `{ name, multiple, content_types, max_size, collection }` (or `null`); `model_uploader_fields(class_or_name)` lists the declared field names.
+
 ## Relationships
 
 Declare associations using the built-in DSL:

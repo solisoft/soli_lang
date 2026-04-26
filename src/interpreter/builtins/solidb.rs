@@ -315,12 +315,21 @@ fn register_solidb_class(env: &mut Environment) {
     for (method_name, min_args) in method_definitions {
         let method = method_name.to_string();
         let arity = min_args + 1;
+        // `create_collection` accepts an optional `collection_type` arg —
+        // `"blob"`, `"columnar"`, `"timeseries"`, etc. (forwarded verbatim
+        // to SolidB; the server decides what's valid). Register variadic
+        // and validate inside.
+        let registered_arity = if method_name == "create_collection" {
+            None
+        } else {
+            Some(arity)
+        };
 
         env.define(
             format!("solidb_{}", method_name),
             Value::NativeFunction(NativeFunction::new(
                 format!("solidb_{}", method_name),
-                Some(arity),
+                registered_arity,
                 move |args| {
                     if args.len() < arity {
                         return Err(format!(
@@ -690,8 +699,9 @@ fn register_solidb_class(env: &mut Environment) {
                                     ))
                                 }
                             };
-                            let _collection_type = if args.len() > 2 {
+                            let collection_type = if args.len() > 2 {
                                 match &args[2] {
+                                    Value::String(s) if s.is_empty() => None,
                                     Value::String(s) => Some(s.clone()),
                                     Value::Null => None,
                                     other => {
@@ -715,7 +725,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 {
                                     client = client.with_basic_auth(u, p);
                                 }
-                                client.create_collection(&name)
+                                client.create_collection(&name, collection_type.as_deref())
                                     .map_err(|e| format!("Create collection failed: {}", e))?;
                                 Ok(format!("Created collection: {}", name))
                             }))

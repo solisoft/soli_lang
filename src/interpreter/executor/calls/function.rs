@@ -21,6 +21,18 @@ impl Interpreter {
         arguments: &[Argument],
         span: Span,
     ) -> RuntimeResult<Value> {
+        // Variable-callee interceptor: `respond_to(req, block)` runs through
+        // a custom dispatcher that can invoke user lambdas (a NativeFunction
+        // can't reach `&mut Interpreter`). Intentionally checked before
+        // `evaluate_callee` so a local `respond_to` can't shadow the magic.
+        if let ExprKind::Variable(name) = &callee.kind {
+            if name == "respond_to" {
+                if let Some(result) = self.try_evaluate_respond_to(arguments, span)? {
+                    return Ok(result);
+                }
+            }
+        }
+
         // All three fast paths below require the callee to be a Member/SafeMember
         // expression. For ordinary function calls like `print(x)` or `block()`
         // (callee is a Variable) there's no point calling them at all — skip
@@ -293,6 +305,112 @@ impl Interpreter {
         }
 
         Ok(Some(result))
+    }
+
+    /// Implement `respond_to(req, block_or_hash)` — Ruby-style content negotiation.
+    ///
+    /// Two argument forms:
+    /// - DSL:  `respond_to(req, fn(format) { format.html(...); ... })`
+    /// - Hash: `respond_to(req, {"html": fn() ..., "json": fn() ...})`
+    ///
+    /// Returns `Ok(Some(response))` on success, `Ok(None)` if signature doesn't
+    /// match (so the caller can fall through to normal dispatch).
+    fn try_evaluate_respond_to(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::respond_to::{
+            detect_request_format, make_format_hash, not_acceptable_response, pick_handler,
+            RESPOND_TO_BUILDER,
+        };
+        use crate::interpreter::value::HashKey;
+
+        // Need exactly 2 positional args. Anything else: not our concern.
+        if arguments.len() != 2 {
+            return Ok(None);
+        }
+        if !arguments
+            .iter()
+            .all(|a| matches!(a, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
+
+        let mut arg_values: Vec<Value> = Vec::with_capacity(2);
+        for arg in arguments {
+            if let Argument::Positional(expr) = arg {
+                arg_values.push(self.evaluate(expr)?);
+            }
+        }
+        let req = arg_values.remove(0);
+        let second = arg_values.remove(0);
+
+        // Push a fresh registration vec; popped before we leave (even on error).
+        RESPOND_TO_BUILDER.with(|stack| stack.borrow_mut().push(Vec::new()));
+
+        let registrations_result: RuntimeResult<Vec<(String, Value)>> = match &second {
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_) => {
+                // DSL form: invoke block with the format builder.
+                let format_obj = make_format_hash();
+                let call_result = self.call_value(second.clone(), vec![format_obj], span);
+                let regs =
+                    RESPOND_TO_BUILDER.with(|stack| stack.borrow_mut().pop().unwrap_or_default());
+                call_result.map(|_| regs)
+            }
+            Value::Hash(h) => {
+                // Hash form: read entries directly. Insertion order preserved (IndexMap).
+                let mut regs = Vec::new();
+                for (k, v) in h.borrow().iter() {
+                    if let HashKey::String(name) = k {
+                        if !matches!(
+                            v,
+                            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+                        ) {
+                            // Pop the builder we pushed before erroring.
+                            RESPOND_TO_BUILDER.with(|stack| {
+                                stack.borrow_mut().pop();
+                            });
+                            return Err(crate::error::RuntimeError::type_error(
+                                format!(
+                                    "respond_to hash entry '{}' must be a function (got {})",
+                                    name,
+                                    v.type_name()
+                                ),
+                                span,
+                            ));
+                        }
+                        regs.push((name.clone(), v.clone()));
+                    }
+                }
+                RESPOND_TO_BUILDER.with(|stack| {
+                    stack.borrow_mut().pop();
+                });
+                Ok(regs)
+            }
+            _ => {
+                RESPOND_TO_BUILDER.with(|stack| {
+                    stack.borrow_mut().pop();
+                });
+                return Err(crate::error::RuntimeError::type_error(
+                    format!(
+                        "respond_to expects a function or hash as its second argument (got {})",
+                        second.type_name()
+                    ),
+                    span,
+                ));
+            }
+        };
+
+        let registrations = registrations_result?;
+        let detected = detect_request_format(&req);
+        match pick_handler(&detected, &registrations) {
+            Some(handler) => {
+                let result = self.call_value(handler, Vec::new(), span)?;
+                Ok(Some(result))
+            }
+            None => Ok(Some(not_acceptable_response())),
+        }
     }
 
     fn try_evaluate_hash_string_key_call(

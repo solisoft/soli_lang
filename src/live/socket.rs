@@ -89,9 +89,13 @@ pub fn handle_live_connection(
         "metrics" => json!({
             "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap()),
             "hours_str": "00", "minutes_str": "00", "seconds_str": "00",
+            "milliseconds": 0,
+            "milliseconds_str": "000",
             "h4": 0, "h3": 0, "h2": 0, "h1": 0, "h0": 0,
             "m5": 0, "m4": 0, "m3": 0, "m2": 0, "m1": 0, "m0": 0,
-            "s5": 0, "s4": 0, "s3": 0, "s2": 0, "s1": 0, "s0": 0
+            "s5": 0, "s4": 0, "s3": 0, "s2": 0, "s1": 0, "s0": 0,
+            "ms9": 0, "ms8": 0, "ms7": 0, "ms6": 0, "ms5": 0,
+            "ms4": 0, "ms3": 0, "ms2": 0, "ms1": 0, "ms0": 0,
         }),
         _ => json!({
             "id": format!("{}-{}", component, Uuid::new_v4().to_string().split('-').next().unwrap())

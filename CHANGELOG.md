@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Features
+* **feat(respond_to): content negotiation built-in** - Rails-style `respond_to` for handling multiple formats (html, json, etc.) in controller actions ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(solidb): improved SolidB client integration** - enhanced SolidB HTTP operations ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(migration): enhanced migration DSL** - improved database migration capabilities ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
 * **feat(uploads): URL-driven image transforms on attachment endpoints** ([ef7c2ef](https://github.com/solisoft/soli_lang/commit/ef7c2ef))
 * **feat(uploads): model-level uploader DSL with auto-routed attachments** ([6102481](https://github.com/solisoft/soli_lang/commit/6102481))
 * **feat(vm): support hash attributes in Class.new() and fix function body compilation** ([c128c23](https://github.com/solisoft/soli_lang/commit/c128c23))
@@ -15,6 +18,7 @@
 
 ### Tests
 * **test: improved error formatting with box-drawing characters** ([41c14a6](https://github.com/solisoft/soli_lang/commit/41c14a6))
+* **test: added controller_spec tests for respond_to content negotiation** ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
 * **test: auto-display coverage when tests pass** ([9550941](https://github.com/solisoft/soli_lang/commit/9550941))
 
 ### Bug Fixes

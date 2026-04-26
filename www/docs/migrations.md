@@ -75,12 +75,22 @@ Output:
 
 ### create_collection
 
-Create a new collection (table):
+Create a new collection. The optional second argument selects the collection type — the string is forwarded verbatim to SolidB; the server decides what's valid. Default is a regular document collection.
+
+| `type` | Use for |
+|--------|---------|
+| (omitted) | Standard JSON document collection (the common case). |
+| `"blob"` | Binary attachments; required for `solidb_store_blob` and the [uploader DSL](models#uploaders). |
+| `"columnar"` | Analytics workloads — column-oriented storage, fast aggregations over large rowsets. |
+| `"timeseries"` | Append-only time-indexed events (metrics, logs, telemetry); SolidB optimizes range queries on the timestamp. |
 
 ```soli
-fn up(db: Any)    db.create_collection("users")
+fn up(db: Any)
+    db.create_collection("users")                          # document
     db.create_collection("posts")
-    db.create_collection("comments")
+    db.create_collection("contact_documents", "blob")      # blob
+    db.create_collection("page_views", "columnar")         # columnar
+    db.create_collection("metrics", "timeseries")          # timeseries
 end
 ```
 
@@ -276,7 +286,7 @@ Applied migrations are tracked in the `_migrations` collection with:
 
 | Method | Description |
 |--------|-------------|
-| `db.create_collection(name)` | Create a new collection |
+| `db.create_collection(name, type?)` | Create a collection. `type` is optional — `"blob"`, `"columnar"`, `"timeseries"`, etc.; default is a document collection. |
 | `db.drop_collection(name)` | Drop a collection |
 | `db.list_collections()` | List all collections |
 | `db.collection_stats(name)` | Get collection statistics |

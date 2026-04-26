@@ -3574,6 +3574,69 @@
       "keywords": ["decimal", "precision", "financial", "money", "currency", "type"]
     },
     {
+      "title": "db.create_collection",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.create_collection(name)",
+      "description": "Create a new collection from within a migration's up()/down() block",
+      "keywords": ["migration", "collection", "create", "schema", "database", "solidb", "up", "down"]
+    },
+    {
+      "title": "db.drop_collection",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.drop_collection(name)",
+      "description": "Drop an existing collection from within a migration",
+      "keywords": ["migration", "collection", "drop", "delete", "remove", "schema", "database", "solidb"]
+    },
+    {
+      "title": "db.list_collections",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.list_collections()",
+      "description": "List all collections in the current database",
+      "keywords": ["migration", "collection", "list", "schema", "database", "solidb", "introspection"]
+    },
+    {
+      "title": "db.collection_stats",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.collection_stats(name)",
+      "description": "Return statistics about a collection (document count, size, etc.)",
+      "keywords": ["migration", "collection", "stats", "statistics", "size", "count", "database", "solidb"]
+    },
+    {
+      "title": "db.create_index",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.create_index(collection, name, fields, options)",
+      "description": "Create an index on a collection's fields with optional uniqueness/sparse settings",
+      "keywords": ["migration", "index", "create", "fields", "unique", "sparse", "schema", "database", "solidb"]
+    },
+    {
+      "title": "db.drop_index",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.drop_index(collection, name)",
+      "description": "Drop a named index from a collection",
+      "keywords": ["migration", "index", "drop", "delete", "remove", "schema", "database", "solidb"]
+    },
+    {
+      "title": "db.list_indexes",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/migrations",
+      "signature": "db.list_indexes(collection)",
+      "description": "List all indexes defined on a collection",
+      "keywords": ["migration", "index", "list", "introspection", "schema", "database", "solidb"]
+    },
+    {
       "title": "db.query",
       "type": "function",
       "category": "Database",

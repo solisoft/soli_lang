@@ -270,7 +270,10 @@ impl Interpreter {
                                 target.span,
                             ));
                         }
-                        if name.starts_with('_') && inst.borrow().class.is_model_subclass() {
+                        if name.starts_with('_')
+                            && name != "_errors"
+                            && inst.borrow().class.is_model_subclass()
+                        {
                             return Err(RuntimeError::type_error(
                                 format!("cannot assign to read-only field '{}'", name),
                                 target.span,
@@ -442,7 +445,10 @@ impl Interpreter {
                                 target.span,
                             ));
                         }
-                        if name.starts_with('_') && inst.borrow().class.is_model_subclass() {
+                        if name.starts_with('_')
+                            && name != "_errors"
+                            && inst.borrow().class.is_model_subclass()
+                        {
                             return Err(RuntimeError::type_error(
                                 format!("cannot assign to read-only field '{}'", name),
                                 target.span,

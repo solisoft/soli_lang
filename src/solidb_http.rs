@@ -278,12 +278,20 @@ impl SoliDBClient {
             .unwrap_or_default())
     }
 
-    pub fn create_collection(&self, name: &str) -> Result<(), SoliDBError> {
+    pub fn create_collection(
+        &self,
+        name: &str,
+        collection_type: Option<&str>,
+    ) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
+        let mut body = serde_json::json!({"name": name});
+        if let Some(ct) = collection_type {
+            body["type"] = serde_json::Value::String(ct.to_string());
+        }
         self.request(
             reqwest::Method::POST,
             &format!("/_api/database/{}/collection", db),
-            Some(&serde_json::json!({"name": name})),
+            Some(&body),
         )?;
         Ok(())
     }
