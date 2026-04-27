@@ -108,6 +108,11 @@ pub const INT_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
+        name: "sleep",
+        zero_arg: true,
+        ret: "null",
+    },
+    MethodDef {
         name: "sqrt",
         zero_arg: true,
         ret: "float",
@@ -234,6 +239,11 @@ pub const FLOAT_METHODS: &[MethodDef] = &[
         name: "round",
         zero_arg: true,
         ret: "float",
+    },
+    MethodDef {
+        name: "sleep",
+        zero_arg: true,
+        ret: "null",
     },
     MethodDef {
         name: "sqrt",

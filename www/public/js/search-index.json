@@ -3178,6 +3178,15 @@
       "keywords": ["int", "integer", "downto", "loop", "iterate", "range"]
     },
     {
+      "title": ".sleep",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-sleep",
+      "signature": "int.sleep",
+      "description": "Pause execution for the integer number of seconds. Returns null.",
+      "keywords": ["int", "integer", "sleep", "pause", "wait", "delay", "timing", "thread"]
+    },
+    {
       "title": ".to_s / .to_string",
       "type": "method",
       "category": "Int",
@@ -3329,6 +3338,15 @@
       "signature": "float.clamp(min, max)",
       "description": "Constrain the float to be within the given range",
       "keywords": ["float", "clamp", "limit", "range"]
+    },
+    {
+      "title": ".sleep",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-sleep",
+      "signature": "float.sleep",
+      "description": "Pause execution for the float number of seconds (sub-second precision). Returns null.",
+      "keywords": ["float", "sleep", "pause", "wait", "delay", "timing", "thread", "milliseconds"]
     },
     {
       "title": ".to_i / .to_int",

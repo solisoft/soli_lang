@@ -22,6 +22,39 @@ describe("Clock Functions", fn() {
         assert(elapsed >= 0.01);
     });
 
+    test("Int.sleep pauses execution", fn() {
+        let start = clock();
+        0.sleep;
+        let elapsed = clock() - start;
+        assert(elapsed >= 0);
+        assert(elapsed < 0.5);
+    });
+
+    test("Float.sleep pauses execution", fn() {
+        let start = clock();
+        (0.01).sleep;
+        let elapsed = clock() - start;
+        assert(elapsed >= 0.01);
+    });
+
+    test("Int.sleep returns null", fn() {
+        let r = 0.sleep;
+        assert_null(r);
+    });
+
+    test("Float.sleep returns null", fn() {
+        let r = (0.0).sleep;
+        assert_null(r);
+    });
+
+    test("Negative sleep is a no-op", fn() {
+        let start = clock();
+        (-1).sleep;
+        (-0.5).sleep;
+        let elapsed = clock() - start;
+        assert(elapsed < 0.5);
+    });
+
     test("DateTime.microtime() returns microseconds", fn() {
         let mt = DateTime.microtime();
         assert(mt > 0);

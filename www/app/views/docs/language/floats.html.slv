@@ -208,6 +208,36 @@ let typed: Float = 1.5</code></pre>
         </div>
     </section>
 
+    <!-- Timing Methods -->
+    <section id="section-timing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Timing Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-sleep" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-sleep" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.sleep</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Pauses the current thread for the float number of seconds (sub-second precision). Negative, NaN, or infinite values are a no-op. Returns <code class="text-indigo-400">null</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">0.5.sleep       # pause for 500ms
+0.01.sleep      # pause for 10ms
+let delay = 1.5
+delay.sleep     # pause for 1.5 seconds</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
     <!-- Conversion Methods -->
     <section id="section-conversion" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

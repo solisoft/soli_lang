@@ -1539,6 +1539,12 @@ impl Interpreter {
                     span,
                 ))
             }
+            "sleep" => {
+                if n >= 0 {
+                    std::thread::sleep(std::time::Duration::from_secs(n as u64));
+                }
+                Ok(Value::Null)
+            }
             // Methods with args (return ValueMethod)
             "times" | "upto" | "downto" | "pow" | "gcd" | "lcm" | "between?" | "clamp"
             | "is_a?" => Ok(Value::Method(ValueMethod {
@@ -1574,6 +1580,12 @@ impl Interpreter {
             "infinite?" => Ok(Value::Bool(n.is_infinite())),
             "nan?" => Ok(Value::Bool(n.is_nan())),
             "finite?" => Ok(Value::Bool(n.is_finite())),
+            "sleep" => {
+                if n.is_finite() && n >= 0.0 {
+                    std::thread::sleep(std::time::Duration::from_secs_f64(n));
+                }
+                Ok(Value::Null)
+            }
             // Methods that support both 0-arg (auto-invoked) and with-arg forms,
             // or methods that always require args — all go through ValueMethod.
             // `round` with 0 args is auto-invoked via is_zero_arg_builtin_method.
