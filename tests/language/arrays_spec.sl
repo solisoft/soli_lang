@@ -3,6 +3,67 @@
 // ============================================================================
 
 describe("Array Operations", fn() {
+    test("array subtraction removes matching elements", fn() {
+        let a = [1, 2, 3];
+        let b = [1];
+        let result = a - b;
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 3);
+    });
+
+    test("array subtraction removes multiple matches", fn() {
+        let a = [1, 2, 1, 3, 1];
+        let b = [1];
+        let result = a - b;
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 3);
+    });
+
+    test("array subtraction with no matches returns copy", fn() {
+        let a = [1, 2, 3];
+        let b = [99];
+        let result = a - b;
+        assert_eq(len(result), 3);
+        assert_eq(result[0], 1);
+        assert_eq(result[1], 2);
+        assert_eq(result[2], 3);
+    });
+
+    test("array subtraction with empty array", fn() {
+        let a = [1, 2, 3];
+        let b = [];
+        let result = a - b;
+        assert_eq(len(result), 3);
+        assert_eq(result[0], 1);
+        assert_eq(result[1], 2);
+        assert_eq(result[2], 3);
+    });
+
+    test("array subtraction with strings", fn() {
+        let a = ["apple", "banana", "cherry"];
+        let b = ["banana"];
+        let result = a - b;
+        assert_eq(len(result), 2);
+        assert_eq(result[0], "apple");
+        assert_eq(result[1], "cherry");
+    });
+
+    test("array subtraction with instances uses identity", fn() {
+        class Person {
+            name: String;
+            fn new(n) { this.name = n; }
+        }
+        let p1 = Person.new({"name": "Alice"});
+        let p2 = Person.new({"name": "Bob"});
+        let arr = [p1, p2];
+        let to_remove = [p1];
+        let result = arr - to_remove;
+        assert_eq(len(result), 1);
+        assert_eq(result[0].name, "Bob");
+    });
+
     test("array indexing", fn() {
         let arr = ["a", "b", "c"];
         assert_eq(arr[0], "a");
