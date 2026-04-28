@@ -580,7 +580,11 @@ println("Took " + str(elapsed) + " seconds")
 
 ## HTTP Functions
 
-### http_get(url, options?)
+All HTTP request functions are exposed on the `HTTP` class. The standalone
+`http_get` / `http_post` / `http_request` etc. helpers were removed in favor of
+this class-based API.
+
+### HTTP.get(url, options?)
 
 Performs an HTTP GET request.
 
@@ -593,33 +597,33 @@ Performs an HTTP GET request.
 
 **Example:**
 ```soli
-let response = http_get("https://api.example.com/data")
+let response = HTTP.get("https://api.example.com/data")
 if response["status"] == 200
     println(response["body"])
 end
 ```
 
-### http_post(url, body, options?)
+### HTTP.post(url, body, options?)
 
 Performs an HTTP POST request.
 
 **Parameters:**
 - `url` (String) - The URL to post to
-- `body` (String) - The request body
+- `body` (String|Hash) - The request body
 - `options` (Hash, optional) - Request options
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
 **Example:**
 ```soli
-let response = http_post(
+let response = HTTP.post(
     "https://api.example.com/users",
     "name=Alice&email=alice@example.com",
     { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
 )
 ```
 
-### http_post_json(url, data, options?)
+### HTTP.post_json(url, data, options?)
 
 Performs an HTTP POST request with JSON body.
 
@@ -632,13 +636,13 @@ Performs an HTTP POST request with JSON body.
 
 **Example:**
 ```soli
-let response = http_post_json(
+let response = HTTP.post_json(
     "https://api.example.com/users",
     { "name": "Alice", "email": "alice@example.com" }
 )
 ```
 
-### http_get_json(url, options?)
+### HTTP.get_json(url, options?)
 
 Performs an HTTP GET request and parses JSON response.
 
@@ -650,24 +654,29 @@ Performs an HTTP GET request and parses JSON response.
 
 **Example:**
 ```soli
-let data = http_get_json("https://api.example.com/users/1")
+let data = HTTP.get_json("https://api.example.com/users/1")
 println(data["body"]["name"])
 ```
 
-### http_request(method, url, options?)
+### HTTP.put(url, body, options?) / HTTP.patch(url, body, options?) / HTTP.delete(url, options?) / HTTP.head(url, options?)
+
+PUT / PATCH / DELETE / HEAD counterparts to `HTTP.get` and `HTTP.post`. JSON
+variants (`HTTP.put_json`, `HTTP.patch_json`) serialize the body automatically.
+
+### HTTP.request(method, url, options?)
 
 Performs a custom HTTP request.
 
 **Parameters:**
 - `method` (String) - HTTP method (GET, POST, PUT, PATCH, DELETE, etc.)
 - `url` (String) - The URL
-- `options` (Hash, optional) - Request options
+- `options` (Hash, optional) - Request options (`body`, `headers`, ...)
 
 **Returns:** Hash - Response object
 
 **Example:**
 ```soli
-let response = http_request("DELETE", "https://api.example.com/users/1")
+let response = HTTP.request("DELETE", "https://api.example.com/users/1")
 ```
 
 ### HTTP Status Helpers
@@ -699,7 +708,7 @@ Checks if response status is 4xx.
 
 Checks if response status is 5xx.
 
-### http_get_all(urls)
+### HTTP.get_all(urls)
 
 Performs multiple GET requests in parallel.
 
@@ -710,13 +719,13 @@ Performs multiple GET requests in parallel.
 
 **Example:**
 ```soli
-let responses = http_get_all([
+let responses = HTTP.get_all([
     "https://api.example.com/users",
     "https://api.example.com/posts"
 ])
 ```
 
-### http_parallel(requests)
+### HTTP.parallel(requests)
 
 Performs multiple custom requests in parallel.
 
@@ -727,7 +736,7 @@ Performs multiple custom requests in parallel.
 
 **Example:**
 ```soli
-let responses = http_parallel([
+let responses = HTTP.parallel([
     { "method": "GET", "url": "https://api.example.com/users" },
     { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])
@@ -2209,6 +2218,134 @@ Checks if a key exists in the session.
 Gets the current session ID.
 
 **Returns:** String|null
+
+---
+
+## Background Jobs and Cron
+
+Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static fn perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).
+
+### Job class
+
+Every user-defined `XJob` class also gets these static helpers injected automatically.
+
+#### Job.enqueue(handler, args, queue?)
+
+Enqueues a job by handler name. Returns the SolidB job id.
+
+```soli
+let job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
+```
+
+#### Job.enqueue_in(handler, duration, args, queue?)
+
+Enqueues with a relative delay. `duration` accepts `"5 minutes"`, `"1 hour"`, `"2 days"`, etc., or a number of seconds.
+
+```soli
+Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })
+```
+
+#### Job.enqueue_at(handler, datetime, args, queue?)
+
+Enqueues to run at a specific ISO-8601 timestamp.
+
+```soli
+Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 })
+```
+
+#### Job.cancel(job_id)
+
+Cancels an enqueued (not yet started) job. Returns Bool.
+
+#### Job.list(queue?)
+
+Returns the list of jobs in a queue. Defaults to the configured default queue.
+
+#### Job.queues()
+
+Returns the list of queue names known to SolidB.
+
+### Per-class facade methods
+
+Each user-defined `XJob` class gets:
+
+| Method | Behavior |
+|--------|----------|
+| `XJob.perform_now(args)` | Runs `perform` inline, in the current process. No SolidB round-trip. |
+| `XJob.perform_later(args, queue?)` | Enqueues into SolidB. Returns the job id. |
+| `XJob.perform_in(duration, args, queue?)` | Enqueues with a relative delay. |
+| `XJob.perform_at(datetime, args, queue?)` | Enqueues to run at an ISO-8601 timestamp. |
+| `XJob.set(queue: ...)` | Returns a chainable proxy that forwards to `perform_later` / `perform_in` / `perform_at`. |
+| `XJob.schedule_cron(name, expr, args?)` | Idempotently registers a cron entry that triggers this class. |
+
+```soli
+WelcomeEmailJob.perform_now({ "user_id": 42 })
+WelcomeEmailJob.perform_later({ "user_id": 42 })
+WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 })
+WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })
+```
+
+### Cron class
+
+#### Cron.schedule(name, expr, handler, args?)
+
+Idempotent upsert by name. Calling twice with the same name updates the existing entry rather than creating a duplicate.
+
+```soli
+Cron.schedule("nightly_report", Cron.daily_at("03:00"), "ReportJob", {})
+```
+
+#### Cron.list()
+
+Returns all cron entries.
+
+#### Cron.update(id, fields)
+
+Updates an existing cron entry. Pass a hash of fields.
+
+#### Cron.delete(id)
+
+Deletes a cron entry by id. Returns Bool.
+
+### Cron expression helpers
+
+Pure string builders. No SolidB writes.
+
+| Helper | Cron string |
+|--------|-------------|
+| `Cron.every("5 minutes")` | `*/5 * * * *` |
+| `Cron.every("1 hour")` | `0 * * * *` |
+| `Cron.every("2 hours")` | `0 */2 * * *` |
+| `Cron.every("1 day")` | `0 0 */1 * *` |
+| `Cron.hourly()` | `0 * * * *` |
+| `Cron.daily_at("03:00")` | `0 3 * * *` |
+| `Cron.weekly_at("monday", "09:00")` | `0 9 * * 1` |
+
+### Declarative `static cron`
+
+A class can declare a `static cron` field; on boot, worker 0 upserts a cron entry named after the class (snake_case, e.g. `nightly_report_job`).
+
+```soli
+class NightlyReportJob {
+    static cron = Cron.daily_at("03:00")
+
+    static fn perform(args: Hash) {
+        Report.generate()
+    }
+}
+```
+
+Removing the field does not auto-delete the SolidB entry — call `Cron.delete(id)` explicitly.
+
+### Configuration env vars
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_JOBS_DATABASE` | SolidB database for queues and cron | `SOLIDB_DATABASE` then `default` |
+| `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied | `default` |
+| `SOLI_JOBS_CALLBACK_URL` | URL SolidB POSTs to when a job fires | `http://127.0.0.1:3000/_jobs/run` |
+| `SOLI_JOBS_ALLOW_REMOTE` | Allow non-localhost callbacks | `false` |
+| `SOLI_JOBS_SECRET` | HMAC secret (when remote allowed) | unset |
 
 ---
 

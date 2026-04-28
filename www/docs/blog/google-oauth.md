@@ -96,11 +96,11 @@ def google_exchange_code(code)
         "grant_type": "authorization_code"
     }
     
-    let response = http_post(
+    let response = HTTP.post(
         "https://oauth2.googleapis.com/token",
         json_stringify(params),
         {
-            "Content-Type": "application/json"
+            "headers": { "Content-Type": "application/json" }
         }
     )
     
@@ -108,10 +108,10 @@ def google_exchange_code(code)
 end
 
 def google_get_user_info(access_token)
-    let response = http_get(
+    let response = HTTP.get(
         "https://www.googleapis.com/oauth2/v2/userinfo",
         {
-            "Authorization": "Bearer " + access_token
+            "headers": { "Authorization": "Bearer " + access_token }
         }
     )
     

@@ -253,51 +253,8 @@ impl TypeEnvironment {
             },
         );
 
-        // HTTP client functions
-        // http_get(String) -> String
-        self.functions.insert(
-            "http_get".to_string(),
-            Type::Function {
-                params: vec![Type::String],
-                return_type: Box::new(Type::String),
-            },
-        );
-
-        // http_post(String, String|Hash) -> String
-        self.functions.insert(
-            "http_post".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::String),
-            },
-        );
-
-        // http_get_json(String) -> Any
-        self.functions.insert(
-            "http_get_json".to_string(),
-            Type::Function {
-                params: vec![Type::String],
-                return_type: Box::new(Type::Any),
-            },
-        );
-
-        // http_post_json(String, Any) -> Any
-        self.functions.insert(
-            "http_post_json".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::Any),
-            },
-        );
-
-        // http_request(String, String, Hash?, String|Hash?) -> Hash
-        self.functions.insert(
-            "http_request".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String],
-                return_type: Box::new(Type::Any),
-            },
-        );
+        // HTTP client functions are exposed via the `HTTP` class
+        // (HTTP.get, HTTP.post, HTTP.request, etc.) — see http_class.rs.
 
         // JSON functions
         // json_parse(String) -> Any

@@ -241,7 +241,47 @@ let counter = 0;
 counter = counter + 1;  # 1
 counter += 1;           # 2 (shorthand)
 counter *= 2;           # 4
+# Also: -=, /=, %=
 ```
+
+### Conditional Assignment Operators
+
+Soli supports three conditional assignment operators that only assign when the
+target meets a condition. They follow the short-circuit semantics of their
+matching binary operators.
+
+```soli
+# ||=  Assign only if the current value is falsy (null or false)
+let name = null;
+name ||= "Anonymous";   # name is now "Anonymous"
+
+let name = "Alice";
+name ||= "Anonymous";   # name stays "Alice"
+
+# ??=  Assign only if the current value is null
+let port = null;
+port ??= 8080;          # port is now 8080
+
+let flag = false;
+flag ??= true;          # flag stays false (only null triggers ??=)
+
+# &&=  Assign only if the current value is truthy
+let user = {"name": "Alice"};
+user &&= load_full_profile(user);  # only runs when user is truthy
+
+# Common idiom: lazy default for hash keys
+let cache = {};
+cache["key"] ||= expensive_lookup();   # compute once, reuse on repeat
+```
+
+| Operator | Equivalent to            | Use when                                    |
+|----------|--------------------------|---------------------------------------------|
+| `a ||= b` | `a = a || b`            | You want a fallback for falsy values        |
+| `a &&= b` | `a = a && b`            | You want to update only when already set    |
+| `a ??= b` | `a = a ?? b`            | You want a default only for `null` (keeps `false`/`0`) |
+
+The right-hand side is **not evaluated** when the condition fails, so it's
+safe to use expensive expressions on the right.
 
 ### Comparison Operators
 
@@ -2673,7 +2713,7 @@ fn process_user_data(raw_data: Hash) -> Hash {
 # HTTP request pipeline
 fn fetch_and_process(url: String) -> Hash {
     url
-        |> http_get_json()
+        |> HTTP.get_json()
         |> transform_response()
         |> validate_data()
         |> format_output()
@@ -3025,20 +3065,20 @@ let binary_data = slurp("data.bin", true);
 
 ```soli
 # GET request (async)
-let response = http_get("https://api.example.com/data");
+let response = HTTP.get("https://api.example.com/data");
 print(response["status"]);  # 200
 print(response["body"]);    # Response body
 
 # GET JSON and parse automatically
-let json_data = http_get_json("https://api.example.com/users");
+let json_data = HTTP.get_json("https://api.example.com/users");
 print(json_data[0]["name"]);
 
 # POST request
-let post_response = http_post("https://api.example.com/submit", {"key": "value"});
+let post_response = HTTP.post("https://api.example.com/submit", {"key": "value"});
 print(post_response["body"]);
 
 # Generic request with options
-let custom_request = http_request("DELETE", "https://api.example.com/resource/123", null, {
+let custom_request = HTTP.request("DELETE", "https://api.example.com/resource/123", {
     "headers": {"Authorization": "Bearer token123"},
     "timeout": 30,
 });

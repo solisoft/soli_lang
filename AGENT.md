@@ -283,8 +283,11 @@ throw RuntimeError.new("Something failed");
 - `str.truncate(length, suffix?)` - truncate with ellipsis
 
 ### HTTP/Server
-- `http_get(url)` - HTTP GET (returns future)
-- `http_post(url, body)` - HTTP POST
+- `HTTP.get(url, options?)` - HTTP GET (returns future)
+- `HTTP.post(url, body, options?)` - HTTP POST
+- `HTTP.put` / `HTTP.patch` / `HTTP.delete` / `HTTP.head` - other verbs
+- `HTTP.get_json` / `HTTP.post_json` / `HTTP.put_json` / `HTTP.patch_json` - JSON variants
+- `HTTP.request(method, url, options?)` - generic request
 - `http_server_listen(port)` - start HTTP server
 - `json_parse(str)` - parse JSON
 - `json_stringify(value)` - stringify to JSON

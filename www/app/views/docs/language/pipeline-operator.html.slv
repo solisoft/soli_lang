@@ -115,7 +115,7 @@ end
 def fetch_and_process -> Hash
     url
         |>(url: String)
-http_get_json
+HTTP.get_json
         |> transform_response
         |> validate_data
         |> format_output
