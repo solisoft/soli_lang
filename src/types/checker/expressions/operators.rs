@@ -40,7 +40,40 @@ impl TypeChecker {
                     })
                 }
             }
-            BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
+            BinaryOp::Subtract => {
+                if left_type.is_numeric() && right_type.is_numeric() {
+                    if matches!(left_type, Type::Float) || matches!(right_type, Type::Float) {
+                        Ok(Type::Float)
+                    } else {
+                        Ok(Type::Int)
+                    }
+                } else if let Type::Array(elem) = &left_type {
+                    if matches!(&right_type, Type::Array(_) | Type::Any | Type::Unknown) {
+                        Ok(Type::Array(elem.clone()))
+                    } else {
+                        Err(TypeError::General {
+                            message: format!(
+                                "cannot subtract {} from array",
+                                right_type
+                            ),
+                            span,
+                        })
+                    }
+                } else if matches!(left_type, Type::Any | Type::Unknown)
+                    || matches!(right_type, Type::Any | Type::Unknown)
+                {
+                    Ok(Type::Any)
+                } else {
+                    Err(TypeError::General {
+                        message: format!(
+                            "cannot perform arithmetic on {} and {}",
+                            left_type, right_type
+                        ),
+                        span,
+                    })
+                }
+            }
+            BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                 if left_type.is_numeric() && right_type.is_numeric() {
                     if matches!(left_type, Type::Float) || matches!(right_type, Type::Float) {
                         Ok(Type::Float)

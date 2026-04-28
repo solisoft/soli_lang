@@ -188,6 +188,16 @@ impl Interpreter {
 
     fn eval_subtract(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
+            (Value::Array(arr), Value::Array(to_remove)) => {
+                let arr = arr.borrow();
+                let to_remove = to_remove.borrow();
+                let result: Vec<Value> = arr
+                    .iter()
+                    .filter(|item| !to_remove.contains(item))
+                    .cloned()
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
