@@ -140,6 +140,25 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "getenv",
     "hasenv",
     "dotenv",
+    // HTTP response helpers
+    "halt",
+    // Loop control
+    "next",
+    // Validation framework
+    "validate",
+    // Upload helpers
+    "find_uploaded_file",
+    "detach_all_uploads",
+    // JSON helpers
+    "json_parse",
+    // Controller helpers
+    "render_json",
+    // Support helpers
+    "fmt_blob_size",
+    "fmt_blob_date",
+    "short_content_kind",
+    // Test framework
+    "clock",
 ];
 
 /// Collect top-level names defined in the program. These are names a
