@@ -30,7 +30,7 @@ fn draw_progress_bar(state: &ProgressState, total_files: usize, icon: &str) {
     let empty = bar_len - filled;
     let color = if state.failed > 0 { "31" } else { "32" };
     eprint!(
-        "\r\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {}{}/{} \x1b[90m{} assertions\x1b[0m\x1b[K",
+        "\r\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} assertions\x1b[0m\x1b[K",
         "█".repeat(filled),
         "░".repeat(empty),
         icon,
