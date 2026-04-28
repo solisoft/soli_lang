@@ -238,9 +238,9 @@ pub fn register_i18n_class(env: &mut Environment) {
                 _ => &currency,
             };
 
-            let (decimal_sep, thousands_sep) = match locale.as_str() {
-                "fr" | "de" | "es" | "it" => (",", "."),
-                _ => (".", ","), // default for "en" and others
+            let (decimal_sep, thousands_sep, symbol_after) = match locale.as_str() {
+                "fr" | "de" | "es" | "it" => (",", ".", true),
+                _ => (".", ",", false), // default for "en" and others
             };
 
             let int_part = amount as i64;
@@ -258,10 +258,15 @@ pub fn register_i18n_class(env: &mut Environment) {
                 .rev()
                 .collect();
 
-            let result = if frac_part > 0 {
-                format!("{}{}{}{:02}", symbol, formatted_int, decimal_sep, frac_part)
+            let number = if frac_part > 0 {
+                format!("{}{}{:02}", formatted_int, decimal_sep, frac_part)
             } else {
-                format!("{}{}", symbol, formatted_int)
+                formatted_int
+            };
+            let result = if symbol_after {
+                format!("{} {}", number, symbol)
+            } else {
+                format!("{}{}", symbol, number)
             };
             Ok(Value::String(result))
         })),

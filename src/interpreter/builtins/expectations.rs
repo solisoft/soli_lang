@@ -22,6 +22,32 @@ fn get_actual(args: &[Value]) -> Result<Value, String> {
     Err("expect() must be called first".to_string())
 }
 
+// Compact, single-line representation of a Value for assertion error messages.
+// Long strings are truncated so a 5KB HTML body doesn't fill the test output.
+fn fmt_value(v: &Value) -> String {
+    const MAX_STR: usize = 80;
+    const MAX_OTHER: usize = 200;
+    match v {
+        Value::String(s) => {
+            if s.chars().count() <= MAX_STR {
+                format!("{:?}", s)
+            } else {
+                let prefix: String = s.chars().take(MAX_STR).collect();
+                format!("{:?}… ({} chars)", prefix, s.len())
+            }
+        }
+        _ => {
+            let dbg = format!("{:?}", v);
+            if dbg.chars().count() <= MAX_OTHER {
+                dbg
+            } else {
+                let prefix: String = dbg.chars().take(MAX_OTHER).collect();
+                format!("{}…", prefix)
+            }
+        }
+    }
+}
+
 pub fn register_expectation_class(env: &mut Environment) {
     let mut expectation_native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
@@ -34,7 +60,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                 crate::interpreter::builtins::assertions::increment_assertion_count();
                 Ok(Value::Bool(true))
             } else {
-                Err(format!("Expected {:?} to be {:?}", actual, expected))
+                Err(format!(
+                    "Expected {} to be {}",
+                    fmt_value(&actual),
+                    fmt_value(expected)
+                ))
             }
         })),
     );
@@ -51,7 +81,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {:?} to equal {:?}", actual, expected))
+                    Err(format!(
+                        "Expected {} to equal {}",
+                        fmt_value(&actual),
+                        fmt_value(expected)
+                    ))
                 }
             },
         )),
@@ -69,7 +103,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {:?} to not be {:?}", actual, expected))
+                    Err(format!(
+                        "Expected {} to not be {}",
+                        fmt_value(&actual),
+                        fmt_value(expected)
+                    ))
                 }
             },
         )),
@@ -87,7 +125,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {:?} to not equal {:?}", actual, expected))
+                    Err(format!(
+                        "Expected {} to not equal {}",
+                        fmt_value(&actual),
+                        fmt_value(expected)
+                    ))
                 }
             },
         )),
@@ -104,7 +146,7 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {:?} to be null", actual))
+                    Err(format!("Expected {} to be null", fmt_value(&actual)))
                 }
             },
         )),
@@ -257,7 +299,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {:?} to contain {:?}", actual, item))
+                    Err(format!(
+                        "Expected {} to contain {}",
+                        fmt_value(&actual),
+                        fmt_value(item)
+                    ))
                 }
             },
         )),
