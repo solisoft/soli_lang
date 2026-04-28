@@ -90,7 +90,7 @@ pub fn get_tokio_handle() -> Option<tokio::runtime::Handle> {
 }
 
 /// Set the tokio runtime handle for the current worker thread.
-fn set_tokio_handle(handle: tokio::runtime::Handle) {
+pub fn set_tokio_handle(handle: tokio::runtime::Handle) {
     TOKIO_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
 }
 use crate::interpreter::builtins::controller::controller::ControllerInfo;

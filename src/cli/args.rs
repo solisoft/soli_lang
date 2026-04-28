@@ -690,6 +690,22 @@ pub fn parse_args() -> Options {
                             i += 1;
                             continue;
                         }
+                        if let Some(rest) = args[i].strip_prefix("--jobs=") {
+                            jobs = rest.parse().unwrap_or_else(|_| {
+                                eprintln!("Invalid jobs number: {}", rest);
+                                process::exit(64);
+                            });
+                            i += 1;
+                            continue;
+                        }
+                        if let Some(rest) = args[i].strip_prefix("--coverage-min=") {
+                            coverage_min = Some(rest.parse().unwrap_or_else(|_| {
+                                eprintln!("Invalid coverage percentage: {}", rest);
+                                process::exit(64);
+                            }));
+                            i += 1;
+                            continue;
+                        }
                         match args[i].as_str() {
                             "--jobs" => {
                                 i += 1;

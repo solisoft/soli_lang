@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use gag::BufferRedirect;
-
 use solilang::coverage::data::AggregatedCoverage;
 use solilang::coverage::tracker::{clear_global_coverage_tracker, set_global_coverage_tracker};
 use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
@@ -341,6 +339,27 @@ pub fn run_test(
         None
     };
 
+    // Share a single multi-threaded tokio runtime across all worker threads.
+    // Without this, each worker uses its own thread-local current-thread
+    // runtime to drive the *shared* reqwest HTTP_CLIENT — and connections
+    // in the pool get bound to whichever thread's runtime first opened
+    // them. When another worker reuses such a connection through its own
+    // runtime, the I/O driver isn't running and the future deadlocks.
+    // Same root cause as the test-server subprocess workaround above; that
+    // workaround alone doesn't help the runner's *own* parallel workers.
+    let shared_rt = if num_workers > 1 {
+        Some(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(num_workers.min(4))
+                .enable_all()
+                .build()
+                .expect("Failed to build shared tokio runtime for test workers"),
+        )
+    } else {
+        None
+    };
+    let shared_rt_handle = shared_rt.as_ref().map(|rt| rt.handle().clone());
+
     let suite_start = std::time::Instant::now();
     std::thread::scope(|s| {
         let mut handles = Vec::new();
@@ -351,8 +370,12 @@ pub fn run_test(
             let tracker_clone = tracker.clone();
             let progress = progress.clone();
             let all_results_shared = all_results_shared.clone();
+            let rt_handle = shared_rt_handle.clone();
 
             handles.push(s.spawn(move || {
+                if let Some(handle) = rt_handle {
+                    solilang::serve::set_tokio_handle(handle);
+                }
                 for file in chunk {
                     let start = std::time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
@@ -370,7 +393,13 @@ pub fn run_test(
                                 tracker_guard.start_test(file.to_string_lossy().as_ref());
                             }
                             let tracker_for_run = tracker_clone.clone();
-                            let _print_guard = BufferRedirect::stdout().ok();
+                            // Per-thread stdout capture — fd-level redirection
+                            // (e.g. `gag::BufferRedirect`) deadlocks under
+                            // `--jobs > 1` because every worker fights over
+                            // the same process stdout fd and the OS pipe
+                            // backing the redirect fills.
+                            let print_guard =
+                                solilang::interpreter::builtins::StdoutCaptureGuard::start();
                             let panic_result =
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     solilang::run_with_path_and_coverage(
@@ -382,6 +411,7 @@ pub fn run_test(
                                         preamble_slice,
                                     )
                                 }));
+                            let _ = print_guard.finish();
                             if let Some(ref tracker) = tracker_clone {
                                 let mut tracker_guard = tracker.lock().unwrap();
                                 tracker_guard.end_test();

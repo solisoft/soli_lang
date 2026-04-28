@@ -65,6 +65,62 @@ pub mod types;
 pub mod uploads;
 pub mod validation;
 
+thread_local! {
+    /// When `Some`, Soli's `print`/`println` builtins write here instead of
+    /// the process stdout. Used by the parallel test runner so each worker
+    /// thread captures its own output without racing on the global stdout fd
+    /// (which is what `gag::BufferRedirect` does — incompatible with
+    /// `--jobs > 1` because the OS pipe deadlocks once it fills).
+    static STDOUT_CAPTURE: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+}
+
+/// RAII guard: while alive, the current thread's `print`/`println` output is
+/// buffered into a thread-local Vec instead of being written to stdout.
+/// On drop, the captured bytes are returned via the closure passed to
+/// `with_captured_stdout`.
+pub struct StdoutCaptureGuard {
+    _private: (),
+}
+
+impl StdoutCaptureGuard {
+    /// Begin capturing the current thread's `print`/`println` output.
+    pub fn start() -> Self {
+        STDOUT_CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+        Self { _private: () }
+    }
+
+    /// Stop capturing and return the buffered bytes.
+    pub fn finish(self) -> Vec<u8> {
+        STDOUT_CAPTURE
+            .with(|c| c.borrow_mut().take())
+            .unwrap_or_default()
+    }
+}
+
+impl Drop for StdoutCaptureGuard {
+    fn drop(&mut self) {
+        STDOUT_CAPTURE.with(|c| {
+            let _ = c.borrow_mut().take();
+        });
+    }
+}
+
+fn write_captured_or_stdout(s: &str) {
+    let captured = STDOUT_CAPTURE.with(|c| {
+        if let Some(ref mut buf) = *c.borrow_mut() {
+            buf.extend_from_slice(s.as_bytes());
+            true
+        } else {
+            false
+        }
+    });
+    if !captured {
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        let _ = handle.write_all(s.as_bytes());
+    }
+}
+
 /// Register all built-in functions in the given environment.
 /// When `include_test_builtins` is false, test-only modules (factories, assertions,
 /// test_dsl, test_server) are skipped to save memory in serve mode.
@@ -77,13 +133,13 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         Value::NativeFunction(NativeFunction::new("print", None, |args| {
             for (i, arg) in args.into_iter().enumerate() {
                 if i > 0 {
-                    print!(" ");
+                    write_captured_or_stdout(" ");
                 }
                 // Auto-resolve futures before printing
                 let resolved = arg.resolve()?;
-                print!("{}", resolved);
+                write_captured_or_stdout(&format!("{}", resolved));
             }
-            println!();
+            write_captured_or_stdout("\n");
             Ok(Value::Null)
         })),
     );
@@ -94,13 +150,13 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         Value::NativeFunction(NativeFunction::new("println", None, |args| {
             for (i, arg) in args.into_iter().enumerate() {
                 if i > 0 {
-                    print!(" ");
+                    write_captured_or_stdout(" ");
                 }
                 // Auto-resolve futures before printing
                 let resolved = arg.resolve()?;
-                print!("{}", resolved);
+                write_captured_or_stdout(&format!("{}", resolved));
             }
-            println!();
+            write_captured_or_stdout("\n");
             Ok(Value::Null)
         })),
     );
