@@ -61,9 +61,40 @@
                         <td class="py-2 px-4 text-gray-400">Modulo</td>
                         <td class="py-2 px-4 text-gray-500">5 % 2 = 1</td>
                     </tr>
+                    <tr id="op-shovel" class="scroll-mt-20">
+                        <td class="py-2 px-4"><a href="#op-shovel" class="text-indigo-400 font-mono hover:text-indigo-300">&lt;&lt;</a></td>
+                        <td class="py-2 px-4 text-gray-400">Array push (shovel)</td>
+                        <td class="py-2 px-4 text-gray-500">[1, 2] &lt;&lt; 3 = [1, 2, 3]</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
+    </section>
+
+    <!-- Shovel Operator -->
+    <section id="section-shovel" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </span>
+            Shovel Operator
+        </h2>
+        <p class="text-gray-400 mb-4">The <code class="text-indigo-400">&lt;&lt;</code> (shovel) operator appends an element to an array. It modifies the array in place and returns the array.</p>
+        <pre data-filename="Example"><code class="language-soli text-sm"># Append element to array
+let arr = [1, 2, 3]
+arr << 4
+print(arr);  # [1, 2, 3, 4]
+
+# Push strings
+let names = ["Alice", "Bob"]
+names << "Charlie"
+print(names);  # ["Alice", "Bob", "Charlie"]
+
+# Returns the array for chaining
+let result = [1] << 2 << 3
+print(result);  # [1, 2, 3]</code></pre>
     </section>
 
     <!-- Comparison Operators -->
