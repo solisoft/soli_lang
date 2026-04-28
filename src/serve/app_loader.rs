@@ -17,33 +17,61 @@ use crate::serve::middleware::{
 use crate::serve::router::{derive_routes_from_controller, to_pascal_case_controller};
 use crate::span::Span;
 
-/// Scan for all controller files in the controllers directory.
-/// Returns files sorted so parent controllers are loaded before children.
+/// Scan for all controller files in the controllers directory, walking
+/// subdirectories recursively. Returns files sorted so parent controllers are
+/// loaded before children.
 pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
     let mut controllers = Vec::new();
-
-    for entry in std::fs::read_dir(controllers_dir).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read controllers directory: {}", e),
-        span: Span::default(),
-    })? {
-        let entry = entry.map_err(|e| RuntimeError::General {
-            message: format!("Failed to read directory entry: {}", e),
+    collect_controllers_recursive(controllers_dir, &mut controllers).map_err(|e| {
+        RuntimeError::General {
+            message: format!("Failed to read controllers directory: {}", e),
             span: Span::default(),
-        })?;
-
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with("_controller.sl") {
-                    controllers.push(path);
-                }
-            }
         }
-    }
+    })?;
 
     sort_controllers_by_dependency(&mut controllers);
 
     Ok(controllers)
+}
+
+fn collect_controllers_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_controllers_recursive(&path, out)?;
+        } else if path.extension().is_some_and(|ext| ext == "sl") {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with("_controller.sl") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Derive a controller key from a controller file path relative to the
+/// `app/controllers/` root. The trailing `_controller` is stripped and path
+/// separators are normalized to `/`.
+///
+/// - `users_controller.sl` → `users`
+/// - `admin/merchants_controller.sl` → `admin/merchants`
+pub(crate) fn controller_key_from_path(controllers_dir: &Path, controller_path: &Path) -> String {
+    let rel = controller_path
+        .strip_prefix(controllers_dir)
+        .unwrap_or(controller_path);
+    let stem_path = rel.with_extension("");
+    let key: String = stem_path
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => s.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    key.trim_end_matches("_controller").to_string()
 }
 
 /// Sort controller files so parent controllers are loaded before children.
@@ -150,6 +178,175 @@ fn extract_superclass_from_source(source: &str) -> Option<String> {
     None
 }
 
+/// Scan `app/jobs/` for `*_job.sl` files (recursive). Sorted alphabetically.
+pub(crate) fn scan_jobs(jobs_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
+    let mut out = Vec::new();
+    if !jobs_dir.exists() {
+        return Ok(out);
+    }
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                walk(&path, out)?;
+            } else if path.extension().is_some_and(|ext| ext == "sl") {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.ends_with("_job.sl") {
+                        out.push(path);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    walk(jobs_dir, &mut out).map_err(|e| RuntimeError::General {
+        message: format!("Failed to read jobs directory: {}", e),
+        span: Span::default(),
+    })?;
+    out.sort();
+    Ok(out)
+}
+
+/// Convert `email_job.sl` (a path under `app/jobs/`) to the expected class
+/// name `EmailJob`. `subdir/email_job.sl` → `EmailJob` (subdirs are ignored
+/// for class naming; users can namespace via subdirectories purely for
+/// organization).
+pub(crate) fn job_class_name_from_path(job_path: &Path) -> String {
+    let stem = job_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let mut out = String::new();
+    let mut capitalize_next = true;
+    for ch in stem.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            out.push(ch.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Define `__soli_jobs_run` from the prelude, register it as the `_jobs#run`
+/// controller action, and register `POST /_jobs/run/:name` to dispatch to it.
+fn register_jobs_callback(worker_id: usize, interpreter: &mut Interpreter) {
+    let source = crate::interpreter::builtins::jobs::JOBS_CALLBACK_PRELUDE;
+    let tokens = match crate::lexer::Scanner::new(source).scan_tokens() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Worker {}: jobs prelude lex error: {}", worker_id, e);
+            return;
+        }
+    };
+    let program = match crate::parser::Parser::new(tokens).parse() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Worker {}: jobs prelude parse error: {}", worker_id, e);
+            return;
+        }
+    };
+    if let Err(e) = interpreter.interpret(&program) {
+        eprintln!("Worker {}: jobs prelude execute error: {}", worker_id, e);
+        return;
+    }
+
+    if let Some(handler_value) = interpreter.environment.borrow().get("__soli_jobs_run") {
+        register_controller_action("_jobs", "run", handler_value);
+    } else {
+        eprintln!(
+            "Worker {}: __soli_jobs_run not defined after prelude execution",
+            worker_id
+        );
+        return;
+    }
+
+    crate::interpreter::builtins::server::register_route_with_handler(
+        "POST",
+        "/_jobs/run/:name",
+        "_jobs#run".to_string(),
+    );
+    crate::interpreter::builtins::server::rebuild_route_index();
+}
+
+/// Load all `app/jobs/*_job.sl` files for a worker. Each loaded class gets
+/// facade methods (`perform_now`, `perform_later`, `perform_in`, `perform_at`,
+/// `set`, `schedule_cron`) injected. When `worker_id == 0`, classes that
+/// declare `static cron = "..."` are upserted as SolidB cron entries (best
+/// effort; failure is logged but does not abort startup).
+///
+/// Also defines the `/_jobs/run/:name` callback dispatcher and registers it
+/// so SolidB webhooks can reach it.
+pub(crate) fn load_jobs_in_worker(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    jobs_dir: &Path,
+    file_tracker: &mut FileTracker,
+) {
+    let job_files = match scan_jobs(jobs_dir) {
+        Ok(files) => files,
+        Err(e) => {
+            eprintln!("Worker {}: Error scanning jobs directory: {}", worker_id, e);
+            return;
+        }
+    };
+
+    // Define the callback dispatcher prelude in the env once.
+    register_jobs_callback(worker_id, interpreter);
+
+    for path in &job_files {
+        file_tracker.track(path);
+        let expected_class = job_class_name_from_path(path);
+        if let Err(e) = execute_file(interpreter, path) {
+            eprintln!(
+                "Worker {}: Error loading {}: {}",
+                worker_id,
+                path.display(),
+                e
+            );
+            continue;
+        }
+
+        let class_value = interpreter.environment.borrow().get(&expected_class);
+        let Some(Value::Class(class_rc)) = class_value else {
+            eprintln!(
+                "Worker {}: expected class `{}` in {}",
+                worker_id,
+                expected_class,
+                path.display()
+            );
+            continue;
+        };
+
+        // Inject facade methods (perform_now, perform_later, perform_in, ...).
+        let new_class = crate::interpreter::builtins::jobs::inject_facade_methods(&class_rc);
+        interpreter.environment.borrow_mut().define(
+            expected_class.clone(),
+            Value::Class(std::rc::Rc::new(new_class)),
+        );
+
+        // Worker 0 only: upsert `static cron` schedules to SolidB.
+        if worker_id == 0 {
+            if let Some(expr) = crate::interpreter::builtins::jobs::read_static_cron(&class_rc) {
+                let cron_name =
+                    crate::interpreter::builtins::jobs::class_name_to_snake(&expected_class);
+                if let Err(e) = crate::interpreter::builtins::jobs::register_static_cron(
+                    &cron_name,
+                    &expr,
+                    &expected_class,
+                ) {
+                    eprintln!(
+                        "Worker {}: failed to register static cron for {}: {}",
+                        worker_id, expected_class, e
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Load all model files.
 pub(crate) fn load_models(
     interpreter: &mut Interpreter,
@@ -230,15 +427,17 @@ pub(crate) fn load_middleware(
 }
 
 /// Load a controller file and register its routes.
+///
+/// `controllers_dir` is the application's `app/controllers/` root; it's used
+/// to derive nested controller keys (e.g. `admin/merchants`) from the file's
+/// path relative to that root.
 pub(crate) fn load_controller(
     interpreter: &mut Interpreter,
+    controllers_dir: &Path,
     controller_path: &Path,
     file_tracker: &mut FileTracker,
 ) -> Result<(), RuntimeError> {
-    let controller_name = controller_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
+    let controller_key = controller_key_from_path(controllers_dir, controller_path);
 
     // Track file for hot reload
     file_tracker.track(controller_path);
@@ -249,15 +448,16 @@ pub(crate) fn load_controller(
         span: Span::default(),
     })?;
 
-    // Derive routes from the controller
-    let routes = derive_routes_from_controller(controller_name, &source)?;
+    // Derive routes from the controller (pass the full key so nested
+    // controllers get a base path like `/admin/merchants`).
+    let route_input = format!("{}_controller", controller_key);
+    let routes = derive_routes_from_controller(&route_input, &source)?;
 
     // Execute the controller file to define functions
     execute_file(interpreter, controller_path)?;
 
     // Check if this is an OOP controller (class-based)
-    let controller_key = controller_name.trim_end_matches("_controller");
-    let class_name = to_pascal_case_controller(controller_key);
+    let class_name = to_pascal_case_controller(&controller_key);
     let is_oop_controller = interpreter
         .environment
         .borrow()
@@ -281,13 +481,13 @@ pub(crate) fn load_controller(
                 .ok_or_else(|| RuntimeError::General {
                     message: format!(
                         "Function '{}' not found in controller {}",
-                        route.function_name, controller_name
+                        route.function_name, controller_key
                     ),
                     span: Span::default(),
                 })?;
 
             // Register action in global registry for DSL lookup
-            register_controller_action(controller_key, &route.function_name, func_value.clone());
+            register_controller_action(&controller_key, &route.function_name, func_value.clone());
         }
 
         crate::interpreter::builtins::server::register_route_with_handler(
@@ -378,27 +578,39 @@ pub(crate) fn load_controllers_in_worker(
     interpreter: &mut Interpreter,
     controllers_dir: &Path,
 ) {
-    let Ok(entries) = std::fs::read_dir(controllers_dir) else {
-        return;
-    };
+    // Walk subdirectories so nested controllers (e.g. `admin/merchants_controller.sl`)
+    // are picked up too.
+    let mut controller_files: Vec<PathBuf> = Vec::new();
+    let mut other_files: Vec<PathBuf> = Vec::new();
 
-    // Collect all .sl files, then sort controllers by dependency
-    let mut controller_files = Vec::new();
-    let mut other_files = Vec::new();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            let is_controller = path
-                .file_stem()
-                .and_then(|n| n.to_str())
-                .is_some_and(|name| name.ends_with("_controller"));
-            if is_controller {
-                controller_files.push(path);
-            } else {
-                other_files.push(path);
+    fn walk(
+        dir: &Path,
+        controller_files: &mut Vec<PathBuf>,
+        other_files: &mut Vec<PathBuf>,
+    ) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                walk(&path, controller_files, other_files)?;
+            } else if path.extension().is_some_and(|ext| ext == "sl") {
+                let is_controller = path
+                    .file_stem()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|name| name.ends_with("_controller"));
+                if is_controller {
+                    controller_files.push(path);
+                } else {
+                    other_files.push(path);
+                }
             }
         }
+        Ok(())
+    }
+
+    if walk(controllers_dir, &mut controller_files, &mut other_files).is_err() {
+        return;
     }
 
     // Load non-controller files first (helpers, etc.)
@@ -440,33 +652,31 @@ pub(crate) fn load_controllers_in_worker(
         }
 
         // Also register controller actions in this worker (only for function-based controllers)
-        if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
-            let controller_key = name.trim_end_matches("_controller");
-            let class_name = to_pascal_case_controller(controller_key);
+        let controller_key = controller_key_from_path(controllers_dir, path);
+        let class_name = to_pascal_case_controller(&controller_key);
 
-            // Check if this is an OOP controller (class-based)
-            let is_oop_controller = interpreter
-                .environment
-                .borrow()
-                .get(&class_name)
-                .map(|v| matches!(v, Value::Class(_)))
-                .unwrap_or(false);
+        // Check if this is an OOP controller (class-based)
+        let is_oop_controller = interpreter
+            .environment
+            .borrow()
+            .get(&class_name)
+            .map(|v| matches!(v, Value::Class(_)))
+            .unwrap_or(false);
 
-            // Only register actions for function-based controllers
-            // OOP controllers have their methods resolved at runtime
-            if !is_oop_controller {
-                let source = std::fs::read_to_string(path).unwrap_or_default();
-                let routes = derive_routes_from_controller(name, &source).unwrap_or_default();
-                for route in routes {
-                    if let Some(func_value) =
-                        interpreter.environment.borrow().get(&route.function_name)
-                    {
-                        register_controller_action(
-                            controller_key,
-                            &route.function_name,
-                            func_value.clone(),
-                        );
-                    }
+        // Only register actions for function-based controllers
+        // OOP controllers have their methods resolved at runtime
+        if !is_oop_controller {
+            let source = std::fs::read_to_string(path).unwrap_or_default();
+            let route_input = format!("{}_controller", controller_key);
+            let routes = derive_routes_from_controller(&route_input, &source).unwrap_or_default();
+            for route in routes {
+                if let Some(func_value) = interpreter.environment.borrow().get(&route.function_name)
+                {
+                    register_controller_action(
+                        &controller_key,
+                        &route.function_name,
+                        func_value.clone(),
+                    );
                 }
             }
         }
@@ -578,7 +788,8 @@ pub(crate) fn reload_controllers_in_worker(
     };
 
     for controller_path in &controller_files {
-        if let Err(e) = load_controller(interpreter, controller_path, file_tracker) {
+        if let Err(e) = load_controller(interpreter, controllers_dir, controller_path, file_tracker)
+        {
             eprintln!(
                 "Worker {}: Error reloading controller {}: {}",
                 worker_id,

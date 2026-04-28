@@ -78,6 +78,18 @@ describe("Model.group_by() query generation", fn() {
     });
 });
 
+describe("Model.where() with optional bind variables", fn() {
+    test("where() accepts filter without bind variables", fn() {
+        let q = TestUser.where("doc.active == true").to_query;
+        assert(q.contains("FILTER doc.active == true"));
+    });
+
+    test("where() accepts filter with empty bind variables", fn() {
+        let q = TestUser.where("doc.active == true", {}).to_query;
+        assert(q.contains("FILTER doc.active == true"));
+    });
+});
+
 describe("Model.where() with AQL functions", fn() {
     test("LOWER() function is passed through correctly", fn() {
         let q = TestUser.where("LOWER(doc.email) == @email", { "email": "test@example.com" }).to_query;

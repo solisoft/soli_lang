@@ -42,16 +42,21 @@ pub(super) fn render_error_page(
 
     let span_info = extract_span_from_error(&actual_error);
     let error_line = span_info.line;
+    // Prefer the deepest stack frame's file: when an error happens inside
+    // a callee, the error span's line belongs to that callee, not to the
+    // outermost (controller) frame. Picking the first frame would yield a
+    // file/line mismatch like `controller.sl:92` when line 92 is in the
+    // deeper `service.sl`.
     let error_file = span_info
         .file
         .clone()
         .or_else(|| {
-            for frame in &embedded_stack {
+            for frame in embedded_stack.iter().rev() {
                 if let Some(file) = extract_file_from_frame(frame) {
                     return Some(file);
                 }
             }
-            for frame in stack_trace {
+            for frame in stack_trace.iter().rev() {
                 if let Some(file) = extract_file_from_frame(frame) {
                     return Some(file);
                 }

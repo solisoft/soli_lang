@@ -80,6 +80,78 @@ describe("Compound Assignment Operators", fn() {
     });
 });
 
+describe("Logical Compound Assignment Operators", fn() {
+    test("or-equals (||=) assigns when target is null", fn() {
+        let a = null
+        a ||= 42
+        assert_eq(a, 42);
+    });
+
+    test("or-equals (||=) assigns when target is false", fn() {
+        let a = false
+        a ||= "fallback"
+        assert_eq(a, "fallback");
+    });
+
+    test("or-equals (||=) keeps existing truthy value", fn() {
+        let a = 7
+        a ||= 99
+        assert_eq(a, 7);
+
+        let s = "hello"
+        s ||= "ignored"
+        assert_eq(s, "hello");
+    });
+
+    test("or-equals (||=) on hash member", fn() {
+        let h = {"name": "Alice"}
+        h["age"] ||= 30
+        assert_eq(h["age"], 30);
+        h["name"] ||= "Bob"
+        assert_eq(h["name"], "Alice");
+    });
+
+    test("and-equals (&&=) assigns when target is truthy", fn() {
+        let a = 1
+        a &&= 99
+        assert_eq(a, 99);
+    });
+
+    test("and-equals (&&=) keeps falsy value", fn() {
+        let a = null
+        a &&= 99
+        assert_eq(a, null);
+
+        let b = false
+        b &&= 99
+        assert_eq(b, false);
+    });
+
+    test("nullish-equals (??=) only assigns when null", fn() {
+        let a = null
+        a ??= 42
+        assert_eq(a, 42);
+
+        let b = false
+        b ??= 99
+        assert_eq(b, false);
+
+        let c = 0
+        c ??= 99
+        assert_eq(c, 0);
+
+        let d = "x"
+        d ??= "y"
+        assert_eq(d, "x");
+    });
+
+    test("logical compound on member access", fn() {
+        let user = {"name": null}
+        user.name ||= "default"
+        assert_eq(user.name, "default");
+    });
+});
+
 describe("Postfix Increment Operator (++)", fn() {
     test("basic increment", fn() {
         let a = 1

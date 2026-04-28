@@ -681,25 +681,62 @@ impl Interpreter {
                 // Get the foreign key value based on relation type
                 let inst_ref = inst.borrow();
                 let fk_value = match relation.relation_type {
-                    // For HasMany/HasOne, the FK is on the *related* model,
-                    // so we use the owner's _key as the bind value.
-                    RelationType::HasMany | RelationType::HasOne | RelationType::Polymorphic => {
-                        inst_ref.get("_key")
-                    }
+                    // For HasMany/HasOne/HABTM, the FK is on the *related*
+                    // model (or join table), so we use the owner's _key.
+                    RelationType::HasMany
+                    | RelationType::HasOne
+                    | RelationType::Polymorphic
+                    | RelationType::HasAndBelongsToMany => inst_ref.get("_key"),
                     // For BelongsTo, the FK is on this instance
                     RelationType::BelongsTo => inst_ref.get(&relation.foreign_key),
                 };
                 drop(inst_ref);
 
+                // For HasMany, return a chainable QueryBuilder seeded with
+                // the FK filter so callers can do user.posts.delete_all,
+                // user.posts.where(...).count, for p in user.posts, etc.
+                if matches!(relation.relation_type, RelationType::HasMany) {
+                    use crate::interpreter::builtins::model::QueryBuilder;
+                    let related_class =
+                        crate::interpreter::builtins::model::get_model_class(&relation.class_name)
+                            .unwrap_or_else(|| inst.borrow().class.clone());
+                    let mut qb = QueryBuilder::new_with_class(
+                        relation.class_name.clone(),
+                        relation.collection.clone(),
+                        related_class,
+                    );
+                    let mut binds = std::collections::HashMap::new();
+                    match fk_value {
+                        Some(Value::String(s)) => {
+                            binds.insert("__rel_fk".to_string(), serde_json::Value::String(s));
+                            qb.set_filter(format!("{} == @__rel_fk", relation.foreign_key), binds);
+                        }
+                        Some(Value::Int(n)) => {
+                            binds.insert(
+                                "__rel_fk".to_string(),
+                                serde_json::Value::String(n.to_string()),
+                            );
+                            qb.set_filter(format!("{} == @__rel_fk", relation.foreign_key), binds);
+                        }
+                        // Owner not yet persisted (or FK missing): build a
+                        // QueryBuilder that yields no rows. Chaining still
+                        // works (count → 0, delete_all → no-op, iteration
+                        // → empty).
+                        _ => {
+                            qb.set_filter("1 == 0".to_string(), std::collections::HashMap::new());
+                        }
+                    }
+                    return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));
+                }
+
                 let fk = match fk_value {
                     Some(Value::String(s)) => s,
                     Some(Value::Int(n)) => n.to_string(),
-                    // Missing or null FK: has_many/has_one return an empty
-                    // collection (no related rows possible); belongs_to
-                    // returns null (the association is simply not set).
+                    // Missing or null FK: collection-typed associations return
+                    // an empty array; singular associations return null.
                     _ => {
                         return Ok(match relation.relation_type {
-                            RelationType::HasMany => {
+                            RelationType::HasAndBelongsToMany => {
                                 Value::Array(Rc::new(RefCell::new(Vec::new())))
                             }
                             _ => Value::Null,
@@ -711,10 +748,8 @@ impl Interpreter {
                 let related_collection = &relation.collection;
                 let sdbql = match relation.relation_type {
                     RelationType::HasMany => {
-                        format!(
-                            "FOR doc IN {} FILTER doc.{} == @fk RETURN doc",
-                            related_collection, relation.foreign_key
-                        )
+                        // Handled above; unreachable here.
+                        unreachable!()
                     }
                     RelationType::HasOne => {
                         format!(
@@ -742,6 +777,18 @@ impl Interpreter {
                             related_collection, relation.foreign_key, type_field, type_value
                         )
                     }
+                    RelationType::HasAndBelongsToMany => {
+                        let join_table = relation.join_table.as_deref().unwrap_or("");
+                        let assoc_fk = relation.association_foreign_key.as_deref().unwrap_or("");
+                        format!(
+                            "FOR jt IN {jt} FILTER jt.{owner_fk} == @fk \
+                             FOR rel IN {coll} FILTER rel._key == jt.{assoc_fk} RETURN rel",
+                            jt = join_table,
+                            owner_fk = relation.foreign_key,
+                            coll = related_collection,
+                            assoc_fk = assoc_fk,
+                        )
+                    }
                 };
 
                 let mut bind_vars = std::collections::HashMap::new();
@@ -751,12 +798,16 @@ impl Interpreter {
                 return match exec_with_auto_collection(sdbql, Some(bind_vars), related_collection) {
                     Ok(results) => {
                         match relation.relation_type {
-                            RelationType::HasMany => {
-                                let class = inst.borrow().class.clone();
+                            RelationType::HasMany | RelationType::HasAndBelongsToMany => {
+                                let related_class =
+                                    crate::interpreter::builtins::model::get_model_class(
+                                        &relation.class_name,
+                                    )
+                                    .unwrap_or_else(|| inst.borrow().class.clone());
                                 let values: Vec<Value> = results
                                 .iter()
                                 .map(|json| {
-                                    crate::interpreter::builtins::model::crud::json_doc_to_instance(&class, json)
+                                    crate::interpreter::builtins::model::crud::json_doc_to_instance(&related_class, json)
                                 })
                                 .collect();
                                 Ok(Value::Array(Rc::new(RefCell::new(values))))
@@ -783,6 +834,22 @@ impl Interpreter {
                 };
             }
         }
+
+        // Auto-generated HABTM mutators: post.add_tag(...), post.remove_tag(...).
+        let inst_ref = inst.borrow();
+        if inst_ref.class.is_model_subclass() {
+            let class_name = inst_ref.class.name.clone();
+            if crate::interpreter::builtins::model::habtm::match_habtm_method(&class_name, name)
+                .is_some()
+            {
+                drop(inst_ref);
+                return Ok(Value::Method(ValueMethod {
+                    receiver: Box::new(Value::Instance(inst.clone())),
+                    method_name: name.to_string(),
+                }));
+            }
+        }
+        drop(inst_ref);
 
         // Auto-generated uploader methods (attach_<field>, detach_<field>,
         // <field>_url, <field>_urls). Only kicks in when the model declared
@@ -1361,15 +1428,14 @@ impl Interpreter {
         }
         match name {
             "length" | "len" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?"
-            | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "flatten"
-            | "first" | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle"
-            | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear"
-            | "get" | "to_string" | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" => {
-                Ok(Value::Method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank"
+            | "flatten" | "first" | "last" | "empty?" | "includes?" | "contains" | "sample"
+            | "shuffle" | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop"
+            | "clear" | "get" | "to_string" | "to_json" | "join" | "is_a?" | "all" | "includes"
+            | "order" => Ok(Value::Method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
@@ -1436,8 +1502,14 @@ impl Interpreter {
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "join" | "select" | "fields"
-            | "all" | "first" | "count" | "to_query" | "is_a?" | "pluck" | "sum" | "avg"
-            | "min" | "max" | "group_by" => Ok(Value::Method(ValueMethod {
+            | "all" | "first" | "count" | "delete_all" | "to_query" | "is_a?" | "pluck" | "sum"
+            | "avg" | "min" | "max" | "group_by"
+            // Enumerable-style array passthrough — materializes on call.
+            | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"
+            | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"
+            | "compact_blank" | "flatten" | "last" | "empty?" | "includes?" | "contains"
+            | "sample" | "shuffle" | "take" | "drop" | "zip" | "to_string" | "to_json"
+            | "to_a" | "to_array" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),

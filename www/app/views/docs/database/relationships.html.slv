@@ -37,6 +37,10 @@
                     <td class="py-3 px-4"><code class="text-indigo-300">belongs_to(name, { "polymorphic": true })</code></td>
                     <td class="py-3 px-4 text-gray-400">Declare a polymorphic relationship</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">has_and_belongs_to_many(name)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Declare a many-to-many relationship through a join table</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -120,24 +124,72 @@ end</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Relationship Accessors</h2>
-    <p class="text-gray-400 mb-4">Access related records directly from model instances. You can also chain query builder methods on <code>has_many</code> relations:</p>
+    <p class="text-gray-400 mb-4">
+        Access related records directly from model instances. <code>has_many</code>
+        relations return a chainable QueryBuilder &mdash; not a plain array &mdash;
+        so you can iterate, index, or chain terminal operations like
+        <code>.delete_all</code> and <code>.count</code> on the same accessor.
+    </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">let user = User.find("user_id")
 
-# Access has_many relation
-let posts = user.posts
-
-# Access has_one relation
+# Access has_one / belongs_to — single instance (or nil)
 let profile = user.profile
+let author  = post.user
 
-# Access belongs_to relation
-let author = post.user
-
-# Chain query builder methods on relations
-let published = user.posts.where("published = @p", { "p": true }).all</code></pre>
+# Access has_many — chainable QueryBuilder
+let posts = user.posts</code></pre>
         </div>
+    </div>
+
+    <h3 class="text-xl font-bold text-white mb-4"><code>has_many</code> is Enumerable AND chainable</h3>
+    <p class="text-gray-400 mb-4">
+        The relation accessor behaves like an array (iteration, indexing,
+        <code>len</code>, <code>each</code>, <code>map</code>, <code>filter</code>, &hellip;)
+        <em>and</em> like a QueryBuilder
+        (<code>.where</code>, <code>.order</code>, <code>.limit</code>,
+         <code>.count</code>, <code>.delete_all</code>, <code>.exists</code>, &hellip;).
+        Each terminal call runs a fresh query against the foreign-key filter.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Iterate
+for post in user.posts
+    print(post.title)
+end
+
+# Indexing materializes the result set
+let first = user.posts[0]
+
+# len() / .length / .size
+let n = len(user.posts)
+
+# Array-style helpers materialize then delegate
+user.posts.each(fn(p) { print(p.title) })
+let titles = user.posts.map(fn(p) { p.title })
+
+# Chained query — composes onto the seed user_id == @__rel_fk filter
+let published = user.posts.where("published = @p", { "p": true }).all
+let n_pub     = user.posts.where("published = @p", { "p": true }).count
+
+# Bulk delete — one REMOVE statement, no N+1
+user.posts.delete_all
+user.posts.where("draft = @d", { "d": true }).delete_all
+
+# Sort / paginate before materializing
+let recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <ul class="text-indigo-300 text-sm space-y-1 list-disc list-inside">
+            <li>An owner that has not been saved yet (no <code>_key</code>) returns a QueryBuilder whose filter never matches &mdash; <code>count</code> is <code>0</code>, <code>delete_all</code> is a no-op, iteration yields nothing.</li>
+            <li>If the related model uses <code>soft_delete</code>, soft-deleted children are excluded from the relation. Use the static <code>Related.with_deleted</code> / <code>Related.only_deleted</code> to query them explicitly.</li>
+            <li><code>belongs_to</code> and <code>has_one</code> still return a single instance (or <code>nil</code>), not a QueryBuilder.</li>
+        </ul>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Eager Loading (includes)</h2>
@@ -218,6 +270,95 @@ let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
 let users = User.includes("posts", "published = @p", { "p": true })
     .includes("profile")
     .all</code></pre>
+        </div>
+    </div>
+
+    <section id="habtm" class="scroll-mt-20 mb-6">
+    <h2 class="text-2xl font-bold text-white mb-6">Has And Belongs To Many</h2>
+    <p class="text-gray-400 mb-4">
+        Many-to-many associations use a join table that stores <code>(&lt;foreign_key&gt;, &lt;association_foreign_key&gt;)</code> rows. Each side of the association declares <code>has_and_belongs_to_many</code>:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Post < Model
+    has_and_belongs_to_many("tags")
+end
+
+class Tag < Model
+    has_and_belongs_to_many("posts")
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        The default join table is the alphabetical concatenation of the two pluralized class names &mdash; here <code>posts_tags</code>. The default foreign keys are <code>post_id</code> and <code>tag_id</code>.
+    </p>
+
+    <h3 id="habtm-reading" class="text-lg font-semibold text-white mb-3">Reading associations</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let post = Post.find(post_id)
+let tags = post.tags  # => [Tag, Tag, ...]</code></pre>
+        </div>
+    </div>
+
+    <h3 id="habtm-adding-removing" class="text-lg font-semibold text-white mb-3">Adding and removing</h3>
+    <p class="text-gray-400 mb-4">Auto-generated mutators insert and delete join-table rows. The method name is <code>add_&lt;singular&gt;</code> / <code>remove_&lt;singular&gt;</code> derived from the relation name:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">post.add_tag(tag)              # accepts a Tag instance
+post.add_tag("tag_key")        # ...or a raw _key
+post.add_tag([tag1, tag2])     # ...or an array
+post.add_tag(tag1, tag2)       # ...or variadic args
+
+post.remove_tag(tag)
+post.remove_tag([tag1, tag2])</code></pre>
+        </div>
+    </div>
+
+    <h3 id="habtm-shovel-operator" class="text-lg font-semibold text-white mb-3">Shovel operator (<code>&lt;&lt;</code>)</h3>
+    <p class="text-gray-400 mb-4"><code>&lt;&lt;</code> is shorthand for <code>add_&lt;singular&gt;</code> on a HABTM relation, and array push everywhere else:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">post.tags << tag                # equivalent to post.add_tag(tag)
+
+let nums = [1, 2, 3]
+nums << 4                       # array push: nums == [1, 2, 3, 4]</code></pre>
+        </div>
+    </div>
+
+    <h3 id="habtm-eager-loading" class="text-lg font-semibold text-white mb-3">Eager loading</h3>
+    <p class="text-gray-400 mb-4">Includes use a two-stage subquery through the join table:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let posts = Post.includes("tags").all
+
+# Generated subquery:
+# LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key
+#                    FOR rel IN tags FILTER rel._key == jt.tag_id RETURN rel)</code></pre>
+        </div>
+    </div>
+
+    <h3 id="habtm-existence-filtering" class="text-lg font-semibold text-white mb-3">Existence filtering</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">let tagged_posts = Post.join("tags").all
+let tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Overrides</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Article < Model
+    has_and_belongs_to_many("labels", {
+        "class_name": "Tag",
+        "join_table": "article_labels",
+        "foreign_key": "article_id",
+        "association_foreign_key": "tag_id"
+    })
+end</code></pre>
         </div>
     </div>
 

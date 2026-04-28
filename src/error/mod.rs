@@ -262,8 +262,11 @@ pub enum RuntimeError {
     },
 
     /// Error with captured environment for debugging
-    /// This allows accessing local variables in the dev error page REPL
-    #[error("{message} at {span}")]
+    /// This allows accessing local variables in the dev error page REPL.
+    /// Note: callers wrap an inner error via `e.to_string()`, which already
+    /// includes its own " at {span}" suffix — so we display only `{message}`
+    /// here to avoid producing "... at 92:20 at 92:20".
+    #[error("{message}")]
     WithEnv {
         message: String,
         span: Span,

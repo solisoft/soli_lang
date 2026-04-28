@@ -1,13 +1,45 @@
 use std::fs;
-use std::io::Write;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use gag::BufferRedirect;
 
 use solilang::coverage::data::AggregatedCoverage;
 use solilang::coverage::tracker::{clear_global_coverage_tracker, set_global_coverage_tracker};
 use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
+
+struct ProgressState {
+    passed: usize,
+    failed: usize,
+    total_assertions: i64,
+}
+
+fn draw_progress_bar(state: &ProgressState, total_files: usize, icon: &str) {
+    let done = state.passed + state.failed;
+    let bar_len = 30;
+    let filled = if total_files == 0 {
+        0
+    } else {
+        ((bar_len as f64) * (done as f64) / (total_files as f64)) as usize
+    };
+    let filled = filled.min(bar_len);
+    let empty = bar_len - filled;
+    let color = if state.failed > 0 { "31" } else { "32" };
+    eprint!(
+        "\r\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {}{}/{} \x1b[90m{} assertions\x1b[0m\x1b[K",
+        "█".repeat(filled),
+        "░".repeat(empty),
+        icon,
+        done,
+        total_files,
+        state.total_assertions,
+    );
+    let _ = io::stderr().flush();
+}
 
 fn format_duration(duration: Duration) -> String {
     let micros = duration.as_micros();
@@ -27,8 +59,6 @@ pub fn run_test(
     coverage_min: Option<f64>,
     no_coverage: bool,
 ) {
-    use std::sync::mpsc;
-
     let test_path = match path {
         Some(p) => PathBuf::from(p),
         None => std::env::current_dir()
@@ -81,12 +111,13 @@ pub fn run_test(
     let helpers_src = "fn with_transaction(block) { block() }\n".to_string();
     model_preamble_files.push((PathBuf::from("<test-helpers>"), helpers_src));
 
-    // Load every `.sl` in app/models, app/helpers, app/middleware into the
-    // test interpreter. Models define classes used in tests; helpers and
-    // middleware define top-level `def` functions that unit tests can call
-    // directly (without going through an HTTP request) — e.g.
-    // `authorize_admin(req)` or `active_link(path, current)`.
-    for sub in ["models", "helpers", "middleware"] {
+    // Load every `.sl` in app/models, app/services, app/helpers,
+    // app/middleware into the test interpreter. Models and services define
+    // classes used in tests; helpers and middleware define top-level `def`
+    // functions that unit tests can call directly (without going through
+    // an HTTP request) — e.g. `authorize_admin(req)` or
+    // `active_link(path, current)`.
+    for sub in ["models", "services", "helpers", "middleware"] {
         let dir = app_dir.join("app").join(sub);
         if !dir.is_dir() {
             continue;
@@ -273,20 +304,55 @@ pub fn run_test(
         std::io::stdout().flush().unwrap();
     }
 
-    let (tx, rx) = mpsc::channel();
+    let total_files = test_files.len();
+    let progress = Arc::new(Mutex::new(ProgressState {
+        passed: 0,
+        failed: 0,
+        total_assertions: 0,
+    }));
+    type TestResult = (PathBuf, bool, String, Duration, i64);
+    let all_results_shared: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::new()));
 
+    let stop_animation = Arc::new(AtomicBool::new(false));
+    let animate = std::io::stderr().is_terminal();
+
+    let anim_handle = if animate {
+        let progress = progress.clone();
+        let stop = stop_animation.clone();
+        Some(std::thread::spawn(move || {
+            let spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let mut frame = 0usize;
+            while !stop.load(Ordering::Relaxed) {
+                let snapshot = {
+                    let p = progress.lock().unwrap();
+                    ProgressState {
+                        passed: p.passed,
+                        failed: p.failed,
+                        total_assertions: p.total_assertions,
+                    }
+                };
+                let icon = spinner[frame].to_string();
+                draw_progress_bar(&snapshot, total_files, &icon);
+                std::thread::sleep(Duration::from_millis(80));
+                frame = (frame + 1) % spinner.len();
+            }
+        }))
+    } else {
+        None
+    };
+
+    let suite_start = std::time::Instant::now();
     std::thread::scope(|s| {
         let mut handles = Vec::new();
         let chunk_size = test_files.len().div_ceil(num_workers);
         for chunk in test_files.chunks(chunk_size) {
-            let tx = tx.clone();
             let chunk: Vec<PathBuf> = chunk.to_vec();
             let preamble_files = model_preamble_files.clone();
             let tracker_clone = tracker.clone();
+            let progress = progress.clone();
+            let all_results_shared = all_results_shared.clone();
 
             handles.push(s.spawn(move || {
-                let mut results: Vec<(PathBuf, bool, String, Duration, i64)> = Vec::new();
-
                 for file in chunk {
                     let start = std::time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
@@ -304,6 +370,7 @@ pub fn run_test(
                                 tracker_guard.start_test(file.to_string_lossy().as_ref());
                             }
                             let tracker_for_run = tracker_clone.clone();
+                            let _print_guard = BufferRedirect::stdout().ok();
                             let panic_result =
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     solilang::run_with_path_and_coverage(
@@ -333,28 +400,57 @@ pub fn run_test(
                     };
 
                     let duration = start.elapsed();
-                    results.push((file, passed, error, duration, assertions));
-                }
 
-                let _ = tx.send(results);
+                    {
+                        let mut p = progress.lock().unwrap();
+                        if passed {
+                            p.passed += 1;
+                        } else {
+                            p.failed += 1;
+                        }
+                        p.total_assertions += assertions;
+                    }
+
+                    all_results_shared
+                        .lock()
+                        .unwrap()
+                        .push((file, passed, error, duration, assertions));
+                }
             }));
         }
-
-        drop(tx);
 
         for handle in handles {
             handle.join().unwrap();
         }
     });
+    let suite_duration = suite_start.elapsed();
 
-    let mut all_results: Vec<(PathBuf, bool, String, Duration, i64)> = Vec::new();
-    for received in rx {
-        all_results.extend(received);
+    stop_animation.store(true, Ordering::Relaxed);
+    if let Some(handle) = anim_handle {
+        handle.join().unwrap();
     }
 
-    let mut passed = 0;
-    let mut failed = 0;
-    let mut total_assertions = 0;
+    let (passed, failed, total_assertions_val) = {
+        let p = progress.lock().unwrap();
+        (p.passed, p.failed, p.total_assertions)
+    };
+    let final_state = ProgressState {
+        passed,
+        failed,
+        total_assertions: total_assertions_val,
+    };
+    let final_icon = if failed > 0 { "✗" } else { "✓" };
+    draw_progress_bar(&final_state, total_files, final_icon);
+    eprintln!();
+
+    let mut all_results: Vec<TestResult> = match Arc::try_unwrap(all_results_shared) {
+        Ok(mutex) => mutex.into_inner().unwrap(),
+        Err(arc) => arc.lock().unwrap().clone(),
+    };
+    all_results.sort_by(|a, b| a.0.cmp(&b.0));
+
+    println!();
+    println!();
 
     // Pre-compute display path for every result so we know the longest name
     // and can align the duration/assertion columns across rows, even when
@@ -405,9 +501,7 @@ pub fn run_test(
 
         let pad = name_width.saturating_sub(display_path.chars().count());
         let duration_str = format_duration(*duration);
-        total_assertions += *assertions;
         if *passed_test {
-            passed += 1;
             println!(
                 "  {}{} {:>8} {:>6} ✓",
                 display_path,
@@ -416,7 +510,6 @@ pub fn run_test(
                 assertions
             );
         } else {
-            failed += 1;
             println!(
                 "  {}{} {:>8} {:>6} ✗",
                 display_path,
@@ -485,7 +578,8 @@ pub fn run_test(
         failed,
         passed + failed
     );
-    println!("  {} assertions", total_assertions);
+    println!("  {} assertions", total_assertions_val);
+    println!("  Time: {}", format_duration(suite_duration));
 
     if enable_coverage {
         // Fetch coverage from the subprocess test server (controllers,

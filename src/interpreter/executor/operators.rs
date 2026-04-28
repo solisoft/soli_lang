@@ -20,6 +20,12 @@ impl Interpreter {
         right: &Expr,
         span: Span,
     ) -> RuntimeResult<Value> {
+        // Shovel must inspect the unevaluated LHS shape to dispatch to HABTM
+        // mutators when the LHS is `<model_instance>.<habtm_relation>`.
+        if op == BinaryOp::Shovel {
+            return self.eval_shovel(left, right, span);
+        }
+
         let left_val = self.evaluate(left)?;
         let right_val = self.evaluate(right)?;
 
@@ -30,6 +36,61 @@ impl Interpreter {
             .map_err(|e| RuntimeError::new(e, span))?;
 
         self.evaluate_binary_values(&left_val, op, &right_val, span)
+    }
+
+    fn eval_shovel(&mut self, left: &Expr, right: &Expr, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::builtins::model::habtm::{
+            habtm_add, match_habtm_method, to_singular_method_name,
+        };
+
+        // Special case: `<instance>.<relation> << <value>` for HABTM.
+        if let ExprKind::Member { object, name } = &left.kind {
+            let obj_val = self.evaluate(object)?;
+            let obj_val = obj_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
+            if let Value::Instance(inst) = &obj_val {
+                let class_name = inst.borrow().class.name.clone();
+                let method_name = to_singular_method_name("add", name);
+                if let Some(matched) = match_habtm_method(&class_name, &method_name) {
+                    let right_val = self.evaluate(right)?;
+                    let right_val = right_val
+                        .resolve()
+                        .map_err(|e| RuntimeError::new(e, span))?;
+                    habtm_add(inst, &matched.relation, std::slice::from_ref(&right_val))
+                        .map_err(|e| RuntimeError::new(e, span))?;
+                    // Re-fetch the relation so the returned value reflects the new state.
+                    return self.evaluate(left);
+                }
+            }
+            // Fall through: evaluate LHS via member access, then push.
+            let left_val = self.evaluate(left)?;
+            let left_val = left_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
+            let right_val = self.evaluate(right)?;
+            let right_val = right_val
+                .resolve()
+                .map_err(|e| RuntimeError::new(e, span))?;
+            return self.shovel_array_push(&left_val, right_val, span);
+        }
+
+        let left_val = self.evaluate(left)?;
+        let left_val = left_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
+        let right_val = self.evaluate(right)?;
+        let right_val = right_val
+            .resolve()
+            .map_err(|e| RuntimeError::new(e, span))?;
+        self.shovel_array_push(&left_val, right_val, span)
+    }
+
+    fn shovel_array_push(&self, left: &Value, right: Value, span: Span) -> RuntimeResult<Value> {
+        match left {
+            Value::Array(arr) => {
+                arr.borrow_mut().push(right);
+                Ok(left.clone())
+            }
+            other => Err(RuntimeError::type_error(
+                format!("<< expects an array on the left, got {}", other.type_name()),
+                span,
+            )),
+        }
     }
 
     /// Evaluate a binary operation on already-evaluated values.
@@ -53,6 +114,19 @@ impl Interpreter {
             BinaryOp::Greater => self.compare_values(left_val, right_val, span, |a, b| a > b),
             BinaryOp::GreaterEqual => self.compare_values(left_val, right_val, span, |a, b| a >= b),
             BinaryOp::Range => self.eval_range(left_val, right_val, span),
+            BinaryOp::Shovel => match left_val {
+                Value::Array(arr) => {
+                    arr.borrow_mut().push(right_val.clone());
+                    Ok(left_val.clone())
+                }
+                _ => Err(RuntimeError::type_error(
+                    format!(
+                        "<< expects an array on the left, got {}",
+                        left_val.type_name()
+                    ),
+                    span,
+                )),
+            },
         }
     }
 

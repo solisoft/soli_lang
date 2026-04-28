@@ -10,6 +10,7 @@ pub mod ast;
 pub mod compiled_cache;
 pub mod coverage;
 pub mod error;
+pub mod inflect;
 pub mod interpreter;
 pub mod lexer;
 pub mod lint;

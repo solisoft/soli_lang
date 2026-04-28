@@ -165,6 +165,39 @@ end</code></pre>
         </ul>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Nested Controller Directories</h2>
+    <p class="text-gray-400 mb-4">
+        Group related controllers into subdirectories under <code>app/controllers/</code>. The directory path becomes part of the controller key, the route base path, and the class name.
+    </p>
+
+    <pre data-filename="app/controllers/"><code class="language-text text-sm">app/controllers/
+├── home_controller.sl                # HomeController            → /
+├── users_controller.sl               # UsersController           → /users
+└── admin/
+    ├── merchants_controller.sl       # AdminMerchantsController  → /admin/merchants
+    └── user_profiles_controller.sl   # AdminUserProfilesController → /admin/user_profiles</code></pre>
+
+    <p class="text-gray-400 mb-4">
+        Both <code>_</code> and <code>/</code> act as word separators in the class name, so <code>admin/user_profiles_controller.sl</code> becomes <code>AdminUserProfilesController</code> &mdash; there is no <code>::</code> namespacing.
+    </p>
+
+    <p class="text-gray-400 mb-4">
+        Reference nested controllers from <code>config/routes.sl</code> using the same <code>controller#action</code> syntax with a <code>/</code>-separated key:
+    </p>
+
+    <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/admin/merchants", "admin/merchants#index")
+get("/admin/merchants/:id", "admin/merchants#show")
+
+# Or with resources()
+resources("/admin/merchants", "admin/merchants")</code></pre>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2">Hot reload</h4>
+        <p class="text-indigo-200/80 text-sm">
+            Subdirectories are watched recursively in dev mode, so adding or editing a nested controller triggers reload like any top-level controller.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Function-Based Controllers</h2>
     <p class="text-gray-400 mb-4">
         Great for simple APIs or microservices where you don't need the full power of classes.

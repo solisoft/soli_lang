@@ -74,6 +74,10 @@
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">S</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Session</span>
             </a>
+            <a href="/docs/builtins/jobs" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 text-xs font-bold">J</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Jobs &amp; Cron</span>
+            </a>
             <a href="/docs/builtins/testing" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-xs font-bold">T</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Testing</span>
@@ -197,6 +201,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Session Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Server-side session management for user state.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/jobs" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Jobs &amp; Cron</h3>
+                </a>
+                <p class="text-gray-400 mt-2">SolidB-backed background jobs and recurring schedules. <code class="text-amber-400">XJob.perform_later</code>, <code class="text-amber-400">Cron.schedule</code>, plus <code class="text-amber-400">static cron</code> declarations.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/testing" class="group">

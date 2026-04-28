@@ -210,23 +210,54 @@ impl Compiler {
                 operator,
                 value,
             } => {
-                // Desugar: target op= value  →  target = target op value
+                // Desugar: target op= value  →  target = target op value.
+                // For short-circuit operators (||=, &&=, ??=) we use the
+                // matching short-circuit binary node so the existing VM logic
+                // skips the RHS when the left operand already short-circuits.
                 use crate::ast::expr::CompoundOp;
-                let bin_op = match operator {
-                    CompoundOp::Add => BinaryOp::Add,
-                    CompoundOp::Subtract => BinaryOp::Subtract,
-                    CompoundOp::Multiply => BinaryOp::Multiply,
-                    CompoundOp::Divide => BinaryOp::Divide,
-                    CompoundOp::Modulo => BinaryOp::Modulo,
+                let desugared_value = match operator {
+                    CompoundOp::Or => Expr::new(
+                        ExprKind::LogicalOr {
+                            left: Box::new((**target).clone()),
+                            right: Box::new((**value).clone()),
+                        },
+                        expr.span,
+                    ),
+                    CompoundOp::And => Expr::new(
+                        ExprKind::LogicalAnd {
+                            left: Box::new((**target).clone()),
+                            right: Box::new((**value).clone()),
+                        },
+                        expr.span,
+                    ),
+                    CompoundOp::Coalesce => Expr::new(
+                        ExprKind::NullishCoalescing {
+                            left: Box::new((**target).clone()),
+                            right: Box::new((**value).clone()),
+                        },
+                        expr.span,
+                    ),
+                    _ => {
+                        let bin_op = match operator {
+                            CompoundOp::Add => BinaryOp::Add,
+                            CompoundOp::Subtract => BinaryOp::Subtract,
+                            CompoundOp::Multiply => BinaryOp::Multiply,
+                            CompoundOp::Divide => BinaryOp::Divide,
+                            CompoundOp::Modulo => BinaryOp::Modulo,
+                            CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce => {
+                                unreachable!()
+                            }
+                        };
+                        Expr::new(
+                            ExprKind::Binary {
+                                left: Box::new((**target).clone()),
+                                operator: bin_op,
+                                right: Box::new((**value).clone()),
+                            },
+                            expr.span,
+                        )
+                    }
                 };
-                let desugared_value = Expr::new(
-                    ExprKind::Binary {
-                        left: Box::new((**target).clone()),
-                        operator: bin_op,
-                        right: Box::new((**value).clone()),
-                    },
-                    expr.span,
-                );
                 self.compile_assign(target, &desugared_value, line)?;
             }
             ExprKind::PostfixIncrement(target) => {
@@ -300,6 +331,7 @@ impl Compiler {
             BinaryOp::Greater => self.emit(Op::Greater, line),
             BinaryOp::GreaterEqual => self.emit(Op::GreaterEqual, line),
             BinaryOp::Range => self.emit(Op::Range, line),
+            BinaryOp::Shovel => self.emit(Op::ArrayPush, line),
         };
         Ok(())
     }

@@ -109,7 +109,11 @@ impl<'a> Scanner<'a> {
             ';' => Ok(self.make_token(TokenKind::Semicolon)),
             '?' => {
                 if self.match_char('?') {
-                    Ok(self.make_token(TokenKind::NullishCoalescing))
+                    if self.match_char('=') {
+                        Ok(self.make_token(TokenKind::NullishEqual))
+                    } else {
+                        Ok(self.make_token(TokenKind::NullishCoalescing))
+                    }
                 } else {
                     Ok(self.make_token(TokenKind::Question))
                 }
@@ -188,6 +192,8 @@ impl<'a> Scanner<'a> {
             '<' => {
                 if self.match_char('=') {
                     Ok(self.make_token(TokenKind::LessEqual))
+                } else if self.match_char('<') {
+                    Ok(self.make_token(TokenKind::LessLess))
                 } else {
                     Ok(self.make_token(TokenKind::Less))
                 }
@@ -201,7 +207,11 @@ impl<'a> Scanner<'a> {
             }
             '&' => {
                 if self.match_char('&') {
-                    Ok(self.make_token(TokenKind::And))
+                    if self.match_char('=') {
+                        Ok(self.make_token(TokenKind::AndEqual))
+                    } else {
+                        Ok(self.make_token(TokenKind::And))
+                    }
                 } else if self.match_char('.') {
                     Ok(self.make_token(TokenKind::SafeNavigation))
                 } else {
@@ -212,7 +222,11 @@ impl<'a> Scanner<'a> {
                 if self.match_char('>') {
                     Ok(self.make_token(TokenKind::Pipeline))
                 } else if self.match_char('|') {
-                    Ok(self.make_token(TokenKind::Or))
+                    if self.match_char('=') {
+                        Ok(self.make_token(TokenKind::OrEqual))
+                    } else {
+                        Ok(self.make_token(TokenKind::Or))
+                    }
                 } else {
                     Ok(self.make_token(TokenKind::Pipe))
                 }

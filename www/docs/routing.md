@@ -76,6 +76,20 @@ let url = named_routes["user_show"].("/users/:id", {"id": 123});
 # Returns: "/users/123"
 ```
 
+## Nested Controllers
+
+Controllers nested in subdirectories of `app/controllers/` are addressed with a `/`-separated key:
+
+```soli
+# app/controllers/admin/merchants_controller.sl → AdminMerchantsController
+get("/admin/merchants", "admin/merchants#index");
+get("/admin/merchants/:id", "admin/merchants#show");
+
+resources("/admin/merchants", "admin/merchants");
+```
+
+See [Controllers → Nested Controller Directories](/docs/controllers#nested-controller-directories) for the full naming rules.
+
 ## RESTful Routes Example
 
 ```soli

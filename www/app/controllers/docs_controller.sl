@@ -306,6 +306,10 @@ fn builtins_session(req)
     render_docs("docs/builtins/session", "Session Functions", "builtins", "session")
 end
 
+fn builtins_jobs(req)
+    render_docs("docs/builtins/jobs", "Jobs & Cron", "builtins", "jobs")
+end
+
 fn builtins_testing(req)
     render_docs("docs/builtins/testing", "Testing Functions", "builtins", "testing")
 end

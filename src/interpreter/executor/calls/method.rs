@@ -192,6 +192,22 @@ impl Interpreter {
                 )),
             },
             Value::Instance(ref inst) => {
+                let class_name = inst.borrow().class.name.clone();
+                if let Some(matched) =
+                    crate::interpreter::builtins::model::habtm::match_habtm_method(
+                        &class_name,
+                        &method.method_name,
+                    )
+                {
+                    use crate::interpreter::builtins::model::habtm::{
+                        habtm_add, habtm_remove, HabtmAction,
+                    };
+                    let result = match matched.action {
+                        HabtmAction::Add => habtm_add(inst, &matched.relation, &arguments),
+                        HabtmAction::Remove => habtm_remove(inst, &matched.relation, &arguments),
+                    };
+                    return result.map_err(|e| RuntimeError::new(e, span));
+                }
                 self.call_uploader_method(inst.clone(), &method.method_name, arguments, span)
             }
             _ => Err(RuntimeError::type_error(
@@ -599,6 +615,7 @@ impl Interpreter {
             "reverse" => self.array_reverse(items, arguments, span),
             "uniq" => self.array_uniq(items, arguments, span),
             "compact" => self.array_compact(items, arguments, span),
+            "compact_blank" => self.array_compact_blank(items, arguments, span),
             "flatten" => self.array_flatten(items, arguments, span),
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
@@ -1269,6 +1286,33 @@ impl Interpreter {
             .cloned()
             .collect();
         Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_compact_blank(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        let result: Vec<Value> = items
+            .iter()
+            .filter(|v| !Self::is_blank(v))
+            .cloned()
+            .collect();
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn is_blank(value: &Value) -> bool {
+        match value {
+            Value::Null => true,
+            Value::String(s) => s.is_empty(),
+            Value::Array(a) => a.borrow().is_empty(),
+            Value::Hash(h) => h.borrow().is_empty(),
+            _ => false,
+        }
     }
 
     fn array_flatten(

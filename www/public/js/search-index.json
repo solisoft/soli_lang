@@ -4,37 +4,56 @@
       "title": "print",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-print",
+      "path": "/docs/builtins/core#def-print",
       "signature": "print(value)",
       "description": "Prints a value to standard output without a newline",
-      "keywords": ["output", "console", "io", "display"]
+      "keywords": [
+        "output",
+        "console",
+        "io",
+        "display"
+      ]
     },
     {
       "title": "println",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-println",
+      "path": "/docs/builtins/core#def-println",
       "signature": "println(value)",
       "description": "Prints a value to standard output with a newline",
-      "keywords": ["output", "console", "io", "display"]
+      "keywords": [
+        "output",
+        "console",
+        "io",
+        "display"
+      ]
     },
     {
       "title": "input",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-input",
+      "path": "/docs/builtins/core#def-input",
       "signature": "input(prompt?)",
       "description": "Reads a line of input from the user",
-      "keywords": ["read", "stdin", "user input", "io"]
+      "keywords": [
+        "read",
+        "stdin",
+        "user input",
+        "io"
+      ]
     },
     {
       "title": "type",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-type",
+      "path": "/docs/builtins/core#def-type",
       "signature": "type(value)",
       "description": "Returns the type name of a value as a string",
-      "keywords": ["typeof", "introspection", "reflection"]
+      "keywords": [
+        "typeof",
+        "introspection",
+        "reflection"
+      ]
     },
     {
       "title": "is_a?",
@@ -43,115 +62,180 @@
       "path": "/docs/builtins/core#def-is-a",
       "signature": "value.is_a?(class_name)",
       "description": "Returns whether a value is of the given type. For instances, checks class hierarchy. For primitives, supports 'int', 'numeric', 'object'.",
-      "keywords": ["instanceof", "typeof", "introspection", "reflection", "class", "type check"]
+      "keywords": [
+        "instanceof",
+        "typeof",
+        "introspection",
+        "reflection",
+        "class",
+        "type check"
+      ]
     },
     {
       "title": "defined",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-defined",
+      "path": "/docs/builtins/core#def-defined",
       "signature": "defined(name)",
       "description": "Checks if a variable is defined in the current scope chain. Returns true if the variable exists, false otherwise.",
-      "keywords": ["exists", "scope", "variable", "check", "isset"]
+      "keywords": [
+        "exists",
+        "scope",
+        "variable",
+        "check",
+        "isset"
+      ]
     },
     {
       "title": "str",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-str",
+      "path": "/docs/builtins/core#def-str",
       "signature": "str(value)",
       "description": "Convert a value to a string",
-      "keywords": ["string", "convert", "cast", "tostring"]
+      "keywords": [
+        "string",
+        "convert",
+        "cast",
+        "tostring"
+      ]
     },
     {
       "title": "int",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-int",
+      "path": "/docs/builtins/core#def-int",
       "signature": "int(value)",
       "description": "Convert a value to an integer",
-      "keywords": ["integer", "convert", "cast", "parse"]
+      "keywords": [
+        "integer",
+        "convert",
+        "cast",
+        "parse"
+      ]
     },
     {
       "title": "float",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-float",
+      "path": "/docs/builtins/core#def-float",
       "signature": "float(value)",
       "description": "Convert a value to a float",
-      "keywords": ["decimal", "convert", "cast", "parse"]
+      "keywords": [
+        "decimal",
+        "convert",
+        "cast",
+        "parse"
+      ]
     },
     {
       "title": "len",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-len",
+      "path": "/docs/builtins/core#def-len",
       "signature": "len(value)",
       "description": "Returns the length of a string, array, or hash",
-      "keywords": ["length", "size", "count"]
+      "keywords": [
+        "length",
+        "size",
+        "count"
+      ]
     },
     {
       "title": "push",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-push",
+      "path": "/docs/builtins/core#def-push",
       "signature": "push(array, value)",
       "description": "Add an element to the end of an array",
-      "keywords": ["array", "append", "add"]
+      "keywords": [
+        "array",
+        "append",
+        "add"
+      ]
     },
     {
       "title": "pop",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-pop",
+      "path": "/docs/builtins/core#def-pop",
       "signature": "pop(array)",
       "description": "Remove and return the last element from an array",
-      "keywords": ["array", "remove", "last"]
+      "keywords": [
+        "array",
+        "remove",
+        "last"
+      ]
     },
     {
       "title": "range",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-range",
+      "path": "/docs/builtins/core#def-range",
       "signature": "range(start, end, step?)",
       "description": "Creates an array of numbers from start to end (exclusive)",
-      "keywords": ["array", "sequence", "iterate", "numbers"]
+      "keywords": [
+        "array",
+        "sequence",
+        "iterate",
+        "numbers"
+      ]
     },
     {
       "title": "keys",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-keys",
+      "path": "/docs/builtins/core#def-keys",
       "signature": "keys(hash)",
       "description": "Returns an array of all keys in a hash",
-      "keywords": ["hash", "object", "map", "dictionary"]
+      "keywords": [
+        "hash",
+        "object",
+        "map",
+        "dictionary"
+      ]
     },
     {
       "title": "values",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-values",
+      "path": "/docs/builtins/core#def-values",
       "signature": "values(hash)",
       "description": "Returns an array of all values in a hash",
-      "keywords": ["hash", "object", "map", "dictionary"]
+      "keywords": [
+        "hash",
+        "object",
+        "map",
+        "dictionary"
+      ]
     },
     {
       "title": "entries",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-entries",
+      "path": "/docs/builtins/core#def-entries",
       "signature": "entries(hash)",
       "description": "Returns an array of [key, value] pairs",
-      "keywords": ["hash", "object", "pairs", "iterate"]
+      "keywords": [
+        "hash",
+        "object",
+        "pairs",
+        "iterate"
+      ]
     },
     {
       "title": "has_key",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-has-key",
+      "path": "/docs/builtins/core#def-has-key",
       "signature": "has_key(hash, key)",
       "description": "Check if a key exists in a hash",
-      "keywords": ["hash", "contains", "exists", "check"]
+      "keywords": [
+        "hash",
+        "contains",
+        "exists",
+        "check"
+      ]
     },
     {
       "title": "merge",
@@ -160,196 +244,213 @@
       "path": "/docs/builtins/core#def-merge",
       "signature": "hash.merge(other)",
       "description": "Merge two hashes together",
-      "keywords": ["hash", "combine", "join", "object"]
+      "keywords": [
+        "hash",
+        "combine",
+        "join",
+        "object"
+      ]
     },
     {
       "title": "split",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-split",
+      "path": "/docs/builtins/core#def-split",
       "signature": "split(str, sep)",
       "description": "Split a string by a separator",
-      "keywords": ["string", "tokenize", "explode"]
+      "keywords": [
+        "string",
+        "tokenize",
+        "explode"
+      ]
     },
     {
       "title": "join",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-join",
+      "path": "/docs/builtins/core#def-join",
       "signature": "join(arr, sep)",
       "description": "Join array elements with a separator",
-      "keywords": ["string", "combine", "implode"]
+      "keywords": [
+        "string",
+        "combine",
+        "implode"
+      ]
     },
     {
       "title": "contains",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-contains",
+      "path": "/docs/builtins/core#def-contains",
       "signature": "contains(string, substring)",
       "description": "Check if a string contains a substring",
-      "keywords": ["string", "contains", "search", "find"]
+      "keywords": [
+        "string",
+        "contains",
+        "search",
+        "find"
+      ]
     },
     {
       "title": "substring",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-substring",
+      "path": "/docs/builtins/core#def-substring",
       "signature": "substring(str, start, end?)",
       "description": "Extract a substring from start to end index",
-      "keywords": ["string", "substring", "slice", "extract"]
-    },
-    {
-      "title": "upcase",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-upcase",
-      "signature": "upcase(str)",
-      "description": "Convert string to uppercase",
-      "keywords": ["string", "uppercase", "capitalize"]
-    },
-    {
-      "title": "downcase",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-upcase",
-      "signature": "downcase(str)",
-      "description": "Convert string to lowercase",
-      "keywords": ["string", "lowercase"]
-    },
-    {
-      "title": "trim",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-upcase",
-      "signature": "trim(str)",
-      "description": "Remove whitespace from both ends of a string",
-      "keywords": ["string", "strip", "whitespace"]
+      "keywords": [
+        "string",
+        "substring",
+        "slice",
+        "extract"
+      ]
     },
     {
       "title": "replace",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-replace",
+      "path": "/docs/builtins/core#def-replace",
       "signature": "replace(str, from, to)",
       "description": "Replace all occurrences of a substring",
-      "keywords": ["string", "substitute", "find"]
+      "keywords": [
+        "string",
+        "substitute",
+        "find"
+      ]
     },
     {
       "title": "lpad",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-lpad",
+      "path": "/docs/builtins/core#def-pad",
       "signature": "lpad(str, width, pad_char?)",
       "description": "Left pad a string to reach the specified width with optional pad character",
-      "keywords": ["string", "pad", "left", "align", "format", "fill"]
+      "keywords": [
+        "string",
+        "pad",
+        "left",
+        "align",
+        "format",
+        "fill"
+      ]
     },
     {
       "title": "rpad",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-rpad",
+      "path": "/docs/builtins/core#def-pad",
       "signature": "rpad(str, width, pad_char?)",
       "description": "Right pad a string to reach the specified width with optional pad character",
-      "keywords": ["string", "pad", "right", "align", "format", "fill"]
-    },
-    {
-      "title": "html_escape",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-html-escape",
-      "signature": "html_escape(str)",
-      "description": "Escape HTML special characters",
-      "keywords": ["html", "xss", "security", "encode"]
-    },
-    {
-      "title": "html_unescape",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-html-escape",
-      "signature": "html_unescape(str)",
-      "description": "Unescape HTML entities",
-      "keywords": ["html", "decode"]
-    },
-    {
-      "title": "sanitize_html",
-      "type": "function",
-      "category": "Core",
-      "path": "/docs/builtins/core#fn-html-escape",
-      "signature": "sanitize_html(str)",
-      "description": "Remove dangerous HTML attributes and tags",
-      "keywords": ["html", "xss", "security", "clean"]
+      "keywords": [
+        "string",
+        "pad",
+        "right",
+        "align",
+        "format",
+        "fill"
+      ]
     },
     {
       "title": "abs",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-abs",
+      "path": "/docs/builtins/core#def-abs",
       "signature": "abs(n)",
       "description": "Returns the absolute value of a number",
-      "keywords": ["math", "absolute"]
+      "keywords": [
+        "math",
+        "absolute"
+      ]
     },
     {
       "title": "min",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-abs",
+      "path": "/docs/builtins/core#def-abs",
       "signature": "min(a, b)",
       "description": "Returns the smaller of two numbers",
-      "keywords": ["math", "minimum", "compare"]
+      "keywords": [
+        "math",
+        "minimum",
+        "compare"
+      ]
     },
     {
       "title": "max",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-abs",
+      "path": "/docs/builtins/core#def-abs",
       "signature": "max(a, b)",
       "description": "Returns the larger of two numbers",
-      "keywords": ["math", "maximum", "compare"]
+      "keywords": [
+        "math",
+        "maximum",
+        "compare"
+      ]
     },
     {
       "title": "sqrt",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-sqrt",
+      "path": "/docs/builtins/core#def-sqrt",
       "signature": "sqrt(n)",
       "description": "Returns the square root of a number",
-      "keywords": ["math", "root"]
+      "keywords": [
+        "math",
+        "root"
+      ]
     },
     {
       "title": "pow",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-sqrt",
+      "path": "/docs/builtins/core#def-sqrt",
       "signature": "pow(base, exp)",
       "description": "Returns base raised to the power of exp",
-      "keywords": ["math", "power", "exponent"]
+      "keywords": [
+        "math",
+        "power",
+        "exponent"
+      ]
     },
     {
       "title": "clock",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-clock",
+      "path": "/docs/builtins/core#def-clock",
       "signature": "clock()",
       "description": "Returns the current Unix timestamp as a float",
-      "keywords": ["time", "timestamp", "benchmark"]
+      "keywords": [
+        "time",
+        "timestamp",
+        "benchmark"
+      ]
     },
     {
       "title": "slurp",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-slurp",
+      "path": "/docs/builtins/core#def-slurp",
       "signature": "slurp(path)",
       "description": "Read an entire file into a string",
-      "keywords": ["file", "read", "io"]
+      "keywords": [
+        "file",
+        "read",
+        "io"
+      ]
     },
     {
       "title": "barf",
       "type": "function",
       "category": "Core",
-      "path": "/docs/builtins/core#fn-barf",
+      "path": "/docs/builtins/core#def-barf",
       "signature": "barf(path, content)",
       "description": "Write content to a file",
-      "keywords": ["file", "write", "io"]
+      "keywords": [
+        "file",
+        "write",
+        "io"
+      ]
     },
     {
       "title": "HTTP",
@@ -358,7 +459,13 @@
       "path": "/docs/builtins/http#section-class-overview",
       "signature": "HTTP",
       "description": "HTTP client class with methods for GET, POST, PUT, PATCH, DELETE, HEAD requests and JSON helpers",
-      "keywords": ["http", "request", "api", "client", "class"]
+      "keywords": [
+        "http",
+        "request",
+        "api",
+        "client",
+        "class"
+      ]
     },
     {
       "title": "HTTP.get",
@@ -367,7 +474,13 @@
       "path": "/docs/builtins/http#def-http-get",
       "signature": "HTTP.get(url, options?)",
       "description": "Perform an HTTP GET request",
-      "keywords": ["http", "get", "request", "fetch", "api"]
+      "keywords": [
+        "http",
+        "get",
+        "request",
+        "fetch",
+        "api"
+      ]
     },
     {
       "title": "HTTP.post",
@@ -376,7 +489,13 @@
       "path": "/docs/builtins/http#def-http-post",
       "signature": "HTTP.post(url, body, options?)",
       "description": "Perform an HTTP POST request with a body",
-      "keywords": ["http", "post", "request", "api", "send"]
+      "keywords": [
+        "http",
+        "post",
+        "request",
+        "api",
+        "send"
+      ]
     },
     {
       "title": "HTTP.put",
@@ -385,7 +504,13 @@
       "path": "/docs/builtins/http#def-http-put",
       "signature": "HTTP.put(url, body, options?)",
       "description": "Perform an HTTP PUT request",
-      "keywords": ["http", "put", "request", "api", "update"]
+      "keywords": [
+        "http",
+        "put",
+        "request",
+        "api",
+        "update"
+      ]
     },
     {
       "title": "HTTP.delete",
@@ -394,7 +519,13 @@
       "path": "/docs/builtins/http#def-http-delete",
       "signature": "HTTP.delete(url, options?)",
       "description": "Perform an HTTP DELETE request",
-      "keywords": ["http", "delete", "request", "api", "remove"]
+      "keywords": [
+        "http",
+        "delete",
+        "request",
+        "api",
+        "remove"
+      ]
     },
     {
       "title": "HTTP.patch",
@@ -403,7 +534,13 @@
       "path": "/docs/builtins/http#def-http-patch",
       "signature": "HTTP.patch(url, body, options?)",
       "description": "Perform an HTTP PATCH request",
-      "keywords": ["http", "patch", "request", "api", "update"]
+      "keywords": [
+        "http",
+        "patch",
+        "request",
+        "api",
+        "update"
+      ]
     },
     {
       "title": "HTTP.head",
@@ -412,7 +549,13 @@
       "path": "/docs/builtins/http#def-http-head",
       "signature": "HTTP.head(url, options?)",
       "description": "Perform an HTTP HEAD request",
-      "keywords": ["http", "head", "request", "api", "headers"]
+      "keywords": [
+        "http",
+        "head",
+        "request",
+        "api",
+        "headers"
+      ]
     },
     {
       "title": "HTTP.get_json",
@@ -421,7 +564,13 @@
       "path": "/docs/builtins/http#def-http-get-json",
       "signature": "HTTP.get_json(url)",
       "description": "GET request with automatic JSON parsing",
-      "keywords": ["http", "json", "api", "fetch", "get"]
+      "keywords": [
+        "http",
+        "json",
+        "api",
+        "fetch",
+        "get"
+      ]
     },
     {
       "title": "HTTP.post_json",
@@ -430,7 +579,13 @@
       "path": "/docs/builtins/http#def-http-post-json",
       "signature": "HTTP.post_json(url, data)",
       "description": "POST request with automatic JSON serialization",
-      "keywords": ["http", "json", "api", "send", "post"]
+      "keywords": [
+        "http",
+        "json",
+        "api",
+        "send",
+        "post"
+      ]
     },
     {
       "title": "HTTP.put_json",
@@ -439,7 +594,13 @@
       "path": "/docs/builtins/http#def-http-put-json",
       "signature": "HTTP.put_json(url, data)",
       "description": "PUT request with automatic JSON serialization",
-      "keywords": ["http", "json", "api", "update", "put"]
+      "keywords": [
+        "http",
+        "json",
+        "api",
+        "update",
+        "put"
+      ]
     },
     {
       "title": "HTTP.patch_json",
@@ -448,7 +609,13 @@
       "path": "/docs/builtins/http#def-http-patch-json",
       "signature": "HTTP.patch_json(url, data)",
       "description": "PATCH request with automatic JSON serialization",
-      "keywords": ["http", "json", "api", "update", "patch"]
+      "keywords": [
+        "http",
+        "json",
+        "api",
+        "update",
+        "patch"
+      ]
     },
     {
       "title": "HTTP.request",
@@ -457,7 +624,12 @@
       "path": "/docs/builtins/http#def-http-request",
       "signature": "HTTP.request(method, url, options?)",
       "description": "Perform any HTTP method (GET, POST, PUT, PATCH, DELETE)",
-      "keywords": ["http", "request", "api", "method"]
+      "keywords": [
+        "http",
+        "request",
+        "api",
+        "method"
+      ]
     },
     {
       "title": "HTTP.get_all",
@@ -466,7 +638,13 @@
       "path": "/docs/builtins/http#def-http-get-all",
       "signature": "HTTP.get_all(urls)",
       "description": "Perform multiple GET requests in parallel",
-      "keywords": ["http", "parallel", "batch", "concurrent", "get"]
+      "keywords": [
+        "http",
+        "parallel",
+        "batch",
+        "concurrent",
+        "get"
+      ]
     },
     {
       "title": "HTTP.parallel",
@@ -475,7 +653,13 @@
       "path": "/docs/builtins/http#def-http-parallel",
       "signature": "HTTP.parallel(requests)",
       "description": "Execute multiple HTTP requests in parallel",
-      "keywords": ["http", "parallel", "batch", "concurrent", "request"]
+      "keywords": [
+        "http",
+        "parallel",
+        "batch",
+        "concurrent",
+        "request"
+      ]
     },
     {
       "title": "JSON",
@@ -484,7 +668,14 @@
       "path": "/docs/builtins/json",
       "signature": "JSON",
       "description": "Class for parsing and serializing JSON: JSON.parse(), JSON.stringify()",
-      "keywords": ["json", "parse", "stringify", "encode", "serialize", "class"]
+      "keywords": [
+        "json",
+        "parse",
+        "stringify",
+        "encode",
+        "serialize",
+        "class"
+      ]
     },
     {
       "title": "JSON.parse",
@@ -493,7 +684,12 @@
       "path": "/docs/builtins/json#def-json-parse",
       "signature": "JSON.parse(string)",
       "description": "Parse a JSON string into a Soli value",
-      "keywords": ["json", "parse", "decode", "deserialize"]
+      "keywords": [
+        "json",
+        "parse",
+        "decode",
+        "deserialize"
+      ]
     },
     {
       "title": "JSON.stringify",
@@ -502,7 +698,12 @@
       "path": "/docs/builtins/json#def-json-stringify",
       "signature": "JSON.stringify(value)",
       "description": "Serialize a Soli value into a JSON string",
-      "keywords": ["json", "stringify", "encode", "serialize"]
+      "keywords": [
+        "json",
+        "stringify",
+        "encode",
+        "serialize"
+      ]
     },
     {
       "title": "SOAP",
@@ -511,7 +712,15 @@
       "path": "/docs/builtins/soap",
       "signature": "SOAP",
       "description": "Class for SOAP calls and XML processing: SOAP.call(), SOAP.wrap(), SOAP.parse(), SOAP.xml_escape()",
-      "keywords": ["soap", "xml", "web service", "api", "class", "envelope", "wsdl"]
+      "keywords": [
+        "soap",
+        "xml",
+        "web service",
+        "api",
+        "class",
+        "envelope",
+        "wsdl"
+      ]
     },
     {
       "title": "SOAP.call",
@@ -520,7 +729,13 @@
       "path": "/docs/builtins/soap#soap-call",
       "signature": "SOAP.call(url, action, envelope, headers?)",
       "description": "Make a SOAP request via HTTP POST",
-      "keywords": ["soap", "call", "request", "web service", "api"]
+      "keywords": [
+        "soap",
+        "call",
+        "request",
+        "web service",
+        "api"
+      ]
     },
     {
       "title": "SOAP.wrap",
@@ -529,7 +744,12 @@
       "path": "/docs/builtins/soap#soap-wrap",
       "signature": "SOAP.wrap(body)",
       "description": "Wrap XML body in SOAP envelope",
-      "keywords": ["soap", "wrap", "envelope", "xml"]
+      "keywords": [
+        "soap",
+        "wrap",
+        "envelope",
+        "xml"
+      ]
     },
     {
       "title": "SOAP.parse",
@@ -538,7 +758,12 @@
       "path": "/docs/builtins/soap#soap-parse",
       "signature": "SOAP.parse(xml)",
       "description": "Parse XML string into nested Hash",
-      "keywords": ["soap", "parse", "xml", "parse"]
+      "keywords": [
+        "soap",
+        "parse",
+        "xml",
+        "parse"
+      ]
     },
     {
       "title": "SOAP.xml_escape",
@@ -547,241 +772,333 @@
       "path": "/docs/builtins/soap#soap-xml-escape",
       "signature": "SOAP.xml_escape(text)",
       "description": "Escape special XML characters",
-      "keywords": ["soap", "xml", "escape", "xml", "security"]
+      "keywords": [
+        "soap",
+        "xml",
+        "escape",
+        "xml",
+        "security"
+      ]
     },
     {
       "title": "Crypto.sha256",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-sha256",
+      "path": "/docs/builtins/crypto#def-sha256",
       "signature": "Crypto.sha256(data)",
       "description": "Compute SHA-256 hash of a string",
-      "keywords": ["crypto", "hash", "sha256", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "sha256",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "sha256",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-sha256",
+      "path": "/docs/builtins/crypto#def-sha256",
       "signature": "sha256(data)",
       "description": "Compute SHA-256 hash (alias for Crypto.sha256)",
-      "keywords": ["crypto", "hash", "sha256", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "sha256",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "Crypto.sha512",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-sha512",
+      "path": "/docs/builtins/crypto#def-sha512",
       "signature": "Crypto.sha512(data)",
       "description": "Compute SHA-512 hash of a string",
-      "keywords": ["crypto", "hash", "sha512", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "sha512",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "sha512",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-sha512",
+      "path": "/docs/builtins/crypto#def-sha512",
       "signature": "sha512(data)",
       "description": "Compute SHA-512 hash (alias for Crypto.sha512)",
-      "keywords": ["crypto", "hash", "sha512", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "sha512",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "Crypto.md5",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-md5",
+      "path": "/docs/builtins/crypto#def-md5",
       "signature": "Crypto.md5(data)",
       "description": "Compute MD5 hash of a string (use only for checksums, not security)",
-      "keywords": ["crypto", "hash", "md5", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "md5",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "md5",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-md5",
+      "path": "/docs/builtins/crypto#def-md5",
       "signature": "md5(data)",
       "description": "Compute MD5 hash (alias for Crypto.md5)",
-      "keywords": ["crypto", "hash", "md5", "digest", "checksum"]
+      "keywords": [
+        "crypto",
+        "hash",
+        "md5",
+        "digest",
+        "checksum"
+      ]
     },
     {
       "title": "Crypto.hmac",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-hmac",
+      "path": "/docs/builtins/crypto#def-hmac",
       "signature": "Crypto.hmac(message, key)",
       "description": "Compute HMAC-SHA256 message authentication code",
-      "keywords": ["crypto", "hmac", "mac", "authentication", "signature"]
+      "keywords": [
+        "crypto",
+        "hmac",
+        "mac",
+        "authentication",
+        "signature"
+      ]
     },
     {
       "title": "hmac",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-hmac",
+      "path": "/docs/builtins/crypto#def-hmac",
       "signature": "hmac(message, key)",
       "description": "Compute HMAC-SHA256 (alias for Crypto.hmac)",
-      "keywords": ["crypto", "hmac", "mac", "authentication", "signature"]
-    },
-    {
-      "title": "Crypto.base64_encode",
-      "type": "method",
-      "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-base64-encode",
-      "signature": "Crypto.base64_encode(data)",
-      "description": "Encode a string to Base64",
-      "keywords": ["base64", "encode", "encoding", "convert"]
-    },
-    {
-      "title": "base64_encode",
-      "type": "function",
-      "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-base64-encode",
-      "signature": "base64_encode(data)",
-      "description": "Encode a string to Base64 (alias for Crypto.base64_encode)",
-      "keywords": ["base64", "encode", "encoding", "convert"]
-    },
-    {
-      "title": "Crypto.base64_decode",
-      "type": "method",
-      "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-base64-decode",
-      "signature": "Crypto.base64_decode(data)",
-      "description": "Decode a Base64 string",
-      "keywords": ["base64", "decode", "decoding", "convert"]
-    },
-    {
-      "title": "base64_decode",
-      "type": "function",
-      "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-base64-decode",
-      "signature": "base64_decode(data)",
-      "description": "Decode a Base64 string (alias for Crypto.base64_decode)",
-      "keywords": ["base64", "decode", "decoding", "convert"]
+      "keywords": [
+        "crypto",
+        "hmac",
+        "mac",
+        "authentication",
+        "signature"
+      ]
     },
     {
       "title": "Crypto.argon2_hash",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "path": "/docs/builtins/crypto#def-argon2-hash",
       "signature": "Crypto.argon2_hash(password)",
       "description": "Hash a password using Argon2id",
-      "keywords": ["password", "hash", "security", "argon2"]
+      "keywords": [
+        "password",
+        "hash",
+        "security",
+        "argon2"
+      ]
     },
     {
       "title": "argon2_hash",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "path": "/docs/builtins/crypto#def-argon2-hash",
       "signature": "argon2_hash(password)",
       "description": "Hash a password using Argon2id (alias for Crypto.argon2_hash)",
-      "keywords": ["password", "hash", "security", "argon2"]
+      "keywords": [
+        "password",
+        "hash",
+        "security",
+        "argon2"
+      ]
     },
     {
       "title": "Crypto.argon2_verify",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "path": "/docs/builtins/crypto#def-argon2-verify",
       "signature": "Crypto.argon2_verify(password, hash)",
       "description": "Verify a password against an Argon2id hash",
-      "keywords": ["password", "verify", "security", "argon2"]
+      "keywords": [
+        "password",
+        "verify",
+        "security",
+        "argon2"
+      ]
     },
     {
       "title": "argon2_verify",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "path": "/docs/builtins/crypto#def-argon2-verify",
       "signature": "argon2_verify(password, hash)",
       "description": "Verify a password against an Argon2id hash (alias for Crypto.argon2_verify)",
-      "keywords": ["password", "verify", "security", "argon2"]
+      "keywords": [
+        "password",
+        "verify",
+        "security",
+        "argon2"
+      ]
     },
     {
       "title": "password_hash",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-hash",
+      "path": "/docs/builtins/crypto#def-argon2-hash",
       "signature": "password_hash(password)",
       "description": "Alias for Crypto.argon2_hash",
-      "keywords": ["password", "hash", "security"]
+      "keywords": [
+        "password",
+        "hash",
+        "security"
+      ]
     },
     {
       "title": "password_verify",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-argon2-verify",
+      "path": "/docs/builtins/crypto#def-argon2-verify",
       "signature": "password_verify(password, hash)",
       "description": "Alias for Crypto.argon2_verify",
-      "keywords": ["password", "verify", "security"]
+      "keywords": [
+        "password",
+        "verify",
+        "security"
+      ]
     },
     {
       "title": "Crypto.x25519_keypair",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-keypair",
+      "path": "/docs/builtins/crypto#def-x25519-keypair",
       "signature": "Crypto.x25519_keypair()",
       "description": "Generate an X25519 key pair for Diffie-Hellman key exchange",
-      "keywords": ["crypto", "key", "diffie-hellman", "exchange", "x25519"]
+      "keywords": [
+        "crypto",
+        "key",
+        "diffie-hellman",
+        "exchange",
+        "x25519"
+      ]
     },
     {
       "title": "x25519_keypair",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-keypair",
+      "path": "/docs/builtins/crypto#def-x25519-keypair",
       "signature": "x25519_keypair()",
       "description": "Generate an X25519 key pair (alias for Crypto.x25519_keypair)",
-      "keywords": ["crypto", "key", "diffie-hellman", "exchange", "x25519"]
+      "keywords": [
+        "crypto",
+        "key",
+        "diffie-hellman",
+        "exchange",
+        "x25519"
+      ]
     },
     {
       "title": "Crypto.x25519_shared_secret",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-shared-secret",
+      "path": "/docs/builtins/crypto#def-x25519-shared-secret",
       "signature": "Crypto.x25519_shared_secret(private_key, public_key)",
       "description": "Compute a shared secret from keys",
-      "keywords": ["crypto", "secret", "diffie-hellman", "x25519"]
+      "keywords": [
+        "crypto",
+        "secret",
+        "diffie-hellman",
+        "x25519"
+      ]
     },
     {
       "title": "x25519_shared_secret",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-shared-secret",
+      "path": "/docs/builtins/crypto#def-x25519-shared-secret",
       "signature": "x25519_shared_secret(private_key, public_key)",
       "description": "Compute a shared secret (alias for Crypto.x25519_shared_secret)",
-      "keywords": ["crypto", "secret", "diffie-hellman", "x25519"]
+      "keywords": [
+        "crypto",
+        "secret",
+        "diffie-hellman",
+        "x25519"
+      ]
     },
     {
       "title": "Crypto.x25519_public_key",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-public-key",
+      "path": "/docs/builtins/crypto#def-x25519-public-key",
       "signature": "Crypto.x25519_public_key(private_key)",
       "description": "Derive the public key from a private key",
-      "keywords": ["crypto", "key", "derive", "x25519", "public"]
+      "keywords": [
+        "crypto",
+        "key",
+        "derive",
+        "x25519",
+        "public"
+      ]
     },
     {
       "title": "x25519_public_key",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-x25519-public-key",
+      "path": "/docs/builtins/crypto#def-x25519-public-key",
       "signature": "x25519_public_key(private_key)",
       "description": "Derive the public key (alias for Crypto.x25519_public_key)",
-      "keywords": ["crypto", "key", "derive", "x25519", "public"]
+      "keywords": [
+        "crypto",
+        "key",
+        "derive",
+        "x25519",
+        "public"
+      ]
     },
     {
       "title": "Crypto.ed25519_keypair",
       "type": "method",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-ed25519-keypair",
+      "path": "/docs/builtins/crypto#def-ed25519-keypair",
       "signature": "Crypto.ed25519_keypair()",
       "description": "Generate an Ed25519 signing key pair",
-      "keywords": ["crypto", "signature", "key", "signing", "ed25519"]
+      "keywords": [
+        "crypto",
+        "signature",
+        "key",
+        "signing",
+        "ed25519"
+      ]
     },
     {
       "title": "ed25519_keypair",
       "type": "function",
       "category": "Crypto",
-      "path": "/docs/builtins/crypto#fn-ed25519-keypair",
+      "path": "/docs/builtins/crypto#def-ed25519-keypair",
       "signature": "ed25519_keypair()",
       "description": "Generate an Ed25519 signing key pair (alias for Crypto.ed25519_keypair)",
-      "keywords": ["crypto", "signature", "key", "signing", "ed25519"]
+      "keywords": [
+        "crypto",
+        "signature",
+        "key",
+        "signing",
+        "ed25519"
+      ]
     },
     {
       "title": "Crypto.totp_generate",
@@ -790,7 +1107,15 @@
       "path": "/docs/builtins/crypto#def-totp-generate",
       "signature": "Crypto.totp_generate(secret, time?, period?)",
       "description": "Generate a TOTP one-time password from a shared secret",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "generate"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "authenticator",
+        "generate"
+      ]
     },
     {
       "title": "totp_generate",
@@ -799,7 +1124,15 @@
       "path": "/docs/builtins/crypto#def-totp-generate",
       "signature": "totp_generate(secret, time?, period?)",
       "description": "Generate a TOTP one-time password (alias for Crypto.totp_generate)",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "generate"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "authenticator",
+        "generate"
+      ]
     },
     {
       "title": "Crypto.totp_verify",
@@ -808,7 +1141,15 @@
       "path": "/docs/builtins/crypto#def-totp-verify",
       "signature": "Crypto.totp_verify(secret, code, time?, period?)",
       "description": "Verify a TOTP code against a shared secret",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "verify"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "authenticator",
+        "verify"
+      ]
     },
     {
       "title": "totp_verify",
@@ -817,7 +1158,15 @@
       "path": "/docs/builtins/crypto#def-totp-verify",
       "signature": "totp_verify(secret, code, time?, period?)",
       "description": "Verify a TOTP code (alias for Crypto.totp_verify)",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "authenticator", "verify"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "authenticator",
+        "verify"
+      ]
     },
     {
       "title": "Crypto.totp_uri",
@@ -826,7 +1175,16 @@
       "path": "/docs/builtins/crypto#def-totp-uri",
       "signature": "Crypto.totp_uri(secret, account_name?, issuer?, period?)",
       "description": "Generate an otpauth:// URI for QR code provisioning",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "uri", "qr", "provision"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "uri",
+        "qr",
+        "provision"
+      ]
     },
     {
       "title": "totp_uri",
@@ -835,511 +1193,659 @@
       "path": "/docs/builtins/crypto#def-totp-uri",
       "signature": "totp_uri(secret, account_name?, issuer?, period?)",
       "description": "Generate an otpauth:// URI (alias for Crypto.totp_uri)",
-      "keywords": ["crypto", "totp", "otp", "2fa", "mfa", "uri", "qr", "provision"]
+      "keywords": [
+        "crypto",
+        "totp",
+        "otp",
+        "2fa",
+        "mfa",
+        "uri",
+        "qr",
+        "provision"
+      ]
     },
     {
       "title": "jwt_sign",
       "type": "function",
       "category": "JWT",
-      "path": "/docs/builtins/jwt#fn-jwt-sign",
+      "path": "/docs/builtins/jwt#def-jwt-sign",
       "signature": "jwt_sign(payload, secret, options?)",
       "description": "Create a signed JWT token",
-      "keywords": ["jwt", "token", "auth", "sign"]
+      "keywords": [
+        "jwt",
+        "token",
+        "auth",
+        "sign"
+      ]
     },
     {
       "title": "jwt_verify",
       "type": "function",
       "category": "JWT",
-      "path": "/docs/builtins/jwt#fn-jwt-verify",
+      "path": "/docs/builtins/jwt#def-jwt-verify",
       "signature": "jwt_verify(token, secret)",
       "description": "Verify and decode a JWT token",
-      "keywords": ["jwt", "token", "auth", "verify"]
+      "keywords": [
+        "jwt",
+        "token",
+        "auth",
+        "verify"
+      ]
     },
     {
       "title": "jwt_decode",
       "type": "function",
       "category": "JWT",
-      "path": "/docs/builtins/jwt#fn-jwt-decode",
+      "path": "/docs/builtins/jwt#def-jwt-decode",
       "signature": "jwt_decode(token)",
       "description": "Decode a JWT without verification",
-      "keywords": ["jwt", "token", "decode"]
-    },
-    {
-      "title": "Regex",
-      "type": "class",
-      "category": "Regex",
-      "path": "/docs/builtins/regex#regex-class",
-      "signature": "Regex",
-      "description": "Static methods for regular expression operations: matches(), find(), find_all(), replace(), replace_all(), split(), capture(), escape()",
-      "keywords": ["regex", "class", "match", "find", "replace", "split", "capture", "pattern"]
+      "keywords": [
+        "jwt",
+        "token",
+        "decode"
+      ]
     },
     {
       "title": "getenv",
       "type": "function",
       "category": "Env",
-      "path": "/docs/builtins/env#fn-getenv",
+      "path": "/docs/builtins/env#def-getenv",
       "signature": "getenv(name)",
       "description": "Get the value of an environment variable",
-      "keywords": ["env", "environment", "config"]
+      "keywords": [
+        "env",
+        "environment",
+        "config"
+      ]
     },
     {
       "title": "setenv",
       "type": "function",
       "category": "Env",
-      "path": "/docs/builtins/env#fn-setenv",
+      "path": "/docs/builtins/env#def-setenv",
       "signature": "setenv(name, value)",
       "description": "Set an environment variable",
-      "keywords": ["env", "environment", "config"]
+      "keywords": [
+        "env",
+        "environment",
+        "config"
+      ]
     },
     {
       "title": "unsetenv",
       "type": "function",
       "category": "Env",
-      "path": "/docs/builtins/env#fn-unsetenv",
+      "path": "/docs/builtins/env#def-unsetenv",
       "signature": "unsetenv(name)",
       "description": "Remove an environment variable",
-      "keywords": ["env", "environment", "delete"]
+      "keywords": [
+        "env",
+        "environment",
+        "delete"
+      ]
     },
     {
       "title": "hasenv",
       "type": "function",
       "category": "Env",
-      "path": "/docs/builtins/env#fn-hasenv",
+      "path": "/docs/builtins/env#def-hasenv",
       "signature": "hasenv(name)",
       "description": "Check if an environment variable is set",
-      "keywords": ["env", "environment", "exists"]
+      "keywords": [
+        "env",
+        "environment",
+        "exists"
+      ]
     },
     {
       "title": "dotenv",
       "type": "function",
       "category": "Env",
-      "path": "/docs/builtins/env#fn-dotenv",
+      "path": "/docs/builtins/env#def-dotenv",
       "signature": "dotenv(path?)",
       "description": "Load environment variables from .env files",
-      "keywords": ["env", "dotenv", "config", "file"]
+      "keywords": [
+        "env",
+        "dotenv",
+        "config",
+        "file"
+      ]
     },
     {
       "title": "DateTime.now",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-now",
+      "path": "/docs/builtins/datetime#def-datetime-now",
       "signature": "DateTime.now()",
       "description": "Get the current local date and time",
-      "keywords": ["datetime", "time", "now", "local", "current"]
+      "keywords": [
+        "datetime",
+        "time",
+        "now",
+        "local",
+        "current"
+      ]
     },
     {
       "title": "DateTime.utc",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-utc",
+      "path": "/docs/builtins/datetime#def-datetime-utc",
       "signature": "DateTime.utc()",
       "description": "Get the current UTC date and time",
-      "keywords": ["datetime", "time", "now", "utc", "current"]
+      "keywords": [
+        "datetime",
+        "time",
+        "now",
+        "utc",
+        "current"
+      ]
     },
     {
       "title": "DateTime.parse",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-datetime-parse",
+      "path": "/docs/builtins/datetime#def-datetime-parse",
       "signature": "DateTime.parse(string)",
       "description": "Parse an ISO 8601 or RFC date string",
-      "keywords": ["datetime", "parse", "iso8601", "convert"]
+      "keywords": [
+        "datetime",
+        "parse",
+        "iso8601",
+        "convert"
+      ]
     },
     {
       "title": ".year()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-year",
+      "path": "/docs/builtins/datetime#def-year",
       "signature": "datetime.year()",
       "description": "Get the year component from a DateTime",
-      "keywords": ["datetime", "year", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "year",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".month()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-month",
+      "path": "/docs/builtins/datetime#def-month",
       "signature": "datetime.month()",
       "description": "Get the month component (1-12) from a DateTime",
-      "keywords": ["datetime", "month", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "month",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".day()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-day",
+      "path": "/docs/builtins/datetime#def-day",
       "signature": "datetime.day()",
       "description": "Get the day of month (1-31) from a DateTime",
-      "keywords": ["datetime", "day", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "day",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".hour()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-hour",
+      "path": "/docs/builtins/datetime#def-hour",
       "signature": "datetime.hour()",
       "description": "Get the hour component (0-23) from a DateTime",
-      "keywords": ["datetime", "hour", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "hour",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".minute()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-minute",
+      "path": "/docs/builtins/datetime#def-minute",
       "signature": "datetime.minute()",
       "description": "Get the minute component (0-59) from a DateTime",
-      "keywords": ["datetime", "minute", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "minute",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".second()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-second",
+      "path": "/docs/builtins/datetime#def-second",
       "signature": "datetime.second()",
       "description": "Get the second component (0-59) from a DateTime",
-      "keywords": ["datetime", "second", "component", "extract"]
+      "keywords": [
+        "datetime",
+        "second",
+        "component",
+        "extract"
+      ]
     },
     {
       "title": ".weekday()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-weekday",
+      "path": "/docs/builtins/datetime#def-weekday",
       "signature": "datetime.weekday()",
       "description": "Get the day of the week as a string",
-      "keywords": ["datetime", "weekday", "day", "name"]
+      "keywords": [
+        "datetime",
+        "weekday",
+        "day",
+        "name"
+      ]
     },
     {
       "title": ".to_unix()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-to-unix",
+      "path": "/docs/builtins/datetime#def-to-unix",
       "signature": "datetime.to_unix()",
       "description": "Get the Unix timestamp (seconds since epoch)",
-      "keywords": ["datetime", "unix", "timestamp", "epoch"]
+      "keywords": [
+        "datetime",
+        "unix",
+        "timestamp",
+        "epoch"
+      ]
     },
     {
       "title": ".to_iso()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-to-iso",
+      "path": "/docs/builtins/datetime#def-to-iso",
       "signature": "datetime.to_iso()",
       "description": "Get the date/time as an ISO 8601 string",
-      "keywords": ["datetime", "iso8601", "format", "string"]
+      "keywords": [
+        "datetime",
+        "iso8601",
+        "format",
+        "string"
+      ]
     },
     {
       "title": ".format()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-format",
+      "path": "/docs/builtins/datetime#def-format",
       "signature": "datetime.format(pattern)",
       "description": "Format the date/time using strftime pattern specifiers",
-      "keywords": ["datetime", "format", "strftime", "pattern"]
+      "keywords": [
+        "datetime",
+        "format",
+        "strftime",
+        "pattern"
+      ]
     },
     {
       "title": ".add_days()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-add-days",
+      "path": "/docs/builtins/datetime#def-add-days",
       "signature": "datetime.add_days(n)",
       "description": "Add days to the date (use negative to subtract)",
-      "keywords": ["datetime", "add", "days", "arithmetic"]
+      "keywords": [
+        "datetime",
+        "add",
+        "days",
+        "arithmetic"
+      ]
     },
     {
       "title": ".add_hours()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-add-hours",
+      "path": "/docs/builtins/datetime#def-add-hours",
       "signature": "datetime.add_hours(n)",
       "description": "Add hours to the date/time (use negative to subtract)",
-      "keywords": ["datetime", "add", "hours", "arithmetic"]
+      "keywords": [
+        "datetime",
+        "add",
+        "hours",
+        "arithmetic"
+      ]
     },
     {
       "title": ".add_weeks()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-add-weeks",
+      "path": "/docs/builtins/datetime#def-add-weeks",
       "signature": "datetime.add_weeks(n)",
       "description": "Add weeks to the date (use negative to subtract)",
-      "keywords": ["datetime", "add", "weeks", "arithmetic"]
+      "keywords": [
+        "datetime",
+        "add",
+        "weeks",
+        "arithmetic"
+      ]
     },
     {
       "title": ".add_months()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-add-months",
+      "path": "/docs/builtins/datetime#def-add-months",
       "signature": "datetime.add_months(n)",
       "description": "Add months to the date (use negative to subtract)",
-      "keywords": ["datetime", "add", "months", "arithmetic"]
+      "keywords": [
+        "datetime",
+        "add",
+        "months",
+        "arithmetic"
+      ]
     },
     {
       "title": ".add_years()",
       "type": "method",
       "category": "DateTime",
-      "path": "/docs/builtins/datetime#fn-add-years",
+      "path": "/docs/builtins/datetime#def-add-years",
       "signature": "datetime.add_years(n)",
       "description": "Add years to the date (use negative to subtract)",
-      "keywords": ["datetime", "add", "years", "arithmetic"]
+      "keywords": [
+        "datetime",
+        "add",
+        "years",
+        "arithmetic"
+      ]
     },
     {
       "title": "Duration.seconds",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-duration-seconds",
+      "path": "/docs/builtins/duration#def-duration-seconds",
       "signature": "Duration.seconds(n)",
       "description": "Create a duration from a number of seconds",
-      "keywords": ["duration", "seconds", "time", "create"]
+      "keywords": [
+        "duration",
+        "seconds",
+        "time",
+        "create"
+      ]
     },
     {
       "title": "Duration.minutes",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-duration-minutes",
+      "path": "/docs/builtins/duration#def-duration-minutes",
       "signature": "Duration.minutes(n)",
       "description": "Create a duration from a number of minutes",
-      "keywords": ["duration", "minutes", "time", "create"]
+      "keywords": [
+        "duration",
+        "minutes",
+        "time",
+        "create"
+      ]
     },
     {
       "title": "Duration.hours",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-duration-hours",
+      "path": "/docs/builtins/duration#def-duration-hours",
       "signature": "Duration.hours(n)",
       "description": "Create a duration from a number of hours",
-      "keywords": ["duration", "hours", "time", "create"]
+      "keywords": [
+        "duration",
+        "hours",
+        "time",
+        "create"
+      ]
     },
     {
       "title": "Duration.days",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-duration-days",
+      "path": "/docs/builtins/duration#def-duration-days",
       "signature": "Duration.days(n)",
       "description": "Create a duration from a number of days",
-      "keywords": ["duration", "days", "time", "create"]
+      "keywords": [
+        "duration",
+        "days",
+        "time",
+        "create"
+      ]
     },
     {
       "title": ".to_seconds()",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-to-seconds",
+      "path": "/docs/builtins/duration#def-to-seconds",
       "signature": "duration.to_seconds()",
       "description": "Get the total duration in seconds",
-      "keywords": ["duration", "seconds", "convert", "total"]
+      "keywords": [
+        "duration",
+        "seconds",
+        "convert",
+        "total"
+      ]
     },
     {
       "title": ".to_minutes()",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-to-minutes",
+      "path": "/docs/builtins/duration#def-to-minutes",
       "signature": "duration.to_minutes()",
       "description": "Get the total duration in minutes",
-      "keywords": ["duration", "minutes", "convert", "total"]
+      "keywords": [
+        "duration",
+        "minutes",
+        "convert",
+        "total"
+      ]
     },
     {
       "title": ".to_hours()",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#fn-to-hours",
+      "path": "/docs/builtins/duration#def-to-hours",
       "signature": "duration.to_hours()",
       "description": "Get the total duration in hours",
-      "keywords": ["duration", "hours", "convert", "total"]
+      "keywords": [
+        "duration",
+        "hours",
+        "convert",
+        "total"
+      ]
     },
     {
       "title": "V.string",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-string",
+      "path": "/docs/builtins/validation#def-v-string",
       "signature": "V.string()",
       "description": "Validate string values",
-      "keywords": ["validation", "string", "schema"]
+      "keywords": [
+        "validation",
+        "string",
+        "schema"
+      ]
     },
     {
       "title": "V.int",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-int",
+      "path": "/docs/builtins/validation#def-v-int",
       "signature": "V.int()",
       "description": "Validate integer values",
-      "keywords": ["validation", "integer", "schema"]
+      "keywords": [
+        "validation",
+        "integer",
+        "schema"
+      ]
     },
     {
       "title": "V.float",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-float",
+      "path": "/docs/builtins/validation#def-v-float",
       "signature": "V.float()",
       "description": "Validate float values",
-      "keywords": ["validation", "float", "schema"]
+      "keywords": [
+        "validation",
+        "float",
+        "schema"
+      ]
     },
     {
       "title": "V.bool",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-bool",
+      "path": "/docs/builtins/validation#def-v-bool",
       "signature": "V.bool()",
       "description": "Validate boolean values",
-      "keywords": ["validation", "boolean", "schema"]
+      "keywords": [
+        "validation",
+        "boolean",
+        "schema"
+      ]
     },
     {
       "title": "V.array",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-array",
+      "path": "/docs/builtins/validation#def-v-array",
       "signature": "V.array(schema?)",
       "description": "Validate arrays with optional item schema",
-      "keywords": ["validation", "array", "schema"]
+      "keywords": [
+        "validation",
+        "array",
+        "schema"
+      ]
     },
     {
       "title": "V.hash",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-v-hash",
+      "path": "/docs/builtins/validation#def-v-hash",
       "signature": "V.hash(schema?)",
       "description": "Validate hashes with optional nested schema",
-      "keywords": ["validation", "hash", "object", "schema"]
+      "keywords": [
+        "validation",
+        "hash",
+        "object",
+        "schema"
+      ]
     },
     {
       "title": "validate",
       "type": "function",
       "category": "Validation",
-      "path": "/docs/builtins/validation#fn-validate",
+      "path": "/docs/builtins/validation#def-validate",
       "signature": "validate(data, schema)",
       "description": "Validate data against a schema",
-      "keywords": ["validation", "schema", "verify"]
-    },
-    {
-      "title": "session_get",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-get",
-      "signature": "session_get(key)",
-      "description": "Get a value from the session",
-      "keywords": ["session", "get", "state"]
-    },
-    {
-      "title": "session_set",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-set",
-      "signature": "session_set(key, value)",
-      "description": "Store a value in the session",
-      "keywords": ["session", "set", "store", "state"]
-    },
-    {
-      "title": "session_delete",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-delete",
-      "signature": "session_delete(key)",
-      "description": "Remove a value from the session",
-      "keywords": ["session", "delete", "remove"]
-    },
-    {
-      "title": "session_has",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-has",
-      "signature": "session_has(key)",
-      "description": "Check if a key exists in the session",
-      "keywords": ["session", "has", "exists"]
-    },
-    {
-      "title": "session_destroy",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-destroy",
-      "signature": "session_destroy()",
-      "description": "Destroy the entire session",
-      "keywords": ["session", "destroy", "logout"]
-    },
-    {
-      "title": "session_regenerate",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-regenerate",
-      "signature": "session_regenerate()",
-      "description": "Generate a new session ID while preserving data",
-      "keywords": ["session", "regenerate", "security"]
-    },
-    {
-      "title": "session_id",
-      "type": "function",
-      "category": "Session",
-      "path": "/docs/builtins/session#fn-session-id",
-      "signature": "session_id()",
-      "description": "Get the current session ID",
-      "keywords": ["session", "id", "identifier"]
+      "keywords": [
+        "validation",
+        "schema",
+        "verify"
+      ]
     },
     {
       "title": "describe",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-describe",
+      "path": "/docs/builtins/testing#def-describe",
       "signature": "describe(description, fn)",
       "description": "Define a test group",
-      "keywords": ["test", "describe", "suite", "group"]
+      "keywords": [
+        "test",
+        "describe",
+        "suite",
+        "group"
+      ]
     },
     {
       "title": "test",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-test",
+      "path": "/docs/builtins/testing#def-test",
       "signature": "test(description, fn)",
       "description": "Define an individual test case",
-      "keywords": ["test", "case", "spec"]
+      "keywords": [
+        "test",
+        "case",
+        "spec"
+      ]
     },
     {
       "title": "it",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-it",
+      "path": "/docs/builtins/testing#def-it",
       "signature": "it(description, fn)",
       "description": "Alternative to test()",
-      "keywords": ["test", "it", "spec"]
+      "keywords": [
+        "test",
+        "it",
+        "spec"
+      ]
     },
     {
       "title": "before_each",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-before-each",
+      "path": "/docs/builtins/testing#def-before-each",
       "signature": "before_each(fn)",
       "description": "Run before each test",
-      "keywords": ["test", "setup", "hook"]
+      "keywords": [
+        "test",
+        "setup",
+        "hook"
+      ]
     },
     {
       "title": "after_each",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-after-each",
+      "path": "/docs/builtins/testing#def-after-each",
       "signature": "after_each(fn)",
       "description": "Run after each test",
-      "keywords": ["test", "teardown", "hook"]
+      "keywords": [
+        "test",
+        "teardown",
+        "hook"
+      ]
     },
     {
       "title": "before_all",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-before-all",
+      "path": "/docs/builtins/testing#def-before-all",
       "signature": "before_all(fn)",
       "description": "Run once before all tests",
-      "keywords": ["test", "setup", "hook"]
+      "keywords": [
+        "test",
+        "setup",
+        "hook"
+      ]
     },
     {
       "title": "after_all",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-after-all",
+      "path": "/docs/builtins/testing#def-after-all",
       "signature": "after_all(fn)",
       "description": "Run once after all tests",
-      "keywords": ["test", "teardown", "hook"]
-    },
-    {
-      "title": "assert",
-      "type": "function",
-      "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert",
-      "signature": "assert(condition)",
-      "description": "Assert condition is true",
-      "keywords": ["test", "assert", "expect"]
+      "keywords": [
+        "test",
+        "teardown",
+        "hook"
+      ]
     },
     {
       "title": "expect",
@@ -1348,7 +1854,12 @@
       "path": "/docs/builtins/testing#def-expect",
       "signature": "expect(value)",
       "description": "Creates an expectation with a value, chain with to_*() methods",
-      "keywords": ["test", "expect", "assert", "chain"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "chain"
+      ]
     },
     {
       "title": "expect.to_be",
@@ -1357,7 +1868,13 @@
       "path": "/docs/builtins/testing#def-expect-to-be",
       "signature": "expect(value).to_be(expected)",
       "description": "Asserts value is the same as expected (identity check)",
-      "keywords": ["test", "expect", "assert", "be", "identity"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "be",
+        "identity"
+      ]
     },
     {
       "title": "expect.to_equal",
@@ -1366,7 +1883,13 @@
       "path": "/docs/builtins/testing#def-expect-to-equal",
       "signature": "expect(value).to_equal(expected)",
       "description": "Asserts value equals expected (value equality)",
-      "keywords": ["test", "expect", "assert", "equal", "equals"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "equal",
+        "equals"
+      ]
     },
     {
       "title": "expect.to_not_be",
@@ -1375,7 +1898,13 @@
       "path": "/docs/builtins/testing#def-expect-to-not-be",
       "signature": "expect(value).to_not_be(expected)",
       "description": "Asserts value is not the same as expected",
-      "keywords": ["test", "expect", "assert", "not", "be"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "not",
+        "be"
+      ]
     },
     {
       "title": "expect.to_not_equal",
@@ -1384,7 +1913,13 @@
       "path": "/docs/builtins/testing#def-expect-to-not-equal",
       "signature": "expect(value).to_not_equal(expected)",
       "description": "Asserts value does not equal expected",
-      "keywords": ["test", "expect", "assert", "not", "equal"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "not",
+        "equal"
+      ]
     },
     {
       "title": "expect.to_be_null",
@@ -1393,7 +1928,13 @@
       "path": "/docs/builtins/testing#def-expect-to-be-null",
       "signature": "expect(value).to_be_null()",
       "description": "Asserts value is null",
-      "keywords": ["test", "expect", "assert", "null", "nil"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "null",
+        "nil"
+      ]
     },
     {
       "title": "expect.to_not_be_null",
@@ -1402,7 +1943,14 @@
       "path": "/docs/builtins/testing#def-expect-to-not-be-null",
       "signature": "expect(value).to_not_be_null()",
       "description": "Asserts value is not null",
-      "keywords": ["test", "expect", "assert", "not", "null", "nil"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "not",
+        "null",
+        "nil"
+      ]
     },
     {
       "title": "expect.to_be_greater_than",
@@ -1411,7 +1959,14 @@
       "path": "/docs/builtins/testing#def-expect-to-be-gt",
       "signature": "expect(value).to_be_greater_than(n)",
       "description": "Asserts value is greater than n",
-      "keywords": ["test", "expect", "assert", "greater", "than", "comparison"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "greater",
+        "than",
+        "comparison"
+      ]
     },
     {
       "title": "expect.to_be_less_than",
@@ -1420,7 +1975,14 @@
       "path": "/docs/builtins/testing#def-expect-to-be-lt",
       "signature": "expect(value).to_be_less_than(n)",
       "description": "Asserts value is less than n",
-      "keywords": ["test", "expect", "assert", "less", "than", "comparison"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "less",
+        "than",
+        "comparison"
+      ]
     },
     {
       "title": "expect.to_be_greater_than_or_equal",
@@ -1429,7 +1991,14 @@
       "path": "/docs/builtins/testing#def-expect-to-be-gte",
       "signature": "expect(value).to_be_greater_than_or_equal(n)",
       "description": "Asserts value is greater than or equal to n",
-      "keywords": ["test", "expect", "assert", "greater", "equal", "comparison"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "greater",
+        "equal",
+        "comparison"
+      ]
     },
     {
       "title": "expect.to_be_less_than_or_equal",
@@ -1438,7 +2007,14 @@
       "path": "/docs/builtins/testing#def-expect-to-be-lte",
       "signature": "expect(value).to_be_less_than_or_equal(n)",
       "description": "Asserts value is less than or equal to n",
-      "keywords": ["test", "expect", "assert", "less", "equal", "comparison"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "less",
+        "equal",
+        "comparison"
+      ]
     },
     {
       "title": "expect.to_contain",
@@ -1447,7 +2023,13 @@
       "path": "/docs/builtins/testing#def-expect-to-contain",
       "signature": "expect(value).to_contain(item)",
       "description": "Asserts array or string contains item",
-      "keywords": ["test", "expect", "assert", "contain", "includes"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "contain",
+        "includes"
+      ]
     },
     {
       "title": "expect.to_be_valid_json",
@@ -1456,151 +2038,232 @@
       "path": "/docs/builtins/testing#def-expect-to-be-valid-json",
       "signature": "expect(string).to_be_valid_json()",
       "description": "Asserts string is valid JSON",
-      "keywords": ["test", "expect", "assert", "json", "valid"]
+      "keywords": [
+        "test",
+        "expect",
+        "assert",
+        "json",
+        "valid"
+      ]
     },
     {
       "title": "assert_eq",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-eq",
+      "path": "/docs/builtins/testing#def-assert-eq",
       "signature": "assert_eq(a, b)",
       "description": "Assert a equals b",
-      "keywords": ["test", "assert", "equal"]
+      "keywords": [
+        "test",
+        "assert",
+        "equal"
+      ]
     },
     {
       "title": "assert_ne",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-ne",
+      "path": "/docs/builtins/testing#def-assert-ne",
       "signature": "assert_ne(a, b)",
       "description": "Assert a does not equal b",
-      "keywords": ["test", "assert", "notequal"]
+      "keywords": [
+        "test",
+        "assert",
+        "notequal"
+      ]
     },
     {
       "title": "assert_null",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-null",
+      "path": "/docs/builtins/testing#def-assert-null",
       "signature": "assert_null(value)",
       "description": "Assert value is null",
-      "keywords": ["test", "assert", "null"]
+      "keywords": [
+        "test",
+        "assert",
+        "null"
+      ]
     },
     {
       "title": "assert_not_null",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-not-null",
+      "path": "/docs/builtins/testing#def-assert-not-null",
       "signature": "assert_not_null(value)",
       "description": "Assert value is not null",
-      "keywords": ["test", "assert", "notnull"]
+      "keywords": [
+        "test",
+        "assert",
+        "notnull"
+      ]
     },
     {
       "title": "assert_match",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-match",
+      "path": "/docs/builtins/testing#def-assert-match",
       "signature": "assert_match(str, pattern)",
       "description": "Assert string matches regex",
-      "keywords": ["test", "assert", "regex", "match"]
+      "keywords": [
+        "test",
+        "assert",
+        "regex",
+        "match"
+      ]
     },
     {
       "title": "assert_contains",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-assert-contains",
+      "path": "/docs/builtins/testing#def-assert-contains",
       "signature": "assert_contains(coll, val)",
       "description": "Assert collection contains value",
-      "keywords": ["test", "assert", "contains"]
+      "keywords": [
+        "test",
+        "assert",
+        "contains"
+      ]
     },
     {
       "title": "Factory.define",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-factory-define",
+      "path": "/docs/builtins/testing#def-factory-define",
       "signature": "Factory.define(name, data)",
       "description": "Define a factory with default data",
-      "keywords": ["test", "factory", "mock", "fixture"]
+      "keywords": [
+        "test",
+        "factory",
+        "mock",
+        "fixture"
+      ]
     },
     {
       "title": "Factory.create",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-factory-create",
+      "path": "/docs/builtins/testing#def-factory-create",
       "signature": "Factory.create(name)",
       "description": "Create an instance from a factory",
-      "keywords": ["test", "factory", "mock", "fixture"]
+      "keywords": [
+        "test",
+        "factory",
+        "mock",
+        "fixture"
+      ]
     },
     {
       "title": "Factory.create_with",
       "type": "function",
       "category": "Testing",
-      "path": "/docs/builtins/testing#fn-factory-create-with",
+      "path": "/docs/builtins/testing#def-factory-create-with",
       "signature": "Factory.create_with(name, overrides)",
       "description": "Create an instance with custom overrides",
-      "keywords": ["test", "factory", "mock", "fixture"]
+      "keywords": [
+        "test",
+        "factory",
+        "mock",
+        "fixture"
+      ]
     },
     {
       "title": "I18n.locale",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-locale",
+      "path": "/docs/builtins/i18n#def-i18n-locale",
       "signature": "I18n.locale()",
       "description": "Get the current locale",
-      "keywords": ["i18n", "locale", "language", "internationalization"]
+      "keywords": [
+        "i18n",
+        "locale",
+        "language",
+        "internationalization"
+      ]
     },
     {
       "title": "I18n.set_locale",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-set-locale",
+      "path": "/docs/builtins/i18n#def-i18n-set-locale",
       "signature": "I18n.set_locale(locale)",
       "description": "Set the current locale",
-      "keywords": ["i18n", "locale", "language", "internationalization"]
+      "keywords": [
+        "i18n",
+        "locale",
+        "language",
+        "internationalization"
+      ]
     },
     {
       "title": "I18n.translate",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-translate",
+      "path": "/docs/builtins/i18n#def-i18n-translate",
       "signature": "I18n.translate(key, locale?, translations?)",
       "description": "Translate a key to the specified locale",
-      "keywords": ["i18n", "translate", "t", "localization"]
+      "keywords": [
+        "i18n",
+        "translate",
+        "t",
+        "localization"
+      ]
     },
     {
       "title": "I18n.plural",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-plural",
+      "path": "/docs/builtins/i18n#def-i18n-plural",
       "signature": "I18n.plural(key, count, locale?, translations?)",
       "description": "Handle pluralization based on count",
-      "keywords": ["i18n", "plural", "pluralize", "count"]
+      "keywords": [
+        "i18n",
+        "plural",
+        "pluralize",
+        "count"
+      ]
     },
     {
       "title": "I18n.format_number",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-format-number",
+      "path": "/docs/builtins/i18n#def-i18n-format-number",
       "signature": "I18n.format_number(number, locale?)",
       "description": "Format a number according to locale conventions",
-      "keywords": ["i18n", "number", "format", "locale"]
+      "keywords": [
+        "i18n",
+        "number",
+        "format",
+        "locale"
+      ]
     },
     {
       "title": "I18n.format_currency",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-format-currency",
+      "path": "/docs/builtins/i18n#def-i18n-format-currency",
       "signature": "I18n.format_currency(amount, currency, locale?)",
       "description": "Format a currency amount",
-      "keywords": ["i18n", "currency", "money", "format"]
+      "keywords": [
+        "i18n",
+        "currency",
+        "money",
+        "format"
+      ]
     },
     {
       "title": "I18n.format_date",
       "type": "function",
       "category": "I18n",
-      "path": "/docs/builtins/i18n#fn-i18n-format-date",
+      "path": "/docs/builtins/i18n#def-i18n-format-date",
       "signature": "I18n.format_date(timestamp, locale?)",
       "description": "Format a date according to locale conventions",
-      "keywords": ["i18n", "date", "format", "locale"]
+      "keywords": [
+        "i18n",
+        "date",
+        "format",
+        "locale"
+      ]
     },
     {
       "title": "let",
@@ -1609,7 +2272,11 @@
       "path": "/docs/language/variables-types#kw-let",
       "signature": "let name = value",
       "description": "Declares a mutable variable",
-      "keywords": ["variable", "declare", "assignment"]
+      "keywords": [
+        "variable",
+        "declare",
+        "assignment"
+      ]
     },
     {
       "title": "const",
@@ -1618,7 +2285,11 @@
       "path": "/docs/language/variables-types#kw-const",
       "signature": "const NAME = value",
       "description": "Declares an immutable constant",
-      "keywords": ["constant", "immutable", "readonly"]
+      "keywords": [
+        "constant",
+        "immutable",
+        "readonly"
+      ]
     },
     {
       "title": "if",
@@ -1627,7 +2298,11 @@
       "path": "/docs/language/control-flow#kw-if",
       "signature": "if (condition) { ... }",
       "description": "Conditional branching statement",
-      "keywords": ["conditional", "branch", "control flow"]
+      "keywords": [
+        "conditional",
+        "branch",
+        "control flow"
+      ]
     },
     {
       "title": "else",
@@ -1636,7 +2311,11 @@
       "path": "/docs/language/control-flow#kw-if",
       "signature": "else { ... }",
       "description": "Alternative branch for if statement",
-      "keywords": ["conditional", "branch", "control flow"]
+      "keywords": [
+        "conditional",
+        "branch",
+        "control flow"
+      ]
     },
     {
       "title": "elsif",
@@ -1645,7 +2324,13 @@
       "path": "/docs/language/control-flow#kw-if",
       "signature": "elsif (condition) { ... }",
       "description": "Additional conditional branch in if/else chain",
-      "keywords": ["conditional", "branch", "control flow", "else if", "elseif"]
+      "keywords": [
+        "conditional",
+        "branch",
+        "control flow",
+        "else if",
+        "elseif"
+      ]
     },
     {
       "title": "not",
@@ -1654,7 +2339,13 @@
       "path": "/docs/language/operators#section-logical",
       "signature": "not expression / if not (condition)",
       "description": "Logical negation operator, alternative to !",
-      "keywords": ["negation", "logical", "boolean", "if not", "negate"]
+      "keywords": [
+        "negation",
+        "logical",
+        "boolean",
+        "if not",
+        "negate"
+      ]
     },
     {
       "title": ".length()",
@@ -1663,7 +2354,14 @@
       "path": "/docs/language/strings#method-length",
       "signature": "string.length()",
       "description": "Returns the number of characters in the string",
-      "keywords": ["string", "length", "len", "size", "count", "characters"]
+      "keywords": [
+        "string",
+        "length",
+        "len",
+        "size",
+        "count",
+        "characters"
+      ]
     },
     {
       "title": ".len()",
@@ -1672,7 +2370,14 @@
       "path": "/docs/language/strings#method-length",
       "signature": "string.len()",
       "description": "Returns the number of characters in the string (alias for .length())",
-      "keywords": ["string", "length", "len", "size", "count", "characters"]
+      "keywords": [
+        "string",
+        "length",
+        "len",
+        "size",
+        "count",
+        "characters"
+      ]
     },
     {
       "title": "while",
@@ -1681,7 +2386,11 @@
       "path": "/docs/language/control-flow#kw-while",
       "signature": "while (condition) { ... }",
       "description": "Repeats while a condition is true",
-      "keywords": ["loop", "iterate", "repeat"]
+      "keywords": [
+        "loop",
+        "iterate",
+        "repeat"
+      ]
     },
     {
       "title": "for",
@@ -1690,7 +2399,11 @@
       "path": "/docs/language/control-flow#kw-for",
       "signature": "for (item in collection) { ... }",
       "description": "Iterates over collections or ranges",
-      "keywords": ["loop", "iterate", "foreach"]
+      "keywords": [
+        "loop",
+        "iterate",
+        "foreach"
+      ]
     },
     {
       "title": "break",
@@ -1699,7 +2412,11 @@
       "path": "/docs/language/control-flow#kw-break",
       "signature": "break",
       "description": "Exits the current loop immediately",
-      "keywords": ["loop", "exit", "control flow"]
+      "keywords": [
+        "loop",
+        "exit",
+        "control flow"
+      ]
     },
     {
       "title": "next",
@@ -1708,7 +2425,12 @@
       "path": "/docs/language/control-flow#kw-continue",
       "signature": "next()",
       "description": "Skips to the next iteration of the loop",
-      "keywords": ["loop", "skip", "iteration", "continue"]
+      "keywords": [
+        "loop",
+        "skip",
+        "iteration",
+        "continue"
+      ]
     },
     {
       "title": "unless",
@@ -1717,16 +2439,11 @@
       "path": "/docs/language/control-flow#kw-postfix-if",
       "signature": "expression unless (condition)",
       "description": "Postfix conditional (negated if)",
-      "keywords": ["conditional", "postfix", "ruby"]
-    },
-    {
-      "title": "fn",
-      "type": "keyword",
-      "category": "Language",
-      "path": "/docs/language/functions#kw-fn",
-      "signature": "fn name(params) { ... }",
-      "description": "Declares a function",
-      "keywords": ["function", "define", "method"]
+      "keywords": [
+        "conditional",
+        "postfix",
+        "ruby"
+      ]
     },
     {
       "title": "return",
@@ -1735,7 +2452,11 @@
       "path": "/docs/language/functions#kw-return",
       "signature": "return value",
       "description": "Returns a value from a function",
-      "keywords": ["function", "exit", "value"]
+      "keywords": [
+        "function",
+        "exit",
+        "value"
+      ]
     },
     {
       "title": "Anonymous Functions",
@@ -1744,7 +2465,13 @@
       "path": "/docs/language/functions#section-lambdas",
       "signature": "fn(params) { ... }",
       "description": "Anonymous functions (lambdas) can be assigned to variables or passed as arguments",
-      "keywords": ["lambda", "closure", "callback", "anonymous", "fn"]
+      "keywords": [
+        "lambda",
+        "closure",
+        "callback",
+        "anonymous",
+        "fn"
+      ]
     },
     {
       "title": "Trailing Block Syntax",
@@ -1753,7 +2480,16 @@
       "path": "/docs/language/functions#section-lambdas",
       "signature": "obj.method |params| body end",
       "description": "Pass a block directly to a method without parentheses, using pipes for parameters",
-      "keywords": ["block", "trailing", "pipe", "lambda", "iterator", "each", "map", "filter"]
+      "keywords": [
+        "block",
+        "trailing",
+        "pipe",
+        "lambda",
+        "iterator",
+        "each",
+        "map",
+        "filter"
+      ]
     },
     {
       "title": "Trailing Block with Arguments",
@@ -1762,7 +2498,15 @@
       "path": "/docs/language/functions#section-lambdas",
       "signature": "obj.method(args) |params| body end",
       "description": "Pass arguments to a method and attach a trailing block for the callback parameter",
-      "keywords": ["block", "trailing", "pipe", "upto", "downto", "reduce", "arguments"]
+      "keywords": [
+        "block",
+        "trailing",
+        "pipe",
+        "upto",
+        "downto",
+        "reduce",
+        "arguments"
+      ]
     },
     {
       "title": "class",
@@ -1771,7 +2515,11 @@
       "path": "/docs/language/classes-oop#kw-class",
       "signature": "class Name { ... }",
       "description": "Declares a class",
-      "keywords": ["class", "oop", "object"]
+      "keywords": [
+        "class",
+        "oop",
+        "object"
+      ]
     },
     {
       "title": "match",
@@ -1780,7 +2528,11 @@
       "path": "/docs/language/pattern-matching#kw-match",
       "signature": "match value { pattern => expr }",
       "description": "Pattern matching expression",
-      "keywords": ["pattern", "switch", "case"]
+      "keywords": [
+        "pattern",
+        "switch",
+        "case"
+      ]
     },
     {
       "title": "import",
@@ -1789,16 +2541,11 @@
       "path": "/docs/language/modules#kw-import",
       "signature": "import module",
       "description": "Imports a module",
-      "keywords": ["module", "import", "require"]
-    },
-    {
-      "title": "??",
-      "type": "operator",
-      "category": "Language",
-      "path": "/docs/language/operators#op-null-coalesce",
-      "signature": "value ?? default",
-      "description": "Null coalescing operator - returns default if value is null",
-      "keywords": ["null", "coalesce", "default", "optional"]
+      "keywords": [
+        "module",
+        "import",
+        "require"
+      ]
     },
     {
       "title": "|>",
@@ -1807,16 +2554,397 @@
       "path": "/docs/language/pipeline-operator#op-pipeline",
       "signature": "value |> function",
       "description": "Pipeline operator for chaining function calls",
-      "keywords": ["pipeline", "pipe", "chain", "functional"]
+      "keywords": [
+        "pipeline",
+        "pipe",
+        "chain",
+        "functional"
+      ]
+    },
+    {
+      "title": "+",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-add",
+      "signature": "a + b",
+      "description": "Addition operator. Also concatenates strings (with auto-conversion of non-string operands).",
+      "keywords": [
+        "arithmetic",
+        "add",
+        "plus",
+        "sum",
+        "concatenate",
+        "string"
+      ]
+    },
+    {
+      "title": "-",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-subtract",
+      "signature": "a - b",
+      "description": "Subtraction operator.",
+      "keywords": [
+        "arithmetic",
+        "subtract",
+        "minus",
+        "difference"
+      ]
+    },
+    {
+      "title": "*",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-multiply",
+      "signature": "a * b",
+      "description": "Multiplication operator.",
+      "keywords": [
+        "arithmetic",
+        "multiply",
+        "times",
+        "product",
+        "star"
+      ]
+    },
+    {
+      "title": "/",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-divide",
+      "signature": "a / b",
+      "description": "Division operator. Returns a Float when dividing integers.",
+      "keywords": [
+        "arithmetic",
+        "divide",
+        "division",
+        "quotient",
+        "slash"
+      ]
+    },
+    {
+      "title": "%",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-modulo",
+      "signature": "a % b",
+      "description": "Modulo operator. Returns the remainder of a division.",
+      "keywords": [
+        "arithmetic",
+        "modulo",
+        "modulus",
+        "remainder",
+        "percent"
+      ]
+    },
+    {
+      "title": "==",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-equal",
+      "signature": "a == b",
+      "description": "Equality comparison. Returns true when both operands are equal.",
+      "keywords": [
+        "comparison",
+        "equal",
+        "equality",
+        "equals"
+      ]
+    },
+    {
+      "title": "!=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-not-equal",
+      "signature": "a != b",
+      "description": "Inequality comparison. Returns true when the operands differ.",
+      "keywords": [
+        "comparison",
+        "not equal",
+        "inequality",
+        "different"
+      ]
+    },
+    {
+      "title": "<",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-less-than",
+      "signature": "a < b",
+      "description": "Less-than comparison.",
+      "keywords": [
+        "comparison",
+        "less than",
+        "lt",
+        "lower"
+      ]
+    },
+    {
+      "title": "<=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-less-equal",
+      "signature": "a <= b",
+      "description": "Less-than-or-equal comparison.",
+      "keywords": [
+        "comparison",
+        "less than or equal",
+        "lte",
+        "at most"
+      ]
+    },
+    {
+      "title": ">",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-greater-than",
+      "signature": "a > b",
+      "description": "Greater-than comparison.",
+      "keywords": [
+        "comparison",
+        "greater than",
+        "gt",
+        "higher"
+      ]
+    },
+    {
+      "title": ">=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-greater-equal",
+      "signature": "a >= b",
+      "description": "Greater-than-or-equal comparison.",
+      "keywords": [
+        "comparison",
+        "greater than or equal",
+        "gte",
+        "at least"
+      ]
+    },
+    {
+      "title": "&&",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-and",
+      "signature": "a && b",
+      "description": "Logical AND. Returns true when both operands are truthy. Short-circuits when the left operand is falsy.",
+      "keywords": [
+        "logical",
+        "and",
+        "boolean",
+        "short-circuit"
+      ]
+    },
+    {
+      "title": "||",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#section-logical",
+      "signature": "a || b",
+      "description": "Logical OR. Returns true when at least one operand is truthy. Short-circuits when the left operand is truthy.",
+      "keywords": [
+        "logical",
+        "or",
+        "boolean",
+        "short-circuit",
+        "pipe"
+      ]
+    },
+    {
+      "title": "!",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#section-logical",
+      "signature": "!expression",
+      "description": "Logical NOT. Negates a boolean expression.",
+      "keywords": [
+        "logical",
+        "not",
+        "negation",
+        "negate",
+        "boolean",
+        "bang"
+      ]
+    },
+    {
+      "title": "??",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#section-logical",
+      "signature": "value ?? default",
+      "description": "Null coalescing operator. Returns the right-hand value when the left-hand side is null.",
+      "keywords": [
+        "null",
+        "coalescing",
+        "default",
+        "fallback",
+        "nullish"
+      ]
+    },
+    {
+      "title": "&.",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#section-logical",
+      "signature": "object&.member",
+      "description": "Safe navigation operator. Accesses a property or calls a method only when the receiver is not null; otherwise returns null.",
+      "keywords": [
+        "safe navigation",
+        "null safe",
+        "optional chaining",
+        "lonely operator"
+      ]
     },
     {
       "title": "..",
       "type": "operator",
       "category": "Language",
-      "path": "/docs/language/operators#op-range",
+      "path": "/docs/language/operators#section-logical",
       "signature": "start..end",
-      "description": "Range operator - creates an array of integers (exclusive end)",
-      "keywords": ["range", "sequence", "iterate"]
+      "description": "Range operator. Creates an array of integers from start to end (exclusive).",
+      "keywords": [
+        "range",
+        "iteration",
+        "for loop",
+        "sequence"
+      ]
+    },
+    {
+      "title": "+=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-plus-equal",
+      "signature": "a += b",
+      "description": "Add and assign. Equivalent to a = a + b. Also concatenates strings.",
+      "keywords": [
+        "compound assignment",
+        "add",
+        "increment",
+        "plus equal"
+      ]
+    },
+    {
+      "title": "-=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-minus-equal",
+      "signature": "a -= b",
+      "description": "Subtract and assign. Equivalent to a = a - b.",
+      "keywords": [
+        "compound assignment",
+        "subtract",
+        "decrement",
+        "minus equal"
+      ]
+    },
+    {
+      "title": "*=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-star-equal",
+      "signature": "a *= b",
+      "description": "Multiply and assign. Equivalent to a = a * b.",
+      "keywords": [
+        "compound assignment",
+        "multiply",
+        "star equal",
+        "times equal"
+      ]
+    },
+    {
+      "title": "/=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-slash-equal",
+      "signature": "a /= b",
+      "description": "Divide and assign. Equivalent to a = a / b.",
+      "keywords": [
+        "compound assignment",
+        "divide",
+        "slash equal"
+      ]
+    },
+    {
+      "title": "%=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-percent-equal",
+      "signature": "a %= b",
+      "description": "Modulo and assign. Equivalent to a = a % b.",
+      "keywords": [
+        "compound assignment",
+        "modulo",
+        "remainder",
+        "percent equal"
+      ]
+    },
+    {
+      "title": "||=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-or-equal",
+      "signature": "a ||= b",
+      "description": "Conditional assignment. Assigns b to a only when a is currently falsy (null or false). Right-hand side is not evaluated when skipped.",
+      "keywords": [
+        "conditional assignment",
+        "or equal",
+        "default",
+        "lazy"
+      ]
+    },
+    {
+      "title": "&&=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-and-equal",
+      "signature": "a &&= b",
+      "description": "Conditional assignment. Assigns b to a only when a is currently truthy. Right-hand side is not evaluated when skipped.",
+      "keywords": [
+        "conditional assignment",
+        "and equal",
+        "guard"
+      ]
+    },
+    {
+      "title": "??=",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-nullish-equal",
+      "signature": "a ??= b",
+      "description": "Nullish conditional assignment. Assigns b to a only when a is currently null. Preserves false and 0.",
+      "keywords": [
+        "conditional assignment",
+        "nullish",
+        "null coalescing",
+        "default"
+      ]
+    },
+    {
+      "title": "++",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-increment",
+      "signature": "variable++",
+      "description": "Postfix increment. Increases a variable by 1 and returns the value before incrementing.",
+      "keywords": [
+        "increment",
+        "postfix",
+        "plus plus",
+        "counter"
+      ]
+    },
+    {
+      "title": "--",
+      "type": "operator",
+      "category": "Language",
+      "path": "/docs/language/operators#op-decrement",
+      "signature": "variable--",
+      "description": "Postfix decrement. Decreases a variable by 1 and returns the value before decrementing.",
+      "keywords": [
+        "decrement",
+        "postfix",
+        "minus minus",
+        "counter"
+      ]
     },
     {
       "title": "Int",
@@ -1825,7 +2953,11 @@
       "path": "/docs/language/variables-types#type-int",
       "signature": "Int",
       "description": "64-bit signed integer type",
-      "keywords": ["type", "integer", "number"]
+      "keywords": [
+        "type",
+        "integer",
+        "number"
+      ]
     },
     {
       "title": "Float",
@@ -1834,7 +2966,11 @@
       "path": "/docs/language/variables-types#type-float",
       "signature": "Float",
       "description": "64-bit floating-point type",
-      "keywords": ["type", "decimal", "number"]
+      "keywords": [
+        "type",
+        "decimal",
+        "number"
+      ]
     },
     {
       "title": "String",
@@ -1843,7 +2979,11 @@
       "path": "/docs/language/variables-types#type-string",
       "signature": "String",
       "description": "UTF-8 string type",
-      "keywords": ["type", "text", "characters"]
+      "keywords": [
+        "type",
+        "text",
+        "characters"
+      ]
     },
     {
       "title": "Bool",
@@ -1852,25 +2992,11 @@
       "path": "/docs/language/variables-types#type-bool",
       "signature": "Bool",
       "description": "Boolean type (true/false)",
-      "keywords": ["type", "boolean", "logical"]
-    },
-    {
-      "title": "Array",
-      "type": "type",
-      "category": "Language",
-      "path": "/docs/language/collections#type-array",
-      "signature": "Array / Type[]",
-      "description": "Ordered collection type",
-      "keywords": ["type", "list", "collection"]
-    },
-    {
-      "title": "Hash",
-      "type": "type",
-      "category": "Language",
-      "path": "/docs/language/collections#type-hash",
-      "signature": "Hash",
-      "description": "Key-value collection type",
-      "keywords": ["type", "object", "map", "dictionary"]
+      "keywords": [
+        "type",
+        "boolean",
+        "logical"
+      ]
     },
     {
       "title": "Base64.encode",
@@ -1879,7 +3005,13 @@
       "path": "/docs/utility/base64#method-encode",
       "signature": "Base64.encode(value)",
       "description": "Encode a string to Base64 format",
-      "keywords": ["base64", "encode", "encoding", "binary", "convert"]
+      "keywords": [
+        "base64",
+        "encode",
+        "encoding",
+        "binary",
+        "convert"
+      ]
     },
     {
       "title": "Base64.decode",
@@ -1888,7 +3020,13 @@
       "path": "/docs/utility/base64#method-decode",
       "signature": "Base64.decode(value)",
       "description": "Decode a Base64 string back to the original string",
-      "keywords": ["base64", "decode", "decoding", "binary", "convert"]
+      "keywords": [
+        "base64",
+        "decode",
+        "decoding",
+        "binary",
+        "convert"
+      ]
     },
     {
       "title": ".sort_by()",
@@ -1897,7 +3035,14 @@
       "path": "/docs/language/arrays#method-sort-by",
       "signature": "array.sort_by(key) / array.sort_by(fn)",
       "description": "Sort an array of hashes by a key, or use a function to extract the sort value",
-      "keywords": ["array", "sort", "sort_by", "order", "hash", "key"]
+      "keywords": [
+        "array",
+        "sort",
+        "sort_by",
+        "order",
+        "hash",
+        "key"
+      ]
     },
     {
       "title": "render_json",
@@ -1906,7 +3051,13 @@
       "path": "/docs/core-concepts/controllers#fn-render_json",
       "signature": "render_json(data, status?)",
       "description": "Render a JSON response with automatic Content-Type header",
-      "keywords": ["json", "response", "http", "api", "render"]
+      "keywords": [
+        "json",
+        "response",
+        "http",
+        "api",
+        "render"
+      ]
     },
     {
       "title": "render",
@@ -1915,7 +3066,13 @@
       "path": "/docs/core-concepts/controllers#fn-render",
       "signature": "render(template, data?)",
       "description": "Render a view template with the provided data hash. The template engine resolves and renders the corresponding .slv file.",
-      "keywords": ["view", "template", "response", "html", "render"]
+      "keywords": [
+        "view",
+        "template",
+        "response",
+        "html",
+        "render"
+      ]
     },
     {
       "title": "render_text",
@@ -1924,7 +3081,13 @@
       "path": "/docs/core-concepts/controllers#fn-render_text",
       "signature": "render_text(text, status?)",
       "description": "Render a plain text response with automatic Content-Type header",
-      "keywords": ["text", "plain", "response", "http", "render"]
+      "keywords": [
+        "text",
+        "plain",
+        "response",
+        "http",
+        "render"
+      ]
     },
     {
       "title": "redirect",
@@ -1933,7 +3096,12 @@
       "path": "/docs/core-concepts/controllers#fn-redirect",
       "signature": "redirect(url)",
       "description": "Create a redirect response (302 Found) to the specified URL",
-      "keywords": ["redirect", "http", "location", "forward"]
+      "keywords": [
+        "redirect",
+        "http",
+        "location",
+        "forward"
+      ]
     },
     {
       "title": "params",
@@ -1941,8 +3109,17 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
-      "keywords": ["params", "global", "request", "parameters", "route", "query", "body", "unified"]
+      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
+      "keywords": [
+        "params",
+        "global",
+        "request",
+        "parameters",
+        "route",
+        "query",
+        "body",
+        "unified"
+      ]
     },
     {
       "title": "req[\"all\"]",
@@ -1951,61 +3128,107 @@
       "path": "/docs/core-concepts/request-params",
       "signature": "req[\"all\"]",
       "description": "Unified parameter hash merging route, query, and JSON/form body sources (body > query > route).",
-      "keywords": ["req", "all", "request", "parameters", "unified", "merge", "route", "query", "body"]
+      "keywords": [
+        "req",
+        "all",
+        "request",
+        "parameters",
+        "unified",
+        "merge",
+        "route",
+        "query",
+        "body"
+      ]
     },
     {
       "title": "http_server_get",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-get",
+      "path": "/docs/builtins/http#def-http-server-get",
       "signature": "http_server_get(path, handler_name)",
       "description": "Register a GET route handler for the HTTP server",
-      "keywords": ["http_server", "server", "get", "route", "handler"]
+      "keywords": [
+        "http_server",
+        "server",
+        "get",
+        "route",
+        "handler"
+      ]
     },
     {
       "title": "http_server_post",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-post",
+      "path": "/docs/builtins/http#def-http-server-post",
       "signature": "http_server_post(path, handler_name)",
       "description": "Register a POST route handler for the HTTP server",
-      "keywords": ["http_server", "server", "post", "route", "handler"]
+      "keywords": [
+        "http_server",
+        "server",
+        "post",
+        "route",
+        "handler"
+      ]
     },
     {
       "title": "http_server_put",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-put",
+      "path": "/docs/builtins/http#def-http-server-put",
       "signature": "http_server_put(path, handler_name)",
       "description": "Register a PUT route handler for the HTTP server",
-      "keywords": ["http_server", "server", "put", "route", "handler"]
+      "keywords": [
+        "http_server",
+        "server",
+        "put",
+        "route",
+        "handler"
+      ]
     },
     {
       "title": "http_server_delete",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-delete",
+      "path": "/docs/builtins/http#def-http-server-delete",
       "signature": "http_server_delete(path, handler_name)",
       "description": "Register a DELETE route handler for the HTTP server",
-      "keywords": ["http_server", "server", "delete", "route", "handler"]
+      "keywords": [
+        "http_server",
+        "server",
+        "delete",
+        "route",
+        "handler"
+      ]
     },
     {
       "title": "http_server_route",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-route",
+      "path": "/docs/builtins/http#def-http-server-route",
       "signature": "http_server_route(method, path, handler_name)",
       "description": "Register a route handler for any HTTP method",
-      "keywords": ["http_server", "server", "route", "handler", "method"]
+      "keywords": [
+        "http_server",
+        "server",
+        "route",
+        "handler",
+        "method"
+      ]
     },
     {
       "title": "http_server_listen",
       "type": "function",
       "category": "HTTP Server",
-      "path": "/docs/builtins/http#fn-http-server-listen",
+      "path": "/docs/builtins/http#def-http-server-listen",
       "signature": "http_server_listen(port)",
       "description": "Start the HTTP server (blocking call)",
-      "keywords": ["http_server", "server", "listen", "port", "start"]
+      "keywords": [
+        "http_server",
+        "server",
+        "listen",
+        "port",
+        "start"
+      ]
     },
     {
       "title": "i18n_load_translations",
@@ -2014,7 +3237,15 @@
       "path": "/docs/builtins/i18n#section-external-files",
       "signature": "i18n_load_translations(locale, dict)",
       "description": "Load translations from a dictionary into the global translations store (helper function)",
-      "keywords": ["i18n", "translation", "locale", "load", "external", "json", "files"]
+      "keywords": [
+        "i18n",
+        "translation",
+        "locale",
+        "load",
+        "external",
+        "json",
+        "files"
+      ]
     },
     {
       "title": "ws_join",
@@ -2023,7 +3254,13 @@
       "path": "/docs/core-concepts/websockets#ws_join",
       "signature": "ws_join(channel)",
       "description": "Join the current WebSocket connection to a channel",
-      "keywords": ["websocket", "ws", "join", "channel", "subscribe"]
+      "keywords": [
+        "websocket",
+        "ws",
+        "join",
+        "channel",
+        "subscribe"
+      ]
     },
     {
       "title": "ws_leave",
@@ -2032,7 +3269,13 @@
       "path": "/docs/core-concepts/websockets#ws_leave",
       "signature": "ws_leave(channel)",
       "description": "Leave a channel",
-      "keywords": ["websocket", "ws", "leave", "channel", "unsubscribe"]
+      "keywords": [
+        "websocket",
+        "ws",
+        "leave",
+        "channel",
+        "unsubscribe"
+      ]
     },
     {
       "title": "ws_clients",
@@ -2041,7 +3284,13 @@
       "path": "/docs/core-concepts/websockets#ws_clients",
       "signature": "ws_clients()",
       "description": "Get all connected client IDs",
-      "keywords": ["websocket", "ws", "clients", "connections", "list"]
+      "keywords": [
+        "websocket",
+        "ws",
+        "clients",
+        "connections",
+        "list"
+      ]
     },
     {
       "title": "ws_clients_in",
@@ -2050,7 +3299,13 @@
       "path": "/docs/core-concepts/websockets#ws_clients_in",
       "signature": "ws_clients_in(channel)",
       "description": "Get all client IDs in a specific channel",
-      "keywords": ["websocket", "ws", "clients", "channel", "connections"]
+      "keywords": [
+        "websocket",
+        "ws",
+        "clients",
+        "channel",
+        "connections"
+      ]
     },
     {
       "title": ".starts_with()",
@@ -2059,7 +3314,12 @@
       "path": "/docs/language/strings#method-starts-ends",
       "signature": "string.starts_with(prefix)",
       "description": "Check if a string starts with the given prefix",
-      "keywords": ["string", "starts_with", "prefix", "begins"]
+      "keywords": [
+        "string",
+        "starts_with",
+        "prefix",
+        "begins"
+      ]
     },
     {
       "title": ".ends_with()",
@@ -2068,7 +3328,12 @@
       "path": "/docs/language/strings#method-starts-ends",
       "signature": "string.ends_with(suffix)",
       "description": "Check if a string ends with the given suffix",
-      "keywords": ["string", "ends_with", "suffix", "ending"]
+      "keywords": [
+        "string",
+        "ends_with",
+        "suffix",
+        "ending"
+      ]
     },
     {
       "title": ".starts_with?()",
@@ -2077,7 +3342,13 @@
       "path": "/docs/language/strings#method-starts-ends",
       "signature": "string.starts_with?(prefix)",
       "description": "Check if a string starts with the given prefix (predicate alias)",
-      "keywords": ["string", "starts_with", "prefix", "begins", "predicate"]
+      "keywords": [
+        "string",
+        "starts_with",
+        "prefix",
+        "begins",
+        "predicate"
+      ]
     },
     {
       "title": ".ends_with?()",
@@ -2086,7 +3357,13 @@
       "path": "/docs/language/strings#method-starts-ends",
       "signature": "string.ends_with?(suffix)",
       "description": "Check if a string ends with the given suffix (predicate alias)",
-      "keywords": ["string", "ends_with", "suffix", "ending", "predicate"]
+      "keywords": [
+        "string",
+        "ends_with",
+        "suffix",
+        "ending",
+        "predicate"
+      ]
     },
     {
       "title": ".empty?()",
@@ -2095,16 +3372,13 @@
       "path": "/docs/language/strings#method-empty-blank",
       "signature": "string.empty?()",
       "description": "Check if the string is empty",
-      "keywords": ["string", "empty", "blank", "check", "predicate"]
-    },
-    {
-      "title": ".include?()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-contains-starts-ends",
-      "signature": "string.include?(substring)",
-      "description": "Check if the string contains a substring (Ruby-style alias for contains)",
-      "keywords": ["string", "include", "contains", "search", "predicate"]
+      "keywords": [
+        "string",
+        "empty",
+        "blank",
+        "check",
+        "predicate"
+      ]
     },
     {
       "title": ".chomp()",
@@ -2113,7 +3387,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.chomp()",
       "description": "Remove trailing newline characters from a string",
-      "keywords": ["string", "chomp", "newline", "strip", "trim"]
+      "keywords": [
+        "string",
+        "chomp",
+        "newline",
+        "strip",
+        "trim"
+      ]
     },
     {
       "title": ".lstrip()",
@@ -2122,7 +3402,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.lstrip()",
       "description": "Remove leading whitespace from a string",
-      "keywords": ["string", "lstrip", "strip", "trim", "whitespace", "left"]
+      "keywords": [
+        "string",
+        "lstrip",
+        "strip",
+        "trim",
+        "whitespace",
+        "left"
+      ]
     },
     {
       "title": ".rstrip()",
@@ -2131,7 +3418,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.rstrip()",
       "description": "Remove trailing whitespace from a string",
-      "keywords": ["string", "rstrip", "strip", "trim", "whitespace", "right"]
+      "keywords": [
+        "string",
+        "rstrip",
+        "strip",
+        "trim",
+        "whitespace",
+        "right"
+      ]
     },
     {
       "title": ".squeeze()",
@@ -2140,7 +3434,12 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.squeeze(chars?)",
       "description": "Remove consecutive duplicate characters",
-      "keywords": ["string", "squeeze", "compress", "duplicates"]
+      "keywords": [
+        "string",
+        "squeeze",
+        "compress",
+        "duplicates"
+      ]
     },
     {
       "title": ".count()",
@@ -2149,7 +3448,12 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.count(substring)",
       "description": "Count occurrences of a substring",
-      "keywords": ["string", "count", "occurrences", "frequency"]
+      "keywords": [
+        "string",
+        "count",
+        "occurrences",
+        "frequency"
+      ]
     },
     {
       "title": ".gsub()",
@@ -2158,7 +3462,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.gsub(pattern, replacement, limit?)",
       "description": "Replace all matches of a pattern (global substitution)",
-      "keywords": ["string", "gsub", "replace", "regex", "substitute", "global"]
+      "keywords": [
+        "string",
+        "gsub",
+        "replace",
+        "regex",
+        "substitute",
+        "global"
+      ]
     },
     {
       "title": ".sub()",
@@ -2167,7 +3478,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.sub(pattern, replacement)",
       "description": "Replace the first match of a pattern",
-      "keywords": ["string", "sub", "replace", "regex", "substitute", "first"]
+      "keywords": [
+        "string",
+        "sub",
+        "replace",
+        "regex",
+        "substitute",
+        "first"
+      ]
     },
     {
       "title": ".match()",
@@ -2176,7 +3494,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.match(pattern)",
       "description": "Test if the string matches a regex pattern",
-      "keywords": ["string", "match", "regex", "pattern", "test"]
+      "keywords": [
+        "string",
+        "match",
+        "regex",
+        "pattern",
+        "test"
+      ]
     },
     {
       "title": ".scan()",
@@ -2185,7 +3509,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.scan(pattern)",
       "description": "Find all matches of a pattern and return as an array",
-      "keywords": ["string", "scan", "regex", "find", "all", "matches"]
+      "keywords": [
+        "string",
+        "scan",
+        "regex",
+        "find",
+        "all",
+        "matches"
+      ]
     },
     {
       "title": ".tr()",
@@ -2194,7 +3525,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.tr(from, to)",
       "description": "Transliterate characters in a string",
-      "keywords": ["string", "tr", "transliterate", "replace", "characters"]
+      "keywords": [
+        "string",
+        "tr",
+        "transliterate",
+        "replace",
+        "characters"
+      ]
     },
     {
       "title": ".center()",
@@ -2203,7 +3540,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.center(width, pad?)",
       "description": "Center the string by padding both sides",
-      "keywords": ["string", "center", "pad", "align", "format"]
+      "keywords": [
+        "string",
+        "center",
+        "pad",
+        "align",
+        "format"
+      ]
     },
     {
       "title": ".ljust()",
@@ -2212,7 +3555,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.ljust(width, pad?)",
       "description": "Left-justify by padding the right side",
-      "keywords": ["string", "ljust", "pad", "align", "left", "justify"]
+      "keywords": [
+        "string",
+        "ljust",
+        "pad",
+        "align",
+        "left",
+        "justify"
+      ]
     },
     {
       "title": ".rjust()",
@@ -2221,7 +3571,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.rjust(width, pad?)",
       "description": "Right-justify by padding the left side",
-      "keywords": ["string", "rjust", "pad", "align", "right", "justify"]
+      "keywords": [
+        "string",
+        "rjust",
+        "pad",
+        "align",
+        "right",
+        "justify"
+      ]
     },
     {
       "title": ".ord()",
@@ -2230,7 +3587,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.ord()",
       "description": "Returns the Unicode code point of the first character",
-      "keywords": ["string", "ord", "unicode", "codepoint", "ascii"]
+      "keywords": [
+        "string",
+        "ord",
+        "unicode",
+        "codepoint",
+        "ascii"
+      ]
     },
     {
       "title": ".bytes()",
@@ -2239,7 +3602,13 @@
       "path": "/docs/language/strings#method-chars",
       "signature": "string.bytes()",
       "description": "Returns an array of byte values",
-      "keywords": ["string", "bytes", "byte", "array", "encoding"]
+      "keywords": [
+        "string",
+        "bytes",
+        "byte",
+        "array",
+        "encoding"
+      ]
     },
     {
       "title": ".chars()",
@@ -2248,7 +3617,13 @@
       "path": "/docs/language/strings#method-chars",
       "signature": "string.chars()",
       "description": "Returns an array of individual characters",
-      "keywords": ["string", "chars", "characters", "array", "split"]
+      "keywords": [
+        "string",
+        "chars",
+        "characters",
+        "array",
+        "split"
+      ]
     },
     {
       "title": ".lines()",
@@ -2257,7 +3632,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.lines()",
       "description": "Split the string into an array of lines",
-      "keywords": ["string", "lines", "split", "newline", "array"]
+      "keywords": [
+        "string",
+        "lines",
+        "split",
+        "newline",
+        "array"
+      ]
     },
     {
       "title": ".bytesize()",
@@ -2266,7 +3647,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.bytesize()",
       "description": "Returns the byte length of the string",
-      "keywords": ["string", "bytesize", "bytes", "length", "size"]
+      "keywords": [
+        "string",
+        "bytesize",
+        "bytes",
+        "length",
+        "size"
+      ]
     },
     {
       "title": ".capitalize()",
@@ -2275,7 +3662,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.capitalize()",
       "description": "Capitalize the first letter and lowercase the rest",
-      "keywords": ["string", "capitalize", "case", "first", "letter"]
+      "keywords": [
+        "string",
+        "capitalize",
+        "case",
+        "first",
+        "letter"
+      ]
     },
     {
       "title": ".swapcase()",
@@ -2284,7 +3677,14 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.swapcase()",
       "description": "Swap the case of all characters",
-      "keywords": ["string", "swapcase", "case", "toggle", "upper", "lower"]
+      "keywords": [
+        "string",
+        "swapcase",
+        "case",
+        "toggle",
+        "upper",
+        "lower"
+      ]
     },
     {
       "title": ".insert()",
@@ -2293,7 +3693,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.insert(index, str)",
       "description": "Insert a string at the given index",
-      "keywords": ["string", "insert", "add", "index", "position"]
+      "keywords": [
+        "string",
+        "insert",
+        "add",
+        "index",
+        "position"
+      ]
     },
     {
       "title": ".delete()",
@@ -2302,7 +3708,12 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.delete(substring)",
       "description": "Remove all occurrences of a substring",
-      "keywords": ["string", "delete", "remove", "strip"]
+      "keywords": [
+        "string",
+        "delete",
+        "remove",
+        "strip"
+      ]
     },
     {
       "title": ".delete_prefix()",
@@ -2311,7 +3722,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.delete_prefix(prefix)",
       "description": "Remove the given prefix from the string",
-      "keywords": ["string", "delete_prefix", "prefix", "remove", "strip"]
+      "keywords": [
+        "string",
+        "delete_prefix",
+        "prefix",
+        "remove",
+        "strip"
+      ]
     },
     {
       "title": ".delete_suffix()",
@@ -2320,7 +3737,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.delete_suffix(suffix)",
       "description": "Remove the given suffix from the string",
-      "keywords": ["string", "delete_suffix", "suffix", "remove", "strip"]
+      "keywords": [
+        "string",
+        "delete_suffix",
+        "suffix",
+        "remove",
+        "strip"
+      ]
     },
     {
       "title": ".partition()",
@@ -2329,7 +3752,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.partition(separator)",
       "description": "Split into three parts at the first occurrence of the separator",
-      "keywords": ["string", "partition", "split", "separator", "first"]
+      "keywords": [
+        "string",
+        "partition",
+        "split",
+        "separator",
+        "first"
+      ]
     },
     {
       "title": ".rpartition()",
@@ -2338,7 +3767,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.rpartition(separator)",
       "description": "Split into three parts at the last occurrence of the separator",
-      "keywords": ["string", "rpartition", "split", "separator", "last"]
+      "keywords": [
+        "string",
+        "rpartition",
+        "split",
+        "separator",
+        "last"
+      ]
     },
     {
       "title": ".reverse()",
@@ -2347,7 +3782,12 @@
       "path": "/docs/language/strings#method-reverse",
       "signature": "string.reverse()",
       "description": "Reverse the characters in the string",
-      "keywords": ["string", "reverse", "backwards", "flip"]
+      "keywords": [
+        "string",
+        "reverse",
+        "backwards",
+        "flip"
+      ]
     },
     {
       "title": ".hex()",
@@ -2356,7 +3796,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.hex()",
       "description": "Parse the string as a hexadecimal number",
-      "keywords": ["string", "hex", "hexadecimal", "parse", "number"]
+      "keywords": [
+        "string",
+        "hex",
+        "hexadecimal",
+        "parse",
+        "number"
+      ]
     },
     {
       "title": ".oct()",
@@ -2365,7 +3811,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.oct()",
       "description": "Parse the string as an octal number",
-      "keywords": ["string", "oct", "octal", "parse", "number"]
+      "keywords": [
+        "string",
+        "oct",
+        "octal",
+        "parse",
+        "number"
+      ]
     },
     {
       "title": ".truncate()",
@@ -2374,106 +3826,13 @@
       "path": "/docs/language/strings#section-methods",
       "signature": "string.truncate(length, suffix?)",
       "description": "Truncate the string to a maximum length with an optional suffix",
-      "keywords": ["string", "truncate", "shorten", "ellipsis", "limit"]
-    },
-    {
-      "title": ".upcase()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-upcase-downcase",
-      "signature": "string.upcase()",
-      "description": "Convert all characters to uppercase",
-      "keywords": ["string", "upcase", "uppercase", "case", "upper"]
-    },
-    {
-      "title": ".downcase()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-upcase-downcase",
-      "signature": "string.downcase()",
-      "description": "Convert all characters to lowercase",
-      "keywords": ["string", "downcase", "lowercase", "case", "lower"]
-    },
-    {
-      "title": ".trim()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-trim",
-      "signature": "string.trim()",
-      "description": "Remove whitespace from both ends of the string",
-      "keywords": ["string", "trim", "strip", "whitespace"]
-    },
-    {
-      "title": ".contains()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-contains-starts-ends",
-      "signature": "string.contains(substring)",
-      "description": "Check if the string contains a substring",
-      "keywords": ["string", "contains", "includes", "search", "find"]
-    },
-    {
-      "title": ".index_of()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-index-of",
-      "signature": "string.index_of(substring)",
-      "description": "Returns the index of the first occurrence of a substring, or -1 if not found",
-      "keywords": ["string", "index_of", "find", "position", "search"]
-    },
-    {
-      "title": ".substring()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-substring",
-      "signature": "string.substring(start, end?)",
-      "description": "Extract a portion of the string",
-      "keywords": ["string", "substring", "slice", "extract", "sub"]
-    },
-    {
-      "title": ".split()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-split",
-      "signature": "string.split(separator)",
-      "description": "Split the string into an array by separator",
-      "keywords": ["string", "split", "tokenize", "separator", "array"]
-    },
-    {
-      "title": ".replace()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-replace",
-      "signature": "string.replace(from, to)",
-      "description": "Replace all occurrences of a substring",
-      "keywords": ["string", "replace", "substitute", "swap"]
-    },
-    {
-      "title": ".lpad()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-lpad-rpad",
-      "signature": "string.lpad(width, pad?)",
-      "description": "Left-pad the string to the specified width",
-      "keywords": ["string", "lpad", "pad", "left", "fill"]
-    },
-    {
-      "title": ".rpad()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-lpad-rpad",
-      "signature": "string.rpad(width, pad?)",
-      "description": "Right-pad the string to the specified width",
-      "keywords": ["string", "rpad", "pad", "right", "fill"]
-    },
-    {
-      "title": ".to_string()",
-      "type": "method",
-      "category": "String",
-      "path": "/docs/language/strings#string-to-string",
-      "signature": "string.to_string()",
-      "description": "Returns the string itself",
-      "keywords": ["string", "to_string", "convert", "cast"]
+      "keywords": [
+        "string",
+        "truncate",
+        "shorten",
+        "ellipsis",
+        "limit"
+      ]
     },
     {
       "title": ".map()",
@@ -2482,7 +3841,13 @@
       "path": "/docs/language/arrays#method-map",
       "signature": "array.map(fn)",
       "description": "Transform each element using a function",
-      "keywords": ["array", "map", "transform", "each", "collect"]
+      "keywords": [
+        "array",
+        "map",
+        "transform",
+        "each",
+        "collect"
+      ]
     },
     {
       "title": ".filter()",
@@ -2491,7 +3856,13 @@
       "path": "/docs/language/arrays#method-filter",
       "signature": "array.filter(fn)",
       "description": "Keep only elements that satisfy a condition",
-      "keywords": ["array", "filter", "select", "where", "condition"]
+      "keywords": [
+        "array",
+        "filter",
+        "select",
+        "where",
+        "condition"
+      ]
     },
     {
       "title": ".each()",
@@ -2500,7 +3871,13 @@
       "path": "/docs/language/arrays#method-each",
       "signature": "array.each(fn)",
       "description": "Execute a function for each element",
-      "keywords": ["array", "each", "foreach", "iterate", "loop"]
+      "keywords": [
+        "array",
+        "each",
+        "foreach",
+        "iterate",
+        "loop"
+      ]
     },
     {
       "title": ".reduce()",
@@ -2509,7 +3886,13 @@
       "path": "/docs/language/arrays#method-reduce",
       "signature": "array.reduce(initial, fn)",
       "description": "Reduce array to a single value by applying a function",
-      "keywords": ["array", "reduce", "fold", "accumulate", "aggregate"]
+      "keywords": [
+        "array",
+        "reduce",
+        "fold",
+        "accumulate",
+        "aggregate"
+      ]
     },
     {
       "title": ".find()",
@@ -2518,7 +3901,13 @@
       "path": "/docs/language/arrays#method-find",
       "signature": "array.find(fn)",
       "description": "Find the first element matching a condition",
-      "keywords": ["array", "find", "search", "first", "detect"]
+      "keywords": [
+        "array",
+        "find",
+        "search",
+        "first",
+        "detect"
+      ]
     },
     {
       "title": ".any?()",
@@ -2527,7 +3916,13 @@
       "path": "/docs/language/arrays#method-empty-include",
       "signature": "array.any?(fn)",
       "description": "Check if any element satisfies a condition",
-      "keywords": ["array", "any", "some", "exists", "predicate"]
+      "keywords": [
+        "array",
+        "any",
+        "some",
+        "exists",
+        "predicate"
+      ]
     },
     {
       "title": ".all?()",
@@ -2536,7 +3931,12 @@
       "path": "/docs/language/arrays#method-empty-include",
       "signature": "array.all?(fn)",
       "description": "Check if all elements satisfy a condition",
-      "keywords": ["array", "all", "every", "predicate"]
+      "keywords": [
+        "array",
+        "all",
+        "every",
+        "predicate"
+      ]
     },
     {
       "title": ".sort()",
@@ -2545,7 +3945,12 @@
       "path": "/docs/language/arrays#method-sort",
       "signature": "array.sort()",
       "description": "Sort the array elements",
-      "keywords": ["array", "sort", "order", "arrange"]
+      "keywords": [
+        "array",
+        "sort",
+        "order",
+        "arrange"
+      ]
     },
     {
       "title": ".reverse()",
@@ -2554,7 +3959,12 @@
       "path": "/docs/language/arrays#method-reverse",
       "signature": "array.reverse()",
       "description": "Reverse the order of elements",
-      "keywords": ["array", "reverse", "backwards", "flip"]
+      "keywords": [
+        "array",
+        "reverse",
+        "backwards",
+        "flip"
+      ]
     },
     {
       "title": ".uniq()",
@@ -2563,7 +3973,13 @@
       "path": "/docs/language/arrays#method-uniq",
       "signature": "array.uniq()",
       "description": "Remove duplicate elements",
-      "keywords": ["array", "uniq", "unique", "distinct", "deduplicate"]
+      "keywords": [
+        "array",
+        "uniq",
+        "unique",
+        "distinct",
+        "deduplicate"
+      ]
     },
     {
       "title": ".compact()",
@@ -2572,7 +3988,30 @@
       "path": "/docs/language/arrays#method-compact",
       "signature": "array.compact()",
       "description": "Remove null values from the array",
-      "keywords": ["array", "compact", "null", "remove", "clean"]
+      "keywords": [
+        "array",
+        "compact",
+        "null",
+        "remove",
+        "clean"
+      ]
+    },
+    {
+      "title": ".compact_blank()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-compact-blank",
+      "signature": "array.compact_blank()",
+      "description": "Remove null, empty strings, empty arrays, and empty hashes from the array",
+      "keywords": [
+        "array",
+        "compact_blank",
+        "blank",
+        "null",
+        "empty",
+        "remove",
+        "clean"
+      ]
     },
     {
       "title": ".flatten()",
@@ -2581,7 +4020,13 @@
       "path": "/docs/language/arrays#method-flatten",
       "signature": "array.flatten()",
       "description": "Flatten nested arrays into a single array",
-      "keywords": ["array", "flatten", "nested", "flat", "unwrap"]
+      "keywords": [
+        "array",
+        "flatten",
+        "nested",
+        "flat",
+        "unwrap"
+      ]
     },
     {
       "title": ".first()",
@@ -2590,7 +4035,12 @@
       "path": "/docs/language/arrays#method-first-last",
       "signature": "array.first()",
       "description": "Get the first element of the array",
-      "keywords": ["array", "first", "head", "front"]
+      "keywords": [
+        "array",
+        "first",
+        "head",
+        "front"
+      ]
     },
     {
       "title": ".last()",
@@ -2599,7 +4049,13 @@
       "path": "/docs/language/arrays#method-first-last",
       "signature": "array.last()",
       "description": "Get the last element of the array",
-      "keywords": ["array", "last", "tail", "end", "back"]
+      "keywords": [
+        "array",
+        "last",
+        "tail",
+        "end",
+        "back"
+      ]
     },
     {
       "title": ".empty?()",
@@ -2608,16 +4064,28 @@
       "path": "/docs/language/arrays#method-empty-include",
       "signature": "array.empty?()",
       "description": "Check if the array is empty",
-      "keywords": ["array", "empty", "check", "predicate"]
+      "keywords": [
+        "array",
+        "empty",
+        "check",
+        "predicate"
+      ]
     },
     {
-      "title": ".include?()",
+      "title": ".includes?()",
       "type": "method",
       "category": "Array",
       "path": "/docs/language/arrays#method-empty-include",
-      "signature": "array.include?(value)",
+      "signature": "array.includes?(value)",
       "description": "Check if the array contains a value",
-      "keywords": ["array", "include", "contains", "has", "predicate"]
+      "keywords": [
+        "array",
+        "include",
+        "includes",
+        "contains",
+        "has",
+        "predicate"
+      ]
     },
     {
       "title": ".sample()",
@@ -2626,7 +4094,12 @@
       "path": "/docs/language/arrays#method-sample-shuffle",
       "signature": "array.sample()",
       "description": "Get a random element from the array",
-      "keywords": ["array", "sample", "random", "pick"]
+      "keywords": [
+        "array",
+        "sample",
+        "random",
+        "pick"
+      ]
     },
     {
       "title": ".shuffle()",
@@ -2635,7 +4108,13 @@
       "path": "/docs/language/arrays#method-sample-shuffle",
       "signature": "array.shuffle()",
       "description": "Randomly reorder the array elements",
-      "keywords": ["array", "shuffle", "random", "reorder", "randomize"]
+      "keywords": [
+        "array",
+        "shuffle",
+        "random",
+        "reorder",
+        "randomize"
+      ]
     },
     {
       "title": ".take()",
@@ -2644,7 +4123,13 @@
       "path": "/docs/language/arrays#method-take-drop",
       "signature": "array.take(n)",
       "description": "Take the first n elements",
-      "keywords": ["array", "take", "first", "slice", "head"]
+      "keywords": [
+        "array",
+        "take",
+        "first",
+        "slice",
+        "head"
+      ]
     },
     {
       "title": ".drop()",
@@ -2653,7 +4138,13 @@
       "path": "/docs/language/arrays#method-take-drop",
       "signature": "array.drop(n)",
       "description": "Drop the first n elements",
-      "keywords": ["array", "drop", "skip", "tail", "rest"]
+      "keywords": [
+        "array",
+        "drop",
+        "skip",
+        "tail",
+        "rest"
+      ]
     },
     {
       "title": ".zip()",
@@ -2662,7 +4153,13 @@
       "path": "/docs/language/arrays#method-zip",
       "signature": "array.zip(other)",
       "description": "Combine two arrays element-wise into pairs",
-      "keywords": ["array", "zip", "combine", "pair", "merge"]
+      "keywords": [
+        "array",
+        "zip",
+        "combine",
+        "pair",
+        "merge"
+      ]
     },
     {
       "title": ".sum()",
@@ -2671,7 +4168,13 @@
       "path": "/docs/language/arrays#method-sum-min-max",
       "signature": "array.sum()",
       "description": "Sum all numeric elements in the array",
-      "keywords": ["array", "sum", "total", "add", "math"]
+      "keywords": [
+        "array",
+        "sum",
+        "total",
+        "add",
+        "math"
+      ]
     },
     {
       "title": ".min()",
@@ -2680,7 +4183,12 @@
       "path": "/docs/language/arrays#method-sum-min-max",
       "signature": "array.min()",
       "description": "Get the minimum value in the array",
-      "keywords": ["array", "min", "minimum", "smallest"]
+      "keywords": [
+        "array",
+        "min",
+        "minimum",
+        "smallest"
+      ]
     },
     {
       "title": ".max()",
@@ -2689,7 +4197,12 @@
       "path": "/docs/language/arrays#method-sum-min-max",
       "signature": "array.max()",
       "description": "Get the maximum value in the array",
-      "keywords": ["array", "max", "maximum", "largest"]
+      "keywords": [
+        "array",
+        "max",
+        "maximum",
+        "largest"
+      ]
     },
     {
       "title": ".join()",
@@ -2698,7 +4211,13 @@
       "path": "/docs/language/arrays#method-join",
       "signature": "array.join(separator)",
       "description": "Join array elements into a string with a separator",
-      "keywords": ["array", "join", "string", "concatenate", "implode"]
+      "keywords": [
+        "array",
+        "join",
+        "string",
+        "concatenate",
+        "implode"
+      ]
     },
     {
       "title": ".length()",
@@ -2707,7 +4226,12 @@
       "path": "/docs/language/arrays#array-length",
       "signature": "array.length()",
       "description": "Returns the number of elements in the array",
-      "keywords": ["array", "length", "size", "count"]
+      "keywords": [
+        "array",
+        "length",
+        "size",
+        "count"
+      ]
     },
     {
       "title": ".get()",
@@ -2716,7 +4240,13 @@
       "path": "/docs/language/arrays#array-get",
       "signature": "array.get(index)",
       "description": "Get an element by index with bounds checking",
-      "keywords": ["array", "get", "index", "access", "safe"]
+      "keywords": [
+        "array",
+        "get",
+        "index",
+        "access",
+        "safe"
+      ]
     },
     {
       "title": ".push()",
@@ -2725,7 +4255,12 @@
       "path": "/docs/language/arrays#array-push-pop",
       "signature": "array.push(value)",
       "description": "Add an element to the end of the array",
-      "keywords": ["array", "push", "append", "add"]
+      "keywords": [
+        "array",
+        "push",
+        "append",
+        "add"
+      ]
     },
     {
       "title": ".pop()",
@@ -2734,7 +4269,12 @@
       "path": "/docs/language/arrays#array-push-pop",
       "signature": "array.pop()",
       "description": "Remove and return the last element",
-      "keywords": ["array", "pop", "remove", "last"]
+      "keywords": [
+        "array",
+        "pop",
+        "remove",
+        "last"
+      ]
     },
     {
       "title": ".clear()",
@@ -2743,7 +4283,12 @@
       "path": "/docs/language/arrays#array-clear",
       "signature": "array.clear()",
       "description": "Remove all elements from the array",
-      "keywords": ["array", "clear", "empty", "reset"]
+      "keywords": [
+        "array",
+        "clear",
+        "empty",
+        "reset"
+      ]
     },
     {
       "title": ".get()",
@@ -2752,7 +4297,13 @@
       "path": "/docs/language/hashes#method-get-fetch",
       "signature": "hash.get(key, default?)",
       "description": "Get a value by key with optional default",
-      "keywords": ["hash", "get", "access", "default", "safe"]
+      "keywords": [
+        "hash",
+        "get",
+        "access",
+        "default",
+        "safe"
+      ]
     },
     {
       "title": ".fetch()",
@@ -2761,7 +4312,13 @@
       "path": "/docs/language/hashes#method-get-fetch",
       "signature": "hash.fetch(key)",
       "description": "Get a value by key, raises error if not found",
-      "keywords": ["hash", "fetch", "get", "strict", "error"]
+      "keywords": [
+        "hash",
+        "fetch",
+        "get",
+        "strict",
+        "error"
+      ]
     },
     {
       "title": ".dig()",
@@ -2770,7 +4327,14 @@
       "path": "/docs/language/hashes#method-dig",
       "signature": "hash.dig(key1, key2, ...)",
       "description": "Access nested hash values safely",
-      "keywords": ["hash", "dig", "nested", "deep", "access", "safe"]
+      "keywords": [
+        "hash",
+        "dig",
+        "nested",
+        "deep",
+        "access",
+        "safe"
+      ]
     },
     {
       "title": ".map()",
@@ -2779,7 +4343,12 @@
       "path": "/docs/language/hashes#method-map-filter-each",
       "signature": "hash.map(fn)",
       "description": "Transform hash entries using a function",
-      "keywords": ["hash", "map", "transform", "collect"]
+      "keywords": [
+        "hash",
+        "map",
+        "transform",
+        "collect"
+      ]
     },
     {
       "title": ".filter()",
@@ -2788,7 +4357,13 @@
       "path": "/docs/language/hashes#method-map-filter-each",
       "signature": "hash.filter(fn)",
       "description": "Keep only entries that satisfy a condition",
-      "keywords": ["hash", "filter", "select", "where", "condition"]
+      "keywords": [
+        "hash",
+        "filter",
+        "select",
+        "where",
+        "condition"
+      ]
     },
     {
       "title": ".each()",
@@ -2797,7 +4372,13 @@
       "path": "/docs/language/hashes#method-map-filter-each",
       "signature": "hash.each(fn)",
       "description": "Execute a function for each key-value pair",
-      "keywords": ["hash", "each", "foreach", "iterate", "loop"]
+      "keywords": [
+        "hash",
+        "each",
+        "foreach",
+        "iterate",
+        "loop"
+      ]
     },
     {
       "title": ".invert()",
@@ -2806,7 +4387,13 @@
       "path": "/docs/language/hashes#method-invert",
       "signature": "hash.invert()",
       "description": "Swap keys and values",
-      "keywords": ["hash", "invert", "swap", "flip", "reverse"]
+      "keywords": [
+        "hash",
+        "invert",
+        "swap",
+        "flip",
+        "reverse"
+      ]
     },
     {
       "title": ".transform_values()",
@@ -2815,7 +4402,13 @@
       "path": "/docs/language/hashes#method-transform",
       "signature": "hash.transform_values(fn)",
       "description": "Transform all values using a function",
-      "keywords": ["hash", "transform_values", "map", "values", "modify"]
+      "keywords": [
+        "hash",
+        "transform_values",
+        "map",
+        "values",
+        "modify"
+      ]
     },
     {
       "title": ".transform_keys()",
@@ -2824,7 +4417,13 @@
       "path": "/docs/language/hashes#method-transform",
       "signature": "hash.transform_keys(fn)",
       "description": "Transform all keys using a function",
-      "keywords": ["hash", "transform_keys", "map", "keys", "rename"]
+      "keywords": [
+        "hash",
+        "transform_keys",
+        "map",
+        "keys",
+        "rename"
+      ]
     },
     {
       "title": ".select()",
@@ -2833,7 +4432,13 @@
       "path": "/docs/language/hashes#method-select-reject",
       "signature": "hash.select(fn)",
       "description": "Keep entries that satisfy a condition (alias for filter)",
-      "keywords": ["hash", "select", "filter", "keep", "where"]
+      "keywords": [
+        "hash",
+        "select",
+        "filter",
+        "keep",
+        "where"
+      ]
     },
     {
       "title": ".reject()",
@@ -2842,7 +4447,13 @@
       "path": "/docs/language/hashes#method-select-reject",
       "signature": "hash.reject(fn)",
       "description": "Remove entries that satisfy a condition",
-      "keywords": ["hash", "reject", "exclude", "remove", "filter"]
+      "keywords": [
+        "hash",
+        "reject",
+        "exclude",
+        "remove",
+        "filter"
+      ]
     },
     {
       "title": ".slice()",
@@ -2851,7 +4462,13 @@
       "path": "/docs/language/hashes#method-slice-except",
       "signature": "hash.slice(keys...)",
       "description": "Return a new hash with only the specified keys",
-      "keywords": ["hash", "slice", "pick", "subset", "keys"]
+      "keywords": [
+        "hash",
+        "slice",
+        "pick",
+        "subset",
+        "keys"
+      ]
     },
     {
       "title": ".except()",
@@ -2860,7 +4477,13 @@
       "path": "/docs/language/hashes#method-slice-except",
       "signature": "hash.except(keys...)",
       "description": "Return a new hash excluding the specified keys",
-      "keywords": ["hash", "except", "omit", "exclude", "without"]
+      "keywords": [
+        "hash",
+        "except",
+        "omit",
+        "exclude",
+        "without"
+      ]
     },
     {
       "title": ".compact()",
@@ -2869,7 +4492,13 @@
       "path": "/docs/language/hashes#method-compact",
       "signature": "hash.compact()",
       "description": "Remove entries with null values",
-      "keywords": ["hash", "compact", "null", "remove", "clean"]
+      "keywords": [
+        "hash",
+        "compact",
+        "null",
+        "remove",
+        "clean"
+      ]
     },
     {
       "title": ".length()",
@@ -2878,7 +4507,12 @@
       "path": "/docs/language/hashes#hash-length",
       "signature": "hash.length()",
       "description": "Returns the number of key-value pairs",
-      "keywords": ["hash", "length", "size", "count"]
+      "keywords": [
+        "hash",
+        "length",
+        "size",
+        "count"
+      ]
     },
     {
       "title": ".keys()",
@@ -2887,7 +4521,12 @@
       "path": "/docs/language/hashes#hash-keys-values",
       "signature": "hash.keys()",
       "description": "Returns an array of all keys",
-      "keywords": ["hash", "keys", "names", "properties"]
+      "keywords": [
+        "hash",
+        "keys",
+        "names",
+        "properties"
+      ]
     },
     {
       "title": ".values()",
@@ -2896,7 +4535,12 @@
       "path": "/docs/language/hashes#hash-keys-values",
       "signature": "hash.values()",
       "description": "Returns an array of all values",
-      "keywords": ["hash", "values", "data", "entries"]
+      "keywords": [
+        "hash",
+        "values",
+        "data",
+        "entries"
+      ]
     },
     {
       "title": ".has_key()",
@@ -2905,43 +4549,13 @@
       "path": "/docs/language/hashes#hash-has-key",
       "signature": "hash.has_key(key)",
       "description": "Check if a key exists in the hash",
-      "keywords": ["hash", "has_key", "contains", "exists", "check"]
-    },
-    {
-      "title": ".delete()",
-      "type": "method",
-      "category": "Hash",
-      "path": "/docs/language/hashes#def-delete",
-      "signature": "hash.delete(key)",
-      "description": "Remove a key-value pair from the hash",
-      "keywords": ["hash", "delete", "remove", "key"]
-    },
-    {
-      "title": ".merge()",
-      "type": "method",
-      "category": "Hash",
-      "path": "/docs/language/hashes#def-merge",
-      "signature": "hash.merge(other)",
-      "description": "Merge another hash into this one",
-      "keywords": ["hash", "merge", "combine", "extend", "join"]
-    },
-    {
-      "title": ".entries()",
-      "type": "method",
-      "category": "Hash",
-      "path": "/docs/language/hashes#def-entries",
-      "signature": "hash.entries()",
-      "description": "Returns an array of [key, value] pairs",
-      "keywords": ["hash", "entries", "pairs", "items", "iterate"]
-    },
-    {
-      "title": ".clear()",
-      "type": "method",
-      "category": "Hash",
-      "path": "/docs/language/hashes#def-clear",
-      "signature": "hash.clear()",
-      "description": "Remove all entries from the hash",
-      "keywords": ["hash", "clear", "empty", "reset"]
+      "keywords": [
+        "hash",
+        "has_key",
+        "contains",
+        "exists",
+        "check"
+      ]
     },
     {
       "title": ".set()",
@@ -2950,7 +4564,13 @@
       "path": "/docs/language/hashes#hash-get-set",
       "signature": "hash.set(key, value)",
       "description": "Set a key-value pair in the hash",
-      "keywords": ["hash", "set", "add", "assign", "store"]
+      "keywords": [
+        "hash",
+        "set",
+        "add",
+        "assign",
+        "store"
+      ]
     },
     {
       "title": ".empty?()",
@@ -2959,7 +4579,12 @@
       "path": "/docs/language/hashes#section-methods",
       "signature": "hash.empty?()",
       "description": "Check if the hash has no entries",
-      "keywords": ["hash", "empty", "check", "predicate"]
+      "keywords": [
+        "hash",
+        "empty",
+        "check",
+        "predicate"
+      ]
     },
     {
       "title": ".to_string()",
@@ -2968,7 +4593,13 @@
       "path": "/docs/language/hashes#hash-to-string",
       "signature": "hash.to_string()",
       "description": "Convert the hash to its string representation",
-      "keywords": ["hash", "to_string", "convert", "print", "display"]
+      "keywords": [
+        "hash",
+        "to_string",
+        "convert",
+        "print",
+        "display"
+      ]
     },
     {
       "title": ".class",
@@ -2977,7 +4608,12 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.class",
       "description": "Returns the type name \"hash\"",
-      "keywords": ["hash", "class", "type", "introspection"]
+      "keywords": [
+        "hash",
+        "class",
+        "type",
+        "introspection"
+      ]
     },
     {
       "title": ".inspect",
@@ -2986,7 +4622,12 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.inspect",
       "description": "Returns a developer-friendly string representation of the hash",
-      "keywords": ["hash", "inspect", "debug", "display"]
+      "keywords": [
+        "hash",
+        "inspect",
+        "debug",
+        "display"
+      ]
     },
     {
       "title": ".nil?()",
@@ -2995,7 +4636,12 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.nil?",
       "description": "Returns false (hashes are never nil)",
-      "keywords": ["hash", "nil", "null", "check"]
+      "keywords": [
+        "hash",
+        "nil",
+        "null",
+        "check"
+      ]
     },
     {
       "title": ".is_a?()",
@@ -3004,7 +4650,13 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.is_a?(type_name)",
       "description": "Check if the value is of the given type",
-      "keywords": ["hash", "is_a", "type", "check", "introspection"]
+      "keywords": [
+        "hash",
+        "is_a",
+        "type",
+        "check",
+        "introspection"
+      ]
     },
     {
       "title": ".blank?()",
@@ -3013,7 +4665,12 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.blank?",
       "description": "Returns true if the hash is empty",
-      "keywords": ["hash", "blank", "empty", "check"]
+      "keywords": [
+        "hash",
+        "blank",
+        "empty",
+        "check"
+      ]
     },
     {
       "title": ".present?()",
@@ -3022,7 +4679,12 @@
       "path": "/docs/language/hashes#hash-introspection",
       "signature": "hash.present?",
       "description": "Returns true if the hash is not empty",
-      "keywords": ["hash", "present", "check", "exists"]
+      "keywords": [
+        "hash",
+        "present",
+        "check",
+        "exists"
+      ]
     },
     {
       "title": ".class",
@@ -3031,7 +4693,12 @@
       "path": "/docs/language/arrays#array-introspection",
       "signature": "array.class",
       "description": "Returns the type name \"array\"",
-      "keywords": ["array", "class", "type", "introspection"]
+      "keywords": [
+        "array",
+        "class",
+        "type",
+        "introspection"
+      ]
     },
     {
       "title": ".inspect",
@@ -3040,7 +4707,12 @@
       "path": "/docs/language/arrays#array-introspection",
       "signature": "array.inspect",
       "description": "Returns a developer-friendly string representation of the array",
-      "keywords": ["array", "inspect", "debug", "display"]
+      "keywords": [
+        "array",
+        "inspect",
+        "debug",
+        "display"
+      ]
     },
     {
       "title": ".nil?()",
@@ -3049,7 +4721,12 @@
       "path": "/docs/language/arrays#array-introspection",
       "signature": "array.nil?",
       "description": "Returns false (arrays are never nil)",
-      "keywords": ["array", "nil", "null", "check"]
+      "keywords": [
+        "array",
+        "nil",
+        "null",
+        "check"
+      ]
     },
     {
       "title": ".is_a?()",
@@ -3058,7 +4735,13 @@
       "path": "/docs/language/arrays#array-introspection",
       "signature": "array.is_a?(type_name)",
       "description": "Check if the value is of the given type",
-      "keywords": ["array", "is_a", "type", "check", "introspection"]
+      "keywords": [
+        "array",
+        "is_a",
+        "type",
+        "check",
+        "introspection"
+      ]
     },
     {
       "title": ".abs",
@@ -3067,7 +4750,13 @@
       "path": "/docs/language/integers#method-abs",
       "signature": "int.abs",
       "description": "Returns the absolute value of the integer",
-      "keywords": ["int", "integer", "abs", "absolute", "math"]
+      "keywords": [
+        "int",
+        "integer",
+        "abs",
+        "absolute",
+        "math"
+      ]
     },
     {
       "title": ".pow()",
@@ -3076,7 +4765,14 @@
       "path": "/docs/language/integers#method-pow",
       "signature": "int.pow(exponent)",
       "description": "Raises the integer to the given power",
-      "keywords": ["int", "integer", "pow", "power", "exponent", "math"]
+      "keywords": [
+        "int",
+        "integer",
+        "pow",
+        "power",
+        "exponent",
+        "math"
+      ]
     },
     {
       "title": ".sqrt",
@@ -3085,7 +4781,13 @@
       "path": "/docs/language/integers#method-sqrt",
       "signature": "int.sqrt",
       "description": "Returns the square root as a float",
-      "keywords": ["int", "integer", "sqrt", "square root", "math"]
+      "keywords": [
+        "int",
+        "integer",
+        "sqrt",
+        "square root",
+        "math"
+      ]
     },
     {
       "title": ".gcd()",
@@ -3094,7 +4796,13 @@
       "path": "/docs/language/integers#method-gcd",
       "signature": "int.gcd(other)",
       "description": "Returns the greatest common divisor",
-      "keywords": ["int", "integer", "gcd", "divisor", "math"]
+      "keywords": [
+        "int",
+        "integer",
+        "gcd",
+        "divisor",
+        "math"
+      ]
     },
     {
       "title": ".lcm()",
@@ -3103,7 +4811,13 @@
       "path": "/docs/language/integers#method-lcm",
       "signature": "int.lcm(other)",
       "description": "Returns the least common multiple",
-      "keywords": ["int", "integer", "lcm", "multiple", "math"]
+      "keywords": [
+        "int",
+        "integer",
+        "lcm",
+        "multiple",
+        "math"
+      ]
     },
     {
       "title": ".even? / .odd?",
@@ -3112,7 +4826,14 @@
       "path": "/docs/language/integers#method-even-odd",
       "signature": "int.even? / int.odd?",
       "description": "Check if the integer is even or odd",
-      "keywords": ["int", "integer", "even", "odd", "parity", "check"]
+      "keywords": [
+        "int",
+        "integer",
+        "even",
+        "odd",
+        "parity",
+        "check"
+      ]
     },
     {
       "title": ".zero?",
@@ -3121,7 +4842,13 @@
       "path": "/docs/language/integers#method-zero",
       "signature": "int.zero?",
       "description": "Check if the integer is zero",
-      "keywords": ["int", "integer", "zero", "check", "predicate"]
+      "keywords": [
+        "int",
+        "integer",
+        "zero",
+        "check",
+        "predicate"
+      ]
     },
     {
       "title": ".positive? / .negative?",
@@ -3130,7 +4857,14 @@
       "path": "/docs/language/integers#method-positive-negative",
       "signature": "int.positive? / int.negative?",
       "description": "Check if the integer is positive or negative",
-      "keywords": ["int", "integer", "positive", "negative", "sign", "check"]
+      "keywords": [
+        "int",
+        "integer",
+        "positive",
+        "negative",
+        "sign",
+        "check"
+      ]
     },
     {
       "title": ".between?()",
@@ -3139,7 +4873,13 @@
       "path": "/docs/language/integers#method-between",
       "signature": "int.between?(min, max)",
       "description": "Check if the integer is within the given range (inclusive)",
-      "keywords": ["int", "integer", "between", "range", "check"]
+      "keywords": [
+        "int",
+        "integer",
+        "between",
+        "range",
+        "check"
+      ]
     },
     {
       "title": ".clamp()",
@@ -3148,7 +4888,13 @@
       "path": "/docs/language/integers#method-clamp",
       "signature": "int.clamp(min, max)",
       "description": "Constrain the integer to be within the given range",
-      "keywords": ["int", "integer", "clamp", "limit", "range"]
+      "keywords": [
+        "int",
+        "integer",
+        "clamp",
+        "limit",
+        "range"
+      ]
     },
     {
       "title": ".times",
@@ -3157,7 +4903,14 @@
       "path": "/docs/language/integers#method-times",
       "signature": "int.times |i| ... end",
       "description": "Execute a block n times, passing the index",
-      "keywords": ["int", "integer", "times", "loop", "iterate", "repeat"]
+      "keywords": [
+        "int",
+        "integer",
+        "times",
+        "loop",
+        "iterate",
+        "repeat"
+      ]
     },
     {
       "title": ".upto()",
@@ -3166,7 +4919,14 @@
       "path": "/docs/language/integers#method-upto",
       "signature": "int.upto(limit) |i| ... end",
       "description": "Iterate from the integer up to the limit (inclusive)",
-      "keywords": ["int", "integer", "upto", "loop", "iterate", "range"]
+      "keywords": [
+        "int",
+        "integer",
+        "upto",
+        "loop",
+        "iterate",
+        "range"
+      ]
     },
     {
       "title": ".downto()",
@@ -3175,7 +4935,14 @@
       "path": "/docs/language/integers#method-downto",
       "signature": "int.downto(limit) |i| ... end",
       "description": "Iterate from the integer down to the limit (inclusive)",
-      "keywords": ["int", "integer", "downto", "loop", "iterate", "range"]
+      "keywords": [
+        "int",
+        "integer",
+        "downto",
+        "loop",
+        "iterate",
+        "range"
+      ]
     },
     {
       "title": ".sleep",
@@ -3184,7 +4951,16 @@
       "path": "/docs/language/integers#method-sleep",
       "signature": "int.sleep",
       "description": "Pause execution for the integer number of seconds. Returns null.",
-      "keywords": ["int", "integer", "sleep", "pause", "wait", "delay", "timing", "thread"]
+      "keywords": [
+        "int",
+        "integer",
+        "sleep",
+        "pause",
+        "wait",
+        "delay",
+        "timing",
+        "thread"
+      ]
     },
     {
       "title": ".to_s / .to_string",
@@ -3193,7 +4969,13 @@
       "path": "/docs/language/integers#method-to-s",
       "signature": "int.to_s",
       "description": "Convert integer to string representation",
-      "keywords": ["int", "integer", "to_s", "to_string", "convert"]
+      "keywords": [
+        "int",
+        "integer",
+        "to_s",
+        "to_string",
+        "convert"
+      ]
     },
     {
       "title": ".to_f / .to_float",
@@ -3202,7 +4984,13 @@
       "path": "/docs/language/integers#method-to-f",
       "signature": "int.to_f",
       "description": "Convert integer to floating-point number",
-      "keywords": ["int", "integer", "to_f", "to_float", "convert"]
+      "keywords": [
+        "int",
+        "integer",
+        "to_f",
+        "to_float",
+        "convert"
+      ]
     },
     {
       "title": ".chr",
@@ -3211,7 +4999,13 @@
       "path": "/docs/language/integers#method-chr",
       "signature": "int.chr",
       "description": "Convert a Unicode code point to a character string",
-      "keywords": ["int", "integer", "chr", "character", "unicode"]
+      "keywords": [
+        "int",
+        "integer",
+        "chr",
+        "character",
+        "unicode"
+      ]
     },
     {
       "title": ".class",
@@ -3220,7 +5014,13 @@
       "path": "/docs/language/integers#method-class",
       "signature": "int.class",
       "description": "Returns the type name \"int\"",
-      "keywords": ["int", "integer", "class", "type", "introspection"]
+      "keywords": [
+        "int",
+        "integer",
+        "class",
+        "type",
+        "introspection"
+      ]
     },
     {
       "title": ".inspect",
@@ -3229,7 +5029,12 @@
       "path": "/docs/language/integers#method-inspect",
       "signature": "int.inspect",
       "description": "Returns a developer-friendly string representation",
-      "keywords": ["int", "integer", "inspect", "debug"]
+      "keywords": [
+        "int",
+        "integer",
+        "inspect",
+        "debug"
+      ]
     },
     {
       "title": ".is_a?()",
@@ -3238,7 +5043,13 @@
       "path": "/docs/language/integers#method-is-a",
       "signature": "int.is_a?(type_name)",
       "description": "Check if the value is of the given type (int, numeric, object)",
-      "keywords": ["int", "integer", "is_a", "type", "check"]
+      "keywords": [
+        "int",
+        "integer",
+        "is_a",
+        "type",
+        "check"
+      ]
     },
     {
       "title": ".nil? / .blank? / .present?",
@@ -3247,7 +5058,14 @@
       "path": "/docs/language/integers#method-blank-present",
       "signature": "int.nil? / int.blank? / int.present?",
       "description": "Integers are never nil, never blank, and always present",
-      "keywords": ["int", "integer", "nil", "blank", "present", "check"]
+      "keywords": [
+        "int",
+        "integer",
+        "nil",
+        "blank",
+        "present",
+        "check"
+      ]
     },
     {
       "title": ".round()",
@@ -3256,7 +5074,12 @@
       "path": "/docs/language/floats#method-round",
       "signature": "float.round / float.round(digits)",
       "description": "Round to nearest integer or to specific decimal places",
-      "keywords": ["float", "round", "math", "precision"]
+      "keywords": [
+        "float",
+        "round",
+        "math",
+        "precision"
+      ]
     },
     {
       "title": ".ceil",
@@ -3265,7 +5088,13 @@
       "path": "/docs/language/floats#method-ceil",
       "signature": "float.ceil",
       "description": "Round up to the nearest integer",
-      "keywords": ["float", "ceil", "ceiling", "round", "math"]
+      "keywords": [
+        "float",
+        "ceil",
+        "ceiling",
+        "round",
+        "math"
+      ]
     },
     {
       "title": ".floor",
@@ -3274,7 +5103,12 @@
       "path": "/docs/language/floats#method-floor",
       "signature": "float.floor",
       "description": "Round down to the nearest integer",
-      "keywords": ["float", "floor", "round", "math"]
+      "keywords": [
+        "float",
+        "floor",
+        "round",
+        "math"
+      ]
     },
     {
       "title": ".truncate",
@@ -3283,7 +5117,12 @@
       "path": "/docs/language/floats#method-truncate",
       "signature": "float.truncate",
       "description": "Truncate toward zero (remove decimal part)",
-      "keywords": ["float", "truncate", "trunc", "math"]
+      "keywords": [
+        "float",
+        "truncate",
+        "trunc",
+        "math"
+      ]
     },
     {
       "title": ".abs",
@@ -3292,7 +5131,12 @@
       "path": "/docs/language/floats#method-abs",
       "signature": "float.abs",
       "description": "Returns the absolute value of the float",
-      "keywords": ["float", "abs", "absolute", "math"]
+      "keywords": [
+        "float",
+        "abs",
+        "absolute",
+        "math"
+      ]
     },
     {
       "title": ".sqrt",
@@ -3301,7 +5145,12 @@
       "path": "/docs/language/floats#method-sqrt",
       "signature": "float.sqrt",
       "description": "Returns the square root",
-      "keywords": ["float", "sqrt", "square root", "math"]
+      "keywords": [
+        "float",
+        "sqrt",
+        "square root",
+        "math"
+      ]
     },
     {
       "title": ".zero? / .positive? / .negative?",
@@ -3310,7 +5159,14 @@
       "path": "/docs/language/floats#method-zero",
       "signature": "float.zero? / float.positive? / float.negative?",
       "description": "Check if the float is zero, positive, or negative",
-      "keywords": ["float", "zero", "positive", "negative", "sign", "check"]
+      "keywords": [
+        "float",
+        "zero",
+        "positive",
+        "negative",
+        "sign",
+        "check"
+      ]
     },
     {
       "title": ".finite? / .infinite? / .nan?",
@@ -3319,7 +5175,14 @@
       "path": "/docs/language/floats#method-finite-infinite-nan",
       "signature": "float.finite? / float.infinite? / float.nan?",
       "description": "Check for special IEEE 754 float states",
-      "keywords": ["float", "finite", "infinite", "nan", "check", "ieee"]
+      "keywords": [
+        "float",
+        "finite",
+        "infinite",
+        "nan",
+        "check",
+        "ieee"
+      ]
     },
     {
       "title": ".between?()",
@@ -3328,7 +5191,12 @@
       "path": "/docs/language/floats#method-between",
       "signature": "float.between?(min, max)",
       "description": "Check if the float is within the given range (inclusive)",
-      "keywords": ["float", "between", "range", "check"]
+      "keywords": [
+        "float",
+        "between",
+        "range",
+        "check"
+      ]
     },
     {
       "title": ".clamp()",
@@ -3337,7 +5205,12 @@
       "path": "/docs/language/floats#method-clamp",
       "signature": "float.clamp(min, max)",
       "description": "Constrain the float to be within the given range",
-      "keywords": ["float", "clamp", "limit", "range"]
+      "keywords": [
+        "float",
+        "clamp",
+        "limit",
+        "range"
+      ]
     },
     {
       "title": ".sleep",
@@ -3346,7 +5219,16 @@
       "path": "/docs/language/floats#method-sleep",
       "signature": "float.sleep",
       "description": "Pause execution for the float number of seconds (sub-second precision). Returns null.",
-      "keywords": ["float", "sleep", "pause", "wait", "delay", "timing", "thread", "milliseconds"]
+      "keywords": [
+        "float",
+        "sleep",
+        "pause",
+        "wait",
+        "delay",
+        "timing",
+        "thread",
+        "milliseconds"
+      ]
     },
     {
       "title": ".to_i / .to_int",
@@ -3355,7 +5237,13 @@
       "path": "/docs/language/floats#method-to-i",
       "signature": "float.to_i",
       "description": "Convert float to integer (truncates toward zero)",
-      "keywords": ["float", "to_i", "to_int", "convert", "integer"]
+      "keywords": [
+        "float",
+        "to_i",
+        "to_int",
+        "convert",
+        "integer"
+      ]
     },
     {
       "title": ".to_s / .to_string",
@@ -3364,7 +5252,12 @@
       "path": "/docs/language/floats#method-to-s",
       "signature": "float.to_s",
       "description": "Convert float to string representation",
-      "keywords": ["float", "to_s", "to_string", "convert"]
+      "keywords": [
+        "float",
+        "to_s",
+        "to_string",
+        "convert"
+      ]
     },
     {
       "title": ".class / .inspect / .is_a? / .nil? / .blank? / .present?",
@@ -3373,7 +5266,16 @@
       "path": "/docs/language/floats#method-class",
       "signature": "float.class / float.inspect / float.is_a?(type)",
       "description": "Type introspection methods for floats",
-      "keywords": ["float", "class", "inspect", "is_a", "nil", "blank", "present", "introspection"]
+      "keywords": [
+        "float",
+        "class",
+        "inspect",
+        "is_a",
+        "nil",
+        "blank",
+        "present",
+        "introspection"
+      ]
     },
     {
       "title": ".to_s / .to_string",
@@ -3382,7 +5284,13 @@
       "path": "/docs/language/booleans#method-to-s",
       "signature": "bool.to_s",
       "description": "Convert boolean to string (\"true\" or \"false\")",
-      "keywords": ["bool", "boolean", "to_s", "to_string", "convert"]
+      "keywords": [
+        "bool",
+        "boolean",
+        "to_s",
+        "to_string",
+        "convert"
+      ]
     },
     {
       "title": ".to_i / .to_int",
@@ -3391,7 +5299,14 @@
       "path": "/docs/language/booleans#method-to-i",
       "signature": "bool.to_i",
       "description": "Convert boolean to integer (true=1, false=0)",
-      "keywords": ["bool", "boolean", "to_i", "to_int", "convert", "integer"]
+      "keywords": [
+        "bool",
+        "boolean",
+        "to_i",
+        "to_int",
+        "convert",
+        "integer"
+      ]
     },
     {
       "title": ".class / .inspect / .is_a? / .nil?",
@@ -3400,7 +5315,15 @@
       "path": "/docs/language/booleans#method-class",
       "signature": "bool.class / bool.inspect / bool.is_a?(type)",
       "description": "Type introspection methods for booleans",
-      "keywords": ["bool", "boolean", "class", "inspect", "is_a", "nil", "introspection"]
+      "keywords": [
+        "bool",
+        "boolean",
+        "class",
+        "inspect",
+        "is_a",
+        "nil",
+        "introspection"
+      ]
     },
     {
       "title": ".blank? / .present?",
@@ -3409,7 +5332,13 @@
       "path": "/docs/language/booleans#method-blank-present",
       "signature": "bool.blank? / bool.present?",
       "description": "false is blank; true is present (Rails convention)",
-      "keywords": ["bool", "boolean", "blank", "present", "check"]
+      "keywords": [
+        "bool",
+        "boolean",
+        "blank",
+        "present",
+        "check"
+      ]
     },
     {
       "title": ".to_s / .to_string",
@@ -3418,7 +5347,13 @@
       "path": "/docs/language/null#method-to-s",
       "signature": "null.to_s",
       "description": "Convert null to empty string",
-      "keywords": ["null", "to_s", "to_string", "convert", "empty"]
+      "keywords": [
+        "null",
+        "to_s",
+        "to_string",
+        "convert",
+        "empty"
+      ]
     },
     {
       "title": ".to_i / .to_int",
@@ -3427,7 +5362,13 @@
       "path": "/docs/language/null#method-to-i",
       "signature": "null.to_i",
       "description": "Convert null to zero",
-      "keywords": ["null", "to_i", "to_int", "convert", "zero"]
+      "keywords": [
+        "null",
+        "to_i",
+        "to_int",
+        "convert",
+        "zero"
+      ]
     },
     {
       "title": ".to_f / .to_float",
@@ -3436,7 +5377,13 @@
       "path": "/docs/language/null#method-to-f",
       "signature": "null.to_f",
       "description": "Convert null to zero float",
-      "keywords": ["null", "to_f", "to_float", "convert", "zero"]
+      "keywords": [
+        "null",
+        "to_f",
+        "to_float",
+        "convert",
+        "zero"
+      ]
     },
     {
       "title": ".to_a / .to_array",
@@ -3445,7 +5392,13 @@
       "path": "/docs/language/null#method-to-a",
       "signature": "null.to_a",
       "description": "Convert null to empty array",
-      "keywords": ["null", "to_a", "to_array", "convert", "empty"]
+      "keywords": [
+        "null",
+        "to_a",
+        "to_array",
+        "convert",
+        "empty"
+      ]
     },
     {
       "title": ".nil?",
@@ -3454,7 +5407,12 @@
       "path": "/docs/language/null#method-nil",
       "signature": "null.nil?",
       "description": "Returns true (null is the only type where nil? returns true)",
-      "keywords": ["null", "nil", "check", "predicate"]
+      "keywords": [
+        "null",
+        "nil",
+        "check",
+        "predicate"
+      ]
     },
     {
       "title": ".blank? / .present?",
@@ -3463,7 +5421,12 @@
       "path": "/docs/language/null#method-blank-present",
       "signature": "null.blank? / null.present?",
       "description": "Null is always blank and never present",
-      "keywords": ["null", "blank", "present", "check"]
+      "keywords": [
+        "null",
+        "blank",
+        "present",
+        "check"
+      ]
     },
     {
       "title": ".class / .inspect / .is_a?",
@@ -3472,7 +5435,13 @@
       "path": "/docs/language/null#method-class",
       "signature": "null.class / null.inspect / null.is_a?(type)",
       "description": "Type introspection methods for null",
-      "keywords": ["null", "class", "inspect", "is_a", "introspection"]
+      "keywords": [
+        "null",
+        "class",
+        "inspect",
+        "is_a",
+        "introspection"
+      ]
     },
     {
       "title": ".round()",
@@ -3481,7 +5450,12 @@
       "path": "/docs/language/decimal#method-round",
       "signature": "decimal.round / decimal.round(digits)",
       "description": "Round to nearest integer or to specific decimal places",
-      "keywords": ["decimal", "round", "precision", "math"]
+      "keywords": [
+        "decimal",
+        "round",
+        "precision",
+        "math"
+      ]
     },
     {
       "title": ".ceil / .floor / .truncate",
@@ -3490,7 +5464,14 @@
       "path": "/docs/language/decimal#method-ceil-floor",
       "signature": "decimal.ceil / decimal.floor / decimal.truncate",
       "description": "Round up, down, or toward zero",
-      "keywords": ["decimal", "ceil", "floor", "truncate", "round", "math"]
+      "keywords": [
+        "decimal",
+        "ceil",
+        "floor",
+        "truncate",
+        "round",
+        "math"
+      ]
     },
     {
       "title": ".abs",
@@ -3499,7 +5480,12 @@
       "path": "/docs/language/decimal#method-abs",
       "signature": "decimal.abs",
       "description": "Returns the absolute value of the decimal",
-      "keywords": ["decimal", "abs", "absolute", "math"]
+      "keywords": [
+        "decimal",
+        "abs",
+        "absolute",
+        "math"
+      ]
     },
     {
       "title": ".sqrt",
@@ -3508,7 +5494,12 @@
       "path": "/docs/language/decimal#method-sqrt",
       "signature": "decimal.sqrt",
       "description": "Returns the square root as a float",
-      "keywords": ["decimal", "sqrt", "square root", "math"]
+      "keywords": [
+        "decimal",
+        "sqrt",
+        "square root",
+        "math"
+      ]
     },
     {
       "title": ".zero? / .positive? / .negative?",
@@ -3517,7 +5508,14 @@
       "path": "/docs/language/decimal#method-predicates",
       "signature": "decimal.zero? / decimal.positive? / decimal.negative?",
       "description": "Check the sign of a decimal value",
-      "keywords": ["decimal", "zero", "positive", "negative", "sign", "check"]
+      "keywords": [
+        "decimal",
+        "zero",
+        "positive",
+        "negative",
+        "sign",
+        "check"
+      ]
     },
     {
       "title": ".between?() / .clamp()",
@@ -3526,7 +5524,13 @@
       "path": "/docs/language/decimal#method-between",
       "signature": "decimal.between?(min, max) / decimal.clamp(min, max)",
       "description": "Range checking and clamping for decimals",
-      "keywords": ["decimal", "between", "clamp", "range", "check"]
+      "keywords": [
+        "decimal",
+        "between",
+        "clamp",
+        "range",
+        "check"
+      ]
     },
     {
       "title": ".to_s / .to_i / .to_f",
@@ -3535,7 +5539,13 @@
       "path": "/docs/language/decimal#method-conversion",
       "signature": "decimal.to_s / decimal.to_i / decimal.to_f",
       "description": "Convert decimal to string, integer, or float",
-      "keywords": ["decimal", "to_s", "to_i", "to_f", "convert"]
+      "keywords": [
+        "decimal",
+        "to_s",
+        "to_i",
+        "to_f",
+        "convert"
+      ]
     },
     {
       "title": ".class / .inspect / .nil? / .blank? / .present? / .is_a?",
@@ -3544,7 +5554,16 @@
       "path": "/docs/language/decimal#method-introspection",
       "signature": "decimal.class / decimal.inspect / decimal.is_a?(type)",
       "description": "Type introspection methods for decimals",
-      "keywords": ["decimal", "class", "inspect", "nil", "blank", "present", "is_a", "introspection"]
+      "keywords": [
+        "decimal",
+        "class",
+        "inspect",
+        "nil",
+        "blank",
+        "present",
+        "is_a",
+        "introspection"
+      ]
     },
     {
       "title": "Int",
@@ -3553,7 +5572,13 @@
       "path": "/docs/language/integers",
       "signature": "42, -100, 9_000_000",
       "description": "64-bit signed integers with arithmetic, iteration, and type methods",
-      "keywords": ["int", "integer", "number", "numeric", "type"]
+      "keywords": [
+        "int",
+        "integer",
+        "number",
+        "numeric",
+        "type"
+      ]
     },
     {
       "title": "Float",
@@ -3562,7 +5587,14 @@
       "path": "/docs/language/floats",
       "signature": "3.14, 0.001, 2.5e10",
       "description": "64-bit floating-point numbers with rounding, comparison, and conversion",
-      "keywords": ["float", "floating", "point", "number", "numeric", "type"]
+      "keywords": [
+        "float",
+        "floating",
+        "point",
+        "number",
+        "numeric",
+        "type"
+      ]
     },
     {
       "title": "Bool",
@@ -3571,7 +5603,13 @@
       "path": "/docs/language/booleans",
       "signature": "true, false",
       "description": "Boolean values with conversion and introspection methods",
-      "keywords": ["bool", "boolean", "true", "false", "type"]
+      "keywords": [
+        "bool",
+        "boolean",
+        "true",
+        "false",
+        "type"
+      ]
     },
     {
       "title": "Null",
@@ -3580,7 +5618,13 @@
       "path": "/docs/language/null",
       "signature": "null",
       "description": "Absence of value with safe conversion methods",
-      "keywords": ["null", "nil", "nothing", "empty", "type"]
+      "keywords": [
+        "null",
+        "nil",
+        "nothing",
+        "empty",
+        "type"
+      ]
     },
     {
       "title": "Decimal",
@@ -3589,7 +5633,14 @@
       "path": "/docs/language/decimal",
       "signature": "19.99D, 0.0675D",
       "description": "Fixed-precision decimal arithmetic for financial calculations",
-      "keywords": ["decimal", "precision", "financial", "money", "currency", "type"]
+      "keywords": [
+        "decimal",
+        "precision",
+        "financial",
+        "money",
+        "currency",
+        "type"
+      ]
     },
     {
       "title": "db.create_collection",
@@ -3598,7 +5649,16 @@
       "path": "/docs/database/migrations",
       "signature": "db.create_collection(name)",
       "description": "Create a new collection from within a migration's up()/down() block",
-      "keywords": ["migration", "collection", "create", "schema", "database", "solidb", "up", "down"]
+      "keywords": [
+        "migration",
+        "collection",
+        "create",
+        "schema",
+        "database",
+        "solidb",
+        "up",
+        "down"
+      ]
     },
     {
       "title": "db.drop_collection",
@@ -3607,7 +5667,16 @@
       "path": "/docs/database/migrations",
       "signature": "db.drop_collection(name)",
       "description": "Drop an existing collection from within a migration",
-      "keywords": ["migration", "collection", "drop", "delete", "remove", "schema", "database", "solidb"]
+      "keywords": [
+        "migration",
+        "collection",
+        "drop",
+        "delete",
+        "remove",
+        "schema",
+        "database",
+        "solidb"
+      ]
     },
     {
       "title": "db.list_collections",
@@ -3616,7 +5685,15 @@
       "path": "/docs/database/migrations",
       "signature": "db.list_collections()",
       "description": "List all collections in the current database",
-      "keywords": ["migration", "collection", "list", "schema", "database", "solidb", "introspection"]
+      "keywords": [
+        "migration",
+        "collection",
+        "list",
+        "schema",
+        "database",
+        "solidb",
+        "introspection"
+      ]
     },
     {
       "title": "db.collection_stats",
@@ -3625,7 +5702,16 @@
       "path": "/docs/database/migrations",
       "signature": "db.collection_stats(name)",
       "description": "Return statistics about a collection (document count, size, etc.)",
-      "keywords": ["migration", "collection", "stats", "statistics", "size", "count", "database", "solidb"]
+      "keywords": [
+        "migration",
+        "collection",
+        "stats",
+        "statistics",
+        "size",
+        "count",
+        "database",
+        "solidb"
+      ]
     },
     {
       "title": "db.create_index",
@@ -3634,7 +5720,17 @@
       "path": "/docs/database/migrations",
       "signature": "db.create_index(collection, name, fields, options)",
       "description": "Create an index on a collection's fields with optional uniqueness/sparse settings",
-      "keywords": ["migration", "index", "create", "fields", "unique", "sparse", "schema", "database", "solidb"]
+      "keywords": [
+        "migration",
+        "index",
+        "create",
+        "fields",
+        "unique",
+        "sparse",
+        "schema",
+        "database",
+        "solidb"
+      ]
     },
     {
       "title": "db.drop_index",
@@ -3643,7 +5739,16 @@
       "path": "/docs/database/migrations",
       "signature": "db.drop_index(collection, name)",
       "description": "Drop a named index from a collection",
-      "keywords": ["migration", "index", "drop", "delete", "remove", "schema", "database", "solidb"]
+      "keywords": [
+        "migration",
+        "index",
+        "drop",
+        "delete",
+        "remove",
+        "schema",
+        "database",
+        "solidb"
+      ]
     },
     {
       "title": "db.list_indexes",
@@ -3652,43 +5757,35 @@
       "path": "/docs/database/migrations",
       "signature": "db.list_indexes(collection)",
       "description": "List all indexes defined on a collection",
-      "keywords": ["migration", "index", "list", "introspection", "schema", "database", "solidb"]
+      "keywords": [
+        "migration",
+        "index",
+        "list",
+        "introspection",
+        "schema",
+        "database",
+        "solidb"
+      ]
     },
     {
-      "title": "db.query",
-      "type": "function",
+      "title": "has_and_belongs_to_many",
+      "type": "dsl",
       "category": "Database",
-      "path": "/docs/database/advanced#raw-queries",
-      "signature": "db.query(sdbql, bind_vars?)",
-      "description": "Execute a raw SDBQL query with @param bind variables and return the result rows",
-      "keywords": ["sdbql", "sdql", "raw query", "database", "query", "bind", "parameters", "solidb", "sql"]
-    },
-    {
-      "title": "@sdql{}",
-      "type": "syntax",
-      "category": "Database",
-      "path": "/docs/database/advanced#raw-queries",
-      "signature": "@sdql{ FOR u IN users FILTER u.age >= #{age} RETURN u }",
-      "description": "SDBQL query block with inline #{expr} interpolation for multi-line raw queries (FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE)",
-      "keywords": ["sdql", "sdbql", "raw query", "database", "query block", "interpolation", "solidb", "sql", "sdbql block"]
-    },
-    {
-      "title": "solidb_query",
-      "type": "function",
-      "category": "Database",
-      "path": "/docs/database/advanced#raw-queries",
-      "signature": "solidb_query(host, database, sdbql, bind_vars?)",
-      "description": "Run a raw SDBQL query against an external SoliDB server without the ORM's bound db handle",
-      "keywords": ["sdbql", "sdql", "raw query", "external", "solidb", "remote", "query"]
-    },
-    {
-      "title": "Model.transaction",
-      "type": "function",
-      "category": "Database",
-      "path": "/docs/database/advanced#transactions",
-      "signature": "Model.transaction(sdbql | fn(tx))",
-      "description": "Run multiple statements atomically — pass an SDBQL string for auto-commit, or a function for manual control",
-      "keywords": ["transaction", "atomic", "sdbql", "sdql", "rollback", "commit", "database"]
+      "path": "/docs/database/relationships#habtm",
+      "signature": "has_and_belongs_to_many(name, options?)",
+      "description": "Declare a many-to-many relationship through an automatically-named join table. Adds add_<singular>/remove_<singular> mutators and supports the << operator. Options: class_name, join_table, foreign_key, association_foreign_key.",
+      "keywords": [
+        "relation",
+        "association",
+        "many-to-many",
+        "habtm",
+        "join table",
+        "model",
+        "dsl",
+        "rails",
+        "shovel",
+        "<<"
+      ]
     }
   ]
 }

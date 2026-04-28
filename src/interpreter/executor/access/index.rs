@@ -20,6 +20,15 @@ impl Interpreter {
         // Auto-resolve Futures before indexing
         let obj_val = obj_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
 
+        // QueryBuilder indexing materializes the rows once, then indexes
+        // into the resulting array. Lets users write user.posts[0].
+        let obj_val = match obj_val {
+            Value::QueryBuilder(qb) => {
+                crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
+            }
+            other => other,
+        };
+
         match (&obj_val, &idx_val) {
             (Value::Array(arr), Value::Int(idx)) => {
                 let arr = arr.borrow();

@@ -101,41 +101,54 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
     // Track superclass relationships for inheritance resolution
     let mut superclass_map: HashMap<String, String> = HashMap::new(); // class_name -> parent_class_name
 
-    for entry in std::fs::read_dir(controllers_dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
+    fn walk(
+        dir: &Path,
+        registry: &mut ControllerRegistry,
+        superclass_map: &mut HashMap<String, String>,
+    ) -> Result<(), String> {
+        for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
 
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
-            if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
-                // Skip non-controller files
-                if !file_name.ends_with("_controller") {
-                    continue;
-                }
+            if path.is_dir() {
+                walk(&path, registry, superclass_map)?;
+                continue;
+            }
 
-                match parse_controller_file(&path, file_name) {
-                    Ok(info) => {
-                        // Track superclass for inheritance
-                        if let Ok(source) = std::fs::read_to_string(&path) {
-                            if let Some(parent) = extract_superclass_name(&source) {
-                                if parent != "Controller" {
-                                    superclass_map.insert(info.name.clone(), parent);
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
+                if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
+                    // Skip non-controller files
+                    if !file_name.ends_with("_controller") {
+                        continue;
+                    }
+
+                    match parse_controller_file(&path, file_name) {
+                        Ok(info) => {
+                            if let Ok(source) = std::fs::read_to_string(&path) {
+                                if let Some(parent) = extract_superclass_name(&source) {
+                                    if parent != "Controller" {
+                                        superclass_map.insert(info.name.clone(), parent);
+                                    }
                                 }
                             }
-                        }
 
-                        registry.register(info);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to parse controller {}: {}",
-                            path.display(),
-                            e
-                        );
+                            registry.register(info);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Warning: Failed to parse controller {}: {}",
+                                path.display(),
+                                e
+                            );
+                        }
                     }
                 }
             }
         }
+        Ok(())
     }
+
+    walk(controllers_dir, &mut registry, &mut superclass_map)?;
 
     // Inherit before/after actions and layout from parent controllers
     resolve_controller_inheritance(&mut registry, &superclass_map);

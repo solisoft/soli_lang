@@ -309,6 +309,7 @@ impl Parser {
                 "has_many",
                 "has_one",
                 "belongs_to",
+                "has_and_belongs_to_many",
                 "uploader",
             ];
             // Bare class-level macros (no parentheses needed)

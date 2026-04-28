@@ -621,6 +621,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
+        name: "includes?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
         name: "count",
         zero_arg: false,
         ret: "int",
@@ -958,6 +963,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "compact",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "compact_blank",
         zero_arg: true,
         ret: "array",
     },
@@ -1318,6 +1328,16 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "all?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "any?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
         name: "blank?",
         zero_arg: true,
         ret: "bool",
@@ -1328,12 +1348,57 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "compact",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "compact_blank",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "contains",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
         name: "count",
         zero_arg: true,
         ret: "int",
     },
     MethodDef {
+        name: "delete_all",
+        zero_arg: true,
+        ret: "",
+    },
+    MethodDef {
+        name: "drop",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "each",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
+        name: "empty?",
+        zero_arg: true,
+        ret: "bool",
+    },
+    MethodDef {
         name: "fields",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
+        name: "filter",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "find",
         zero_arg: false,
         ret: "",
     },
@@ -1343,9 +1408,19 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "flatten",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
         name: "includes",
         zero_arg: false,
         ret: "",
+    },
+    MethodDef {
+        name: "includes?",
+        zero_arg: false,
+        ret: "bool",
     },
     MethodDef {
         name: "inspect",
@@ -1363,9 +1438,29 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "last",
+        zero_arg: true,
+        ret: "",
+    },
+    MethodDef {
+        name: "len",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "length",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
         name: "limit",
         zero_arg: false,
         ret: "",
+    },
+    MethodDef {
+        name: "map",
+        zero_arg: false,
+        ret: "array",
     },
     MethodDef {
         name: "nil?",
@@ -1388,9 +1483,64 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
+        name: "reduce",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
+        name: "reverse",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "sample",
+        zero_arg: true,
+        ret: "",
+    },
+    MethodDef {
         name: "select",
         zero_arg: false,
         ret: "",
+    },
+    MethodDef {
+        name: "shuffle",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "size",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "sort",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "sort_by",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "take",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "to_a",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "to_array",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "to_json",
+        zero_arg: true,
+        ret: "string",
     },
     MethodDef {
         name: "to_query",
@@ -1398,9 +1548,24 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "to_string",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
+        name: "uniq",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
         name: "where",
         zero_arg: false,
         ret: "",
+    },
+    MethodDef {
+        name: "zip",
+        zero_arg: false,
+        ret: "array",
     },
 ];
 

@@ -20,7 +20,9 @@ pub use super::registry::{
 };
 
 use super::callbacks::register_callback;
-use super::relations::{build_relation, get_relation, register_relation, RelationType};
+use super::relations::{
+    build_habtm_relation, build_relation, get_relation, register_relation, RelationType,
+};
 use super::uploaders::{default_collection, get_uploader, register_uploader, UploaderConfig};
 use super::validation::{register_validation, ValidationRule};
 
@@ -199,15 +201,14 @@ pub fn class_name_to_collection_with_engine(name: &str, engine: Option<&str>) ->
 fn compute_base_collection_name(name: &str) -> String {
     let name = name.strip_suffix("Model").unwrap_or(name);
 
-    let mut result = String::new();
+    let mut snake = String::new();
     for (i, c) in name.chars().enumerate() {
         if c.is_uppercase() && i > 0 {
-            result.push('_');
+            snake.push('_');
         }
-        result.push(c.to_lowercase().next().unwrap());
+        snake.push(c.to_lowercase().next().unwrap());
     }
-    result.push('s');
-    result
+    crate::inflect::pluralize(&snake)
 }
 
 #[cfg(test)]
@@ -221,6 +222,13 @@ mod tests {
         assert_eq!(compute_base_collection_name("BlogPost"), "blog_posts");
         assert_eq!(compute_base_collection_name("UserProfile"), "user_profiles");
         assert_eq!(compute_base_collection_name("CustomerModel"), "customers");
+        assert_eq!(
+            compute_base_collection_name("ProductCategory"),
+            "product_categories"
+        );
+        assert_eq!(compute_base_collection_name("Category"), "categories");
+        assert_eq!(compute_base_collection_name("Box"), "boxes");
+        assert_eq!(compute_base_collection_name("Person"), "people");
     }
 
     #[test]
@@ -762,6 +770,65 @@ impl Model {
             );
         }
 
+        // has_and_belongs_to_many(name) or with options:
+        //   { class_name, foreign_key, association_foreign_key, join_table }
+        native_static_methods.insert(
+            "has_and_belongs_to_many".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.has_and_belongs_to_many",
+                None,
+                |args| {
+                    let class_name = get_class_name_from_class(&args)?;
+                    let name = match args.get(1) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => {
+                            return Err(format!(
+                                "has_and_belongs_to_many expects string name, got {}",
+                                other.type_name()
+                            ))
+                        }
+                        None => {
+                            return Err(
+                                "has_and_belongs_to_many requires a name argument".to_string()
+                            )
+                        }
+                    };
+
+                    let mut class_override: Option<String> = None;
+                    let mut fk_override: Option<String> = None;
+                    let mut assoc_fk_override: Option<String> = None;
+                    let mut join_table_override: Option<String> = None;
+                    if let Some(Value::Hash(hash)) = args.get(2) {
+                        use crate::interpreter::value::HashKey;
+                        for (k, v) in hash.borrow().iter() {
+                            if let (HashKey::String(key), Value::String(s)) = (k, v) {
+                                match key.as_str() {
+                                    "class_name" => class_override = Some(s.clone()),
+                                    "foreign_key" => fk_override = Some(s.clone()),
+                                    "association_foreign_key" => {
+                                        assoc_fk_override = Some(s.clone())
+                                    }
+                                    "join_table" => join_table_override = Some(s.clone()),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+
+                    let relation = build_habtm_relation(
+                        &class_name,
+                        &name,
+                        class_override.as_deref(),
+                        fk_override.as_deref(),
+                        assoc_fk_override.as_deref(),
+                        join_table_override.as_deref(),
+                    );
+                    register_relation(&class_name, relation);
+                    Ok(Value::Null)
+                },
+            )),
+        );
+
         // ====================================================================
         // Uploader DSL: uploader("photo", { multiple, content_types, ... })
         // ====================================================================
@@ -1183,7 +1250,7 @@ impl Model {
                             other.type_name()
                         ))
                     }
-                    None => return Err("Model.where() requires bind variables hash".to_string()),
+                    None => StdHashMap::new(),
                 };
 
                 // Create a QueryBuilder and set the filter
@@ -2814,4 +2881,58 @@ pub fn register_model_builtins(env: &mut Environment) {
             })),
         );
     }
+
+    // has_and_belongs_to_many global function
+    env.define(
+        "has_and_belongs_to_many".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "has_and_belongs_to_many",
+            None,
+            |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let name = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(other) => {
+                        return Err(format!(
+                            "has_and_belongs_to_many expects string name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                    None => {
+                        return Err("has_and_belongs_to_many requires a name argument".to_string())
+                    }
+                };
+
+                let mut class_override: Option<String> = None;
+                let mut fk_override: Option<String> = None;
+                let mut assoc_fk_override: Option<String> = None;
+                let mut join_table_override: Option<String> = None;
+                if let Some(Value::Hash(hash)) = args.get(2) {
+                    use crate::interpreter::value::HashKey;
+                    for (k, v) in hash.borrow().iter() {
+                        if let (HashKey::String(key), Value::String(s)) = (k, v) {
+                            match key.as_str() {
+                                "class_name" => class_override = Some(s.clone()),
+                                "foreign_key" => fk_override = Some(s.clone()),
+                                "association_foreign_key" => assoc_fk_override = Some(s.clone()),
+                                "join_table" => join_table_override = Some(s.clone()),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                let relation = build_habtm_relation(
+                    &class_name,
+                    &name,
+                    class_override.as_deref(),
+                    fk_override.as_deref(),
+                    assoc_fk_override.as_deref(),
+                    join_table_override.as_deref(),
+                );
+                register_relation(&class_name, relation);
+                Ok(Value::Null)
+            },
+        )),
+    );
 }

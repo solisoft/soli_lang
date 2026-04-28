@@ -44,6 +44,17 @@ pub fn is_defined(name: &str) -> bool {
     })
 }
 
+/// Look up a value from the current environment chain (returns the Value if
+/// defined). Used by builtins that need to resolve a name at runtime, e.g. the
+/// jobs callback dispatcher fetching a `XJob` class by string.
+pub fn current_env_lookup(name: &str) -> Option<crate::interpreter::Value> {
+    CURRENT_ENV.with(|c| {
+        c.borrow()
+            .as_ref()
+            .and_then(|env_ref| env_ref.borrow().get(name))
+    })
+}
+
 /// Temporarily enter lenient-variable mode. Returns a guard; drop it to
 /// restore the prior mode. Used by the template engine to treat optional
 /// template locals as Null instead of erroring on missing definitions.

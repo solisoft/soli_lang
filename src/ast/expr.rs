@@ -269,6 +269,8 @@ pub enum BinaryOp {
     Greater,
     GreaterEqual,
     Range,
+    /// `<<` — array push / HABTM mutator. Always returns the LHS.
+    Shovel,
 }
 
 impl std::fmt::Display for BinaryOp {
@@ -286,6 +288,7 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::Greater => write!(f, ">"),
             BinaryOp::GreaterEqual => write!(f, ">="),
             BinaryOp::Range => write!(f, ".."),
+            BinaryOp::Shovel => write!(f, "<<"),
         }
     }
 }
@@ -298,6 +301,9 @@ pub enum CompoundOp {
     Multiply,
     Divide,
     Modulo,
+    Or,       // ||= : assign if current value is falsy
+    And,      // &&= : assign if current value is truthy
+    Coalesce, // ??= : assign if current value is null
 }
 
 impl std::fmt::Display for CompoundOp {
@@ -308,6 +314,9 @@ impl std::fmt::Display for CompoundOp {
             CompoundOp::Multiply => write!(f, "*="),
             CompoundOp::Divide => write!(f, "/="),
             CompoundOp::Modulo => write!(f, "%="),
+            CompoundOp::Or => write!(f, "||="),
+            CompoundOp::And => write!(f, "&&="),
+            CompoundOp::Coalesce => write!(f, "??="),
         }
     }
 }

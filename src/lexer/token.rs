@@ -102,6 +102,7 @@ pub enum TokenKind {
     BangEqual,
     Less,
     LessEqual,
+    LessLess, // <<
     Greater,
     GreaterEqual,
     Bang,
@@ -116,6 +117,9 @@ pub enum TokenKind {
     StarEqual,         // *=
     SlashEqual,        // /=
     PercentEqual,      // %=
+    OrEqual,           // ||=
+    AndEqual,          // &&=
+    NullishEqual,      // ??=
     NullishCoalescing, // ??
     SafeNavigation,    // &.
     Ampersand,         // &
@@ -280,6 +284,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Less => write!(f, "<"),
             TokenKind::LessEqual => write!(f, "<="),
+            TokenKind::LessLess => write!(f, "<<"),
             TokenKind::Greater => write!(f, ">"),
             TokenKind::GreaterEqual => write!(f, ">="),
             TokenKind::Bang => write!(f, "!"),
@@ -294,6 +299,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::StarEqual => write!(f, "*="),
             TokenKind::SlashEqual => write!(f, "/="),
             TokenKind::PercentEqual => write!(f, "%="),
+            TokenKind::OrEqual => write!(f, "||="),
+            TokenKind::AndEqual => write!(f, "&&="),
+            TokenKind::NullishEqual => write!(f, "??="),
             TokenKind::NullishCoalescing => write!(f, "??"),
             TokenKind::SafeNavigation => write!(f, "&."),
             TokenKind::Ampersand => write!(f, "&"),

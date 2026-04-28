@@ -35,13 +35,7 @@ pub fn to_snake_case(s: &str) -> String {
 
 /// Convert string to plural snake_case
 pub fn to_snake_case_plural(s: &str) -> String {
-    let snake = to_snake_case(s);
-    // Don't add 's' if it already ends with 's' to avoid "userss"
-    if snake.ends_with('s') {
-        snake
-    } else {
-        snake + "s"
-    }
+    crate::inflect::pluralize(&to_snake_case(s))
 }
 
 /// Convert string to Title Case

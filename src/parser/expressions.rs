@@ -659,6 +659,7 @@ impl Parser {
             TokenKind::Greater => self.binary_expr(left, BinaryOp::Greater, precedence),
             TokenKind::GreaterEqual => self.binary_expr(left, BinaryOp::GreaterEqual, precedence),
             TokenKind::Range => self.binary_expr(left, BinaryOp::Range, precedence),
+            TokenKind::LessLess => self.binary_expr(left, BinaryOp::Shovel, precedence),
 
             // Ternary operator: cond ? then_expr : else_expr
             TokenKind::Question => {
@@ -759,18 +760,24 @@ impl Parser {
                 }
             }
 
-            // Compound assignment: +=, -=, *=, /=, %=
+            // Compound assignment: +=, -=, *=, /=, %=, ||=, &&=, ??=
             TokenKind::PlusEqual
             | TokenKind::MinusEqual
             | TokenKind::StarEqual
             | TokenKind::SlashEqual
-            | TokenKind::PercentEqual => {
+            | TokenKind::PercentEqual
+            | TokenKind::OrEqual
+            | TokenKind::AndEqual
+            | TokenKind::NullishEqual => {
                 let op = match &token.kind {
                     TokenKind::PlusEqual => CompoundOp::Add,
                     TokenKind::MinusEqual => CompoundOp::Subtract,
                     TokenKind::StarEqual => CompoundOp::Multiply,
                     TokenKind::SlashEqual => CompoundOp::Divide,
                     TokenKind::PercentEqual => CompoundOp::Modulo,
+                    TokenKind::OrEqual => CompoundOp::Or,
+                    TokenKind::AndEqual => CompoundOp::And,
+                    TokenKind::NullishEqual => CompoundOp::Coalesce,
                     _ => unreachable!(),
                 };
                 let value = self.parse_precedence(Precedence::Assignment)?;

@@ -371,8 +371,37 @@ impl Interpreter {
         use crate::ast::expr::CompoundOp;
 
         let current = self.evaluate(target)?;
-        let rhs = self.evaluate(value)?;
 
+        // Short-circuit operators: only evaluate RHS and assign when needed.
+        match op {
+            CompoundOp::Or => {
+                if current.is_truthy() {
+                    return Ok(current);
+                }
+                let rhs = self.evaluate(value)?;
+                self.assign_to_target(target, rhs.clone(), span)?;
+                return Ok(rhs);
+            }
+            CompoundOp::And => {
+                if !current.is_truthy() {
+                    return Ok(current);
+                }
+                let rhs = self.evaluate(value)?;
+                self.assign_to_target(target, rhs.clone(), span)?;
+                return Ok(rhs);
+            }
+            CompoundOp::Coalesce => {
+                if !matches!(current, Value::Null) {
+                    return Ok(current);
+                }
+                let rhs = self.evaluate(value)?;
+                self.assign_to_target(target, rhs.clone(), span)?;
+                return Ok(rhs);
+            }
+            _ => {}
+        }
+
+        let rhs = self.evaluate(value)?;
         let result = match op {
             CompoundOp::Add => {
                 self.evaluate_binary_values(&current, crate::ast::BinaryOp::Add, &rhs, span)?
@@ -389,6 +418,7 @@ impl Interpreter {
             CompoundOp::Modulo => {
                 self.evaluate_binary_values(&current, crate::ast::BinaryOp::Modulo, &rhs, span)?
             }
+            CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce => unreachable!(),
         };
 
         self.assign_to_target(target, result.clone(), span)?;

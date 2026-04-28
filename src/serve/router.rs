@@ -1,8 +1,10 @@
 //! Convention-based routing for MVC controllers.
 //!
-//! Routes are derived from controller filename + function name:
+//! Routes are derived from controller path + function name:
 //! - `home_controller.sl` maps to root `/`
 //! - `users_controller.sl` maps to `/users`
+//! - `admin/merchants_controller.sl` maps to `/admin/merchants`
+//!   (handler key `admin/merchants`, class `AdminMerchantsController`)
 //! - Function names map to HTTP methods and actions:
 //!   - `index()` → GET on collection (e.g., `/users`)
 //!   - `show(id)` → GET with param (e.g., `/users/:id`)
@@ -47,8 +49,13 @@ pub fn derive_routes_from_controller(
 
 /// Get the base path for a controller.
 ///
+/// Accepts either a bare controller filename stem (`home_controller`,
+/// `users_controller`) or a nested key with `/` separators
+/// (`admin/merchants_controller`).
+///
 /// - `home_controller` → `/`
 /// - `users_controller` → `/users`
+/// - `admin/merchants_controller` → `/admin/merchants`
 pub fn controller_base_path(controller_name: &str) -> String {
     let name = controller_name.trim_end_matches("_controller");
 
@@ -192,13 +199,15 @@ fn derive_route(base_path: &str, func_name: &str, _has_params: bool) -> Option<C
     }
 }
 
-/// Convert a controller key (e.g., "posts", "user_profiles") to PascalCase class name (e.g., "PostsController", "UserProfilesController").
+/// Convert a controller key (e.g., "posts", "user_profiles", "admin/merchants")
+/// to PascalCase class name (e.g., "PostsController", "UserProfilesController",
+/// "AdminMerchantsController"). Both `_` and `/` act as word separators.
 pub fn to_pascal_case_controller(controller_key: &str) -> String {
     let mut result = String::new();
     let mut capitalize_next = true;
 
     for c in controller_key.chars() {
-        if c == '_' {
+        if c == '_' || c == '/' {
             capitalize_next = true;
         } else if capitalize_next {
             result.push(c.to_ascii_uppercase());
@@ -221,6 +230,27 @@ mod tests {
         assert_eq!(controller_base_path("home_controller"), "/");
         assert_eq!(controller_base_path("users_controller"), "/users");
         assert_eq!(controller_base_path("blog_posts_controller"), "/blog_posts");
+        assert_eq!(
+            controller_base_path("admin/merchants_controller"),
+            "/admin/merchants"
+        );
+    }
+
+    #[test]
+    fn test_to_pascal_case_controller() {
+        assert_eq!(to_pascal_case_controller("posts"), "PostsController");
+        assert_eq!(
+            to_pascal_case_controller("user_profiles"),
+            "UserProfilesController"
+        );
+        assert_eq!(
+            to_pascal_case_controller("admin/merchants"),
+            "AdminMerchantsController"
+        );
+        assert_eq!(
+            to_pascal_case_controller("admin/user_profiles"),
+            "AdminUserProfilesController"
+        );
     }
 
     #[test]

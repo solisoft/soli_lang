@@ -1,0 +1,406 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-in Functions</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Jobs &amp; Cron</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-400 bg-clip-text text-transparent">Background Jobs &amp; Cron</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            SolidB-backed queues and scheduled jobs. Define a handler in <code class="text-amber-400">app/jobs/</code>, call <code class="text-amber-400">.perform_later</code>, and SolidB takes care of scheduling and retries.
+        </p>
+    </div>
+
+    <!-- How it works -->
+    <section id="section-how-it-works" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            How it works
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-400 mb-3">SolidB owns the queue, scheduling, and retries. Soli provides:</p>
+            <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
+                <li>A file-based handler convention (<code class="text-amber-400">app/jobs/email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>).</li>
+                <li>A small language-side API (<code class="text-amber-400">Job</code>, <code class="text-amber-400">Cron</code>) plus per-class facade methods.</li>
+                <li>A built-in callback route (<code class="text-amber-400">POST /_jobs/run/:name</code>) that SolidB hits when a job fires.</li>
+            </ul>
+            <p class="text-gray-400 mt-3 text-sm">When you enqueue a job, Soli sends it to SolidB along with a callback URL. When SolidB is ready to run it, it calls back into your app, which dispatches to <code class="text-amber-400">XJob.perform(args)</code>.</p>
+        </div>
+    </section>
+
+    <!-- Defining a job -->
+    <section id="section-defining" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Defining a Job</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Create a file under <code class="text-amber-400">app/jobs/</code>. Filename and class name follow the same convention as controllers and models — <code class="text-amber-400">welcome_email_job.sl</code> defines <code class="text-amber-400">class WelcomeEmailJob</code>.</p>
+            <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
+    static fn perform(args: Hash) {
+        let user = User.find(args["user_id"])
+        Mailer.send(user.email, "Welcome to the app")
+    }
+}</code></pre>
+            <p class="text-gray-400 mt-3 text-sm">Every job class must define <code class="text-amber-400">static fn perform(args: Hash)</code>. That's the entry point SolidB triggers when the job runs.</p>
+        </div>
+    </section>
+
+    <!-- Per-class Facade -->
+    <section id="section-facade" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Per-class Facade</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <p class="text-gray-400 mb-3">Job classes get a set of static helpers automatically — no inheritance needed.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Method</th>
+                            <th class="pb-3">Behavior</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_now(args)</code></td>
+                            <td class="py-3">Runs <code class="text-purple-400">perform</code> inline, in the current process. No SolidB round-trip.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_later(args, queue?)</code></td>
+                            <td class="py-3">Enqueues into SolidB. Returns the job id.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_in(duration, args, queue?)</code></td>
+                            <td class="py-3">Enqueues with a relative delay (<code class="text-purple-400">"5 minutes"</code>, <code class="text-purple-400">"2 hours"</code>, seconds as a number).</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_at(datetime, args, queue?)</code></td>
+                            <td class="py-3">Enqueues to run at an ISO-8601 timestamp.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.set(queue: ...)</code></td>
+                            <td class="py-3">Captures options and forwards to <code class="text-purple-400">perform_later</code>/<code class="text-purple-400">perform_in</code>/<code class="text-purple-400">perform_at</code>.</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.schedule_cron(name, expr, args?)</code></td>
+                            <td class="py-3">Idempotently registers a cron entry that triggers this class.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <pre data-filename="Examples" class="mt-4"><code class="language-soli text-sm">WelcomeEmailJob.perform_now({ "user_id": 42 })          # Inline, no queue
+WelcomeEmailJob.perform_later({ "user_id": 42 })        # Enqueue
+WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 })
+WelcomeEmailJob.perform_at("2026-05-01T08:00:00Z", { "user_id": 42 })
+WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></pre>
+        </div>
+    </section>
+
+    <!-- Job class API -->
+    <section id="section-job-api" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Job Class API</h2>
+
+        <section id="def-job-enqueue" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-enqueue" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue(handler, args, queue?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })</code></pre>
+            </div>
+        </section>
+
+        <section id="def-job-enqueue-in" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-enqueue-in" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_in(handler, duration, args, queue?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-purple-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })</code></pre>
+            </div>
+        </section>
+
+        <section id="def-job-enqueue-at" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-enqueue-at" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_at(handler, datetime, args, queue?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue to run at a specific ISO-8601 timestamp.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 })</code></pre>
+            </div>
+        </section>
+
+        <section id="def-job-cancel" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-cancel" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.cancel(job_id)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Cancel an enqueued (not yet started) job.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Job.cancel(job_id)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-job-list" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-list" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.list(queue?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">List jobs in a queue. Defaults to the configured default queue.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let jobs = Job.list("mailers")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-job-queues" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-job-queues" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Job.queues()</code>
+                </a>
+                <p class="text-gray-400 mb-3">Return all queues defined in the SolidB database.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let names = Job.queues()</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Cron API -->
+    <section id="section-cron-api" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Cron Class API</h2>
+
+        <section id="def-cron-schedule" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-cron-schedule" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cron.schedule(name, expr, handler, args?)</code>
+                </a>
+                <p class="text-gray-400 mb-3"><span class="text-fuchsia-400 font-semibold">Idempotent upsert by name.</span> Calling twice with the same name updates the existing entry rather than creating a duplicate.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cron.schedule("nightly_report", Cron.daily_at("03:00"), "ReportJob", {})
+Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-cron-list" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-cron-list" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cron.list()</code>
+                </a>
+                <p class="text-gray-400 mb-3">List all cron entries.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let entries = Cron.list()</code></pre>
+            </div>
+        </section>
+
+        <section id="def-cron-update" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-cron-update" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cron.update(id, fields)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Update an existing cron entry. Pass a hash of fields to change.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cron.update(cron_id, { "schedule": "0 4 * * *" })</code></pre>
+            </div>
+        </section>
+
+        <section id="def-cron-delete" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-cron-delete" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cron.delete(id)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Delete a cron entry by id.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cron.delete(cron_id)</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Cron expression helpers -->
+    <section id="section-cron-helpers" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Cron Expression Helpers</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-400 mb-4">Pure string builders — they produce standard 5-token cron strings. Calling them has no side effect; only <code class="text-amber-400">Cron.schedule</code> writes to SolidB.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Helper</th>
+                            <th class="pb-3">Cron string</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("5 minutes")</code></td>
+                            <td class="py-3"><code class="text-purple-400">*/5 * * * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 hour")</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 * * * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("2 hours")</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 */2 * * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 day")</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 0 */1 * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.hourly()</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 * * * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.daily_at("03:00")</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 3 * * *</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.weekly_at("monday", "09:00")</code></td>
+                            <td class="py-3"><code class="text-purple-400">0 9 * * 1</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-gray-400 mt-3 text-sm">You can always pass a raw cron string instead.</p>
+        </div>
+    </section>
+
+    <!-- Static cron convention -->
+    <section id="section-static-cron" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Declarative <code class="text-amber-400">static cron</code></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">A class can declare a <code class="text-amber-400">static cron</code> field. On boot, worker 0 upserts a cron entry named after the class — the auto-derived name is the snake-case of the class (<code class="text-amber-400">nightly_report_job</code>).</p>
+            <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob {
+    static cron = Cron.daily_at("03:00")
+
+    static fn perform(args: Hash) {
+        Report.generate()
+    }
+}</code></pre>
+            <p class="text-gray-400 mt-3 text-sm">Re-registers idempotently on hot reload. Removing the field does <strong class="text-white">not</strong> auto-delete the SolidB entry — call <code class="text-amber-400">Cron.delete(id)</code> explicitly to avoid surprise data loss.</p>
+        </div>
+    </section>
+
+    <!-- Environment Variables -->
+    <section id="section-env-vars" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Environment Variables</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">Configure jobs and cron via env vars (typically in <code class="text-amber-400">.env</code>):</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Variable</th>
+                            <th class="pb-3 pr-4">Description</th>
+                            <th class="pb-3">Default</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DATABASE</code></td>
+                            <td class="py-3 pr-4">SolidB database hosting queues + cron entries</td>
+                            <td class="py-3"><code class="text-purple-400">SOLIDB_DATABASE</code> then <code class="text-purple-400">default</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DEFAULT_QUEUE</code></td>
+                            <td class="py-3 pr-4">Queue name when none is supplied</td>
+                            <td class="py-3"><code class="text-purple-400">default</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code></td>
+                            <td class="py-3 pr-4">URL SolidB POSTs to when a job fires</td>
+                            <td class="py-3"><code class="text-purple-400">http://127.0.0.1:3000/_jobs/run</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_ALLOW_REMOTE</code></td>
+                            <td class="py-3 pr-4">Allow non-localhost callbacks</td>
+                            <td class="py-3"><code class="text-purple-400">false</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_SECRET</code></td>
+                            <td class="py-3 pr-4">HMAC secret (when remote allowed)</td>
+                            <td class="py-3"><span class="text-gray-500">unset</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-gray-400 mt-3 text-sm">The callback URL must be reachable from the SolidB server. In production, set it to your Soli app's public URL plus <code class="text-amber-400">/_jobs/run</code>.</p>
+        </div>
+    </section>
+
+    <!-- Common Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Send an email asynchronously</h3>
+            <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
+    static fn perform(args: Hash) {
+        let user = User.find(args["user_id"])
+        Mailer.send(user.email, "Welcome!")
+    }
+}</code></pre>
+            <pre data-filename="app/controllers/users_controller.sl" class="mt-3"><code class="language-soli text-sm">fn create(req) {
+    let user = User.create(req["json"])
+    WelcomeEmailJob.perform_later({ "user_id": user.id })
+    return redirect("/users/" + str(user.id))
+}</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Recurring report (declarative)</h3>
+            <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob {
+    static cron = Cron.daily_at("03:00")
+
+    static fn perform(args: Hash) {
+        Report.generate()
+        AdminMailer.send_summary()
+    }
+}</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Idempotent retries</h3>
+            <p class="text-gray-400 text-sm mb-3">SolidB owns retry semantics. Treat handlers as idempotent. The callback receives <code class="text-amber-400">job_id</code> and <code class="text-amber-400">attempt</code> in the request body if you need to dedupe.</p>
+            <pre data-filename="app/jobs/charge_job.sl"><code class="language-soli text-sm">class ChargeJob {
+    static fn perform(args: Hash) {
+        let charge_id = args["charge_id"]
+        if Charge.find(charge_id).processed {
+            return  # already done — no-op on retry
+        }
+        Charge.process(charge_id)
+    }
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- Notes -->
+    <section id="section-notes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Notes</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <ul class="list-disc list-inside text-gray-300 space-y-2 text-sm">
+                <li><strong class="text-white">Filename and class name must match.</strong> <code class="text-amber-400">email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>. A mismatch is a startup error.</li>
+                <li><code class="text-amber-400">perform</code> must be <code class="text-amber-400">static</code> — it's invoked on the class, never on an instance.</li>
+                <li>Job arguments round-trip through JSON via SolidB; pass plain hashes / arrays / strings / numbers, not class instances.</li>
+                <li>If a callback arrives before <code class="text-amber-400">app/jobs/</code> finishes loading, the dispatcher returns <code class="text-purple-400">503</code> so SolidB retries instead of failing.</li>
+                <li>In <code class="text-amber-400">--dev</code> mode, edits under <code class="text-amber-400">app/jobs/</code> hot-reload the class without restarting the server.</li>
+                <li>Only worker 0 performs <code class="text-amber-400">static cron</code> auto-registration on boot, to avoid duplicate writes from multiple workers.</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/session" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Session Functions
+        </a>
+        <a href="/docs/builtins/testing" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Testing Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

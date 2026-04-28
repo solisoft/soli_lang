@@ -223,6 +223,10 @@ print(doubled);  # [2, 4, 6, 8, 10]
 # Trailing block syntax (equivalent)
 let doubled = numbers.map |x| x * 2 end
 
+# Symbol shorthand: &:method → |__it| __it.method()
+let strings = numbers.map(&:to_s)
+print(strings);  # ["1", "2", "3", "4", "5"]
+
 # Convert to strings
 let strings = numbers.map(|x| str(x))
 print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
@@ -246,6 +250,10 @@ print(evens);  # [2, 4, 6, 8, 10]
 
 # Trailing block syntax (equivalent)
 let evens = numbers.filter |x| x % 2 == 0 end
+
+# Symbol shorthand: &:predicate → |__it| __it.predicate()
+let evens = numbers.filter(&:even?)
+print(evens);  # [2, 4, 6, 8, 10]
 
 # Keep numbers greater than 5
 let large = numbers.filter(|x| x > 5)
@@ -435,6 +443,21 @@ print(unique)  # [1, 2, 3, 4]</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null]
 let cleaned = arr.compact
 print(cleaned)  # [1, 2, 3]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-compact-blank" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-compact-blank" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.compact_blank</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove null, empty strings, empty arrays, and empty hashes from the array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, "", [], {}, "hello", [1], {a: 1}]
+let cleaned = arr.compact_blank
+print(cleaned)  # [1, "hello", [1], {a: 1}]</code></pre>
                 </div>
             </section>
 

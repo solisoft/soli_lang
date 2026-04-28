@@ -569,7 +569,35 @@ The router automatically:
 | `home_controller.sl` | `HomeController` | `home#` |
 | `users_controller.sl` | `UsersController` | `users#` |
 | `posts_controller.sl` | `PostsController` | `posts#` |
-| `admin/users_controller.sl` | `Admin::UsersController` | `admin/users#` |
+| `admin/users_controller.sl` | `AdminUsersController` | `admin/users#` |
+| `admin/merchants_controller.sl` | `AdminMerchantsController` | `admin/merchants#` |
+
+## Nested Controller Directories
+
+Controllers can be organized into subdirectories under `app/controllers/`. The directory path becomes part of the controller key, the route base path, and the class name.
+
+```
+app/controllers/
+├── home_controller.sl              # HomeController            → /
+├── users_controller.sl             # UsersController           → /users
+└── admin/
+    ├── merchants_controller.sl     # AdminMerchantsController  → /admin/merchants
+    └── user_profiles_controller.sl # AdminUserProfilesController → /admin/user_profiles
+```
+
+Both `_` and `/` act as word separators when deriving the class name, so `admin/user_profiles_controller.sl` becomes `AdminUserProfilesController` (not `Admin::UserProfilesController`).
+
+Reference nested controllers from `config/routes.sl` using the same `controller#action` syntax with a `/`-separated key:
+
+```soli
+get("/admin/merchants", "admin/merchants#index");
+get("/admin/merchants/:id", "admin/merchants#show");
+
+# Or with resources()
+resources("/admin/merchants", "admin/merchants");
+```
+
+Subdirectories are watched recursively in dev mode, so adding or editing a nested controller triggers hot reload like any top-level controller.
 
 ## Best Practices
 

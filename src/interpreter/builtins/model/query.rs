@@ -201,43 +201,9 @@ impl QueryBuilder {
 
         // Join filters (existence checks) — before user filters
         for join in &self.joins {
-            let rel = &join.relation;
-            let fk_condition = match rel.relation_type {
-                RelationType::HasMany | RelationType::HasOne => {
-                    // FK is on the related model: rel.{fk} == doc._key
-                    format!("rel.{} == doc._key", rel.foreign_key)
-                }
-                RelationType::BelongsTo => {
-                    // FK is on the owner: doc.{fk} == rel._key
-                    format!("doc.{} == rel._key", rel.foreign_key)
-                }
-                RelationType::Polymorphic => {
-                    let type_field = rel
-                        .polymorphic_type_field
-                        .clone()
-                        .unwrap_or_else(|| format!("{}_type", rel.name));
-                    let type_value = rel
-                        .polymorphic_type_value
-                        .clone()
-                        .unwrap_or_else(|| rel.class_name.clone());
-                    format!(
-                        "rel.{} == doc._key AND rel.{} == \"{}\"",
-                        rel.foreign_key, type_field, type_value
-                    )
-                }
-            };
-
-            let subquery_filter = if let Some(extra) = &join.filter {
-                let normalized = Self::normalize_equality_ops(extra);
-                let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
-                format!("{} AND {}", fk_condition, prefixed)
-            } else {
-                fk_condition
-            };
-
-            query.push_str(&format!(
-                " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
-                rel.collection, subquery_filter
+            query.push_str(&Self::build_join_existence_filter(
+                &join.relation,
+                &join.filter,
             ));
         }
 
@@ -265,60 +231,7 @@ impl QueryBuilder {
 
         // Include subqueries (LET statements)
         for inc in &self.includes {
-            let rel = &inc.relation;
-            let var_name = format!("_rel_{}", inc.relation_name);
-
-            let fk_condition = match rel.relation_type {
-                RelationType::HasMany | RelationType::HasOne => {
-                    format!("rel.{} == doc._key", rel.foreign_key)
-                }
-                RelationType::BelongsTo => {
-                    format!("rel._key == doc.{}", rel.foreign_key)
-                }
-                RelationType::Polymorphic => {
-                    let type_field = rel
-                        .polymorphic_type_field
-                        .clone()
-                        .unwrap_or_else(|| format!("{}_type", rel.name));
-                    let type_value = rel
-                        .polymorphic_type_value
-                        .clone()
-                        .unwrap_or_else(|| rel.class_name.clone());
-                    format!(
-                        "rel._key == doc.{} AND rel.{} == \"{}\"",
-                        rel.foreign_key, type_field, type_value
-                    )
-                }
-            };
-
-            let filter_condition = if let Some(extra) = &inc.filter {
-                let normalized = Self::normalize_equality_ops(extra);
-                let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
-                format!("{} AND {}", fk_condition, prefixed)
-            } else {
-                fk_condition
-            };
-
-            let return_clause = match &inc.fields {
-                Some(fields) => {
-                    let pairs: Vec<String> =
-                        fields.iter().map(|f| format!("{}: rel.{}", f, f)).collect();
-                    format!("RETURN {{{}}}", pairs.join(", "))
-                }
-                None => "RETURN rel".to_string(),
-            };
-
-            let limit_clause = match rel.relation_type {
-                RelationType::HasMany => "",
-                RelationType::HasOne | RelationType::BelongsTo | RelationType::Polymorphic => {
-                    " LIMIT 1"
-                }
-            };
-
-            query.push_str(&format!(
-                " LET {} = (FOR rel IN {} FILTER {}{} {})",
-                var_name, rel.collection, filter_condition, limit_clause, return_clause
-            ));
+            query.push_str(&Self::build_include_subquery(inc));
         }
 
         if let Some((field, direction)) = &self.order_by {
@@ -370,7 +283,7 @@ impl QueryBuilder {
                 .map(|inc| {
                     let var_name = format!("_rel_{}", inc.relation_name);
                     match inc.relation.relation_type {
-                        RelationType::HasMany => {
+                        RelationType::HasMany | RelationType::HasAndBelongsToMany => {
                             format!("{}: {}", inc.relation_name, var_name)
                         }
                         RelationType::HasOne
@@ -482,6 +395,156 @@ impl QueryBuilder {
             .collect();
 
         (query, bind_vars_str)
+    }
+
+    /// Build the ` FILTER LENGTH(...) > 0` existence-check fragment for a
+    /// joined relation. Handles HABTM with a two-stage subquery.
+    pub(crate) fn build_join_existence_filter(
+        rel: &RelationDef,
+        extra_filter: &Option<String>,
+    ) -> String {
+        if rel.relation_type == RelationType::HasAndBelongsToMany {
+            let join_table = rel.join_table.as_deref().unwrap_or("");
+            let assoc_fk = rel.association_foreign_key.as_deref().unwrap_or("");
+            let extra = match extra_filter {
+                Some(f) => {
+                    let normalized = Self::normalize_equality_ops(f);
+                    let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
+                    format!(" AND {}", prefixed)
+                }
+                None => String::new(),
+            };
+            return format!(
+                " FILTER LENGTH(FOR jt IN {jt} FILTER jt.{owner_fk} == doc._key \
+                 FOR rel IN {coll} FILTER rel._key == jt.{assoc_fk}{extra} LIMIT 1 RETURN 1) > 0",
+                jt = join_table,
+                owner_fk = rel.foreign_key,
+                coll = rel.collection,
+                assoc_fk = assoc_fk,
+                extra = extra,
+            );
+        }
+
+        let fk_condition = match rel.relation_type {
+            RelationType::HasMany | RelationType::HasOne => {
+                format!("rel.{} == doc._key", rel.foreign_key)
+            }
+            RelationType::BelongsTo => {
+                format!("doc.{} == rel._key", rel.foreign_key)
+            }
+            RelationType::Polymorphic => {
+                let type_field = rel
+                    .polymorphic_type_field
+                    .clone()
+                    .unwrap_or_else(|| format!("{}_type", rel.name));
+                let type_value = rel
+                    .polymorphic_type_value
+                    .clone()
+                    .unwrap_or_else(|| rel.class_name.clone());
+                format!(
+                    "rel.{} == doc._key AND rel.{} == \"{}\"",
+                    rel.foreign_key, type_field, type_value
+                )
+            }
+            RelationType::HasAndBelongsToMany => unreachable!(),
+        };
+
+        let subquery_filter = if let Some(extra) = extra_filter {
+            let normalized = Self::normalize_equality_ops(extra);
+            let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
+            format!("{} AND {}", fk_condition, prefixed)
+        } else {
+            fk_condition
+        };
+
+        format!(
+            " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
+            rel.collection, subquery_filter
+        )
+    }
+
+    /// Build a ` LET _rel_<name> = (...)` subquery clause for an include.
+    pub(crate) fn build_include_subquery(inc: &IncludeClause) -> String {
+        let rel = &inc.relation;
+        let var_name = format!("_rel_{}", inc.relation_name);
+
+        let return_clause = match &inc.fields {
+            Some(fields) => {
+                let pairs: Vec<String> =
+                    fields.iter().map(|f| format!("{}: rel.{}", f, f)).collect();
+                format!("RETURN {{{}}}", pairs.join(", "))
+            }
+            None => "RETURN rel".to_string(),
+        };
+
+        if rel.relation_type == RelationType::HasAndBelongsToMany {
+            let join_table = rel.join_table.as_deref().unwrap_or("");
+            let assoc_fk = rel.association_foreign_key.as_deref().unwrap_or("");
+            let extra = match &inc.filter {
+                Some(f) => {
+                    let normalized = Self::normalize_equality_ops(f);
+                    let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
+                    format!(" AND {}", prefixed)
+                }
+                None => String::new(),
+            };
+            return format!(
+                " LET {var} = (FOR jt IN {jt} FILTER jt.{owner_fk} == doc._key \
+                 FOR rel IN {coll} FILTER rel._key == jt.{assoc_fk}{extra} {ret})",
+                var = var_name,
+                jt = join_table,
+                owner_fk = rel.foreign_key,
+                coll = rel.collection,
+                assoc_fk = assoc_fk,
+                extra = extra,
+                ret = return_clause,
+            );
+        }
+
+        let fk_condition = match rel.relation_type {
+            RelationType::HasMany | RelationType::HasOne => {
+                format!("rel.{} == doc._key", rel.foreign_key)
+            }
+            RelationType::BelongsTo => {
+                format!("rel._key == doc.{}", rel.foreign_key)
+            }
+            RelationType::Polymorphic => {
+                let type_field = rel
+                    .polymorphic_type_field
+                    .clone()
+                    .unwrap_or_else(|| format!("{}_type", rel.name));
+                let type_value = rel
+                    .polymorphic_type_value
+                    .clone()
+                    .unwrap_or_else(|| rel.class_name.clone());
+                format!(
+                    "rel._key == doc.{} AND rel.{} == \"{}\"",
+                    rel.foreign_key, type_field, type_value
+                )
+            }
+            RelationType::HasAndBelongsToMany => unreachable!(),
+        };
+
+        let filter_condition = if let Some(extra) = &inc.filter {
+            let normalized = Self::normalize_equality_ops(extra);
+            let prefixed = Self::prefix_bare_fields_with_alias(&normalized, "rel");
+            format!("{} AND {}", fk_condition, prefixed)
+        } else {
+            fk_condition
+        };
+
+        let limit_clause = match rel.relation_type {
+            RelationType::HasMany => "",
+            RelationType::HasOne | RelationType::BelongsTo | RelationType::Polymorphic => {
+                " LIMIT 1"
+            }
+            RelationType::HasAndBelongsToMany => unreachable!(),
+        };
+
+        format!(
+            " LET {} = (FOR rel IN {} FILTER {}{} {})",
+            var_name, rel.collection, filter_condition, limit_clause, return_clause
+        )
     }
 
     /// Replace standalone `=` with `==` for AQL, preserving `!=`, `>=`, `<=`, `==`, and `===`.
@@ -688,41 +751,9 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 
     // Join filters for count queries too
     for join in &qb.joins {
-        let rel = &join.relation;
-        let fk_condition = match rel.relation_type {
-            RelationType::HasMany | RelationType::HasOne => {
-                format!("rel.{} == doc._key", rel.foreign_key)
-            }
-            RelationType::BelongsTo => {
-                format!("doc.{} == rel._key", rel.foreign_key)
-            }
-            RelationType::Polymorphic => {
-                let type_field = rel
-                    .polymorphic_type_field
-                    .clone()
-                    .unwrap_or_else(|| format!("{}_type", rel.name));
-                let type_value = rel
-                    .polymorphic_type_value
-                    .clone()
-                    .unwrap_or_else(|| rel.class_name.clone());
-                format!(
-                    "rel.{} == doc._key AND rel.{} == \"{}\"",
-                    rel.foreign_key, type_field, type_value
-                )
-            }
-        };
-
-        let subquery_filter = if let Some(extra) = &join.filter {
-            let normalized = QueryBuilder::normalize_equality_ops(extra);
-            let prefixed = QueryBuilder::prefix_bare_fields_with_alias(&normalized, "rel");
-            format!("{} AND {}", fk_condition, prefixed)
-        } else {
-            fk_condition
-        };
-
-        query.push_str(&format!(
-            " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
-            rel.collection, subquery_filter
+        query.push_str(&QueryBuilder::build_join_existence_filter(
+            &join.relation,
+            &join.filter,
         ));
     }
 
@@ -754,6 +785,58 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
     result
 }
 
+/// Execute a QueryBuilder as a bulk REMOVE — every row matching the
+/// accumulated filter / join clauses is deleted in a single AQL statement.
+/// Mirrors Rails' `Model.where(...).delete_all` so callers don't have to
+/// hand-roll `@sdql{ FOR ... REMOVE ... }`. Returns `Null`.
+///
+/// Limitations: order/limit/offset/select/pluck/group_by are intentionally
+/// ignored — they don't compose with REMOVE. Soft-deleted models still get
+/// a real REMOVE here (this is a hard delete, not a soft-delete shortcut).
+pub fn execute_query_builder_delete_all(qb: &QueryBuilder) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+    let mut query = format!("FOR doc IN {}", collection);
+
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+
+    for join in &qb.joins {
+        query.push_str(&QueryBuilder::build_join_existence_filter(
+            &join.relation,
+            &join.filter,
+        ));
+    }
+
+    if let Some(filter) = &qb.filter {
+        let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
+    }
+
+    query.push_str(&format!(" REMOVE doc IN {}", collection));
+
+    let _ = if bind_vars_str.is_empty() {
+        exec_auto_collection(query, &collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+    };
+
+    Value::Null
+}
+
 /// Execute a QueryBuilder for exists check - returns boolean.
 pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
@@ -776,41 +859,9 @@ pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
 
     // Join filters for exists queries too
     for join in &qb.joins {
-        let rel = &join.relation;
-        let fk_condition = match rel.relation_type {
-            RelationType::HasMany | RelationType::HasOne => {
-                format!("rel.{} == doc._key", rel.foreign_key)
-            }
-            RelationType::BelongsTo => {
-                format!("doc.{} == rel._key", rel.foreign_key)
-            }
-            RelationType::Polymorphic => {
-                let type_field = rel
-                    .polymorphic_type_field
-                    .clone()
-                    .unwrap_or_else(|| format!("{}_type", rel.name));
-                let type_value = rel
-                    .polymorphic_type_value
-                    .clone()
-                    .unwrap_or_else(|| rel.class_name.clone());
-                format!(
-                    "rel.{} == doc._key AND rel.{} == \"{}\"",
-                    rel.foreign_key, type_field, type_value
-                )
-            }
-        };
-
-        let subquery_filter = if let Some(extra) = &join.filter {
-            let normalized = QueryBuilder::normalize_equality_ops(extra);
-            let prefixed = QueryBuilder::prefix_bare_fields_with_alias(&normalized, "rel");
-            format!("{} AND {}", fk_condition, prefixed)
-        } else {
-            fk_condition
-        };
-
-        query.push_str(&format!(
-            " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
-            rel.collection, subquery_filter
+        query.push_str(&QueryBuilder::build_join_existence_filter(
+            &join.relation,
+            &join.filter,
         ));
     }
 
@@ -1301,6 +1352,55 @@ mod tests {
             query,
             "FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}"
         );
+    }
+
+    #[test]
+    fn test_includes_habtm() {
+        let mut qb = make_qb("Post", "posts");
+        let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
+            "Post", "tags", None, None, None, None,
+        );
+        qb.add_include("tags".to_string(), rel, None, HashMap::new(), None);
+        let (query, _) = qb.build_query();
+        assert_eq!(
+            query,
+            "FOR doc IN posts LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key FOR rel IN tags FILTER rel._key == jt.tag_id RETURN rel) RETURN MERGE(doc, {tags: _rel_tags})"
+        );
+    }
+
+    #[test]
+    fn test_join_habtm() {
+        let mut qb = make_qb("Post", "posts");
+        let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
+            "Post", "tags", None, None, None, None,
+        );
+        qb.add_join("tags".to_string(), rel, None, HashMap::new());
+        let (query, _) = qb.build_query();
+        assert_eq!(
+            query,
+            "FOR doc IN posts FILTER LENGTH(FOR jt IN posts_tags FILTER jt.post_id == doc._key FOR rel IN tags FILTER rel._key == jt.tag_id LIMIT 1 RETURN 1) > 0 RETURN doc"
+        );
+    }
+
+    #[test]
+    fn test_filtered_include_habtm() {
+        let mut qb = make_qb("Post", "posts");
+        let rel = crate::interpreter::builtins::model::relations::build_habtm_relation(
+            "Post", "tags", None, None, None, None,
+        );
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("a".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "tags".to_string(),
+            rel,
+            Some("active = @a".to_string()),
+            bind_vars,
+            None,
+        );
+        let (query, binds) = qb.build_query();
+        assert!(query.contains("FOR jt IN posts_tags FILTER jt.post_id == doc._key"));
+        assert!(query.contains("FOR rel IN tags FILTER rel._key == jt.tag_id AND rel.active == @a"));
+        assert!(binds.contains_key("a"));
     }
 
     #[test]

@@ -153,6 +153,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.update(id, data)` | Update a document |
 | `Model.upsert(id, data)` | Insert or update document by ID |
 | `Model.delete(id)` | Delete a document |
+| `Model.delete_all()` | Wipe every document in the collection (primarily for test setup/teardown). Use `Model.where(...).delete_all()` for filtered bulk deletes. |
 | `Model.count()` | Count all documents |
 | `Model.transaction { }` | Execute block in a database transaction |
 | `Model.transaction("aql")` | Execute AQL in a database transaction |
@@ -197,6 +198,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.first()` | Execute query, return first result |
 | `.count()` | Execute query, return count |
 | `.exists()` | Execute query, return boolean (true if records exist) |
+| `.delete_all()` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
 | `.sum(field)` | Execute aggregation, return sum of field |
 | `.avg(field)` | Execute aggregation, return average of field |
 | `.min(field)` | Execute aggregation, return minimum of field |
@@ -381,12 +383,20 @@ The DSL applies Rails-style naming conventions automatically:
 | `has_many("posts")` | `Post` | `posts` | `user_id` (owner + `_id`) |
 | `has_one("profile")` | `Profile` | `profiles` | `user_id` (owner + `_id`) |
 | `belongs_to("user")` | `User` | `users` | `user_id` (name + `_id`) |
+| `has_and_belongs_to_many("tags")` | `Tag` | `tags` | join table `posts_tags`, FKs `post_id` / `tag_id` |
 
 Override defaults with an options hash:
 
 ```soli
 class Post extends Model
     belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
+
+    has_and_belongs_to_many("labels", {
+        "class_name": "Tag",
+        "join_table": "post_labels",
+        "foreign_key": "post_id",
+        "association_foreign_key": "label_id"
+    })
 end
 ```
 
@@ -499,6 +509,75 @@ let users = User.select("name", "email").includes("posts").all()
 let users = User.select("name")
     .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
     .all()
+```
+
+### Has And Belongs To Many
+
+Many-to-many associations use a join table that stores `(<foreign_key>, <association_foreign_key>)` rows:
+
+```soli
+class Post extends Model
+    has_and_belongs_to_many("tags")
+end
+
+class Tag extends Model
+    has_and_belongs_to_many("posts")
+end
+```
+
+Both classes declare the relation. The default join table is the alphabetical concatenation of the two pluralized class names — here `posts_tags`. The default foreign keys are `post_id` and `tag_id`.
+
+**Read** — `post.tags` returns an array of related `Tag` instances:
+
+```soli
+let post = Post.find(post_id)
+let tags = post.tags  # => [Tag, Tag, ...]
+```
+
+**Add / remove** — auto-generated mutators insert/delete join-table rows. The method name is `add_<singular>` / `remove_<singular>` derived from the relation name:
+
+```soli
+post.add_tag(tag)              # accepts a Tag instance
+post.add_tag("tag_key")        # …or a raw _key
+post.add_tag([tag1, tag2])     # …or an array
+post.add_tag(tag1, tag2)       # …or variadic args
+
+post.remove_tag(tag)
+post.remove_tag([tag1, tag2])
+```
+
+**Shovel operator (`<<`)** — equivalent to `add_<singular>`, returns the (refreshed) relation:
+
+```soli
+post.tags << tag                # appends one tag, returns post.tags
+```
+
+**Eager loading** uses a two-stage subquery through the join table:
+
+```soli
+let posts = Post.includes("tags").all()
+# => ... LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key
+#                          FOR rel IN tags FILTER rel._key == jt.tag_id RETURN rel) ...
+```
+
+**Existence filtering** with `.join()`:
+
+```soli
+let tagged_posts = Post.join("tags").all()              # posts that have at least one tag
+let tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
+```
+
+**Overrides** — supply an options hash to customize the join:
+
+```soli
+class Article extends Model
+    has_and_belongs_to_many("labels", {
+        "class_name": "Tag",
+        "join_table": "article_labels",
+        "foreign_key": "article_id",
+        "association_foreign_key": "tag_id"
+    })
+end
 ```
 
 ### Manual Relationships
@@ -702,7 +781,9 @@ Access related records directly from instances:
 ```soli
 let user = User.find("user_id");
 
-# Access has_many relation
+# has_many returns a chainable QueryBuilder, not an array.
+# Each terminal call (.all, .count, .delete_all, iteration, ...)
+# runs a query against the foreign-key filter at that moment.
 let posts = user.posts;
 
 # Access has_one relation
@@ -710,10 +791,56 @@ let profile = user.profile;
 
 # Access belongs_to relation
 let author = post.user;
-
-# Chain query builder methods on relations
-let published = user.posts.where("published = @p", { "p": true }).all();
 ```
+
+### has_many is Enumerable AND chainable
+
+The `has_many` accessor behaves like an array (iteration, indexing, `len`,
+`each`, `map`, `filter`, ...) **and** like a QueryBuilder
+(`.where`, `.order`, `.limit`, `.count`, `.delete_all`, `.exists`, ...):
+
+```soli
+let user = User.find("user_id");
+
+# Iterate — each iteration runs the FK-filtered query once
+for post in user.posts
+    print(post.title);
+end
+
+# Indexing materializes the result set
+let first = user.posts[0];
+
+# len() and .length / .size return the count
+let n = len(user.posts);
+let same = user.posts.length;
+let alt  = user.posts.size;
+
+# Array-style helpers materialize then delegate
+user.posts.each(fn(p) { print(p.title) });
+let titles = user.posts.map(fn(p) { p.title });
+
+# Chained query — composes onto the seed `user_id == @__rel_fk` filter
+let published = user.posts.where("published = @p", { "p": true }).all;
+let n_pub     = user.posts.where("published = @p", { "p": true }).count;
+
+# Bulk delete — one REMOVE statement, no N+1
+user.posts.delete_all;
+user.posts.where("draft = @d", { "d": true }).delete_all;
+
+# Sort / paginate before materializing
+let recent = user.posts.order("created_at", "desc").limit(10).all;
+```
+
+Notes:
+
+- An owner that has not been saved yet (no `_key`) returns a QueryBuilder
+  whose filter never matches — `count` is `0`, `delete_all` is a no-op, and
+  iteration yields nothing.
+- If the related model uses `soft_delete`, soft-deleted children are filtered
+  out of the relation (consistent with `Related.where(...)`). Use the static
+  `Related.with_deleted` / `Related.only_deleted` to query them explicitly.
+- `belongs_to` and `has_one` still return a single instance (or `nil`),
+  not a QueryBuilder.
 
 ## Batch Operations
 
@@ -731,6 +858,12 @@ let result = User.create_many([
 # Upsert (insert or update by ID)
 User.upsert("user123", { "name": "Updated Name" });
 # Updates if exists, inserts with ID if not
+
+# Batch delete via QueryBuilder — one AQL REMOVE for the whole match.
+# Useful for clearing a relation without an N+1 loop:
+User.where("doc.active == false").delete_all();
+post.comments.delete_all();          # via has_many relation
+Model.delete_all();                  # static — wipe the whole collection
 ```
 
 ## Transactions

@@ -97,6 +97,7 @@ get("/docs/builtins/datetime", "docs#builtins_datetime");
 get("/docs/builtins/duration", "docs#builtins_duration");
 get("/docs/builtins/validation", "docs#builtins_validation");
 get("/docs/builtins/session", "docs#builtins_session");
+get("/docs/builtins/jobs", "docs#builtins_jobs");
 get("/docs/builtins/testing", "docs#builtins_testing");
 get("/docs/builtins/i18n", "docs#builtins_i18n");
 get("/docs/builtins/cache", "docs#builtins_cache");

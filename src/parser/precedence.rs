@@ -49,7 +49,10 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         | TokenKind::MinusEqual
         | TokenKind::StarEqual
         | TokenKind::SlashEqual
-        | TokenKind::PercentEqual => Precedence::Assignment,
+        | TokenKind::PercentEqual
+        | TokenKind::OrEqual
+        | TokenKind::AndEqual
+        | TokenKind::NullishEqual => Precedence::Assignment,
         TokenKind::Question => Precedence::Ternary,
         TokenKind::NullishCoalescing => Precedence::NullishCoalescing,
         TokenKind::Or => Precedence::Or,
@@ -60,7 +63,7 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         }
         TokenKind::Range => Precedence::Comparison, // .. has same precedence as comparison
         TokenKind::Pipeline => Precedence::Pipeline,
-        TokenKind::Plus | TokenKind::Minus => Precedence::Term,
+        TokenKind::Plus | TokenKind::Minus | TokenKind::LessLess => Precedence::Term,
         TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Precedence::Factor,
         TokenKind::LeftParen
         | TokenKind::Dot

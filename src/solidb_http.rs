@@ -667,4 +667,152 @@ impl SoliDBClient {
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
+
+    // ===== Queue API =====
+
+    /// List all queues in the current database.
+    pub fn list_queues(&self) -> Result<Vec<Value>, SoliDBError> {
+        let db = self.get_db()?;
+        let response: Value = self.request(
+            reqwest::Method::GET,
+            &format!("/_api/database/{}/queues", db),
+            None,
+        )?;
+        Ok(extract_array(&response, &["queues", "result", "data"]))
+    }
+
+    /// List jobs in a queue.
+    pub fn list_jobs(&self, queue: &str) -> Result<Vec<Value>, SoliDBError> {
+        let db = self.get_db()?;
+        let response: Value = self.request(
+            reqwest::Method::GET,
+            &format!("/_api/database/{}/queues/{}/jobs", db, queue),
+            None,
+        )?;
+        Ok(extract_array(&response, &["jobs", "result", "data"]))
+    }
+
+    /// Enqueue a job. `run_at` is an optional ISO-8601 timestamp for delayed
+    /// execution; when `None`, the job is run as soon as a worker picks it up.
+    pub fn enqueue_job(
+        &self,
+        queue: &str,
+        handler: &str,
+        args: Value,
+        callback_url: &str,
+        run_at: Option<&str>,
+    ) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        let mut payload = serde_json::json!({
+            "handler": handler,
+            "args": args,
+            "callback_url": callback_url,
+        });
+        if let Some(when) = run_at {
+            payload["run_at"] = serde_json::Value::String(when.to_string());
+        }
+        let response: Value = self.request(
+            reqwest::Method::POST,
+            &format!("/_api/database/{}/queues/{}/enqueue", db, queue),
+            Some(&payload),
+        )?;
+        Ok(extract_id(&response))
+    }
+
+    /// Cancel an enqueued (not yet started) job by id.
+    pub fn cancel_job(&self, job_id: &str) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/_api/database/{}/queues/jobs/{}", db, job_id),
+            None,
+        )?;
+        Ok(())
+    }
+
+    // ===== Cron API =====
+
+    /// List all cron entries in the current database.
+    pub fn list_crons(&self) -> Result<Vec<Value>, SoliDBError> {
+        let db = self.get_db()?;
+        let response: Value = self.request(
+            reqwest::Method::GET,
+            &format!("/_api/database/{}/cron", db),
+            None,
+        )?;
+        Ok(extract_array(&response, &["crons", "result", "data"]))
+    }
+
+    /// Create a new cron entry. Returns the SolidB-issued id.
+    pub fn create_cron(
+        &self,
+        name: &str,
+        expr: &str,
+        handler: &str,
+        args: Value,
+        callback_url: &str,
+    ) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        let payload = serde_json::json!({
+            "name": name,
+            "schedule": expr,
+            "handler": handler,
+            "args": args,
+            "callback_url": callback_url,
+        });
+        let response: Value = self.request(
+            reqwest::Method::POST,
+            &format!("/_api/database/{}/cron", db),
+            Some(&payload),
+        )?;
+        Ok(extract_id(&response))
+    }
+
+    /// Update a cron entry. `fields` is a JSON object of fields to change.
+    pub fn update_cron(&self, id: &str, fields: Value) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        self.request(
+            reqwest::Method::PUT,
+            &format!("/_api/database/{}/cron/{}", db, id),
+            Some(&fields),
+        )?;
+        Ok(())
+    }
+
+    /// Delete a cron entry by id.
+    pub fn delete_cron(&self, id: &str) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/_api/database/{}/cron/{}", db, id),
+            None,
+        )?;
+        Ok(())
+    }
+}
+
+/// Pull an array out of a SolidB list-style response, trying common envelope
+/// keys before falling back to treating the response itself as the array.
+fn extract_array(response: &Value, keys: &[&str]) -> Vec<Value> {
+    for key in keys {
+        if let Some(arr) = response.get(*key).and_then(|v| v.as_array()) {
+            return arr.clone();
+        }
+    }
+    response.as_array().cloned().unwrap_or_default()
+}
+
+/// Pull an id out of a create-style response. SolidB endpoints have used
+/// `id`, `_key`, and `job_id` historically; accept any.
+fn extract_id(response: &Value) -> String {
+    for key in ["id", "_key", "job_id", "cron_id"] {
+        if let Some(s) = response.get(key).and_then(|v| v.as_str()) {
+            return s.to_string();
+        }
+    }
+    // Some endpoints may return a bare string id.
+    if let Some(s) = response.as_str() {
+        return s.to_string();
+    }
+    String::new()
 }

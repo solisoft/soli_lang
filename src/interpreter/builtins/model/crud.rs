@@ -487,6 +487,13 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
 
         if !resp.status().is_success() {
             let status = resp.status();
+            // 409 = collection already exists — that's exactly the state the
+            // auto-create path wants to reach. Treat as success so the caller
+            // retries the original query against the now-known-to-exist
+            // collection instead of bubbling a fake failure.
+            if status == reqwest::StatusCode::CONFLICT {
+                return Ok(());
+            }
             let body = resp.text().await.unwrap_or_default();
             return Err(format!("Create collection failed: {} - {}", status, body));
         }

@@ -18,6 +18,18 @@ class Comment extends Model
     belongs_to("post")
 end
 
+class Tag extends Model
+    has_and_belongs_to_many("posts")
+end
+
+class Article extends Model
+    has_and_belongs_to_many("labels", { "class_name": "Tag" })
+end
+
+class PostHabtm extends Model
+    has_and_belongs_to_many("tags")
+end
+
 describe("Model Relations - includes", fn() {
     test("has_many generates subquery", fn() {
         let q = User.includes("posts").to_query;
@@ -149,6 +161,42 @@ describe("Model Relations - select/fields", fn() {
         assert(q.contains("RETURN MERGE({name: doc.name, _key: doc._key}"));
         assert(q.contains("RETURN {title: rel.title}"));
         assert(q.contains("rel.published == @p"));
+    });
+});
+
+describe("Model Relations - has_and_belongs_to_many", fn() {
+    test("habtm includes generates two-stage subquery", fn() {
+        let q = PostHabtm.includes("tags").to_query;
+        assert(q.contains("LET _rel_tags"));
+        assert(q.contains("FOR jt IN post_habtms_tags FILTER jt.post_habtm_id == doc._key"));
+        assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"));
+        assert(q.contains("RETURN MERGE(doc, {tags: _rel_tags})"));
+    });
+
+    test("habtm join generates existence check via join table", fn() {
+        let q = PostHabtm.join("tags").to_query;
+        assert(q.contains("FILTER LENGTH(FOR jt IN post_habtms_tags"));
+        assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"));
+    });
+
+    test("habtm with filter on related collection", fn() {
+        let q = PostHabtm.includes("tags", "active = @a", { "a": true }).to_query;
+        assert(q.contains("FOR jt IN post_habtms_tags FILTER jt.post_habtm_id == doc._key"));
+        assert(q.contains("rel._key == jt.tag_id AND rel.active == @a"));
+    });
+
+    test("habtm join table uses alphabetical order on Tag side", fn() {
+        let q = Tag.includes("posts").to_query;
+        assert(q.contains("FOR jt IN posts_tags FILTER jt.tag_id == doc._key"));
+        assert(q.contains("FOR rel IN posts FILTER rel._key == jt.post_id"));
+    });
+
+    test("habtm with class_name override uses override class", fn() {
+        let q = Article.includes("labels").to_query;
+        // Article ↔ Tag through the alphabetical join "articles_tags"
+        assert(q.contains("FOR jt IN articles_tags FILTER jt.article_id == doc._key"));
+        assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"));
+        assert(q.contains("RETURN MERGE(doc, {labels: _rel_labels})"));
     });
 });
 

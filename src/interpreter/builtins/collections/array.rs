@@ -233,6 +233,42 @@ pub fn register_array_class(env: &mut Environment) {
     );
 
     array_native_methods.insert(
+        "compact_blank".to_string(),
+        Rc::new(NativeFunction::new(
+            "Array.compact_blank",
+            Some(0),
+            |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("Array.compact_blank() called on non-Array".to_string()),
+                };
+                match this.borrow().fields.get("__value").cloned() {
+                    Some(Value::Array(arr)) => {
+                        let result: Vec<Value> = arr
+                            .borrow()
+                            .iter()
+                            .filter(|v| !is_blank_native(v))
+                            .cloned()
+                            .collect();
+                        Ok(Value::Array(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("Array missing internal value".to_string()),
+                }
+            },
+        )),
+    );
+
+    fn is_blank_native(value: &Value) -> bool {
+        match value {
+            Value::Null => true,
+            Value::String(s) => s.is_empty(),
+            Value::Array(a) => a.borrow().is_empty(),
+            Value::Hash(h) => h.borrow().is_empty(),
+            _ => false,
+        }
+    }
+
+    array_native_methods.insert(
         "flatten".to_string(),
         Rc::new(NativeFunction::new("Array.flatten", None, |args| {
             let this = match args.first() {

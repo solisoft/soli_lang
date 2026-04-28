@@ -318,6 +318,13 @@ impl Interpreter {
         body: &Stmt,
     ) -> RuntimeResult<ControlFlow> {
         let iter_value = self.evaluate(iterable)?;
+        // QueryBuilder is iterable: materialize it into an Array up front.
+        let iter_value = match iter_value {
+            Value::QueryBuilder(qb) => {
+                crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
+            }
+            other => other,
+        };
         match iter_value {
             Value::Array(arr) => {
                 // Clone items once outside the loop to avoid holding borrow across loop body

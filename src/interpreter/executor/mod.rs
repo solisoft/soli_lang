@@ -8,8 +8,8 @@ mod statements;
 mod variables;
 
 pub use variables::{
-    clear_current_env, enter_template_lenient_vars, is_defined, set_current_env,
-    TemplateLenientVarsGuard,
+    clear_current_env, current_env_lookup, enter_template_lenient_vars, is_defined,
+    set_current_env, TemplateLenientVarsGuard,
 };
 
 pub mod access;
@@ -548,8 +548,27 @@ impl Interpreter {
                     let captured_env = env_for_capture.borrow().get_all_variables();
                     let env_json = self.serialize_environment(&captured_env);
 
-                    // Capture stack trace before popping frame
-                    let stack_trace = self.get_stack_trace();
+                    // Capture stack trace before popping frame and rewrite the
+                    // deepest frame so it points at the actual error line
+                    // rather than the function-definition line. Without this
+                    // the dev error page highlights the `def` line instead of
+                    // the offending statement inside the function.
+                    let mut stack_trace = self.get_stack_trace();
+                    if let Some(frame) = self.call_stack.last() {
+                        let file = frame
+                            .file_path
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string());
+                        if !stack_trace.is_empty() {
+                            stack_trace.pop();
+                        }
+                        stack_trace.push(format!(
+                            "{} at {}:{}",
+                            frame.function_name,
+                            file,
+                            e.span().line
+                        ));
+                    }
 
                     Err(RuntimeError::with_env(
                         e.to_string(),

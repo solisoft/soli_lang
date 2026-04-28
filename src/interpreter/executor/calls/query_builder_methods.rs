@@ -6,8 +6,8 @@ use std::rc::Rc;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::{
     execute_query_builder, execute_query_builder_aggregate, execute_query_builder_count,
-    execute_query_builder_exists, execute_query_builder_first, execute_query_builder_group_by,
-    AggregationFunc,
+    execute_query_builder_delete_all, execute_query_builder_exists, execute_query_builder_first,
+    execute_query_builder_group_by, AggregationFunc,
 };
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::Value;
@@ -33,6 +33,7 @@ impl Interpreter {
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
             "count" => self.qb_count(qb, arguments, span),
+            "delete_all" => self.qb_delete_all(qb, arguments, span),
             "exists" => self.qb_exists(qb, arguments, span),
             "pluck" => self.qb_pluck(qb, arguments, span),
             "sum" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Sum),
@@ -41,6 +42,22 @@ impl Interpreter {
             "max" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Max),
             "group_by" => self.qb_group_by(qb, arguments, span),
             "to_query" => self.qb_to_query(qb, arguments, span),
+            // Array passthrough: materialize the QueryBuilder once, then
+            // dispatch the method to the resulting array. Lets has_many
+            // relations behave Enumerable-style — user.posts.each(...),
+            // user.posts.map(...), user.posts.length, etc.
+            "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find" | "any?"
+            | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank"
+            | "flatten" | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle"
+            | "take" | "drop" | "zip" | "to_string" | "to_json" | "is_a?" | "to_a" | "to_array" => {
+                let materialized =
+                    crate::interpreter::builtins::model::execute_query_builder(&qb.borrow());
+                let method = crate::interpreter::value::ValueMethod {
+                    receiver: Box::new(materialized),
+                    method_name: method_name.to_string(),
+                };
+                self.call_method(method, arguments, span)
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "QueryBuilder".to_string(),
                 property: method_name.to_string(),
@@ -520,6 +537,18 @@ impl Interpreter {
         let mut new_qb = qb.borrow().clone();
         new_qb.exists_mode = true;
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+
+    fn qb_delete_all(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        Ok(execute_query_builder_delete_all(&qb.borrow()))
     }
 
     fn qb_pluck(

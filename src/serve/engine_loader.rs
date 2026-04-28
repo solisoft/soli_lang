@@ -14,7 +14,7 @@ use crate::interpreter::builtins::router::register_controller_action;
 use crate::interpreter::{Interpreter, Value};
 use crate::migration::{DbConfig, Migration};
 use crate::serve::app_loader::{
-    execute_file as interp_execute_file, sort_controllers_by_dependency,
+    controller_key_from_path, execute_file as interp_execute_file, sort_controllers_by_dependency,
 };
 use crate::serve::router::{derive_routes_from_controller, to_pascal_case_controller};
 use crate::serve::FileTracker;
@@ -294,35 +294,19 @@ fn load_engine_controller_directory(
     }
 
     let mut controllers = Vec::new();
-
-    for entry in std::fs::read_dir(&controllers_dir).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read engine controllers directory: {}", e),
-        span: Span::default(),
-    })? {
-        let entry = entry.map_err(|e| RuntimeError::General {
-            message: format!("Failed to read directory entry: {}", e),
+    collect_engine_controllers_recursive(&controllers_dir, &mut controllers).map_err(|e| {
+        RuntimeError::General {
+            message: format!("Failed to read engine controllers directory: {}", e),
             span: Span::default(),
-        })?;
-
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with("_controller.sl") {
-                    controllers.push(path);
-                }
-            }
         }
-    }
+    })?;
 
     sort_controllers_by_dependency(&mut controllers);
 
     for controller_path in &controllers {
         file_tracker.track(controller_path);
 
-        let controller_name = controller_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
+        let controller_key = controller_key_from_path(&controllers_dir, controller_path);
 
         let source =
             std::fs::read_to_string(controller_path).map_err(|e| RuntimeError::General {
@@ -330,7 +314,8 @@ fn load_engine_controller_directory(
                 span: Span::default(),
             })?;
 
-        let routes = derive_routes_from_controller(controller_name, &source).map_err(|e| {
+        let route_input = format!("{}_controller", controller_key);
+        let routes = derive_routes_from_controller(&route_input, &source).map_err(|e| {
             RuntimeError::General {
                 message: format!("Failed to derive routes: {}", e),
                 span: Span::default(),
@@ -340,12 +325,11 @@ fn load_engine_controller_directory(
         {
             let _guard = EngineContextGuard::enter(&engine.name);
             if let Err(e) = interp_execute_file(interpreter, controller_path) {
-                eprintln!("Error loading engine controller {}: {}", controller_name, e);
+                eprintln!("Error loading engine controller {}: {}", controller_key, e);
             }
         }
 
-        let controller_key = controller_name.trim_end_matches("_controller");
-        let class_name = to_pascal_case_controller(controller_key);
+        let class_name = to_pascal_case_controller(&controller_key);
         let is_oop_controller = interpreter
             .environment
             .borrow()
@@ -360,7 +344,7 @@ fn load_engine_controller_directory(
                 if let Some(func_value) = interpreter.environment.borrow().get(&route.function_name)
                 {
                     register_controller_action(
-                        controller_key,
+                        &controller_key,
                         &route.function_name,
                         func_value.clone(),
                     );
@@ -377,6 +361,24 @@ fn load_engine_controller_directory(
         }
     }
 
+    Ok(())
+}
+
+fn collect_engine_controllers_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_engine_controllers_recursive(&path, out)?;
+        } else if path.extension().is_some_and(|ext| ext == "sl") {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with("_controller.sl") {
+                    out.push(path);
+                }
+            }
+        }
+    }
     Ok(())
 }
 

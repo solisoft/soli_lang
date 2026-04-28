@@ -251,8 +251,24 @@ pub fn serve_folder_with_options_and_workers(
         load_models(&mut interpreter, &models_dir)?;
     }
 
+    // Load services (integration helpers — Stripe, etc.) right after models
+    // so controllers can reference them. Same loader as models since the
+    // shape (just `.sl` files defining classes / bare fns) is identical.
+    let services_dir = app_dir.join("services");
+    if services_dir.exists() {
+        load_models(&mut interpreter, &services_dir)?;
+    }
+
     // Initialize file tracker for hot reload
     let mut file_tracker = FileTracker::new();
+
+    // Load background-job classes (app/jobs/*_job.sl) before controllers so
+    // controllers can reference them. Worker 0 also syncs `static cron`
+    // declarations to SolidB.
+    let jobs_dir = app_dir.join("jobs");
+    if jobs_dir.exists() {
+        app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut file_tracker);
+    }
 
     // Load middleware
     let middleware_dir = app_dir.join("middleware");
@@ -296,7 +312,12 @@ pub fn serve_folder_with_options_and_workers(
     // Scan and load controllers
     let controller_files = scan_controllers(&controllers_dir)?;
     for controller_path in &controller_files {
-        load_controller(&mut interpreter, controller_path, &mut file_tracker)?;
+        load_controller(
+            &mut interpreter,
+            &controllers_dir,
+            controller_path,
+            &mut file_tracker,
+        )?;
     }
 
     // Populate the controller metadata registry (before/after hooks, layout,
@@ -406,6 +427,7 @@ pub fn serve_folder_with_options_and_workers(
         workers,
         views_dir,
         routes_file,
+        jobs_dir,
     )
 }
 
@@ -432,6 +454,7 @@ fn run_hyper_server_worker_pool(
     num_workers: usize,
     views_dir: PathBuf,
     routes_file: PathBuf,
+    jobs_dir: PathBuf,
 ) -> Result<(), RuntimeError> {
     let reload_tx = if dev_mode {
         let (tx, _) = broadcast::channel::<()>(16);
@@ -579,6 +602,8 @@ fn run_hyper_server_worker_pool(
         let watch_middleware_dir = middleware_dir.clone();
         let watch_helpers_dir = helpers_dir.clone();
         let watch_models_dir = models_dir.clone();
+        let watch_services_dir = folder.join("app/services");
+        let watch_jobs_dir = jobs_dir.clone();
         let watch_public_dir = public_dir.clone();
         let watch_routes_file = routes_file.clone();
         let watch_assets_css_dir = folder.join("app/assets/css");
@@ -600,7 +625,7 @@ fn run_hyper_server_worker_pool(
             let mut watch_count = 0u32;
             if watch_controllers_dir.exists()
                 && watcher
-                    .watch(&watch_controllers_dir, RecursiveMode::NonRecursive)
+                    .watch(&watch_controllers_dir, RecursiveMode::Recursive)
                     .is_ok()
             {
                 watch_count += 1;
@@ -622,6 +647,20 @@ fn run_hyper_server_worker_pool(
             if watch_models_dir.exists()
                 && watcher
                     .watch(&watch_models_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_services_dir.exists()
+                && watcher
+                    .watch(&watch_services_dir, RecursiveMode::NonRecursive)
+                    .is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_jobs_dir.exists()
+                && watcher
+                    .watch(&watch_jobs_dir, RecursiveMode::Recursive)
                     .is_ok()
             {
                 watch_count += 1;
@@ -726,6 +765,7 @@ fn run_hyper_server_worker_pool(
                 let mut middleware_changed = false;
                 let mut helpers_changed = false;
                 let mut models_changed = false;
+                let mut jobs_changed = false;
                 let mut static_files_changed = false;
                 let mut routes_changed = false;
                 let mut asset_css_changed = false;
@@ -767,6 +807,12 @@ fn run_hyper_server_worker_pool(
                             helpers_changed = true;
                         } else if name.ends_with(".sl") && path.starts_with(&watch_models_dir) {
                             models_changed = true;
+                        } else if name.ends_with(".sl") && path.starts_with(&watch_services_dir) {
+                            // Reuse the models signal — workers already reload
+                            // app/services/ in the same step (see app_loader).
+                            models_changed = true;
+                        } else if name.ends_with("_job.sl") && path.starts_with(&watch_jobs_dir) {
+                            jobs_changed = true;
                         } else if name.ends_with(".erb")
                             || name.ends_with(".slv")
                             || name.ends_with(".md")
@@ -800,6 +846,12 @@ fn run_hyper_server_worker_pool(
                         .models
                         .fetch_add(1, Ordering::Release);
                     println!("   ✓ Signaled models reload to all workers");
+                }
+                if jobs_changed {
+                    hot_reload_versions_for_watcher
+                        .jobs
+                        .fetch_add(1, Ordering::Release);
+                    println!("   ✓ Signaled jobs reload to all workers");
                 }
                 if views_changed {
                     hot_reload_versions_for_watcher
@@ -933,6 +985,7 @@ fn run_hyper_server_worker_pool(
         let hot_reload_versions = hot_reload_versions.clone();
         let runtime_handle = runtime_handle.clone();
         let routes_file = routes_file.clone();
+        let jobs_dir = jobs_dir.clone();
 
         let builder = thread::Builder::new().name(format!("worker-{}", i));
         let handler = builder.spawn(move || {
@@ -956,6 +1009,7 @@ fn run_hyper_server_worker_pool(
                 let hot_reload_versions = hot_reload_versions.clone();
                 let runtime_handle = runtime_handle.clone();
                 let routes_file = routes_file.clone();
+                let jobs_dir = jobs_dir.clone();
 
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut interpreter = Interpreter::new_for_serve();
@@ -978,6 +1032,7 @@ fn run_hyper_server_worker_pool(
                         runtime_handle,
                         routes_file,
                         dev_mode,
+                        jobs_dir,
                     );
                 }));
 
@@ -1028,6 +1083,7 @@ fn worker_loop(
     runtime_handle: tokio::runtime::Handle,
     routes_file: PathBuf,
     dev_mode: bool,
+    jobs_dir: PathBuf,
 ) {
     // Initialize routes in this worker thread
     set_worker_routes(routes);
@@ -1060,6 +1116,17 @@ fn worker_loop(
         eprintln!("Worker {}: Error loading models: {}", worker_id, e);
     }
 
+    // Load services (sibling of models) so integration classes — Stripe,
+    // etc. — are visible to controllers loaded later in this worker.
+    if let Some(parent) = _models_dir.parent() {
+        let services_dir = parent.join("services");
+        if services_dir.exists() {
+            if let Err(e) = load_models(interpreter, &services_dir) {
+                eprintln!("Worker {}: Error loading services: {}", worker_id, e);
+            }
+        }
+    }
+
     // Define DSL helpers for routes (needed for hot reload)
     if let Err(e) = define_routes_dsl(interpreter) {
         eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
@@ -1076,6 +1143,15 @@ fn worker_loop(
     // Load controllers in this worker so functions are defined in environment.
     // Anything user-defined here shadows the framework prelude above.
     load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
+
+    // Load app/jobs/*_job.sl in this worker so XJob classes are available
+    // to the callback dispatcher and to controller code that calls
+    // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
+    // declarations to SolidB.
+    if jobs_dir.exists() {
+        let mut tracker = FileTracker::new();
+        app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker);
+    }
 
     let _worker_routes = get_routes();
 
@@ -1105,6 +1181,7 @@ fn worker_loop(
     let mut last_views_version = hot_reload_versions.views.load(Ordering::Acquire);
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
     let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
+    let mut last_jobs_version = hot_reload_versions.jobs.load(Ordering::Acquire);
 
     loop {
         // Check for hot reload (lock-free version check)
@@ -1115,6 +1192,7 @@ fn worker_loop(
         let current_views = hot_reload_versions.views.load(Ordering::Acquire);
         let current_static_files = hot_reload_versions.static_files.load(Ordering::Acquire);
         let current_routes = hot_reload_versions.routes.load(Ordering::Acquire);
+        let current_jobs = hot_reload_versions.jobs.load(Ordering::Acquire);
 
         if current_controllers != last_controllers_version {
             last_controllers_version = current_controllers;
@@ -1175,6 +1253,32 @@ fn worker_loop(
             // Re-load all models
             if let Err(e) = load_models(interpreter, &_models_dir) {
                 eprintln!("Worker {}: Error reloading models: {}", worker_id, e);
+            }
+            // Re-load services in lockstep with models — they share a
+            // signal (see watcher) and live in app/services/ alongside
+            // models in the load order.
+            if let Some(parent) = _models_dir.parent() {
+                let services_dir = parent.join("services");
+                if services_dir.exists() {
+                    if let Err(e) = load_models(interpreter, &services_dir) {
+                        eprintln!("Worker {}: Error reloading services: {}", worker_id, e);
+                    }
+                }
+            }
+        }
+
+        if current_jobs != last_jobs_version {
+            last_jobs_version = current_jobs;
+            if jobs_dir.exists() {
+                let mut tracker = FileTracker::new();
+                app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker);
+            }
+            // Update VM globals so production-mode bytecode sees reloaded job classes
+            if let Some(ref mut vm) = vm {
+                let all_globals = interpreter.environment.borrow().get_all_bindings();
+                for (name, value) in all_globals {
+                    vm.globals.insert(name, value);
+                }
             }
         }
 
@@ -3574,7 +3678,9 @@ thread_local! {
     static PASCAL_CASE_CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
-/// Convert a controller key (e.g., "posts", "user_profiles") to PascalCase class name (e.g., "PostsController", "UserProfilesController").
+/// Convert a controller key (e.g., "posts", "user_profiles", "admin/merchants")
+/// to PascalCase class name (e.g., "PostsController", "UserProfilesController",
+/// "AdminMerchantsController"). Both `_` and `/` act as word separators.
 /// Uses thread-local cache to avoid per-request string allocation.
 fn to_pascal_case_controller(controller_key: &str) -> String {
     PASCAL_CASE_CACHE.with(|cache| {
@@ -3588,7 +3694,7 @@ fn to_pascal_case_controller(controller_key: &str) -> String {
         let mut capitalize_next = true;
 
         for c in controller_key.chars() {
-            if c == '_' {
+            if c == '_' || c == '/' {
                 capitalize_next = true;
             } else if capitalize_next {
                 result.push(c.to_ascii_uppercase());

@@ -376,6 +376,21 @@ get("/", "home#index")get("/about", "home#about");</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Nested Controllers</h2>
+    <p class="text-gray-400 mb-4">
+        Controllers nested in subdirectories of <code>app/controllers/</code> are addressed with a <code>/</code>-separated key:
+    </p>
+
+    <pre data-filename="config/routes.sl"><code class="language-soli text-sm"># app/controllers/admin/merchants_controller.sl → AdminMerchantsController
+get("/admin/merchants", "admin/merchants#index")
+get("/admin/merchants/:id", "admin/merchants#show")
+
+resources("/admin/merchants", "admin/merchants")</code></pre>
+
+    <p class="text-gray-400 mb-12">
+        See <a href="/docs/core-concepts/controllers" class="text-indigo-400 hover:underline">Controllers &rarr; Nested Controller Directories</a> for the full naming rules.
+    </p>
+
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
         <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -384,7 +399,7 @@ get("/", "home#index")get("/about", "home#about");</code></pre>
             Auto-Derived Routes
         </h4>
         <p class="text-indigo-200/80 text-sm">
-            Soli can automatically map routes to controllers based on naming conventions. 
+            Soli can automatically map routes to controllers based on naming conventions.
             Defining a method named <code>index</code> in <code>home_controller.sl</code> automatically handles <code>GET /home</code>.
         </p>
     </div>

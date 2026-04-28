@@ -211,3 +211,34 @@ describe("Postfix Increment/Decrement", fn() {
         assert_eq(x, 2);
     });
 });
+
+describe("Shovel operator (<<)", fn() {
+    test("appends to an array", fn() {
+        let a = [1, 2, 3];
+        a << 4;
+        assert_eq(a, [1, 2, 3, 4]);
+    });
+
+    test("returns the array for chaining", fn() {
+        let a = [];
+        let r = a << 1;
+        assert_eq(r, [1]);
+    });
+
+    test("works with mixed types", fn() {
+        let a = [1, "two"];
+        a << 3.0;
+        a << true;
+        assert_eq(a.length, 4);
+    });
+
+    test("errors on non-array LHS", fn() {
+        try {
+            let n = 5;
+            n << 1;
+            assert(false, "expected error");
+        } catch _e {
+            assert(true);
+        }
+    });
+});

@@ -30,6 +30,7 @@ pub mod http;
 pub mod http_class;
 pub mod i18n;
 pub mod image;
+pub mod jobs;
 pub mod json;
 pub mod jwt;
 pub mod kv;
@@ -176,6 +177,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
                 Value::Array(arr) => Ok(Value::Int(arr.borrow().len() as i64)),
                 Value::String(s) => Ok(Value::Int(s.chars().count() as i64)),
                 Value::Hash(hash) => Ok(Value::Int(hash.borrow().len() as i64)),
+                Value::QueryBuilder(qb) => Ok(
+                    crate::interpreter::builtins::model::execute_query_builder_count(&qb.borrow()),
+                ),
                 other => Err(format!(
                     "len() expects array, string, or hash, got {}",
                     other.type_name()
@@ -282,6 +286,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register session management builtins
     session::register_session_builtins(env);
+
+    // Register Job and Cron classes (SolidB-backed background jobs)
+    jobs::register_jobs_builtins(env);
 
     // Register JWT builtins
     jwt::register_jwt_builtins(env);

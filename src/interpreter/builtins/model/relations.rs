@@ -24,6 +24,8 @@ pub enum RelationType {
     BelongsTo,
     /// Polymorphic relation - stores type in a separate field (e.g., commentable_type)
     Polymorphic,
+    /// Many-to-many through a join table (e.g., posts_tags).
+    HasAndBelongsToMany,
 }
 
 /// Definition of a single relationship.
@@ -43,6 +45,10 @@ pub struct RelationDef {
     pub polymorphic_type_field: Option<String>,
     /// For polymorphic relations: the expected type value (e.g., "Post")
     pub polymorphic_type_value: Option<String>,
+    /// HABTM join table name, e.g. "posts_tags"
+    pub join_table: Option<String>,
+    /// HABTM foreign key on the join table pointing at the related class, e.g. "tag_id"
+    pub association_foreign_key: Option<String>,
 }
 
 /// Build a RelationDef applying naming conventions.
@@ -70,7 +76,9 @@ pub fn build_relation(
         // For has_many, name is already plural (e.g. "posts")
         // For belongs_to/has_one, name is singular → pluralize
         match relation_type {
-            RelationType::HasMany | RelationType::Polymorphic => name.to_string(),
+            RelationType::HasMany
+            | RelationType::Polymorphic
+            | RelationType::HasAndBelongsToMany => name.to_string(),
             RelationType::HasOne | RelationType::BelongsTo => pluralize(name),
         }
     };
@@ -85,6 +93,10 @@ pub fn build_relation(
                 }
                 // belongs_to: FK is on the owner model, named after the relation
                 RelationType::BelongsTo => format!("{}_id", name),
+                // habtm uses build_habtm_relation; not built here
+                RelationType::HasAndBelongsToMany => {
+                    format!("{}_id", to_snake_case(owner_class))
+                }
             }
         });
 
@@ -96,6 +108,65 @@ pub fn build_relation(
         foreign_key,
         polymorphic_type_field,
         polymorphic_type_value,
+        join_table: None,
+        association_foreign_key: None,
+    }
+}
+
+/// Build a `has_and_belongs_to_many` relation applying naming conventions.
+///
+/// - `has_and_belongs_to_many("tags")` on `Post`
+///   → class `Tag`, collection `tags`, join table `posts_tags`,
+///   owner FK `post_id`, association FK `tag_id`
+/// - Join table is the alphabetical concatenation of the two pluralized
+///   collections (Rails convention): `posts_tags`, not `tags_posts`.
+pub fn build_habtm_relation(
+    owner_class: &str,
+    name: &str,
+    class_name_override: Option<&str>,
+    foreign_key_override: Option<&str>,
+    association_foreign_key_override: Option<&str>,
+    join_table_override: Option<&str>,
+) -> RelationDef {
+    let class_name = class_name_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| classify(name));
+
+    let collection = if let Some(cn) = class_name_override {
+        super::core::class_name_to_collection(cn)
+    } else {
+        // habtm name is plural (e.g. "tags")
+        name.to_string()
+    };
+
+    let owner_collection = super::core::class_name_to_collection(owner_class);
+
+    let foreign_key = foreign_key_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{}_id", to_snake_case(owner_class)));
+
+    let association_foreign_key = association_foreign_key_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{}_id", to_snake_case(&class_name)));
+
+    let join_table = join_table_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            let mut pair = [owner_collection.as_str(), collection.as_str()];
+            pair.sort();
+            format!("{}_{}", pair[0], pair[1])
+        });
+
+    RelationDef {
+        name: name.to_string(),
+        relation_type: RelationType::HasAndBelongsToMany,
+        class_name,
+        collection,
+        foreign_key,
+        polymorphic_type_field: None,
+        polymorphic_type_value: None,
+        join_table: Some(join_table),
+        association_foreign_key: Some(association_foreign_key),
     }
 }
 
@@ -130,22 +201,12 @@ pub fn get_relation(class_name: &str, relation_name: &str) -> Option<RelationDef
 // Naming helpers
 // ---------------------------------------------------------------------------
 
-/// Simple pluralize: add "s" if not already ending in "s".
 fn pluralize(s: &str) -> String {
-    if s.ends_with('s') {
-        s.to_string()
-    } else {
-        format!("{}s", s)
-    }
+    crate::inflect::pluralize(s)
 }
 
-/// Simple singularize: strip trailing "s".
 pub fn singularize(s: &str) -> String {
-    if s.ends_with('s') && s.len() > 1 {
-        s[..s.len() - 1].to_string()
-    } else {
-        s.to_string()
-    }
+    crate::inflect::singularize(s)
 }
 
 /// Convert a relation name to PascalCase class name.
@@ -174,7 +235,7 @@ fn to_pascal_case(s: &str) -> String {
 }
 
 /// Convert PascalCase to snake_case.
-fn to_snake_case(s: &str) -> String {
+pub fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
     for (i, c) in s.chars().enumerate() {
         if c.is_uppercase() && i > 0 {
@@ -296,6 +357,43 @@ mod tests {
         assert_eq!(rel.class_name, "BlogPost");
         assert_eq!(rel.collection, "blog_posts");
         assert_eq!(rel.foreign_key, "blog_post_id");
+    }
+
+    #[test]
+    fn test_build_habtm_alphabetical_join_table() {
+        let rel = build_habtm_relation("Post", "tags", None, None, None, None);
+        assert_eq!(rel.relation_type, RelationType::HasAndBelongsToMany);
+        assert_eq!(rel.class_name, "Tag");
+        assert_eq!(rel.collection, "tags");
+        assert_eq!(rel.foreign_key, "post_id");
+        assert_eq!(rel.association_foreign_key.as_deref(), Some("tag_id"));
+        assert_eq!(rel.join_table.as_deref(), Some("posts_tags"));
+    }
+
+    #[test]
+    fn test_build_habtm_reverse_alphabetical() {
+        // Tag's side of the relation: "posts" — alphabetical sort still gives posts_tags
+        let rel = build_habtm_relation("Tag", "posts", None, None, None, None);
+        assert_eq!(rel.foreign_key, "tag_id");
+        assert_eq!(rel.association_foreign_key.as_deref(), Some("post_id"));
+        assert_eq!(rel.join_table.as_deref(), Some("posts_tags"));
+    }
+
+    #[test]
+    fn test_build_habtm_with_overrides() {
+        let rel = build_habtm_relation(
+            "Article",
+            "labels",
+            Some("Tag"),
+            Some("article_id"),
+            Some("tag_id"),
+            Some("article_labels"),
+        );
+        assert_eq!(rel.class_name, "Tag");
+        assert_eq!(rel.collection, "tags");
+        assert_eq!(rel.foreign_key, "article_id");
+        assert_eq!(rel.association_foreign_key.as_deref(), Some("tag_id"));
+        assert_eq!(rel.join_table.as_deref(), Some("article_labels"));
     }
 
     #[test]

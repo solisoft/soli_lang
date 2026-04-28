@@ -57,8 +57,10 @@ impl CoverageReporter {
             "❌"
         };
 
+        let total_color = ansi_coverage_color(total_percent);
         output.push_str(&format!(
-            "\nCoverage: {:.1}% ({}/{}{}) {}\n",
+            "\nCoverage: {}{:.1}%\x1b[0m ({}/{}{}) {}\n",
+            total_color,
             total_percent,
             covered_lines,
             total_lines,
@@ -105,12 +107,14 @@ impl CoverageReporter {
             let percent = file_cov.combined_coverage_percent();
             let bar = self.progress_bar(percent);
             let pad = name_width.saturating_sub(display_path.chars().count());
+            let color = ansi_coverage_color(percent);
 
             output.push_str(&format!(
-                "  {}{} {} {:>6.1}%\n",
+                "  {}{} {} {}{:>6.1}%\x1b[0m\n",
                 display_path,
                 " ".repeat(pad),
                 bar,
+                color,
                 percent
             ));
         }
@@ -157,14 +161,18 @@ impl CoverageReporter {
     fn progress_bar(&self, percent: f64) -> String {
         let filled = ((percent / 10.0).floor() as usize).min(10);
         let empty = 10 - filled;
+        let color = ansi_coverage_color(percent);
 
         let mut bar = String::new();
+        bar.push_str(color);
         for _ in 0..filled {
             bar.push('▓');
         }
+        bar.push_str("\x1b[90m");
         for _ in 0..empty {
             bar.push('░');
         }
+        bar.push_str("\x1b[0m");
         bar
     }
 
@@ -573,6 +581,18 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
             return coverage.total_line_coverage_percent() >= threshold;
         }
         true
+    }
+}
+
+/// Map a coverage percentage to a green / orange / red ANSI color escape.
+/// Mirrors the HTML pill thresholds: 80% green, 50% orange, below that red.
+fn ansi_coverage_color(percent: f64) -> &'static str {
+    if percent >= 80.0 {
+        "\x1b[32m"
+    } else if percent >= 50.0 {
+        "\x1b[38;5;208m"
+    } else {
+        "\x1b[31m"
     }
 }
 

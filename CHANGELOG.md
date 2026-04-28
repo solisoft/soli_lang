@@ -3,7 +3,14 @@
 ## [Unreleased]
 
 ### Features
+
+* **feat(jobs):** background job system with `enqueue()`, `Job` class, and `async` keyword
+* **feat(model):** `has_many` chainable methods (`.where()`, `.order()`, `.limit()`, `.select()`)
+* **feat(model):** HABTM (has_and_belongs_to_many) relations with join table support
 * **feat(respond_to): content negotiation built-in** - Rails-style `respond_to` for handling multiple formats (html, json, etc.) in controller actions ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(jobs): background job system** - with `enqueue()`, `Job` class, and `async` keyword
+* **feat(model): has_many chainable** - `.where()`, `.order()`, `.limit()`, `.select()` methods
+* **feat(model): HABTM relations** - has_and_belongs_to_many with join table support
 * **feat(solidb): improved SolidB client integration** - enhanced SolidB HTTP operations ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
 * **feat(migration): enhanced migration DSL** - improved database migration capabilities ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
 * **feat(uploads): URL-driven image transforms on attachment endpoints** ([ef7c2ef](https://github.com/solisoft/soli_lang/commit/ef7c2ef))

@@ -92,6 +92,10 @@ impl TypeChecker {
                     })
                 }
             }
+            BinaryOp::Shovel => {
+                // `<<` returns the LHS (array push or HABTM relation getter).
+                Ok(left_type.clone())
+            }
         }
     }
 
