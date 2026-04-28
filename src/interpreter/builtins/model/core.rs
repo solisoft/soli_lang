@@ -554,6 +554,17 @@ impl Model {
             })),
         );
 
+        // Effective DB name, honouring the per-worker thread-local override
+        // installed by the parallel test runner. Tests should call this
+        // instead of `getenv("SOLIDB_DATABASE")` so they target their own
+        // worker's database.
+        env.define(
+            "db_name".to_string(),
+            Value::NativeFunction(NativeFunction::new("db_name", Some(0), |_args| {
+                Ok(Value::String(get_database_name().to_string()))
+            })),
+        );
+
         // Test function with hardcoded values - mirrors HTTP.request exactly
         use super::crud::exec_query_hardcoded;
         env.define(
