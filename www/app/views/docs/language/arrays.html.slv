@@ -193,6 +193,59 @@ print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
         </div>
     </section>
 
+    <!-- Array Operators -->
+    <section id="section-operators" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Array Operators
+        </h2>
+
+        <div class="space-y-6">
+            <section id="array-subtract" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-subtract" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">-</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Subtract an array from another array, removing all matching elements. Returns a new array (original unchanged). Uses identity comparison for instances.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Basic array subtraction
+let a = [1, 2, 3]
+let b = [1]
+let result = a - b
+print(result);  # [2, 3]
+
+# Remove multiple occurrences
+let a = [1, 2, 1, 3, 1]
+let b = [1]
+let result = a - b
+print(result);  # [2, 3]
+
+# Works with strings
+let fruits = ["apple", "banana", "cherry"]
+let to_remove = ["banana"]
+print(fruits - to_remove);  # ["apple", "cherry"]
+
+# Instance comparison uses identity (pointer equality)
+class Person {
+    name: String;
+    fn new(n) { this.name = n; }
+}
+let p1 = Person.new({"name": "Alice"})
+let p2 = Person.new({"name": "Bob"})
+let arr = [p1, p2]
+let result = arr - [p1]
+print(result);  # [<Person name: "Bob">]</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
     <!-- Array Methods -->
     <section id="section-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
