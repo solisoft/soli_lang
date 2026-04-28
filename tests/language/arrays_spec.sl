@@ -12,6 +12,25 @@ describe("Array Operations", fn() {
         assert_eq(result[1], 3);
     });
 
+    test("array concatenation with +", fn() {
+        let a = [1, 2];
+        let b = [3, 4];
+        let result = a + b;
+        assert_eq(len(result), 4);
+        assert_eq(result[0], 1);
+        assert_eq(result[1], 2);
+        assert_eq(result[2], 3);
+        assert_eq(result[3], 4);
+    });
+
+    test("array concatenation returns new array", fn() {
+        let a = [1, 2];
+        let b = [3, 4];
+        let result = a + b;
+        assert_eq(len(a), 2);
+        assert_eq(len(b), 2);
+    });
+
     test("array subtraction removes multiple matches", fn() {
         let a = [1, 2, 1, 3, 1];
         let b = [1];

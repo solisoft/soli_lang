@@ -23,6 +23,15 @@ impl TypeChecker {
             BinaryOp::Add => {
                 if matches!(left_type, Type::String) || matches!(right_type, Type::String) {
                     Ok(Type::String)
+                } else if let Type::Array(elem) = &left_type {
+                    if matches!(&right_type, Type::Array(_) | Type::Any | Type::Unknown) {
+                        Ok(Type::Array(elem.clone()))
+                    } else {
+                        Err(TypeError::General {
+                            message: format!("cannot add array and {}", right_type),
+                            span,
+                        })
+                    }
                 } else if left_type.is_numeric() && right_type.is_numeric() {
                     if matches!(left_type, Type::Float) || matches!(right_type, Type::Float) {
                         Ok(Type::Float)

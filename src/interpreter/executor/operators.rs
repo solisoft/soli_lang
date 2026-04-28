@@ -149,6 +149,14 @@ impl Interpreter {
 
     fn eval_add(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
+            (Value::Array(a), Value::Array(b)) => {
+                let a = a.borrow();
+                let b = b.borrow();
+                let mut result = Vec::with_capacity(a.len() + b.len());
+                result.extend_from_slice(&a);
+                result.extend_from_slice(&b);
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
