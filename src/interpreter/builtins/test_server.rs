@@ -10,17 +10,29 @@ use tokio::runtime::Runtime;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 static TEST_SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 static TEST_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 
 thread_local! {
+    /// Per-thread test-server port override. Takes precedence over the
+    /// global `TEST_SERVER_PORT` atomic. Set by the parallel test runner
+    /// so each worker hits its own subprocess on its own port.
+    static THREAD_TEST_SERVER_PORT: Cell<Option<u16>> = const { Cell::new(None) };
+
     static LAST_RESPONSE: RefCell<Option<Value>> = const { RefCell::new(None) };
     static LAST_REQUEST: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
     static LAST_ASSIGNS: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
     static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
     static CURRENT_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
+}
+
+/// Install a per-thread test-server port. `get_test_server_port()` on this
+/// thread will return `Some(port)` regardless of the global atomic.
+pub fn set_thread_test_server_port(port: u16) {
+    THREAD_TEST_SERVER_PORT.with(|p| p.set(Some(port)));
 }
 
 /// Register test server built-in functions.
@@ -107,8 +119,12 @@ fn is_test_server_running() -> bool {
     TEST_SERVER_RUNNING.load(Ordering::SeqCst)
 }
 
-/// Get the test server port.
+/// Get the test server port. Prefers the thread-local override (set by
+/// the parallel test runner) so each worker reaches its own subprocess.
 pub fn get_test_server_port() -> Option<u16> {
+    if let Some(port) = THREAD_TEST_SERVER_PORT.with(|p| p.get()) {
+        return Some(port);
+    }
     if TEST_SERVER_RUNNING.load(Ordering::SeqCst) {
         Some(TEST_SERVER_PORT.load(Ordering::SeqCst))
     } else {

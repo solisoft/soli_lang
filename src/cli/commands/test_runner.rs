@@ -88,7 +88,6 @@ pub fn run_test(
     }
     solilang::serve::env_loader::load_env_files(app_dir);
 
-    ensure_test_database();
     solilang::interpreter::builtins::model::init_db_config();
 
     let test_files = if test_path.is_file() {
@@ -196,108 +195,138 @@ pub fn run_test(
     );
     println!();
 
-    // Start the test server whenever the app has controllers — any test that
-    // calls get()/post()/login()/etc needs it, not just files named *integration*.
+    // Start one test server per worker (each with its own DB) whenever the
+    // app has controllers — any test that calls get()/post()/login()/etc
+    // needs the server, not just files named *integration*. Per-worker
+    // isolation: tests on worker `i` write to `{base}_w{i}` and hit
+    // `127.0.0.1:{port_i}`, so concurrent workers don't trample each
+    // other's rows or sessions.
     let needs_test_server = app_dir.join("app").join("controllers").is_dir();
 
-    struct ChildGuard(Option<std::process::Child>);
+    let worker_databases = worker_database_names(num_workers);
+    ensure_test_databases(&worker_databases);
+
+    #[derive(Clone)]
+    struct WorkerEnv {
+        port: Option<u16>,
+        database: String,
+    }
+
+    struct ChildGuard(Vec<std::process::Child>);
     impl Drop for ChildGuard {
         fn drop(&mut self) {
-            if let Some(mut c) = self.0.take() {
+            for mut c in self.0.drain(..) {
                 let _ = c.kill();
                 let _ = c.wait();
             }
         }
     }
-    let mut test_server_child = ChildGuard(None);
+    let mut test_server_children = ChildGuard(Vec::new());
+    let mut worker_envs: Vec<WorkerEnv> = worker_databases
+        .iter()
+        .map(|db| WorkerEnv {
+            port: None,
+            database: db.clone(),
+        })
+        .collect();
+
     if needs_test_server {
-        println!("Starting test server...");
+        println!("Starting {} test server(s)...", num_workers);
 
-        let port = {
-            let listener =
-                std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind to random port");
-            listener.local_addr().unwrap().port()
-        };
-
-        solilang::interpreter::builtins::test_server::start_test_server_on_port(port);
-
-        // Run the test server in a separate process. When it lives in the
-        // same process as the test runner, the server's tokio runtime and
-        // the test runner's thread-local runtimes deadlock against each other
-        // on the shared reqwest HTTP_CLIENT — requests hang even though the
-        // OS socket is fine. A subprocess has its own address space and
-        // runtime, so HTTP calls always go over a real TCP connection.
         let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("soli"));
-        // Run the test server in dev mode so request handlers execute in the
-        // tree-walking interpreter. Class-based controllers (e.g. `class
-        // SessionsController extends Controller`) don't currently work through
-        // the VM/production path and return JSON `null` instead of rendering.
-        let mut cmd = std::process::Command::new(&exe);
-        cmd.arg("serve")
-            .arg(app_dir)
-            .arg("--dev")
-            .arg("--port")
-            .arg(port.to_string())
-            .arg("--workers")
-            .arg("4")
-            .env("APP_ENV", "test")
-            .env(
-                "SOLIDB_HOST",
-                std::env::var("SOLIDB_HOST")
-                    .unwrap_or_else(|_| "http://localhost:6745".to_string()),
-            )
-            .env(
-                "SOLIDB_DATABASE",
-                std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "test".to_string()),
-            )
-            .env(
-                "SOLIDB_USERNAME",
-                std::env::var("SOLIDB_USERNAME").unwrap_or_default(),
-            )
-            .env(
-                "SOLIDB_PASSWORD",
-                std::env::var("SOLIDB_PASSWORD").unwrap_or_default(),
-            )
-            .stdout(
-                std::fs::File::create("/tmp/soli_test_server.log")
-                    .map(std::process::Stdio::from)
-                    .unwrap_or(std::process::Stdio::null()),
-            )
-            .stderr(
-                std::fs::File::options()
-                    .append(true)
-                    .create(true)
-                    .open("/tmp/soli_test_server.log")
-                    .map(std::process::Stdio::from)
-                    .unwrap_or(std::process::Stdio::null()),
-            );
-        if enable_coverage {
-            cmd.env("SOLI_COVERAGE_ENABLED", "1");
-        }
-        let child = cmd.spawn().expect("Failed to spawn test server subprocess");
-        test_server_child.0 = Some(child);
+        let solidb_host = std::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let solidb_user = std::env::var("SOLIDB_USERNAME").unwrap_or_default();
+        let solidb_pass = std::env::var("SOLIDB_PASSWORD").unwrap_or_default();
 
-        let base_url = format!("http://127.0.0.1:{}", port);
+        for (i, env) in worker_envs.iter_mut().enumerate() {
+            let port = {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0")
+                    .expect("Failed to bind to random port");
+                listener.local_addr().unwrap().port()
+            };
+            env.port = Some(port);
+
+            // Run the server in dev mode so handlers execute via the
+            // tree-walking interpreter. Class-based controllers don't
+            // currently work through the VM path. Subprocess isolation
+            // also avoids the reqwest+block_on cross-runtime deadlock
+            // that bites when server and runner share a process.
+            let log_path = format!("/tmp/soli_test_server_w{}.log", i);
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("serve")
+                .arg(app_dir)
+                .arg("--dev")
+                .arg("--port")
+                .arg(port.to_string())
+                .arg("--workers")
+                .arg("2")
+                .env("APP_ENV", "test")
+                .env("SOLIDB_HOST", &solidb_host)
+                .env("SOLIDB_DATABASE", &env.database)
+                .env("SOLIDB_USERNAME", &solidb_user)
+                .env("SOLIDB_PASSWORD", &solidb_pass)
+                // Pin SOLIDB_DATABASE so the server's `.env.test` reload
+                // (override_existing=true) doesn't clobber the per-worker
+                // value we just set.
+                .env("SOLI_PROTECT_ENV", "SOLIDB_DATABASE")
+                .stdout(
+                    std::fs::File::create(&log_path)
+                        .map(std::process::Stdio::from)
+                        .unwrap_or(std::process::Stdio::null()),
+                )
+                .stderr(
+                    std::fs::File::options()
+                        .append(true)
+                        .create(true)
+                        .open(&log_path)
+                        .map(std::process::Stdio::from)
+                        .unwrap_or(std::process::Stdio::null()),
+                );
+            if enable_coverage {
+                cmd.env("SOLI_COVERAGE_ENABLED", "1");
+            }
+            let child = cmd
+                .spawn()
+                .expect("Failed to spawn test server subprocess");
+            test_server_children.0.push(child);
+        }
+
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
-        let max_attempts = 50;
-        let mut ready = false;
-        for _ in 0..max_attempts {
-            std::thread::sleep(Duration::from_millis(200));
-            if client.get(format!("{}/health", base_url)).send().is_ok() {
-                ready = true;
-                break;
+        for env in &worker_envs {
+            let port = env.port.unwrap();
+            let base_url = format!("http://127.0.0.1:{}", port);
+            let max_attempts = 50;
+            let mut ready = false;
+            for _ in 0..max_attempts {
+                std::thread::sleep(Duration::from_millis(200));
+                if client.get(format!("{}/health", base_url)).send().is_ok() {
+                    ready = true;
+                    break;
+                }
+            }
+            if !ready {
+                eprintln!("Error: Test server failed to start on port {}", port);
+                drop(test_server_children);
+                process::exit(1);
             }
         }
-        if !ready {
-            eprintln!("Error: Test server failed to start on port {}", port);
-            drop(test_server_child);
-            process::exit(1);
-        }
 
-        println!("Test server running on port {}", port);
+        // Mark the global "test server is running" flag so that code paths
+        // reading the old global atomic (e.g. coverage code on the main
+        // thread before per-thread overrides exist) see a sane port.
+        solilang::interpreter::builtins::test_server::start_test_server_on_port(
+            worker_envs[0].port.unwrap(),
+        );
+
+        let ports: Vec<String> = worker_envs
+            .iter()
+            .map(|e| e.port.unwrap().to_string())
+            .collect();
+        println!("Test servers running on ports {}", ports.join(", "));
         println!();
         std::io::stdout().flush().unwrap();
     }
@@ -364,17 +393,24 @@ pub fn run_test(
     std::thread::scope(|s| {
         let mut handles = Vec::new();
         let chunk_size = test_files.len().div_ceil(num_workers);
-        for chunk in test_files.chunks(chunk_size) {
+        for (worker_idx, chunk) in test_files.chunks(chunk_size).enumerate() {
             let chunk: Vec<PathBuf> = chunk.to_vec();
             let preamble_files = model_preamble_files.clone();
             let tracker_clone = tracker.clone();
             let progress = progress.clone();
             let all_results_shared = all_results_shared.clone();
             let rt_handle = shared_rt_handle.clone();
+            let env = worker_envs[worker_idx].clone();
 
             handles.push(s.spawn(move || {
                 if let Some(handle) = rt_handle {
                     solilang::serve::set_tokio_handle(handle);
+                }
+                solilang::interpreter::builtins::model::db_config::set_database_override(
+                    env.database.clone(),
+                );
+                if let Some(port) = env.port {
+                    solilang::interpreter::builtins::test_server::set_thread_test_server_port(port);
                 }
                 for file in chunk {
                     let start = std::time::Instant::now();
@@ -620,40 +656,34 @@ pub fn run_test(
         // child via ChildGuard::drop.
         if needs_test_server {
             if let Some(ref tracker_rc) = tracker {
-                if let Some(port) =
-                    solilang::interpreter::builtins::test_server::get_test_server_port()
-                {
+                for env in &worker_envs {
+                    let Some(port) = env.port else { continue };
                     let url = format!("http://127.0.0.1:{}/__coverage__", port);
-                    if let Ok(resp) = ureq::get(&url).timeout(Duration::from_secs(5)).call() {
-                        if let Ok(text) = resp.into_string() {
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                                if let Some(files) = json.get("files").and_then(|v| v.as_array()) {
-                                    let mut guard = tracker_rc.lock().unwrap();
-                                    for f in files {
-                                        let path = match f.get("path").and_then(|v| v.as_str()) {
-                                            Some(p) => PathBuf::from(p),
-                                            None => continue,
-                                        };
-                                        if let Some(hits) = f.get("hits").and_then(|v| v.as_array())
-                                        {
-                                            for pair in hits {
-                                                if let Some(arr) = pair.as_array() {
-                                                    let line = arr
-                                                        .first()
-                                                        .and_then(|v| v.as_u64())
-                                                        .unwrap_or(0)
-                                                        as usize;
-                                                    let count = arr
-                                                        .get(1)
-                                                        .and_then(|v| v.as_u64())
-                                                        .unwrap_or(0);
-                                                    for _ in 0..count {
-                                                        guard
-                                                            .record_line_hit_to_global(&path, line);
-                                                    }
-                                                }
-                                            }
-                                        }
+                    let Ok(resp) = ureq::get(&url).timeout(Duration::from_secs(5)).call() else {
+                        continue;
+                    };
+                    let Ok(text) = resp.into_string() else { continue };
+                    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+                        continue;
+                    };
+                    let Some(files) = json.get("files").and_then(|v| v.as_array()) else {
+                        continue;
+                    };
+                    let mut guard = tracker_rc.lock().unwrap();
+                    for f in files {
+                        let path = match f.get("path").and_then(|v| v.as_str()) {
+                            Some(p) => PathBuf::from(p),
+                            None => continue,
+                        };
+                        if let Some(hits) = f.get("hits").and_then(|v| v.as_array()) {
+                            for pair in hits {
+                                if let Some(arr) = pair.as_array() {
+                                    let line =
+                                        arr.first().and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                                    let count =
+                                        arr.get(1).and_then(|v| v.as_u64()).unwrap_or(0);
+                                    for _ in 0..count {
+                                        guard.record_line_hit_to_global(&path, line);
                                     }
                                 }
                             }
@@ -740,14 +770,23 @@ pub fn run_test(
     println!();
 }
 
-fn ensure_test_database() {
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+fn base_test_database() -> String {
+    std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string())
+}
 
-    if database == "default" {
-        return;
+/// Returns one DB name per worker, derived from `SOLIDB_DATABASE`. With a
+/// single worker the base name is used as-is; with multiple workers each
+/// worker gets `{base}_w{i}` so parallel tests don't share rows.
+fn worker_database_names(num_workers: usize) -> Vec<String> {
+    let base = base_test_database();
+    if num_workers <= 1 {
+        return vec![base];
     }
+    (0..num_workers).map(|i| format!("{}_w{}", base, i)).collect()
+}
 
+fn ensure_test_databases(db_names: &[String]) {
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     let auth_header = match (
         std::env::var("SOLIDB_USERNAME"),
         std::env::var("SOLIDB_PASSWORD"),
@@ -761,20 +800,26 @@ fn ensure_test_database() {
         _ => None,
     };
 
-    let drop_url = format!("{}/_api/database/{}", host, database);
-    let mut drop_req = ureq::delete(&drop_url);
-    if let Some(ref auth) = auth_header {
-        drop_req = drop_req.set("Authorization", auth);
-    }
-    let _ = drop_req.call();
+    for database in db_names {
+        if database == "default" {
+            continue;
+        }
 
-    let create_url = format!("{}/_api/database", host);
-    let payload = format!(r#"{{"name":"{}"}}"#, database);
-    let mut create_req = ureq::post(&create_url).set("Content-Type", "application/json");
-    if let Some(ref auth) = auth_header {
-        create_req = create_req.set("Authorization", auth);
+        let drop_url = format!("{}/_api/database/{}", host, database);
+        let mut drop_req = ureq::delete(&drop_url);
+        if let Some(ref auth) = auth_header {
+            drop_req = drop_req.set("Authorization", auth);
+        }
+        let _ = drop_req.call();
+
+        let create_url = format!("{}/_api/database", host);
+        let payload = format!(r#"{{"name":"{}"}}"#, database);
+        let mut create_req = ureq::post(&create_url).set("Content-Type", "application/json");
+        if let Some(ref auth) = auth_header {
+            create_req = create_req.set("Authorization", auth);
+        }
+        let _ = create_req.send_string(&payload);
     }
-    let _ = create_req.send_string(&payload);
 }
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {

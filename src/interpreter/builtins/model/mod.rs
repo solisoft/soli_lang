@@ -250,7 +250,7 @@
 pub mod callbacks;
 pub mod core;
 pub mod crud;
-mod db_config;
+pub mod db_config;
 mod engine_context;
 pub mod habtm;
 pub mod query;

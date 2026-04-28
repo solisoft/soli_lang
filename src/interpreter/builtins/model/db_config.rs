@@ -1,6 +1,30 @@
+use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use lazy_static::lazy_static;
+
+thread_local! {
+    /// Per-thread DB name override. When set, replaces the cached
+    /// `SOLIDB_DATABASE` env value for the current thread. Used by the
+    /// parallel test runner so each worker writes to its own database.
+    static DB_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Install a per-thread DB name. Subsequent `get_database_name()` /
+/// `get_cursor_url()` calls on this thread will use `name` instead of
+/// the value cached from `SOLIDB_DATABASE`.
+pub fn set_database_override(name: String) {
+    DB_OVERRIDE.with(|o| *o.borrow_mut() = Some(name));
+}
+
+/// Clear the per-thread DB override.
+pub fn clear_database_override() {
+    DB_OVERRIDE.with(|o| *o.borrow_mut() = None);
+}
+
+fn override_database() -> Option<String> {
+    DB_OVERRIDE.with(|o| o.borrow().clone())
+}
 
 /// Cached database configuration to avoid repeated env::var() lookups.
 pub struct DbConfig {
@@ -118,12 +142,18 @@ fn get_db_config() -> &'static CachedDbConfig {
     })
 }
 
-pub fn get_database_name() -> &'static str {
-    &get_db_config().database
+pub fn get_database_name() -> String {
+    if let Some(name) = override_database() {
+        return name;
+    }
+    get_db_config().database.clone()
 }
 
-pub fn get_cursor_url() -> &'static str {
-    &get_db_config().cursor_url
+pub fn get_cursor_url() -> String {
+    if let Some(name) = override_database() {
+        return format!("http://{}/_api/database/{}/cursor", DB_CONFIG.host, name);
+    }
+    get_db_config().cursor_url.clone()
 }
 
 pub fn get_api_key() -> Option<&'static str> {
