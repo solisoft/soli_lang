@@ -793,6 +793,8 @@ pub fn run_test(
         clear_global_coverage_tracker();
     }
 
+    cleanup_test_databases(&worker_databases);
+
     println!();
 }
 
@@ -854,6 +856,40 @@ fn ensure_test_databases(db_names: &[String]) {
                     create_req = create_req.set("Authorization", auth);
                 }
                 let _ = create_req.send_string(&payload);
+            });
+        }
+    });
+}
+
+fn cleanup_test_databases(db_names: &[String]) {
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let auth_header = match (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        (Ok(user), Ok(pass)) => {
+            use base64::Engine;
+            let encoded =
+                base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
+            Some(format!("Basic {}", encoded))
+        }
+        _ => None,
+    };
+
+    std::thread::scope(|s| {
+        for database in db_names {
+            if database == "default" {
+                continue;
+            }
+            let host = &host;
+            let auth_header = &auth_header;
+            s.spawn(move || {
+                let drop_url = format!("{}/_api/database/{}", host, database);
+                let mut drop_req = ureq::delete(&drop_url);
+                if let Some(auth) = auth_header {
+                    drop_req = drop_req.set("Authorization", auth);
+                }
+                let _ = drop_req.call();
             });
         }
     });
