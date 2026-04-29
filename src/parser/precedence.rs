@@ -52,7 +52,8 @@ pub fn get_precedence(kind: &TokenKind) -> Precedence {
         | TokenKind::PercentEqual
         | TokenKind::OrEqual
         | TokenKind::AndEqual
-        | TokenKind::NullishEqual => Precedence::Assignment,
+        | TokenKind::NullishEqual
+        | TokenKind::Rescue => Precedence::Assignment,
         TokenKind::Question => Precedence::Ternary,
         TokenKind::NullishCoalescing => Precedence::NullishCoalescing,
         TokenKind::Or => Precedence::Or,

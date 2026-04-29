@@ -1450,6 +1450,13 @@ impl Vm {
                     let span = self.current_span();
                     self.throw_exception(value, span)?;
                 }
+                Op::PopHandler => {
+                    self.exception_handlers.pop();
+                }
+                Op::RescueJump(offset) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.ip += offset as usize;
+                }
 
                 // --- Iterators ---
                 Op::GetIter => {

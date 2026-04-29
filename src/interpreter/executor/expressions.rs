@@ -227,6 +227,15 @@ impl Interpreter {
                     span: expr.span,
                 })
             }
+
+            // Postfix rescue
+            ExprKind::Rescue { expr, fallback } => {
+                let expr_result = self.evaluate(expr);
+                match expr_result {
+                    Ok(value) => Ok(value),
+                    Err(_) => self.evaluate(fallback),
+                }
+            }
         }
     }
 

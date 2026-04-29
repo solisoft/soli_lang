@@ -194,6 +194,12 @@ pub enum ExprKind {
 
     /// Throw expression: throw expr
     Throw(Box<Expr>),
+
+    /// Postfix rescue: expr rescue fallback
+    Rescue {
+        expr: Box<Expr>,
+        fallback: Box<Expr>,
+    },
 }
 
 /// Part of an interpolated string.

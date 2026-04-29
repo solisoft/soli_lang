@@ -173,6 +173,8 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             ));
         }
         Op::Rethrow => out.push_str("RETHROW"),
+        Op::PopHandler => out.push_str("POP_HANDLER"),
+        Op::RescueJump(offset) => out.push_str(&format!("RESCUE_JUMP  {:>5}", offset)),
         Op::GetIter => out.push_str("GET_ITER"),
         Op::GetIterRange => out.push_str("GET_ITER_RNG"),
         Op::ForIter(offset) => out.push_str(&format!("FOR_ITER     {:>5}", offset)),

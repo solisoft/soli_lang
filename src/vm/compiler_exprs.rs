@@ -205,6 +205,19 @@ impl Compiler {
                 self.compile_expr(inner)?;
                 self.emit(Op::Throw, line);
             }
+            ExprKind::Rescue { expr, fallback } => {
+                let try_begin = self.emit(Op::TryBegin(0, 0), line);
+                self.compile_expr(expr)?;
+                self.emit(Op::TryEnd, line);
+                let rescue_jump = self.emit(Op::Jump(0), line);
+                self.emit(Op::Pop, line);
+                self.compile_expr(fallback)?;
+                let rescue_offset = self.current_offset() - try_begin - 1;
+                self.patch_jump(rescue_jump);
+                if let Op::TryBegin(ref mut co, _) = self.proto.chunk.code[try_begin] {
+                    *co = rescue_offset as u16;
+                }
+            }
             ExprKind::CompoundAssign {
                 target,
                 operator,

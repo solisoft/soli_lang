@@ -149,6 +149,10 @@ pub enum Op {
     CatchMatch(u16, u16),
     /// Re-throw the exception on top of stack (no typed catch matched).
     Rethrow,
+    /// Pop exception value, push fallback (for postfix rescue).
+    PopHandler,
+    /// Jump offset for rescue fallback (if exception occurred).
+    RescueJump(u16),
 
     // --- Iterators ---
     /// Pop iterable, push iterator state.

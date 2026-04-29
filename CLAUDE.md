@@ -140,6 +140,10 @@ try {
 } finally {
     cleanup();
 }
+
+// Postfix rescue - returns fallback if expr throws
+let result = risky_operation() rescue "default";
+let data = fetch_data() rescue null;
 ```
 
 ## Best Practices

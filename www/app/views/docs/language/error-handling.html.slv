@@ -290,6 +290,76 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- Postfix Rescue -->
+    <section id="section-postfix-rescue" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </span>
+            Postfix Rescue
+        </h2>
+
+        <section id="kw-rescue" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-rescue" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">expr rescue fallback</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Returns <code class="text-indigo-400">fallback</code> if <code class="text-indigo-400">expr</code> throws an exception. A concise alternative to try/catch for simple cases.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Simple rescue
+let data = fetch_data() rescue null;
+print(data);  # null if fetch_data threw
+
+# With fallback value
+let config = load_config() rescue {"host": "localhost", "port": 8080};
+
+# Chaining with nullish coalescing
+let result = risky_operation() rescue null ?? "default";
+
+# In pipelines
+let data = user_id |> fetch_user |> validate_user rescue null;</code></pre>
+            </div>
+        </section>
+
+        <section id="rescue-precedence" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#rescue-precedence" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Precedence</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Rescue has the same precedence as assignment, so <code class="text-indigo-400">x = y rescue z</code> parses as <code class="text-indigo-400">x = (y rescue z)</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># These are equivalent
+let x = risky() rescue "default";
+let x = (risky() rescue "default");
+
+# Can chain with other operators
+let a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5 mb-6">
+            <div class="flex gap-3">
+                <svg class="w-5 h-5 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <p class="text-amber-200 font-medium mb-1">When to Use Postfix Rescue</p>
+                    <ul class="text-gray-400 text-sm space-y-1">
+                        <li>Use for simple fallbacks where you just need a default value</li>
+                        <li>Use <code class="text-indigo-400">try/catch</code> when you need to handle the error, run cleanup code, or make decisions based on the error type</li>
+                        <li>Rescue swallows the error - if you need to log or re-throw, use try/catch instead</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/language/control-flow" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">

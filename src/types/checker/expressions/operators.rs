@@ -61,10 +61,7 @@ impl TypeChecker {
                         Ok(Type::Array(elem.clone()))
                     } else {
                         Err(TypeError::General {
-                            message: format!(
-                                "cannot subtract {} from array",
-                                right_type
-                            ),
+                            message: format!("cannot subtract {} from array", right_type),
                             span,
                         })
                     }

@@ -102,6 +102,10 @@ impl TypeChecker {
             } => self.check_lambda_expr(body, params, return_type),
             ExprKind::Await(inner) => self.check_await_expr(inner),
             ExprKind::Throw(inner) => self.check_throw_expr(inner),
+            ExprKind::Rescue { expr, fallback } => {
+                self.check_expr(expr)?;
+                self.check_expr(fallback)
+            }
 
             // String interpolation
             ExprKind::InterpolatedString(parts) => self.check_interpolated_string(parts),

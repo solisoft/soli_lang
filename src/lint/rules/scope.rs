@@ -476,6 +476,10 @@ fn check_expr(
             }
         }
         ExprKind::Throw(e) => check_expr(e, defined, program, diagnostics, reported),
+        ExprKind::Rescue { expr, fallback } => {
+            check_expr(expr, defined, program, diagnostics, reported);
+            check_expr(fallback, defined, program, diagnostics, reported);
+        }
         ExprKind::IntLiteral(_)
         | ExprKind::FloatLiteral(_)
         | ExprKind::DecimalLiteral(_)
@@ -638,6 +642,10 @@ fn collect_assigned_in_expr(expr: &Expr, out: &mut HashSet<String>) {
         ExprKind::Unary { operand, .. } => collect_assigned_in_expr(operand, out),
         ExprKind::Grouping(e) | ExprKind::Spread(e) | ExprKind::Await(e) | ExprKind::Throw(e) => {
             collect_assigned_in_expr(e, out);
+        }
+        ExprKind::Rescue { expr, fallback } => {
+            collect_assigned_in_expr(expr, out);
+            collect_assigned_in_expr(fallback, out);
         }
         ExprKind::Member { object, .. }
         | ExprKind::SafeMember { object, .. }

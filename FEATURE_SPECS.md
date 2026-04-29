@@ -147,6 +147,23 @@ class KeyError extends Error { }
 class IndexError extends Error { }
 ```
 
+### Postfix Rescue
+```soli
+// expr rescue fallback - returns fallback if expr throws
+let result = risky_operation() rescue "default";
+
+// Useful with function calls
+fn fetch_data() { throw "timeout" }
+let data = fetch_data() rescue null;
+
+// Can chain with other operators
+let result = might_fail() rescue null ?? "fallback";
+let result = might_fail() rescue "a" or "b";
+
+// Works in pipelines
+let result = value |> transform |> risky_step rescue "recovered";
+```
+
 ---
 
 ## 4. Default Parameters

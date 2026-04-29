@@ -742,6 +742,10 @@ impl CoverageTracker {
             Throw(expr) => {
                 self.collect_lines_from_expr(path, lines, expr);
             }
+            Rescue { expr, fallback } => {
+                self.collect_lines_from_expr(path, lines, expr);
+                self.collect_lines_from_expr(path, lines, fallback);
+            }
             InterpolatedString(parts) => {
                 for part in parts {
                     if let crate::ast::expr::InterpolatedPart::Expression(expr) = part {

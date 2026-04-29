@@ -378,3 +378,76 @@ describe("Try/Catch/Finally", fn() {
         assert_eq(order[2], "outer finally");
     });
 });
+
+// ============================================================================
+// Postfix Rescue Tests
+// ============================================================================
+describe("Postfix Rescue", fn() {
+    test("rescue returns fallback on exception", fn() {
+        fn throws() { throw "oops" }
+        let result = throws() rescue "fallback";
+        assert_eq(result, "fallback");
+    });
+
+    test("rescue returns expr value on success", fn() {
+        let result = 42 rescue "fallback";
+        assert_eq(result, 42);
+    });
+
+    test("rescue with method call", fn() {
+        let fn_that_throws = fn() { throw "error" };
+        let result = fn_that_throws() rescue "recovered";
+        assert_eq(result, "recovered");
+    });
+
+    test("rescue in assignment", fn() {
+        fn fail() { throw "fail" }
+        let x = fail() rescue "default";
+        assert_eq(x, "default");
+    });
+
+    test("rescue with function result", fn() {
+        fn might_fail(flag: Bool) {
+            if flag { throw "failed" }
+            return "success"
+        }
+        assert_eq(might_fail(true) rescue "oops", "oops");
+        assert_eq(might_fail(false) rescue "oops", "success");
+    });
+
+    test("nested rescue", fn() {
+        fn inner() { throw "a" }
+        fn outer() { throw "b" }
+        let result = (inner() rescue "b") rescue "c";
+        assert_eq(result, "b");
+    });
+
+    test("rescue with complex fallback", fn() {
+        fn err() { throw "error" }
+        let result = err() rescue 1 + 2 * 3;
+        assert_eq(result, 7);
+    });
+
+    test("rescue chained with or", fn() {
+        fn err() { throw "error" }
+        let result = err() rescue "a" or "b";
+        assert_eq(result, "a");
+    });
+
+    test("rescue with pipeline", fn() {
+        let result = 5 |> fn(x) { throw "fail" } rescue 100;
+        assert_eq(result, 100);
+    });
+
+    test("rescue after member access", fn() {
+        let obj = {"get": fn() { throw "err" }};
+        let result = obj.get() rescue "fallback";
+        assert_eq(result, "fallback");
+    });
+
+    test("rescue with nullish coalescing", fn() {
+        fn err() { throw "err" }
+        let result = err() rescue null ?? "default";
+        assert_eq(result, "default");
+    });
+});

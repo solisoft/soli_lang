@@ -181,6 +181,11 @@ impl Linter {
                 self.lint_expr(inner);
             }
 
+            ExprKind::Rescue { expr, fallback } => {
+                self.lint_expr(expr);
+                self.lint_expr(fallback);
+            }
+
             ExprKind::CompoundAssign { target, value, .. } => {
                 self.lint_expr(target);
                 self.lint_expr(value);

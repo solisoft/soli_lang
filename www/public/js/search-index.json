@@ -5786,6 +5786,21 @@
         "shovel",
         "<<"
       ]
+    },
+    {
+      "title": "rescue",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/error-handling#kw-rescue",
+      "signature": "expr rescue fallback",
+      "description": "Postfix rescue returns fallback value if expression throws an exception. Concise alternative to try/catch for simple fallback cases.",
+      "keywords": [
+        "error handling",
+        "exception",
+        "fallback",
+        "try catch",
+        "swallow error"
+      ]
     }
   ]
 }

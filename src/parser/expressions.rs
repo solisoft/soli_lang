@@ -818,6 +818,19 @@ impl Parser {
                 }
             }
 
+            // Postfix rescue: expr rescue fallback
+            TokenKind::Rescue => {
+                let fallback = self.parse_precedence(Precedence::Assignment)?;
+                let span = start_span.merge(&fallback.span);
+                Ok(Expr::new(
+                    ExprKind::Rescue {
+                        expr: Box::new(left),
+                        fallback: Box::new(fallback),
+                    },
+                    span,
+                ))
+            }
+
             // Call
             TokenKind::LeftParen => {
                 let mut arguments = self.parse_arguments()?;
