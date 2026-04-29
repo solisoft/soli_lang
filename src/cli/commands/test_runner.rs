@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,7 +16,152 @@ struct ProgressState {
     total_assertions: i64,
 }
 
-fn draw_progress_bar(state: &ProgressState, total_files: usize, icon: &str) {
+#[derive(Clone)]
+struct WorkerSlot {
+    worker_id: usize,
+    /// Basename (no extension) of the file the worker is currently running.
+    /// `None` when the worker is between files (idle / done).
+    current_file: Option<String>,
+    /// When the current file started running. Used for live elapsed display.
+    started_at: Option<std::time::Instant>,
+    files_done: usize,
+    files_failed: usize,
+    /// Last terminal status: '✓', '✗', or ' ' (no file finished yet).
+    last_status: char,
+}
+
+impl WorkerSlot {
+    fn new(worker_id: usize) -> Self {
+        Self {
+            worker_id,
+            current_file: None,
+            started_at: None,
+            files_done: 0,
+            files_failed: 0,
+            last_status: ' ',
+        }
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max {
+        return s.to_string();
+    }
+    let mut t: String = s.chars().take(max.saturating_sub(1)).collect();
+    t.push('…');
+    t
+}
+
+fn pad_chars(s: &str, width: usize) -> String {
+    let count = s.chars().count();
+    if count >= width {
+        return s.to_string();
+    }
+    let mut t = String::with_capacity(s.len() + (width - count));
+    t.push_str(s);
+    for _ in count..width {
+        t.push(' ');
+    }
+    t
+}
+
+/// One full-width row for a single worker: label, per-worker progress bar,
+/// status icon, current file (truncated to fit), elapsed, and `done/share`
+/// counter. The "share" denominator is an even split of the total file
+/// count across workers — workers don't have a fixed quota (the queue is
+/// shared LPT) so this is an estimate, capped at 100%.
+fn render_worker_row(
+    slot: &WorkerSlot,
+    total_files: usize,
+    num_workers: usize,
+    term_width: usize,
+    spinner_char: char,
+    all_done: bool,
+) -> String {
+    let label = format!("W{:<2}", slot.worker_id); // 3 visible chars
+
+    let icon = if slot.current_file.is_some() {
+        spinner_char
+    } else if slot.last_status != ' ' {
+        slot.last_status
+    } else {
+        '·'
+    };
+    let icon_color = if slot.files_failed > 0 || slot.last_status == '✗' {
+        31 // red
+    } else if slot.current_file.is_some() {
+        36 // cyan (running)
+    } else if slot.last_status == '✓' {
+        32 // green
+    } else {
+        90 // dim
+    };
+
+    let elapsed_str = match slot.started_at {
+        Some(t) => {
+            let secs = t.elapsed().as_secs_f64();
+            if secs < 10.0 {
+                format!("{:>4.1}s", secs)
+            } else if secs < 100.0 {
+                format!("{:>4}s", secs as u64)
+            } else {
+                ">99s".to_string()
+            }
+        }
+        None => "     ".to_string(),
+    };
+
+    let expected_share = total_files.div_ceil(num_workers.max(1)).max(1);
+    let bar_len: usize = 14;
+    // Once the suite's done, every worker's bar shows 100% regardless of
+    // how many files they actually pulled — LPT scheduling produces uneven
+    // splits, so a fast worker may have processed more than its even share
+    // while a slow one processed less. The aggregate bar at the bottom is
+    // the authoritative total.
+    let filled = if all_done {
+        bar_len
+    } else {
+        let raw = ((bar_len as f64) * (slot.files_done as f64) / (expected_share as f64)) as usize;
+        raw.min(bar_len)
+    };
+    let empty = bar_len - filled;
+    let bar_color = if slot.files_failed > 0 { "31" } else { "32" };
+
+    let counter = slot.files_done.to_string();
+    let counter_visible = counter.chars().count();
+
+    let file_text = slot.current_file.clone().unwrap_or_else(|| {
+        if slot.files_done > 0 || slot.files_failed > 0 {
+            "idle".to_string()
+        } else {
+            "—".to_string()
+        }
+    });
+
+    // Visible widths used: 1(lead) + 3(label) + 1 + 1([) + bar_len + 1(])
+    //                     + 1 + 1(icon) + 1 + file_w + 1 + 5(elapsed)
+    //                     + 1 + counter + 1(trail) = 17 + bar_len + counter + file_w
+    let fixed = 17 + bar_len + counter_visible;
+    let file_w = term_width
+        .saturating_sub(1)
+        .saturating_sub(fixed)
+        .max(4);
+
+    let file_truncated = truncate_chars(&file_text, file_w);
+    let file_padded = pad_chars(&file_truncated, file_w);
+
+    format!(
+        " {label} \x1b[{bar_color}m[\x1b[{bar_color}m{bar_filled}\x1b[0m\x1b[90m{bar_empty}\x1b[0m\x1b[{bar_color}m]\x1b[0m \x1b[{icon_color}m{icon}\x1b[0m {file_padded} \x1b[90m{elapsed_str}\x1b[0m \x1b[{bar_color}m{counter}\x1b[0m ",
+        bar_filled = "█".repeat(filled),
+        bar_empty = "░".repeat(empty),
+    )
+}
+
+fn render_progress_bar(state: &ProgressState, total_files: usize, icon: &str) -> String {
     let done = state.passed + state.failed;
     let bar_len = 30;
     let filled = if total_files == 0 {
@@ -27,16 +172,71 @@ fn draw_progress_bar(state: &ProgressState, total_files: usize, icon: &str) {
     let filled = filled.min(bar_len);
     let empty = bar_len - filled;
     let color = if state.failed > 0 { "31" } else { "32" };
-    eprint!(
-        "\r\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} assertions\x1b[0m\x1b[K",
+    format!(
+        "\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} assertions\x1b[0m",
         "█".repeat(filled),
         "░".repeat(empty),
         icon,
         done,
         total_files,
         state.total_assertions,
-    );
+    )
+}
+
+/// Redraw one row per worker (with its own progress bar) plus the aggregate
+/// bar at the bottom, in place. Single-column layout — no terminal-width
+/// arithmetic, no auto-wrap traps. Returns the number of newlines emitted
+/// so the next call can rewind by exactly that count.
+fn redraw_grid(
+    slots: &[WorkerSlot],
+    state: &ProgressState,
+    total_files: usize,
+    spinner_char: char,
+    last_lines: usize,
+) -> usize {
+    use std::fmt::Write as _;
+
+    let term_width = crossterm::terminal::size()
+        .map(|(c, _)| c as usize)
+        .unwrap_or(80);
+    let num_workers = slots.len();
+    let all_done = total_files > 0 && state.passed + state.failed >= total_files;
+
+    let mut buf = String::new();
+    if last_lines > 0 {
+        // Rewind to col 1 of the line `last_lines` above (CPL = Cursor
+        // Previous Line), then erase everything from there to end of
+        // screen. The `\x1b[J` makes us robust against any extra newlines
+        // a test worker might have leaked to stderr — without it, one
+        // off-count line causes the display to drift each tick and stack.
+        write!(buf, "\x1b[{last_lines}F\x1b[J").unwrap();
+    }
+
+    for slot in slots {
+        buf.push_str(&render_worker_row(
+            slot,
+            total_files,
+            num_workers,
+            term_width,
+            spinner_char,
+            all_done,
+        ));
+        buf.push_str("\x1b[K\n");
+    }
+
+    // Blank separator line between the per-worker rows and the aggregate.
+    buf.push_str("\x1b[K\n");
+
+    buf.push_str(&render_progress_bar(state, total_files, &spinner_char.to_string()));
+    buf.push_str("\x1b[K");
+
+    eprint!("{buf}");
     let _ = io::stderr().flush();
+
+    // Newlines just emitted: one per worker row + the blank separator.
+    // The aggregate bar leaves the cursor on the same line it was drawn on
+    // (no trailing `\n`), so the count matches the number of `\n`s written.
+    num_workers + 1
 }
 
 fn format_duration(duration: Duration) -> String {
@@ -52,7 +252,7 @@ fn format_duration(duration: Duration) -> String {
 
 pub fn run_test(
     path: Option<&str>,
-    jobs: usize,
+    jobs: Option<usize>,
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
@@ -187,14 +387,6 @@ pub fn run_test(
         None
     };
 
-    let num_workers = jobs.max(1);
-    println!(
-        "Running {} test(s) with {} worker(s)...",
-        test_files.len(),
-        num_workers
-    );
-    println!();
-
     // Start one test server per worker (each with its own DB) whenever the
     // app has controllers — any test that calls get()/post()/login()/etc
     // needs the server, not just files named *integration*. Per-worker
@@ -202,6 +394,20 @@ pub fn run_test(
     // `127.0.0.1:{port_i}`, so concurrent workers don't trample each
     // other's rows or sessions.
     let needs_test_server = app_dir.join("app").join("controllers").is_dir();
+
+    // Spawning a `soli serve` subprocess per worker is the dominant cost
+    // when controllers are present: 8 parallel boots take ~12× a single
+    // boot's time on a 16-core box, so high `--jobs` reliably regresses
+    // wall time. Default to 3 in that case (sweet spot in benches), and
+    // 1 otherwise (no subprocesses → linear scaling, but `lang/`-style
+    // suites are short enough that a single worker is fine by default).
+    let num_workers = jobs.unwrap_or(if needs_test_server { 3 } else { 1 }).max(1);
+    println!(
+        "Running {} test(s) with {} worker(s)...",
+        test_files.len(),
+        num_workers
+    );
+    println!();
 
     let worker_databases = worker_database_names(num_workers);
     ensure_test_databases(&worker_databases);
@@ -215,8 +421,16 @@ pub fn run_test(
     struct ChildGuard(Vec<std::process::Child>);
     impl Drop for ChildGuard {
         fn drop(&mut self) {
-            for mut c in self.0.drain(..) {
+            // Kill all first, THEN wait. The previous loop did
+            // kill+wait per child sequentially, which (for 8 children
+            // taking ~400ms each to fully exit) added ~3s of post-suite
+            // wall time on `--jobs 8`. Sending SIGKILL to all up front
+            // overlaps their kernel-side cleanup; we then just wait for
+            // the slowest.
+            for c in &mut self.0 {
                 let _ = c.kill();
+            }
+            for mut c in self.0.drain(..) {
                 let _ = c.wait();
             }
         }
@@ -249,9 +463,16 @@ pub fn run_test(
 
             // Run the server in dev mode so handlers execute via the
             // tree-walking interpreter. Class-based controllers don't
-            // currently work through the VM path. Subprocess isolation
-            // also avoids the reqwest+block_on cross-runtime deadlock
-            // that bites when server and runner share a process.
+            // fully work through the VM path — a quick `/bench/*` spot
+            // test passed, but running the full crm controller suite
+            // without --dev caused 2-11 of 31 tests to fail (something
+            // the VM doesn't reproduce: probably session middleware,
+            // ERB-via-VM, or a class-feature edge case). Subprocess
+            // isolation also avoids the reqwest+block_on cross-runtime
+            // deadlock that bites when server and runner share a process.
+            // `--workers 1` because each test server only serves a single
+            // runner worker — extra hyper threads were dead weight that
+            // contended for cores during the suite.
             let log_path = format!("/tmp/soli_test_server_w{}.log", i);
             let mut cmd = std::process::Command::new(&exe);
             cmd.arg("serve")
@@ -260,7 +481,7 @@ pub fn run_test(
                 .arg("--port")
                 .arg(port.to_string())
                 .arg("--workers")
-                .arg("2")
+                .arg("1")
                 .env("APP_ENV", "test")
                 .env("SOLIDB_HOST", &solidb_host)
                 .env("SOLIDB_DATABASE", &env.database)
@@ -294,9 +515,10 @@ pub fn run_test(
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
-        // Probe every server concurrently (one thread per worker port). Each
-        // probe checks immediately, then sleeps 200ms between retries — the
-        // old code paid 200ms × N just to start probing.
+        // Probe every server concurrently. 50ms retry interval — an
+        // isolated boot is ~80-120ms (now that Tailwind is skipped in
+        // test mode via APP_ENV), so this typically converges in 1-3
+        // attempts even under N-way parallel boot.
         let failed_port = std::thread::scope(|s| {
             let mut handles = Vec::new();
             for env in &worker_envs {
@@ -304,9 +526,9 @@ pub fn run_test(
                 let client = &client;
                 handles.push(s.spawn(move || {
                     let base_url = format!("http://127.0.0.1:{}", port);
-                    for attempt in 0..50 {
+                    for attempt in 0..200 {
                         if attempt > 0 {
-                            std::thread::sleep(Duration::from_millis(200));
+                            std::thread::sleep(Duration::from_millis(50));
                         }
                         if client.get(format!("{}/health", base_url)).send().is_ok() {
                             return None;
@@ -348,15 +570,30 @@ pub fn run_test(
     type TestResult = (PathBuf, bool, String, Duration, i64);
     let all_results_shared: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // Per-worker live state for the grid display. Each worker writes only
+    // to its own slot (independent Mutex per slot) so contention is nil
+    // even at high `--jobs`.
+    let worker_slots: Arc<Vec<Mutex<WorkerSlot>>> = Arc::new(
+        (0..num_workers)
+            .map(|i| Mutex::new(WorkerSlot::new(i)))
+            .collect(),
+    );
+
     let stop_animation = Arc::new(AtomicBool::new(false));
     let animate = std::io::stderr().is_terminal();
+    // Shared with the animation thread so the main thread's final-state
+    // repaint knows how many lines to rewind over.
+    let last_lines_drawn = Arc::new(AtomicUsize::new(0));
 
     let anim_handle = if animate {
         let progress = progress.clone();
         let stop = stop_animation.clone();
+        let slots = worker_slots.clone();
+        let last_lines_drawn = last_lines_drawn.clone();
         Some(std::thread::spawn(move || {
             let spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
             let mut frame = 0usize;
+            let mut last_lines = 0usize;
             while !stop.load(Ordering::Relaxed) {
                 let snapshot = {
                     let p = progress.lock().unwrap();
@@ -366,8 +603,16 @@ pub fn run_test(
                         total_assertions: p.total_assertions,
                     }
                 };
-                let icon = spinner[frame].to_string();
-                draw_progress_bar(&snapshot, total_files, &icon);
+                let slot_snapshot: Vec<WorkerSlot> =
+                    slots.iter().map(|m| m.lock().unwrap().clone()).collect();
+                last_lines = redraw_grid(
+                    &slot_snapshot,
+                    &snapshot,
+                    total_files,
+                    spinner[frame],
+                    last_lines,
+                );
+                last_lines_drawn.store(last_lines, Ordering::Relaxed);
                 std::thread::sleep(Duration::from_millis(80));
                 frame = (frame + 1) % spinner.len();
             }
@@ -411,7 +656,7 @@ pub fn run_test(
     let suite_start = std::time::Instant::now();
     std::thread::scope(|s| {
         let mut handles = Vec::new();
-        for env in worker_envs.iter().take(num_workers) {
+        for (worker_idx, env) in worker_envs.iter().take(num_workers).enumerate() {
             let queue = work_queue.clone();
             let preamble_files = model_preamble_files.clone();
             let tracker_clone = tracker.clone();
@@ -419,6 +664,7 @@ pub fn run_test(
             let all_results_shared = all_results_shared.clone();
             let rt_handle = shared_rt_handle.clone();
             let env = env.clone();
+            let slots = worker_slots.clone();
 
             handles.push(s.spawn(move || {
                 if let Some(handle) = rt_handle {
@@ -438,6 +684,22 @@ pub fn run_test(
                             None => break,
                         }
                     };
+                    // Mark this worker as running `file`. Strip the `_test.sl`
+                    // suffix when present so the cell shows what's under
+                    // test, not the suffix.
+                    let display_name = file
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| file.to_string_lossy().to_string());
+                    let display_name = display_name
+                        .strip_suffix("_test")
+                        .map(|s| s.to_string())
+                        .unwrap_or(display_name);
+                    {
+                        let mut slot = slots[worker_idx].lock().unwrap();
+                        slot.current_file = Some(display_name);
+                        slot.started_at = Some(std::time::Instant::now());
+                    }
                     let start = std::time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
 
@@ -502,6 +764,17 @@ pub fn run_test(
                         p.total_assertions += assertions;
                     }
 
+                    {
+                        let mut slot = slots[worker_idx].lock().unwrap();
+                        slot.current_file = None;
+                        slot.started_at = None;
+                        slot.files_done += 1;
+                        if !passed {
+                            slot.files_failed += 1;
+                        }
+                        slot.last_status = if passed { '✓' } else { '✗' };
+                    }
+
                     all_results_shared
                         .lock()
                         .unwrap()
@@ -530,8 +803,24 @@ pub fn run_test(
         failed,
         total_assertions: total_assertions_val,
     };
-    let final_icon = if failed > 0 { "✗" } else { "✓" };
-    draw_progress_bar(&final_state, total_files, final_icon);
+    let final_icon = if failed > 0 { '✗' } else { '✓' };
+    if animate {
+        // Final repaint over the animator's last frame. We rewind by the
+        // exact line count the animator stored before exiting so the grid
+        // doesn't double-print.
+        let final_slots: Vec<WorkerSlot> = worker_slots
+            .iter()
+            .map(|m| m.lock().unwrap().clone())
+            .collect();
+        let rewind = last_lines_drawn.load(Ordering::Relaxed);
+        redraw_grid(&final_slots, &final_state, total_files, final_icon, rewind);
+    } else {
+        // Non-TTY: just print the bar inline so logs stay readable.
+        eprint!(
+            "{}\x1b[K",
+            render_progress_bar(&final_state, total_files, &final_icon.to_string())
+        );
+    }
     eprintln!();
 
     let mut all_results: Vec<TestResult> = match Arc::try_unwrap(all_results_shared) {
@@ -785,17 +1074,25 @@ pub fn run_test(
         }
     }
 
-    if failed > 0 {
-        process::exit(1);
-    }
-
     if enable_coverage {
         clear_global_coverage_tracker();
     }
 
-    cleanup_test_databases(&worker_databases);
+    // Intentionally NOT calling `cleanup_test_databases(&worker_databases)`
+    // here. Dropping a SoliDB database is ~500ms/DB serialised on the
+    // server side, which added ~4s of wall time at `--jobs 8` for no
+    // user-visible benefit — the very next `soli test` run begins with
+    // `ensure_test_databases`, which DROP+CREATEs each per-worker DB
+    // anyway, so leaving them in place between runs costs nothing and
+    // saves the post-suite tail.
 
     println!();
+
+    drop(test_server_children);
+
+    if failed > 0 {
+        process::exit(1);
+    }
 }
 
 fn base_test_database() -> String {
@@ -831,8 +1128,12 @@ fn ensure_test_databases(db_names: &[String]) {
     };
 
     // Drop+create each worker DB in parallel — independent operations on
-    // distinct names, no shared state. Saves ~Nx round-trip latency before
-    // any test runs.
+    // distinct names, no shared state. The drop guarantees a clean
+    // baseline because `before_each` only clears collections the test
+    // file knows about; without the drop, collections created by past
+    // runs (or by a freshly added test) would leak across runs and cause
+    // non-deterministic failures. SoliDB serialises drops on its side
+    // (~500ms each), so this phase is always slowest at high `--jobs`.
     std::thread::scope(|s| {
         for database in db_names {
             if database == "default" {
@@ -861,39 +1162,6 @@ fn ensure_test_databases(db_names: &[String]) {
     });
 }
 
-fn cleanup_test_databases(db_names: &[String]) {
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let auth_header = match (
-        std::env::var("SOLIDB_USERNAME"),
-        std::env::var("SOLIDB_PASSWORD"),
-    ) {
-        (Ok(user), Ok(pass)) => {
-            use base64::Engine;
-            let encoded =
-                base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
-            Some(format!("Basic {}", encoded))
-        }
-        _ => None,
-    };
-
-    std::thread::scope(|s| {
-        for database in db_names {
-            if database == "default" {
-                continue;
-            }
-            let host = &host;
-            let auth_header = &auth_header;
-            s.spawn(move || {
-                let drop_url = format!("{}/_api/database/{}", host, database);
-                let mut drop_req = ureq::delete(&drop_url);
-                if let Some(auth) = auth_header {
-                    drop_req = drop_req.set("Authorization", auth);
-                }
-                let _ = drop_req.call();
-            });
-        }
-    });
-}
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();

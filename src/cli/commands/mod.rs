@@ -328,7 +328,7 @@ pub fn run_deploy(folder: Option<&str>) {
 
 pub fn run_test(
     path: Option<&str>,
-    jobs: usize,
+    jobs: Option<usize>,
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,

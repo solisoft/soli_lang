@@ -29,7 +29,11 @@ pub enum Command {
     },
     Test {
         path: Option<String>,
-        jobs: usize,
+        /// `None` = user didn't pass `--jobs`; the runner picks a default
+        /// once it knows whether the app needs a test server (apps with
+        /// `app/controllers/` pay a per-worker subprocess-spawn cost that
+        /// makes high parallelism a regression — see test_runner.rs).
+        jobs: Option<usize>,
         /// Additional output format(s) beyond the console summary. Accepted
         /// via `--coverage=html`, `--coverage=json`, `--coverage=xml`.
         /// Empty = console only.
@@ -148,7 +152,7 @@ pub fn print_usage() {
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
     eprintln!("  --workers N     Number of worker threads (default: CPU cores)");
-    eprintln!("  --jobs N        Number of parallel test workers (default: CPU cores)");
+    eprintln!("  --jobs N        Number of parallel test workers (default: 3 for apps with app/controllers/, 1 otherwise)");
     eprintln!("  --coverage           Generate coverage report (console)");
     eprintln!("  --coverage=FORMAT    Also generate FORMAT reports: html, json, xml (comma-sep)");
     eprintln!("  --coverage-min N     Fail if coverage is below N% (default: 80)");
@@ -656,7 +660,7 @@ pub fn parse_args() -> Options {
             "test" => {
                 i += 1;
                 let mut path: Option<String> = None;
-                let mut jobs: usize = 1;
+                let mut jobs: Option<usize> = None;
                 let mut coverage_formats: Vec<String> = vec!["console".to_string()];
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
@@ -691,10 +695,10 @@ pub fn parse_args() -> Options {
                             continue;
                         }
                         if let Some(rest) = args[i].strip_prefix("--jobs=") {
-                            jobs = rest.parse().unwrap_or_else(|_| {
+                            jobs = Some(rest.parse().unwrap_or_else(|_| {
                                 eprintln!("Invalid jobs number: {}", rest);
                                 process::exit(64);
-                            });
+                            }));
                             i += 1;
                             continue;
                         }
@@ -714,10 +718,10 @@ pub fn parse_args() -> Options {
                                     print_usage();
                                     process::exit(64);
                                 }
-                                jobs = args[i].parse().unwrap_or_else(|_| {
+                                jobs = Some(args[i].parse().unwrap_or_else(|_| {
                                     eprintln!("Invalid jobs number: {}", args[i]);
                                     process::exit(64);
-                                });
+                                }));
                             }
                             "--coverage" => {
                                 if !coverage_formats.iter().any(|f| f == "console") {
