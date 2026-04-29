@@ -9,7 +9,7 @@ use super::core::{class_name_to_collection, MODEL_REGISTRY};
 use super::crud::exec_with_auto_collection;
 
 /// A single validation rule for a field.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ValidationRule {
     pub field: String,
     pub presence: bool,
@@ -61,10 +61,19 @@ impl ValidationError {
     }
 }
 
-/// Register a validation rule for a model class.
+/// Register a validation rule for a model class. Idempotent: if an
+/// equivalent rule is already registered, the call is a no-op. Required
+/// because model files are loaded once at server boot and again in every
+/// per-worker interpreter (see serve/mod.rs `load_models` calls), so each
+/// `validates(...)` line in user code fires N+1 times. Without the dedup,
+/// uniqueness checks issue N+1 identical SDBQL queries per save —
+/// dominant cost in `soli test` for app-style controller suites.
 pub fn register_validation(class_name: &str, rule: ValidationRule) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();
+    if metadata.validations.iter().any(|r| r == &rule) {
+        return;
+    }
     metadata.validations.push(rule);
 }
 
