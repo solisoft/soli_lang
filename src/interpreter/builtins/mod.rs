@@ -60,6 +60,7 @@ pub mod strings;
 pub mod system;
 pub mod template;
 pub mod test_dsl;
+pub mod mock_http;
 pub mod test_server;
 pub mod types;
 pub mod uploads;
@@ -356,6 +357,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         expectations::register_expectation_class(env);
         test_dsl::register_test_builtins(env);
         test_server::register_test_server_builtins(env);
+        mock_http::register_mock_http_builtins(env);
     }
 
     // Register request helper builtins
