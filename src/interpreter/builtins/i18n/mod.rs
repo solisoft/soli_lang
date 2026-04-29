@@ -243,8 +243,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                 _ => (".", ",", false), // default for "en" and others
             };
 
-            let int_part = amount as i64;
-            let frac_part = ((amount - int_part as f64) * 100.0).round() as i64;
+            // Round to total cents first so the integer and fractional parts
+            // can't desync. Computing them independently caused a carry bug:
+            // amount = 9.995 produced int_part=9 and frac_part=100 (rounded
+            // up) → "9,100 €" instead of "10,00 €".
+            let cents = (amount * 100.0).round() as i64;
+            let int_part = cents / 100;
+            let frac_part = (cents % 100).abs();
             let int_str = int_part.to_string();
             let formatted_int: String = int_str
                 .chars()
