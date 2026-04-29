@@ -4,6 +4,22 @@
 
 ### Features
 
+* **feat(lang):** add postfix `rescue` operator for inline fallback values (`expr rescue fallback`) — Ruby-style inline error recovery without a full try/catch
+* **feat(test):** add `db_name()` builtin for parallel-safe DB targeting — honours per-worker thread-local override
+* **feat(test):** isolate parallel test workers with per-worker DB and server — each worker gets its own SoliDB database and dev-mode test-server subprocess
+
+### Bug Fixes
+
+* **fix(test):** make `--jobs N` parallel test runner work — fixed equals-form parsing, per-thread stdout buffering, and shared tokio runtime
+
+### Performance
+
+* **perf(test):** cut `--jobs N` startup overhead and balance work across workers — concurrent health probes, parallel DB setup, and LPT work queue
+
+### Tests
+
+* **test(http):** replace httpbin.org with in-process mock server — faster, non-flaky, works offline
+
 * **feat(jobs):** background job system with `enqueue()`, `Job` class, and `async` keyword
 * **feat(model):** `has_many` chainable methods (`.where()`, `.order()`, `.limit()`, `.select()`)
 * **feat(model):** HABTM (has_and_belongs_to_many) relations with join table support

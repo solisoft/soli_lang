@@ -28,8 +28,7 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
 
 fn start_or_get_port() -> u16 {
     *MOCK_PORT.get_or_init(|| {
-        let listener =
-            TcpListener::bind("127.0.0.1:0").expect("mock_http_server: failed to bind");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock_http_server: failed to bind");
         let port = listener
             .local_addr()
             .expect("mock_http_server: local_addr")

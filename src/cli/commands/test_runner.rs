@@ -315,9 +315,7 @@ pub fn run_test(
                     Some(port)
                 }));
             }
-            handles
-                .into_iter()
-                .find_map(|h| h.join().unwrap())
+            handles.into_iter().find_map(|h| h.join().unwrap())
         });
         if let Some(port) = failed_port {
             eprintln!("Error: Test server failed to start on port {}", port);
@@ -404,9 +402,7 @@ pub fn run_test(
     // idle — replaces the old static `test_files.chunks(N)` partition.
     let work_queue: Arc<Mutex<Vec<PathBuf>>> = {
         let mut files = test_files.clone();
-        files.sort_by_key(|p| {
-            std::cmp::Reverse(fs::metadata(p).map(|m| m.len()).unwrap_or(0))
-        });
+        files.sort_by_key(|p| std::cmp::Reverse(fs::metadata(p).map(|m| m.len()).unwrap_or(0)));
         // Workers pop from the end, so reverse so the largest is popped first.
         files.reverse();
         Arc::new(Mutex::new(files))
