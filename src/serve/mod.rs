@@ -49,9 +49,32 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Env-gated boot tracing. Set `SOLI_TRACE_BOOT=1` to print
+/// `[boot+Xms] <phase>` to stderr at each major startup step. The first
+/// `boot_trace` call captures the baseline; subsequent calls show ms
+/// since that baseline, plus the delta from the previous call.
+static BOOT_START: OnceLock<Instant> = OnceLock::new();
+static BOOT_LAST: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+fn boot_trace(phase: &str) {
+    if std::env::var("SOLI_TRACE_BOOT").is_err() {
+        return;
+    }
+    let start = *BOOT_START.get_or_init(Instant::now);
+    let now = Instant::now();
+    let total_ms = now.duration_since(start).as_millis();
+    let mut last = BOOT_LAST.lock().unwrap();
+    let delta_ms = match *last {
+        Some(prev) => now.duration_since(prev).as_millis(),
+        None => 0,
+    };
+    *last = Some(now);
+    eprintln!("[boot+{total_ms:>5}ms Δ{delta_ms:>4}ms] {phase}");
+}
 
 use bytes::Bytes;
 use crossbeam::channel;
@@ -180,6 +203,8 @@ pub fn serve_folder_with_options_and_workers(
     dev_mode: bool,
     workers: usize,
 ) -> Result<(), RuntimeError> {
+    boot_trace("serve_folder enter");
+
     // Resolve to an absolute path — notify emits absolute event paths, so
     // storing watch dirs as relative would break the `starts_with` checks
     // that classify hot-reload events by category.
@@ -190,9 +215,11 @@ pub fn serve_folder_with_options_and_workers(
 
     // Load .env file before anything else
     load_env_files(folder);
+    boot_trace("env loaded");
 
     // Initialize DB config cache (must be after .env is loaded)
     crate::interpreter::builtins::model::init_db_config();
+    boot_trace("db config init");
 
     // Set up panic hook to catch worker panics
     std::panic::set_hook(Box::new(|panic_info| {
@@ -244,12 +271,14 @@ pub fn serve_folder_with_options_and_workers(
 
     // Create interpreter
     let mut interpreter = Interpreter::new();
+    boot_trace("interpreter created");
 
     // Load models first (shared code)
     let models_dir = app_dir.join("models");
     if models_dir.exists() {
         load_models(&mut interpreter, &models_dir)?;
     }
+    boot_trace("models loaded");
 
     // Load services (integration helpers — Stripe, etc.) right after models
     // so controllers can reference them. Same loader as models since the
@@ -258,6 +287,7 @@ pub fn serve_folder_with_options_and_workers(
     if services_dir.exists() {
         load_models(&mut interpreter, &services_dir)?;
     }
+    boot_trace("services loaded");
 
     // Initialize file tracker for hot reload
     let mut file_tracker = FileTracker::new();
@@ -269,12 +299,14 @@ pub fn serve_folder_with_options_and_workers(
     if jobs_dir.exists() {
         app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut file_tracker);
     }
+    boot_trace("jobs loaded");
 
     // Load middleware
     let middleware_dir = app_dir.join("middleware");
     if middleware_dir.exists() {
         load_middleware(&mut interpreter, &middleware_dir, &mut file_tracker)?;
     }
+    boot_trace("middleware loaded");
 
     // Load view helpers from app/helpers directory (only accessible in templates)
     let helpers_dir = app_dir.join("helpers");
@@ -301,6 +333,7 @@ pub fn serve_folder_with_options_and_workers(
             }
         }
     }
+    boot_trace("helpers loaded");
 
     // Ship the framework upload helpers + `AttachmentsController` class
     // BEFORE user controllers so user-defined definitions cleanly override
@@ -308,6 +341,7 @@ pub fn serve_folder_with_options_and_workers(
     if let Err(e) = uploads_prelude::define_uploads_prelude(&mut interpreter) {
         eprintln!("Warning: failed to load uploads prelude: {}", e);
     }
+    boot_trace("uploads prelude");
 
     // Scan and load controllers
     let controller_files = scan_controllers(&controllers_dir)?;
@@ -319,6 +353,7 @@ pub fn serve_folder_with_options_and_workers(
             &mut file_tracker,
         )?;
     }
+    boot_trace("controllers loaded");
 
     // Populate the controller metadata registry (before/after hooks, layout,
     // inheritance) by textually scanning `app/controllers/*.sl`. Without this,
@@ -329,6 +364,7 @@ pub fn serve_folder_with_options_and_workers(
     {
         eprintln!("Warning: Failed to scan controller metadata: {}", e);
     }
+    boot_trace("controller metadata scanned");
 
     // Load engines (if config/engines.sl exists)
     match engine_loader::load_engines_config(folder) {
@@ -353,6 +389,7 @@ pub fn serve_folder_with_options_and_workers(
             eprintln!("Warning: Failed to load engine config: {}", e);
         }
     }
+    boot_trace("engines loaded");
 
     // Track model files too
     if models_dir.exists() {
@@ -378,6 +415,7 @@ pub fn serve_folder_with_options_and_workers(
         // Track view files for hot reload
         track_view_files(&views_dir, &mut file_tracker)?;
     }
+    boot_trace("templates initialized");
 
     // Set live reload flag for template injection (only in dev mode)
     live_reload::set_live_reload_enabled(dev_mode);
@@ -404,14 +442,23 @@ pub fn serve_folder_with_options_and_workers(
         // Rebuild route index to include engine routes
         crate::interpreter::builtins::server::rebuild_route_index();
     }
+    boot_trace("routes loaded");
 
     // Public directory for static files
     let public_dir = folder.join("public");
 
-    // Compile Tailwind CSS once at startup (not watch mode to avoid reload loops)
-    if dev_mode {
+    // Compile Tailwind CSS once at startup (not watch mode to avoid reload
+    // loops). Skip in test mode — the test runner spawns one server per
+    // worker, and `tailwindcss` is a heavy subprocess (~hundreds of ms);
+    // 8 in parallel was the dominant cost of `soli test --jobs 8` boot.
+    // Tests hit controllers directly, so the CSS bundle is irrelevant.
+    let app_env = std::env::var("APP_ENV").unwrap_or_default();
+    if dev_mode && app_env != "test" {
         tailwind::compile_tailwind_css_once(folder);
+        boot_trace("tailwind compiled");
     }
+
+    boot_trace("ready — entering hyper server");
 
     // Always use hyper-based MVC server
     run_hyper_server_worker_pool(
