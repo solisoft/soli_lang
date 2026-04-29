@@ -124,6 +124,41 @@ impl Vm {
                 outcome?;
                 Ok(Value::Array(arr.clone()))
             }
+            "each_with_index" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let len = arr.borrow().len();
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        self.invoke_in_batch_two(&batch, &cb, item, Value::Int(i as i64), span)?;
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Array(arr.clone()))
+            }
+            "index_of" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let items = arr.borrow();
+                let idx = items
+                    .iter()
+                    .position(|v| v == &args[0])
+                    .map(|i| i as i64)
+                    .unwrap_or(-1);
+                Ok(Value::Int(idx))
+            }
             // --- Mutating methods ---
             "push" => {
                 if args.len() != 1 {

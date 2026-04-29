@@ -393,6 +393,27 @@ print(sum);  # 6</code></pre>
                 </div>
             </section>
 
+            <section id="method-each-with-index" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-each-with-index" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.each_with_index(def)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Iterate over elements with their index. The block receives <code>(value, index)</code>. Returns the original array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"]
+
+names.each_with_index(|name, i| print("\(i): \(name)"))
+# Output: 0: Alice
+#         1: Bob
+#         2: Charlie
+
+# Trailing block syntax (equivalent)
+names.each_with_index |name, i| print("\(i): \(name)") end</code></pre>
+                </div>
+            </section>
+
             <section id="method-find" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-find" class="group flex items-center gap-2 mb-3">
@@ -420,6 +441,23 @@ print(all_positive)  # true
 let found = numbers.find |x| x > 3 end
 let any = numbers.any? |x| x > 4 end
 let all = numbers.all? |x| x > 0 end</code></pre>
+                </div>
+            </section>
+
+            <section id="method-index-of" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-index-of" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.index_of(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Return the position of the first element equal to <code>value</code>, or <code>-1</code> if not found.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie", "Bob"]
+
+print(names.index_of("Bob"));      # 1  (first match)
+print(names.index_of("Charlie"));  # 2
+print(names.index_of("Dave"));     # -1 (not found)</code></pre>
                 </div>
             </section>
 

@@ -346,6 +346,17 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(items.contains(&arguments[0]))))
             }
+            "index_of" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let idx = items
+                    .iter()
+                    .position(|v| v == &arguments[0])
+                    .map(|i| i as i64)
+                    .unwrap_or(-1);
+                Some(Ok(Value::Int(idx)))
+            }
             "get" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
@@ -606,6 +617,18 @@ impl Interpreter {
             "map" => self.array_map(items, arguments, span),
             "filter" => self.array_filter(items, arguments, span),
             "each" => self.array_each(items, arguments, span),
+            "each_with_index" => self.array_each_with_index(items, arguments, span),
+            "index_of" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let idx = items
+                    .iter()
+                    .position(|v| v == &arguments[0])
+                    .map(|i| i as i64)
+                    .unwrap_or(-1);
+                Ok(Value::Int(idx))
+            }
             "reduce" => self.array_reduce(items, arguments, span),
             "find" => self.array_find(items, arguments, span),
             "any?" => self.array_any(items, arguments, span),
@@ -847,6 +870,60 @@ impl Interpreter {
                 ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
                     return Err(RuntimeError::new("Exception in array each", span));
+                }
+            }
+        }
+
+        Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
+    }
+
+    fn array_each_with_index(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "each_with_index expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        let param0_name = func.params.first().map(|p| p.name.clone());
+        let param1_name = func.params.get(1).map(|p| p.name.clone());
+        if let Some(ref n) = param0_name {
+            call_env_rc.borrow_mut().define(n.clone(), Value::Null);
+        }
+        if let Some(ref n) = param1_name {
+            call_env_rc.borrow_mut().define(n.clone(), Value::Null);
+        }
+
+        for (i, item) in items.iter().enumerate() {
+            match (&param0_name, &param1_name) {
+                (Some(n0), Some(n1)) => {
+                    let mut env = call_env_rc.borrow_mut();
+                    env.define_or_update(n0, item.clone());
+                    env.define_or_update(n1, Value::Int(i as i64));
+                }
+                (Some(n0), None) => {
+                    call_env_rc.borrow_mut().define_or_update(n0, item.clone());
+                }
+                _ => {}
+            }
+
+            match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in array each_with_index", span));
                 }
             }
         }

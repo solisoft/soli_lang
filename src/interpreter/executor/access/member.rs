@@ -1427,7 +1427,8 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            "length" | "len" | "size" | "map" | "filter" | "each" | "reduce" | "find" | "any?"
+            "length" | "len" | "size" | "map" | "filter" | "each" | "each_with_index"
+            | "reduce" | "find" | "index_of" | "any?"
             | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank"
             | "flatten" | "first" | "last" | "empty?" | "includes?" | "contains" | "sample"
             | "shuffle" | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop"

@@ -79,9 +79,17 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
+            "each_with_index" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
             "reduce" | "find" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
+            }),
+            "index_of" => Ok(Type::Function {
+                params: vec![inner_type.clone()],
+                return_type: Box::new(Type::Int),
             }),
             "any?" | "all?" => Ok(Type::Function {
                 params: vec![Type::Any],

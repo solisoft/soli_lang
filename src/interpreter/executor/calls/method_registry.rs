@@ -982,6 +982,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "each_with_index",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "empty?",
         zero_arg: true,
         ret: "bool",
@@ -1020,6 +1025,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         name: "includes?",
         zero_arg: false,
         ret: "bool",
+    },
+    MethodDef {
+        name: "index_of",
+        zero_arg: false,
+        ret: "int",
     },
     MethodDef {
         name: "inspect",

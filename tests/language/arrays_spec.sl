@@ -150,6 +150,37 @@ describe("Array Methods", fn() {
         assert_eq(result, "abc");
     });
 
+    test("each_with_index on array", fn() {
+        let arr = ["a", "b", "c"];
+        let result = "";
+        arr.each_with_index(fn(x, i) { result = result + str(i) + x; });
+        assert_eq(result, "0a1b2c");
+    });
+
+    test("each_with_index returns the array", fn() {
+        let arr = [10, 20, 30];
+        let returned = arr.each_with_index(fn(x, i) { x; });
+        assert_eq(len(returned), 3);
+        assert_eq(returned[0], 10);
+    });
+
+    test("index_of finds first matching element", fn() {
+        let arr = ["a", "b", "c", "b"];
+        assert_eq(arr.index_of("b"), 1);
+        assert_eq(arr.index_of("a"), 0);
+        assert_eq(arr.index_of("c"), 2);
+    });
+
+    test("index_of returns -1 when not found", fn() {
+        let arr = [1, 2, 3];
+        assert_eq(arr.index_of(99), -1);
+    });
+
+    test("index_of works on empty array", fn() {
+        let arr = [];
+        assert_eq(arr.index_of(1), -1);
+    });
+
     test("reduce on array", fn() {
         let arr = [1, 2, 3, 4];
         let sum = arr.reduce(fn(acc, x) { return acc + x; }, 0);

@@ -3880,6 +3880,23 @@
       ]
     },
     {
+      "title": ".each_with_index()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-each-with-index",
+      "signature": "array.each_with_index(fn)",
+      "description": "Iterate over elements with their index, calling fn(value, index)",
+      "keywords": [
+        "array",
+        "each_with_index",
+        "enumerate",
+        "iterate",
+        "index",
+        "position",
+        "loop"
+      ]
+    },
+    {
       "title": ".reduce()",
       "type": "method",
       "category": "Array",
@@ -3907,6 +3924,23 @@
         "search",
         "first",
         "detect"
+      ]
+    },
+    {
+      "title": ".index_of()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-index-of",
+      "signature": "array.index_of(value)",
+      "description": "Return the position of the first matching element, or -1 if not found",
+      "keywords": [
+        "array",
+        "index_of",
+        "indexOf",
+        "position",
+        "find_index",
+        "search",
+        "locate"
       ]
     },
     {
