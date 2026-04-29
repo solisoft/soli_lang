@@ -234,8 +234,8 @@ pub fn run_test(
         println!("Starting {} test server(s)...", num_workers);
 
         let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("soli"));
-        let solidb_host = std::env::var("SOLIDB_HOST")
-            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let solidb_host =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         let solidb_user = std::env::var("SOLIDB_USERNAME").unwrap_or_default();
         let solidb_pass = std::env::var("SOLIDB_PASSWORD").unwrap_or_default();
 
@@ -286,9 +286,7 @@ pub fn run_test(
             if enable_coverage {
                 cmd.env("SOLI_COVERAGE_ENABLED", "1");
             }
-            let child = cmd
-                .spawn()
-                .expect("Failed to spawn test server subprocess");
+            let child = cmd.spawn().expect("Failed to spawn test server subprocess");
             test_server_children.0.push(child);
         }
 
@@ -296,23 +294,35 @@ pub fn run_test(
             .timeout(Duration::from_secs(2))
             .build()
             .unwrap();
-        for env in &worker_envs {
-            let port = env.port.unwrap();
-            let base_url = format!("http://127.0.0.1:{}", port);
-            let max_attempts = 50;
-            let mut ready = false;
-            for _ in 0..max_attempts {
-                std::thread::sleep(Duration::from_millis(200));
-                if client.get(format!("{}/health", base_url)).send().is_ok() {
-                    ready = true;
-                    break;
-                }
+        // Probe every server concurrently (one thread per worker port). Each
+        // probe checks immediately, then sleeps 200ms between retries — the
+        // old code paid 200ms × N just to start probing.
+        let failed_port = std::thread::scope(|s| {
+            let mut handles = Vec::new();
+            for env in &worker_envs {
+                let port = env.port.unwrap();
+                let client = &client;
+                handles.push(s.spawn(move || {
+                    let base_url = format!("http://127.0.0.1:{}", port);
+                    for attempt in 0..50 {
+                        if attempt > 0 {
+                            std::thread::sleep(Duration::from_millis(200));
+                        }
+                        if client.get(format!("{}/health", base_url)).send().is_ok() {
+                            return None;
+                        }
+                    }
+                    Some(port)
+                }));
             }
-            if !ready {
-                eprintln!("Error: Test server failed to start on port {}", port);
-                drop(test_server_children);
-                process::exit(1);
-            }
+            handles
+                .into_iter()
+                .find_map(|h| h.join().unwrap())
+        });
+        if let Some(port) = failed_port {
+            eprintln!("Error: Test server failed to start on port {}", port);
+            drop(test_server_children);
+            process::exit(1);
         }
 
         // Mark the global "test server is running" flag so that code paths
@@ -379,7 +389,7 @@ pub fn run_test(
     let shared_rt = if num_workers > 1 {
         Some(
             tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(num_workers.min(4))
+                .worker_threads(num_workers)
                 .enable_all()
                 .build()
                 .expect("Failed to build shared tokio runtime for test workers"),
@@ -389,18 +399,30 @@ pub fn run_test(
     };
     let shared_rt_handle = shared_rt.as_ref().map(|rt| rt.handle().clone());
 
+    // Shared work queue, ordered largest-first (LPT scheduling). Workers pop
+    // one file at a time so a heavy file can't trap a chunk while peers
+    // idle — replaces the old static `test_files.chunks(N)` partition.
+    let work_queue: Arc<Mutex<Vec<PathBuf>>> = {
+        let mut files = test_files.clone();
+        files.sort_by_key(|p| {
+            std::cmp::Reverse(fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        });
+        // Workers pop from the end, so reverse so the largest is popped first.
+        files.reverse();
+        Arc::new(Mutex::new(files))
+    };
+
     let suite_start = std::time::Instant::now();
     std::thread::scope(|s| {
         let mut handles = Vec::new();
-        let chunk_size = test_files.len().div_ceil(num_workers);
-        for (worker_idx, chunk) in test_files.chunks(chunk_size).enumerate() {
-            let chunk: Vec<PathBuf> = chunk.to_vec();
+        for env in worker_envs.iter().take(num_workers) {
+            let queue = work_queue.clone();
             let preamble_files = model_preamble_files.clone();
             let tracker_clone = tracker.clone();
             let progress = progress.clone();
             let all_results_shared = all_results_shared.clone();
             let rt_handle = shared_rt_handle.clone();
-            let env = worker_envs[worker_idx].clone();
+            let env = env.clone();
 
             handles.push(s.spawn(move || {
                 if let Some(handle) = rt_handle {
@@ -412,7 +434,14 @@ pub fn run_test(
                 if let Some(port) = env.port {
                     solilang::interpreter::builtins::test_server::set_thread_test_server_port(port);
                 }
-                for file in chunk {
+                loop {
+                    let file = {
+                        let mut q = queue.lock().unwrap();
+                        match q.pop() {
+                            Some(f) => f,
+                            None => break,
+                        }
+                    };
                     let start = std::time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
 
@@ -662,7 +691,9 @@ pub fn run_test(
                     let Ok(resp) = ureq::get(&url).timeout(Duration::from_secs(5)).call() else {
                         continue;
                     };
-                    let Ok(text) = resp.into_string() else { continue };
+                    let Ok(text) = resp.into_string() else {
+                        continue;
+                    };
                     let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
                         continue;
                     };
@@ -680,8 +711,7 @@ pub fn run_test(
                                 if let Some(arr) = pair.as_array() {
                                     let line =
                                         arr.first().and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                                    let count =
-                                        arr.get(1).and_then(|v| v.as_u64()).unwrap_or(0);
+                                    let count = arr.get(1).and_then(|v| v.as_u64()).unwrap_or(0);
                                     for _ in 0..count {
                                         guard.record_line_hit_to_global(&path, line);
                                     }
@@ -782,7 +812,9 @@ fn worker_database_names(num_workers: usize) -> Vec<String> {
     if num_workers <= 1 {
         return vec![base];
     }
-    (0..num_workers).map(|i| format!("{}_w{}", base, i)).collect()
+    (0..num_workers)
+        .map(|i| format!("{}_w{}", base, i))
+        .collect()
 }
 
 fn ensure_test_databases(db_names: &[String]) {
@@ -800,26 +832,35 @@ fn ensure_test_databases(db_names: &[String]) {
         _ => None,
     };
 
-    for database in db_names {
-        if database == "default" {
-            continue;
-        }
+    // Drop+create each worker DB in parallel — independent operations on
+    // distinct names, no shared state. Saves ~Nx round-trip latency before
+    // any test runs.
+    std::thread::scope(|s| {
+        for database in db_names {
+            if database == "default" {
+                continue;
+            }
+            let host = &host;
+            let auth_header = &auth_header;
+            s.spawn(move || {
+                let drop_url = format!("{}/_api/database/{}", host, database);
+                let mut drop_req = ureq::delete(&drop_url);
+                if let Some(auth) = auth_header {
+                    drop_req = drop_req.set("Authorization", auth);
+                }
+                let _ = drop_req.call();
 
-        let drop_url = format!("{}/_api/database/{}", host, database);
-        let mut drop_req = ureq::delete(&drop_url);
-        if let Some(ref auth) = auth_header {
-            drop_req = drop_req.set("Authorization", auth);
+                let create_url = format!("{}/_api/database", host);
+                let payload = format!(r#"{{"name":"{}"}}"#, database);
+                let mut create_req =
+                    ureq::post(&create_url).set("Content-Type", "application/json");
+                if let Some(auth) = auth_header {
+                    create_req = create_req.set("Authorization", auth);
+                }
+                let _ = create_req.send_string(&payload);
+            });
         }
-        let _ = drop_req.call();
-
-        let create_url = format!("{}/_api/database", host);
-        let payload = format!(r#"{{"name":"{}"}}"#, database);
-        let mut create_req = ureq::post(&create_url).set("Content-Type", "application/json");
-        if let Some(ref auth) = auth_header {
-            create_req = create_req.set("Authorization", auth);
-        }
-        let _ = create_req.send_string(&payload);
-    }
+    });
 }
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
