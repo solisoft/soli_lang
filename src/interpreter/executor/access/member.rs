@@ -1428,12 +1428,11 @@ impl Interpreter {
         }
         match name {
             "length" | "len" | "size" | "map" | "filter" | "each" | "each_with_index"
-            | "reduce" | "find" | "index_of" | "any?"
-            | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank"
-            | "flatten" | "first" | "last" | "empty?" | "includes?" | "contains" | "sample"
-            | "shuffle" | "take" | "drop" | "zip" | "sum" | "min" | "max" | "push" | "pop"
-            | "clear" | "get" | "to_string" | "to_json" | "join" | "is_a?" | "all" | "includes"
-            | "order" => Ok(Value::Method(ValueMethod {
+            | "reduce" | "find" | "index_of" | "any?" | "all?" | "sort" | "sort_by" | "reverse"
+            | "uniq" | "compact" | "compact_blank" | "flatten" | "first" | "last" | "empty?"
+            | "includes?" | "contains" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
+            | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "to_json"
+            | "join" | "is_a?" | "all" | "includes" | "order" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),

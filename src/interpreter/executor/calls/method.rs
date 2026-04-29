@@ -923,7 +923,10 @@ impl Interpreter {
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
                 ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in array each_with_index", span));
+                    return Err(RuntimeError::new(
+                        "Exception in array each_with_index",
+                        span,
+                    ));
                 }
             }
         }

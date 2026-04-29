@@ -4,6 +4,15 @@
 
 ### Features
 
+* **feat(lang):** add `index_of` and `each_with_index` methods on arrays ([efa42a5](https://github.com/solisoft/soli_lang/commit/efa42a5))
+* **feat(test):** per-worker progress UI and smart --jobs default ([932ebb8](https://github.com/solisoft/soli_lang/commit/932ebb8))
+* **feat(serve):** add SOLI_TRACE_BOOT env-gated boot tracing ([e72be73](https://github.com/solisoft/soli_lang/commit/e72be73))
+* **docs(middleware):** modernize syntax in middleware examples ([18bd5c3](https://github.com/solisoft/soli_lang/commit/18bd5c3))
+
+### Performance
+
+* **perf(model):** dedupe validation rule registration ([aa66cd1](https://github.com/solisoft/soli_lang/commit/aa66cd1))
+
 * **feat(lang):** add postfix `rescue` operator for inline fallback values (`expr rescue fallback`) — Ruby-style inline error recovery without a full try/catch
 * **feat(test):** add `db_name()` builtin for parallel-safe DB targeting — honours per-worker thread-local override
 * **feat(test):** isolate parallel test workers with per-worker DB and server — each worker gets its own SoliDB database and dev-mode test-server subprocess

@@ -146,10 +146,7 @@ fn render_worker_row(
     //                     + 1 + 1(icon) + 1 + file_w + 1 + 5(elapsed)
     //                     + 1 + counter + 1(trail) = 17 + bar_len + counter + file_w
     let fixed = 17 + bar_len + counter_visible;
-    let file_w = term_width
-        .saturating_sub(1)
-        .saturating_sub(fixed)
-        .max(4);
+    let file_w = term_width.saturating_sub(1).saturating_sub(fixed).max(4);
 
     let file_truncated = truncate_chars(&file_text, file_w);
     let file_padded = pad_chars(&file_truncated, file_w);
@@ -227,7 +224,11 @@ fn redraw_grid(
     // Blank separator line between the per-worker rows and the aggregate.
     buf.push_str("\x1b[K\n");
 
-    buf.push_str(&render_progress_bar(state, total_files, &spinner_char.to_string()));
+    buf.push_str(&render_progress_bar(
+        state,
+        total_files,
+        &spinner_char.to_string(),
+    ));
     buf.push_str("\x1b[K");
 
     eprint!("{buf}");
@@ -1161,7 +1162,6 @@ fn ensure_test_databases(db_names: &[String]) {
         }
     });
 }
-
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
