@@ -2,59 +2,49 @@
 
 ## [Unreleased]
 
+### Bug Fixes
+
+* **fix(i18n):** correct `I18n.format_currency` carry bug — rounding to total cents first prevents `9.995` from formatting as `"9,100 €"` instead of `"10,00 €"` ([bec9c30](https://github.com/solisoft/soli_lang/commit/bec9c30))
+
 ### Features
 
 * **feat(lang):** add `index_of` and `each_with_index` methods on arrays ([efa42a5](https://github.com/solisoft/soli_lang/commit/efa42a5))
 * **feat(test):** per-worker progress UI and smart --jobs default ([932ebb8](https://github.com/solisoft/soli_lang/commit/932ebb8))
 * **feat(serve):** add SOLI_TRACE_BOOT env-gated boot tracing ([e72be73](https://github.com/solisoft/soli_lang/commit/e72be73))
-* **docs(middleware):** modernize syntax in middleware examples ([18bd5c3](https://github.com/solisoft/soli_lang/commit/18bd5c3))
+* **feat(lang):** add postfix `rescue` operator for inline fallback values (`expr rescue fallback`)
+* **feat(test):** add `db_name()` builtin for parallel-safe DB targeting
+* **feat(test):** isolate parallel test workers with per-worker DB and server
+* **feat(jobs):** background job system with `enqueue()`, `Job` class, and `async` keyword
+* **feat(model):** `has_many` chainable methods (`.where()`, `.order()`, `.limit()`, `.select()`)
+* **feat(model):** HABTM (has_and_belongs_to_many) relations with join table support
+* **feat(respond_to):** content negotiation built-in for handling multiple formats (html, json, etc.) ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(solidb):** improved SolidB client integration ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(migration):** enhanced migration DSL ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **feat(uploads):** URL-driven image transforms on attachment endpoints ([ef7c2ef](https://github.com/solisoft/soli_lang/commit/ef7c2ef))
+* **feat(uploads):** model-level uploader DSL with auto-routed attachments ([6102481](https://github.com/solisoft/soli_lang/commit/6102481))
+* **feat(vm):** support hash attributes in `Class.new()` and fix function body compilation ([c128c23](https://github.com/solisoft/soli_lang/commit/c128c23))
+* **feat(model):** `Model.create` returns instance; `_errors` array on failure, `nil` on success
+* **feat(model):** `Model.find` raises `RecordNotFound` when id is missing (HTTP layer auto-converts to 404)
+* **feat(repl):** display the result of `@sdql{ ... }` expressions ([1454b22](https://github.com/solisoft/soli_lang/commit/1454b22))
+* **feat(template):** bind `locals` hash to every partial context (Rails-style `local_assigns`)
+* **feat(serve):** conditional-GET revalidation on `render()` HTML responses with ETag support
+* **feat(model):** `instance.save(hash?)` and `instance.update(hash?)` accept bulk-attribute hash
 
 ### Performance
 
 * **perf(model):** dedupe validation rule registration ([aa66cd1](https://github.com/solisoft/soli_lang/commit/aa66cd1))
-
-* **feat(lang):** add postfix `rescue` operator for inline fallback values (`expr rescue fallback`) — Ruby-style inline error recovery without a full try/catch
-* **feat(test):** add `db_name()` builtin for parallel-safe DB targeting — honours per-worker thread-local override
-* **feat(test):** isolate parallel test workers with per-worker DB and server — each worker gets its own SoliDB database and dev-mode test-server subprocess
-
-### Bug Fixes
-
-* **fix(test):** make `--jobs N` parallel test runner work — fixed equals-form parsing, per-thread stdout buffering, and shared tokio runtime
-
-### Performance
-
-* **perf(test):** cut `--jobs N` startup overhead and balance work across workers — concurrent health probes, parallel DB setup, and LPT work queue
+* **perf(test):** cut `--jobs N` startup overhead and balance work across workers
 
 ### Tests
 
 * **test(http):** replace httpbin.org with in-process mock server — faster, non-flaky, works offline
-
-* **feat(jobs):** background job system with `enqueue()`, `Job` class, and `async` keyword
-* **feat(model):** `has_many` chainable methods (`.where()`, `.order()`, `.limit()`, `.select()`)
-* **feat(model):** HABTM (has_and_belongs_to_many) relations with join table support
-* **feat(respond_to): content negotiation built-in** - Rails-style `respond_to` for handling multiple formats (html, json, etc.) in controller actions ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
-* **feat(jobs): background job system** - with `enqueue()`, `Job` class, and `async` keyword
-* **feat(model): has_many chainable** - `.where()`, `.order()`, `.limit()`, `.select()` methods
-* **feat(model): HABTM relations** - has_and_belongs_to_many with join table support
-* **feat(solidb): improved SolidB client integration** - enhanced SolidB HTTP operations ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
-* **feat(migration): enhanced migration DSL** - improved database migration capabilities ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
-* **feat(uploads): URL-driven image transforms on attachment endpoints** ([ef7c2ef](https://github.com/solisoft/soli_lang/commit/ef7c2ef))
-* **feat(uploads): model-level uploader DSL with auto-routed attachments** ([6102481](https://github.com/solisoft/soli_lang/commit/6102481))
-* **feat(vm): support hash attributes in Class.new() and fix function body compilation** ([c128c23](https://github.com/solisoft/soli_lang/commit/c128c23))
-* **feat(model): `Model.create` returns instance (not hash); `_errors` array on failure, `nil` on success** — replaces the old `{ valid: bool, record: instance }` and `{ valid: bool, errors: [] }` hash returns with a single consistent shape. Use `if instance._errors` to distinguish success from failure.
-* **feat(model): `Model.find` raises `RecordNotFound` when id is missing** — the HTTP layer auto-converts this to a 404 response. Use `Model.find_by` or wrap in `try/catch` for optional lookups.
-* **feat(repl): display the result of `@sdql{ ... }` expressions** — the REPL now wraps `@sdql{...}` blocks in `println(_.inspect)` so their result is visible instead of silently discarded. ([1454b22](https://github.com/solisoft/soli_lang/commit/1454b22))
-* **feat(template): bind `locals` hash to every partial context (Rails-style `local_assigns`)** — partials can now read keys whose names collide with reserved words (`class`) or builtin functions (`type`) via `locals["class"]` / `locals["type"]`. Bare-identifier access is unchanged and remains the idiom for non-reserved keys; `locals` is the escape hatch.
-* **feat(serve): conditional-GET revalidation on `render()` HTML responses** — `html_response` now emits `ETag: "<fnv1a-64-hex>"` and `Cache-Control: private, no-cache`; requests carrying `If-None-Match` get a `304 Not Modified` short-circuit at the response boundary. Makes the shipped hover-prefetch feature actually deliver "instant navigation": the prefetched body is reused on click, validated by a tiny round-trip instead of a full re-render. Controllers can override per-response by setting their own `Cache-Control` / `ETag` in the `headers` hash.
-* **feat(model): `instance.save(hash?)` and `instance.update(hash?)` accept bulk-attribute hash** — optional hash argument is merged onto the instance before validations + DB write, so `user.save({ "name": "Alice", "role": "admin" })` replaces N assignments + a save call. Hash wins on conflict, keys you don't pass keep their current value, framework-internal `_`-fields are silently skipped. Zero-arg callers keep working unchanged.
-
-### Tests
 * **test: improved error formatting with box-drawing characters** ([41c14a6](https://github.com/solisoft/soli_lang/commit/41c14a6))
 * **test: added controller_spec tests for respond_to content negotiation** ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
 * **test: auto-display coverage when tests pass** ([9550941](https://github.com/solisoft/soli_lang/commit/9550941))
 
-### Bug Fixes
-* **fix(model): fix description** — ([commithash](link))
+### Documentation
+
+* **docs(middleware):** modernize syntax in middleware examples ([18bd5c3](https://github.com/solisoft/soli_lang/commit/18bd5c3))
 
 ## [0.80.1](https://github.com/solisoft/soli_lang/compare/0.80.0...0.80.1) (2026-04-23)
 
@@ -65,7 +55,7 @@
 ## [0.80.0](https://github.com/solisoft/soli_lang/compare/0.79.1...0.80.0) (2026-04-23)
 
 ### Bug Fixes
-* **fix(template): route paren-form render(...) through the core parser** ([06508fe](https://github.com/solisoft/soli_lang/commit/06508fe1c12f93ef3f306a96067c1c23440cc137))
+* **fix(template):** route paren-form `render(...)` through the core parser ([06508fe](https://github.com/solisoft/soli_lang/commit/06508fe1c12f93ef3f306a96067c1c23440cc137))
 
 ### Other
 * **chore: bump version to v0.80.0** ([58989d9](https://github.com/solisoft/soli_lang/commit/58989d924461d6a973383e58c1d11ed7d87e4d76))
