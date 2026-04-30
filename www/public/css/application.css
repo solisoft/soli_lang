@@ -2508,6 +2508,10 @@ video {
   background-color: rgb(16 185 129 / 0.1);
 }
 
+.bg-emerald-500\/15 {
+  background-color: rgb(16 185 129 / 0.15);
+}
+
 .bg-emerald-500\/20 {
   background-color: rgb(16 185 129 / 0.2);
 }

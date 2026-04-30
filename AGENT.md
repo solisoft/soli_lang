@@ -342,13 +342,12 @@ get("/", fn() {
 });
 
 get("/users", fn() {
-    let users = db.query("FOR doc IN users RETURN doc");
+    let users = User.all();
     return render("users/index", {"users": users});
 });
 
 post("/users", fn() {
-    let name = request.body["name"];
-    db.query("INSERT { name: @name } INTO users", { "name": name });
+    User.create({ "name": request.body["name"] });
     redirect("/users");
 });
 ```

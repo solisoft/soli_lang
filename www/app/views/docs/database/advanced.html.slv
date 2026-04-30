@@ -134,15 +134,18 @@ let result = User.transaction("
         </p>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
-    <p class="text-gray-400 mb-4">When the ORM doesn't cover your use case, you can run raw SDBQL queries directly.</p>
+    <h2 id="section-raw-queries" class="text-2xl font-bold text-white mb-6 scroll-mt-20">Raw Queries</h2>
+    <p class="text-gray-400 mb-4">When the ORM doesn't cover your use case, you can run raw SDBQL queries directly. For everyday CRUD inside a server, prefer <a href="/docs/database/models" class="text-indigo-300 hover:underline">Model.where(&hellip;)</a> &mdash; it reuses the worker connection.</p>
 
-    <h3 class="text-lg font-semibold text-white mb-4">Using db.query()</h3>
-    <p class="text-gray-400 mb-4">Use <code>db.query()</code> with <code>@param</code> bind parameters for safe, parameterized queries:</p>
+    <h3 class="text-lg font-semibold text-white mb-4">Using a Solidb instance</h3>
+    <p class="text-gray-400 mb-4">Construct a client with <code>Solidb(host, database)</code>, optionally <code>auth</code> it, then call <code>query</code> with <code>@param</code> placeholders. Bind values are bound on the server, never concatenated.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm"># Read with named parameters
+            <pre><code class="language-soli text-sm">let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
+
+# Read with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
 })
@@ -162,6 +165,9 @@ db.query("UPDATE @key WITH { name: @name } IN users", {
 # Delete
 db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
         </div>
+    </div>
+    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
+        <p class="text-indigo-200/80 text-sm">Inside <a href="/docs/database/migrations" class="text-indigo-300 hover:underline">migrations</a>, a pre-wired <code>db</code> helper is injected for you.</p>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Using @sdbql{} Query Block</h3>
@@ -222,7 +228,7 @@ let results = @sdbql{
 
     <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
         <p class="text-yellow-200/80 text-sm">
-            <strong>Safety:</strong> Always use <code>@param</code> bind vars with <code>db.query()</code> or <code>#{expr}</code> with <code>@sdbql{}</code>. Never build queries by concatenating user input into the SDBQL string.
+            <strong>Safety:</strong> Always use <code>@param</code> bind vars with <code>db.query()</code>, or <code>#{expr}</code> with <code>@sdbql{}</code>. Never build queries by concatenating user input into the SDBQL string.
         </p>
     </div>
 
@@ -241,8 +247,8 @@ let results = @sdbql{
                     <td class="py-3 px-4 text-gray-400">Standard CRUD, relations, eager loading &mdash; use the ORM first</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">db.query()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Parameterized queries with <code>@param</code> bind variables</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Solidb(...).query()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Parameterized queries with <code>@param</code> bind variables &mdash; for scripts, migrations, or hash-based binds</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">@sdbql{}</code></td>

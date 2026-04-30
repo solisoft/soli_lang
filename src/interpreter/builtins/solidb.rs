@@ -233,58 +233,12 @@ fn register_global_solidb_functions(env: &mut Environment) {
 }
 
 fn register_solidb_class(env: &mut Environment) {
-    let solidb_class = Rc::new(crate::interpreter::value::Class {
-        name: "Solidb".to_string(),
-        superclass: None,
-        methods: Rc::new(RefCell::new(HashMap::new())),
-        static_methods: std::collections::HashMap::new(),
-        native_static_methods: std::collections::HashMap::new(),
-        native_methods: std::collections::HashMap::new(),
-        static_fields: Rc::new(RefCell::new(std::collections::HashMap::new())),
-        fields: std::collections::HashMap::new(),
-        constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-        ..Default::default()
-    });
-
-    env.define("Solidb".to_string(), Value::Class(solidb_class.clone()));
-
-    env.define(
-        "Solidb".to_string(),
-        Value::NativeFunction(NativeFunction::new("Solidb", Some(2), move |args| {
-            let host = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Solidb() expects string host as first argument, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let database = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Solidb() expects string database as second argument, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let instance_id = SOLIDB_NEXT_ID.fetch_add(1, Ordering::SeqCst);
-
-            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
-            states.insert(instance_id, SolidbState::new(host, database));
-            drop(states);
-
-            let mut inner = Instance::new(solidb_class.clone());
-            inner.set("_id".to_string(), Value::Int(instance_id as i64));
-            let instance = Rc::new(RefCell::new(inner));
-
-            Ok(Value::Instance(instance))
-        })),
-    );
+    // Each instance method is registered twice from the same closure: as a
+    // standalone `solidb_<name>` global (legacy / explicit form) and as a
+    // class native_method so `db.<name>(...)` routes through the executor's
+    // instance-method dispatch. The class is built after this loop and given
+    // to the constructor closure below.
+    let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
     let method_definitions = vec![
         ("auth", 2),
@@ -324,13 +278,19 @@ fn register_solidb_class(env: &mut Environment) {
         } else {
             Some(arity)
         };
+        // User-facing arity (without the implicit instance arg) for the
+        // class native_method. Method dispatch in the executor prepends
+        // the instance automatically.
+        let user_arity = if method_name == "create_collection" {
+            None
+        } else {
+            Some(min_args)
+        };
 
-        env.define(
+        let inner = Rc::new(NativeFunction::new(
             format!("solidb_{}", method_name),
-            Value::NativeFunction(NativeFunction::new(
-                format!("solidb_{}", method_name),
-                registered_arity,
-                move |args| {
+            registered_arity,
+            move |args| {
                     if args.len() < arity {
                         return Err(format!(
                             "solidb_{}() requires at least {} argument(s)",
@@ -1103,9 +1063,79 @@ fn register_solidb_class(env: &mut Environment) {
                         _ => Err(format!("Unknown method: {}", method)),
                     }
                 },
+        ));
+
+        // Legacy / explicit form: solidb_<name>(instance, ...args)
+        env.define(
+            format!("solidb_{}", method_name),
+            Value::NativeFunction((*inner).clone()),
+        );
+
+        // Class native_method: db.<name>(...args). The executor prepends
+        // the instance, so we register with the user-facing arity and
+        // delegate to the same closure.
+        let inner_for_method = inner.clone();
+        let display_name = format!("Solidb.{}", method_name);
+        native_methods.insert(
+            method_name.to_string(),
+            Rc::new(NativeFunction::new(
+                display_name,
+                user_arity,
+                move |args| (inner_for_method.func)(args),
             )),
         );
     }
+
+    let solidb_class = Rc::new(crate::interpreter::value::Class {
+        name: "Solidb".to_string(),
+        superclass: None,
+        methods: Rc::new(RefCell::new(HashMap::new())),
+        static_methods: HashMap::new(),
+        native_static_methods: HashMap::new(),
+        native_methods,
+        static_fields: Rc::new(RefCell::new(HashMap::new())),
+        fields: HashMap::new(),
+        constructor: None,
+        nested_classes: Rc::new(RefCell::new(HashMap::new())),
+        ..Default::default()
+    });
+
+    env.define(
+        "Solidb".to_string(),
+        Value::NativeFunction(NativeFunction::new("Solidb", Some(2), move |args| {
+            let host = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Solidb() expects string host as first argument, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let database = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Solidb() expects string database as second argument, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let instance_id = SOLIDB_NEXT_ID.fetch_add(1, Ordering::SeqCst);
+
+            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
+            states.insert(instance_id, SolidbState::new(host, database));
+            drop(states);
+
+            let mut inner = Instance::new(solidb_class.clone());
+            inner.set("_id".to_string(), Value::Int(instance_id as i64));
+            let instance = Rc::new(RefCell::new(inner));
+
+            Ok(Value::Instance(instance))
+        })),
+    );
 }
 
 // Use centralized value_to_json from value module

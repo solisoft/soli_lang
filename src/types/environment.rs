@@ -548,6 +548,30 @@ impl TypeEnvironment {
             );
         }
 
+        // SoliDB: `Solidb(host, database)` returns a Solidb instance, plus
+        // the standalone `solidb_*` helpers used by migrations and scripts.
+        self.functions.insert(
+            "Solidb".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Any),
+            },
+        );
+        for name in &[
+            "solidb_connect",
+            "solidb_ping",
+            "solidb_auth",
+            "solidb_query",
+        ] {
+            self.functions.insert(
+                name.to_string(),
+                Type::Function {
+                    params: vec![Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+        }
+
         // Register built-in classes
         self.register_builtin_classes();
     }

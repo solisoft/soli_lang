@@ -89,27 +89,30 @@ end
 
 Use the ORM (`Model.where`, `Model.find`, `Model.create`, ...) first. When you need something the ORM doesn't cover, drop down to raw SDBQL. **Always parameterize** — never concatenate user input into the query string.
 
-### `db.query(sdbql, bind_vars?)`
+### `Solidb(host, db).query(sdbql, bind_vars?)`
 
-Pass the SDBQL string with `@name` placeholders and a hash of bind values:
+Construct a client with `Solidb(host, database)`, optionally `auth` it, then call `query` with `@name` placeholders and a hash of bind values:
 
 ```soli
+let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"));
+db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"));
+
 # Read
 let adults = db.query(
-    "FOR u IN users FILTER u.age >= @min RETURN u",
-    { "min": 18 }
+  "FOR u IN users FILTER u.age >= @min RETURN u",
+  { "min": 18 }
 );
 
 # Insert
 db.query(
-    "INSERT { name: @name, email: @email } INTO users",
-    { "name": "Bob", "email": "bob@example.com" }
+  "INSERT { name: @name, email: @email } INTO users",
+  { "name": "Bob", "email": "bob@example.com" }
 );
 
 # Update
 db.query("UPDATE @key WITH { name: @name } IN users", {
-    "key": user_id,
-    "name": "Alice Smith"
+  "key": user_id,
+  "name": "Alice Smith"
 });
 
 # Delete
@@ -117,6 +120,8 @@ db.query("REMOVE @key IN users", { "key": user_id });
 ```
 
 `@name` is a bind placeholder — the value comes from the hash and is bound safely at query time.
+
+> Inside migrations, a pre-wired `db` helper is injected for you — you don't construct a `Solidb` instance manually.
 
 ### `@sdbql{}` block
 
@@ -151,7 +156,7 @@ Supports all SDBQL operations: `FOR`, `FILTER`, `SORT`, `LIMIT`, `RETURN`, `INSE
 | Approach | Use it for |
 |----------|------------|
 | `Model.where(...)` / ORM | Standard CRUD — your first choice |
-| `db.query(sdbql, {...})` | Parameterized query where bind values are already a hash |
+| `Solidb(...).query(sdbql, {...})` | Scripts, migrations, or when bind values are already a hash |
 | `@sdbql{ ... }` | Multi-line query, inline `#{expr}` interpolation, readability |
 
 ## Views (ERB Templates)

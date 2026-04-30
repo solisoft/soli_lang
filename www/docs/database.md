@@ -172,11 +172,16 @@ let found = User.find(user["id"])
 
 ## Raw Queries
 
-For raw database queries, use the `db` object or the `@sdbql{}` query block syntax.
+For everyday CRUD inside a server, use the [Model ORM](models.md) — it shares the worker's connection and adds validations, callbacks, and relations. Drop down to a raw query when you need an SDBQL feature the ORM doesn't expose, or when you're writing a script or migration.
 
-### Using db.query()
+### Using a Solidb instance
+
+Construct a client with `Solidb(host, database)` and call `query` on it. `@param` placeholders are bound from the bind-vars hash — never concatenate user input into the query string.
 
 ```soli
+let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"));
+db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"));
+
 # SDBQL query with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
@@ -188,6 +193,8 @@ db.query("INSERT { name: @name, email: @email } INTO users", {
   "email": "bob@example.com"
 });
 ```
+
+> Inside [migrations](migrations.md), a pre-wired `db` helper is injected for you — you don't need to construct a `Solidb` instance manually.
 
 ### Using @sdbql{} Query Block
 
@@ -244,7 +251,8 @@ The `@sdbql{}` block supports:
 
 | Approach | Use Case |
 |----------|----------|
-| `db.query()` with `@param` | When parameters should be passed separately (traditional parameterized queries) |
+| [`Model.where(...)`](models.md) | Standard CRUD inside a server — your first choice |
+| `Solidb(...).query()` with `@param` | Scripts, migrations, or when bind values are already a hash |
 | `@sdbql{}` with `#{expr}` | When you want inline interpolation and more readable multi-line queries |
 
 ## Connection Pooling

@@ -2,7 +2,7 @@
 // This example demonstrates how to use the Solidb class to interact with SoliDB
 
 // Create a database connection
-let db = new Solidb("http://localhost:6745", "solidb");
+let db = Solidb("http://localhost:6745", "solidb");
 
 // Authenticate (if your database requires authentication)
 // db.auth("username", "password");

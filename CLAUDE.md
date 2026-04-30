@@ -262,14 +262,9 @@ fn create(req: Any) -> Any {
 **Model**:
 ```soli
 // app/models/post.sl
-class Post {
-    static fn all() -> Array {
-        return db.query("SELECT * FROM posts");
-    }
-    
-    static fn create(params: Hash) -> Hash {
-        // Validation and creation logic
-    }
+class Post extends Model {
+    // `all`, `find`, `where`, `create`, etc. are inherited from Model
+    // and use the worker's pre-configured SoliDB connection.
 }
 ```
 
