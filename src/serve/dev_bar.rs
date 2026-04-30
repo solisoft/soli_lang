@@ -3,21 +3,17 @@
 //! Mirrors the live-reload injection pattern in `live_reload.rs`: when the
 //! response is `text/html` and dev mode is on, we splice a self-contained
 //! `<aside>` + inline script before the closing `</body>` tag. The bar shows
-//! method/path, status, render time, request counter, RSS, AQL query count
-//! and durations (with bind-vars inlined), and a server clock.
+//! method/path, status, render time, RSS, AQL query count and durations
+//! (with bind-vars inlined), and a server clock.
 //!
 //! The rendered HTML is fully self-contained — no external CSS/JS — so it
 //! works on every Soli project without any template change.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use crate::interpreter::builtins::http_log::LoggedHttpRequest;
 use crate::interpreter::builtins::model::query_log::LoggedQuery;
 use crate::serve::live_reload::rfind_ascii_case_insensitive;
-
-/// Per-process request counter. Starts at 1 on the first injection.
-static REQ_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Marker injected so we never double-inject (e.g. nested layouts).
 const MARKER: &str = "__solidev_bar_injected";
@@ -64,7 +60,6 @@ pub fn inject_dev_bar(html: &str, ctx: &DevBarContext<'_>) -> String {
 fn render_bar(ctx: &DevBarContext<'_>) -> String {
     let elapsed_us = ctx.started.elapsed().as_micros() as u64;
     let render_str = fmt_duration_us(elapsed_us);
-    let req_n = REQ_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     let rss_str = read_rss_str();
     let env_str = std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
 
@@ -294,8 +289,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 <span style=\"color:#30363d;\">|</span>\
 <button type=\"button\" id=\"__solidev_rb\" title=\"click to expand render breakdown (middleware / controller / view / db / http)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">render <span style=\"color:#b8e986;\">{render}</span></button>\
 <span style=\"color:#30363d;\">|</span>\
-<span title=\"requests served by this worker since boot\">req <span style=\"color:#b8e986;\">#{req_n}</span></span>\
-<span style=\"color:#30363d;\">|</span>\
 <span title=\"resident memory of this worker\">rss <span style=\"color:#b8e986;\">{rss}</span></span>\
 <span style=\"color:#30363d;\">|</span>\
 <button type=\"button\" id=\"__solidev_db\" title=\"click to expand SolidB queries for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:{db_label_color};font:inherit;cursor:pointer;border:none;background:transparent;\">db <span style=\"color:#b8e986;\">{q_count}q</span>{q_btn_extra}</button>\
@@ -314,7 +307,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         status_color = status_color,
         status = status,
         render = html_escape(&render_str),
-        req_n = req_n,
         rss = html_escape(&rss_str),
         q_count = q_count,
         q_btn_extra = q_btn_extra,
