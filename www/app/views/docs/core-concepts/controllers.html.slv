@@ -15,30 +15,30 @@
     </p>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
-    static {
-        this.layout = "layouts/posts";
-    }
+  static {
+    this.layout = "layouts/posts";
+  }
 
-    def index(req)
-        let posts = Post.all()
-        render("posts/index", {
-            "title": "All Posts",
-            "posts": posts
-        })
+  def index(req)
+    let posts = Post.all()
+    render("posts/index", {
+      "title": "All Posts",
+      "posts": posts
+    })
+  end
+
+  def show(req)
+    let id = req.params["id"]
+    let post = Post.find(id)
+    if post == null
+      return halt(404, "Post not found")
     end
 
-    def show(req)
-        let id = req.params["id"]
-        let post = Post.find(id)
-        if post == null
-            return halt(404, "Post not found")
-        end
-
-        render("posts/show", {
-            "title": post["title"],
-            "post": post
-        })
-    end
+    render("posts/show", {
+      "title": post["title"],
+      "post": post
+    })
+  end
 end</code></pre>
 
     <h3 class="text-xl font-semibold text-white mb-4">Lifecycle Hooks</h3>
@@ -62,33 +62,33 @@ end</code></pre>
     </div>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
-    static {
-        # Set layout for all actions
-        this.layout = "layouts/posts";
+  static {
+    # Set layout for all actions
+    this.layout = "layouts/posts";
 
-        # Run before ALL actions
-        this.before_action = fn(req) {
-            print("Processing: " + req.path);
-            req
-        }
-
-        # Run before SPECIFIC actions only
-        this.before_action(:show, :edit) = fn(req) {
-            let post = Post.find(req.params["id"]);
-            return halt(404, "Not Found") if post == null;
-            req["post"] = post;
-            req
-        }
-
-        # Run after SPECIFIC actions
-        this.after_action(:create, :update) = fn(req, response) {
-            # Log activity after create/update
-            print("Action completed");
-            response
-        }
+    # Run before ALL actions
+    this.before_action = fn(req) {
+      print("Processing: " + req.path);
+      req
     }
 
-    # ... actions ...
+    # Run before SPECIFIC actions only
+    this.before_action(:show, :edit) = fn(req) {
+      let post = Post.find(req.params["id"]);
+      return halt(404, "Not Found") if post == null;
+      req["post"] = post;
+      req
+    }
+
+    # Run after SPECIFIC actions
+    this.after_action(:create, :update) = fn(req, response) {
+      # Log activity after create/update
+      print("Action completed");
+      response
+    }
+  }
+
+  # ... actions ...
 end</code></pre>
 
     <div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
@@ -104,55 +104,55 @@ end</code></pre>
     </p>
 
     <pre data-filename="app/controllers/base_controller.sl"><code class="language-soli text-sm">class BaseController extends Controller
-    static {
-        this.layout = "application";
+  static {
+    this.layout = "application";
 
-        this.before_action = fn(req) {
-            let user_id = req.session["user_id"];
-            if user_id != null {
-                req["current_user"] = User.find(user_id);
-            }
-            req
-        }
+    this.before_action = fn(req) {
+      let user_id = req.session["user_id"];
+      if user_id != null {
+        req["current_user"] = User.find(user_id);
+      }
+      req
     }
+  }
 
-    # Shared helper available to all child controllers
-    def _current_user
-        this.req["current_user"]
-    end
+  # Shared helper available to all child controllers
+  def _current_user
+    this.req["current_user"]
+  end
 end</code></pre>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm"># Inherits layout, before_action, and _current_user from BaseController
 class PostsController extends BaseController
-    static {
-        # Add controller-specific hook (runs after parent's before_action)
-        this.before_action(:show, :edit) = fn(req) {
-            let post = Post.find(req.params["id"]);
-            return halt(404, "Not Found") if post == null;
-            req["post"] = post;
-            req
-        }
+  static {
+    # Add controller-specific hook (runs after parent's before_action)
+    this.before_action(:show, :edit) = fn(req) {
+      let post = Post.find(req.params["id"]);
+      return halt(404, "Not Found") if post == null;
+      req["post"] = post;
+      req
     }
+  }
 
-    def index(req)
-        render("posts/index", { "posts": Post.all() })
-    end
+  def index(req)
+    render("posts/index", { "posts": Post.all() })
+  end
 
-    def show(req)
-        render("posts/show", { "post": req["post"] })
-    end
+  def show(req)
+    render("posts/show", { "post": req["post"] })
+  end
 end</code></pre>
 
     <pre data-filename="app/controllers/admin_controller.sl"><code class="language-soli text-sm"># Even deeper inheritance works
 class AdminController extends BaseController
-    static {
-        this.layout = "admin";  # Override parent layout
+  static {
+    this.layout = "admin";  # Override parent layout
 
-        this.before_action = fn(req) {
-            return redirect("/login") if req["current_user"] == null;
-            req
-        }
+    this.before_action = fn(req) {
+      return redirect("/login") if req["current_user"] == null;
+      req
     }
+  }
 end</code></pre>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20">
@@ -174,8 +174,8 @@ end</code></pre>
 ├── home_controller.sl                # HomeController            → /
 ├── users_controller.sl               # UsersController           → /users
 └── admin/
-    ├── merchants_controller.sl       # AdminMerchantsController  → /admin/merchants
-    └── user_profiles_controller.sl   # AdminUserProfilesController → /admin/user_profiles</code></pre>
+  ├── merchants_controller.sl       # AdminMerchantsController  → /admin/merchants
+  └── user_profiles_controller.sl   # AdminUserProfilesController → /admin/user_profiles</code></pre>
 
     <p class="text-gray-400 mb-4">
         Both <code>_</code> and <code>/</code> act as word separators in the class name, so <code>admin/user_profiles_controller.sl</code> becomes <code>AdminUserProfilesController</code> &mdash; there is no <code>::</code> namespacing.
@@ -205,11 +205,11 @@ resources("/admin/merchants", "admin/merchants")</code></pre>
 
     <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm"># GET /health
 def health(req)
-    {
-        "status": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": "{\"status\":\"ok\"}"
-    }
+  {
+    "status": 200,
+    "headers": {"Content-Type": "application/json"},
+    "body": "{\"status\":\"ok\"}"
+  }
 end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">The Request Object</h2>
@@ -318,22 +318,22 @@ halt(403, "Forbidden")</code></pre>
                     Rails-style content negotiation. Picks the right branch based on URL extension, <code>?format=</code>, HTMX/XHR headers, or the <code>Accept</code> header (with q-values). Falls back to <code>406 Not Acceptable</code> if nothing matches and no <code>any</code> branch is registered.
                 </p>
                 <pre data-filename="DSL form"><code class="language-soli text-sm">def show(req)
-    post = Post.find(req["params"]["id"])
-    respond_to(req, fn(format) {
-        format.html(fn()  render("posts/show", { "post": post }))
-        format.json(fn()  render_json(post))
-        format.csv(fn()   render_csv_for(post))
-        format.pdf(fn()   render_pdf_for(post))
-        format.excel(fn() render_xlsx_for(post))
-        format.htmx(fn()  render("posts/_show_partial", { "post": post }, { "layout": false }))
-        format.xhr(fn()   render_json({ "id": post["id"] }))
-        format.any(fn()   render("posts/show", { "post": post }))   # optional catch-all
-    })
+  post = Post.find(req["params"]["id"])
+  respond_to(req, fn(format) {
+    format.html(fn()  render("posts/show", { "post": post }))
+    format.json(fn()  render_json(post))
+    format.csv(fn()   render_csv_for(post))
+    format.pdf(fn()   render_pdf_for(post))
+    format.excel(fn() render_xlsx_for(post))
+    format.htmx(fn()  render("posts/_show_partial", { "post": post }, { "layout": false }))
+    format.xhr(fn()   render_json({ "id": post["id"] }))
+    format.any(fn()   render("posts/show", { "post": post }))   # optional catch-all
+  })
 end</code></pre>
                 <p class="text-gray-400 text-sm mt-4 mb-3">A terser hash form is also supported:</p>
                 <pre data-filename="Hash form"><code class="language-soli text-sm">respond_to(req, {
-    "html": fn() render("posts/show", { "post": post }),
-    "json": fn() render_json(post)
+  "html": fn() render("posts/show", { "post": post }),
+  "json": fn() render_json(post)
 })</code></pre>
 
                 <h4 class="text-white font-semibold mt-5 mb-2">Format detection priority</h4>
@@ -378,8 +378,8 @@ end</code></pre>
     </div>
 
     <pre data-filename="app/views/layouts/_nav.html.erb"><code class="language-erb text-sm">&lt;nav&gt;
-    &lt;a href="/users" class="&lt;%= current_path?("/users") ? "active" : "" %&gt;"&gt;Users&lt;/a&gt;
-    &lt;a href="/posts" class="&lt;%= current_path?("/posts") ? "active" : "" %&gt;"&gt;Posts&lt;/a&gt;
+  &lt;a href="/users" class="&lt;%= current_path?("/users") ? "active" : "" %&gt;"&gt;Users&lt;/a&gt;
+  &lt;a href="/posts" class="&lt;%= current_path?("/posts") ? "active" : "" %&gt;"&gt;Posts&lt;/a&gt;
 &lt;/nav&gt;
 
 &lt;p&gt;You are viewing &lt;%= current_path() %&gt; (&lt;%= current_method() %&gt;).&lt;/p&gt;</code></pre>

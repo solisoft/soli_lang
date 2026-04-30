@@ -1191,6 +1191,183 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_time_ago_localized_german() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "de");
+        assert!(
+            result.contains("vor") && result.contains("Minuten"),
+            "German time_ago should say 'vor ... Minuten', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_italian() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "it");
+        assert!(
+            result.contains("minuti fa"),
+            "Italian time_ago should say '... minuti fa', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_portuguese() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "pt");
+        assert!(
+            result.contains("há") && result.contains("minutos"),
+            "Portuguese time_ago should say 'há ... minutos', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_japanese() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "ja");
+        assert!(
+            result.contains("分前"),
+            "Japanese time_ago should contain '分前', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_localized_chinese() {
+        let now = datetime_now();
+        let result = time_ago_localized(now - 300, "zh");
+        assert!(
+            result.contains("分钟前"),
+            "Chinese time_ago should contain '分钟前', got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_time_ago_singular_units() {
+        let now = datetime_now();
+
+        // 1 second ago
+        assert_eq!(time_ago(now - 1), "1 second ago");
+
+        // 1 minute ago
+        assert_eq!(time_ago(now - 60), "1 minute ago");
+
+        // 1 hour ago
+        assert_eq!(time_ago(now - 3600), "1 hour ago");
+
+        // 1 day ago
+        assert_eq!(time_ago(now - 86400), "1 day ago");
+
+        // 1 week ago
+        assert_eq!(time_ago(now - 604800), "1 week ago");
+
+        // 1 month ago (approx)
+        assert_eq!(time_ago(now - 2592000), "1 month ago");
+
+        // 1 year ago (approx)
+        assert_eq!(time_ago(now - 31536000), "1 year ago");
+    }
+
+    #[test]
+    fn test_time_ago_singular_units_french() {
+        let now = datetime_now();
+
+        assert_eq!(time_ago_localized(now - 1, "fr"), "il y a 1 seconde");
+        assert_eq!(time_ago_localized(now - 60, "fr"), "il y a 1 minute");
+        assert_eq!(time_ago_localized(now - 3600, "fr"), "il y a 1 heure");
+        assert_eq!(time_ago_localized(now - 86400, "fr"), "il y a 1 jour");
+        assert_eq!(time_ago_localized(now - 604800, "fr"), "il y a 1 semaine");
+        assert_eq!(time_ago_localized(now - 2592000, "fr"), "il y a 1 mois");
+        assert_eq!(time_ago_localized(now - 31536000, "fr"), "il y a 1 an");
+    }
+
+    #[test]
+    fn test_time_ago_weeks_boundary() {
+        let now = datetime_now();
+        let result = time_ago(now - 604800 * 3);
+        assert!(result.contains("weeks ago"));
+    }
+
+    #[test]
+    fn test_time_ago_months_boundary() {
+        let now = datetime_now();
+        let result = time_ago(now - 2592000 * 4);
+        assert!(result.contains("months ago"));
+    }
+
+    #[test]
+    fn test_time_ago_years_boundary() {
+        let now = datetime_now();
+        let result = time_ago(now - 31536000 * 5);
+        assert!(result.contains("years ago"));
+    }
+
+    #[test]
+    fn test_time_ago_future_timestamp() {
+        let now = datetime_now();
+        let result = time_ago(now + 3600);
+        assert_eq!(result, "in the future");
+    }
+
+    #[test]
+    fn test_time_ago_future_timestamp_localized() {
+        let now = datetime_now();
+
+        assert_eq!(time_ago_localized(now + 3600, "fr"), "dans le futur");
+        assert_eq!(time_ago_localized(now + 3600, "de"), "in der Zukunft");
+        assert_eq!(time_ago_localized(now + 3600, "es"), "en el futuro");
+        assert_eq!(time_ago_localized(now + 3600, "it"), "nel futuro");
+        assert_eq!(time_ago_localized(now + 3600, "pt"), "no futuro");
+        assert_eq!(time_ago_localized(now + 3600, "ja"), "未来");
+        assert_eq!(time_ago_localized(now + 3600, "zh"), "未来");
+    }
+
+    #[test]
+    fn test_time_ago_seconds_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 30), "30 seconds ago");
+    }
+
+    #[test]
+    fn test_time_ago_minutes_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 300), "5 minutes ago");
+    }
+
+    #[test]
+    fn test_time_ago_hours_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 7200), "2 hours ago");
+    }
+
+    #[test]
+    fn test_time_ago_days_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 259200), "3 days ago");
+    }
+
+    #[test]
+    fn test_time_ago_weeks_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 604800 * 2), "2 weeks ago");
+    }
+
+    #[test]
+    fn test_time_ago_months_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 2592000 * 6), "6 months ago");
+    }
+
+    #[test]
+    fn test_time_ago_years_english() {
+        let now = datetime_now();
+        assert_eq!(time_ago(now - 31536000 * 10), "10 years ago");
+    }
+
     // =========================================================================
     // localize_date with format variants
     // =========================================================================

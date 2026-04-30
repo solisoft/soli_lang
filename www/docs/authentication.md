@@ -8,30 +8,30 @@ Use `jwt_sign()` to create tokens for authenticated users:
 
 ```soli
 fn login(req)
-    let data = req["json"];
-    let username = data["username"];
-    let password = data["password"];
+  let data = req["json"];
+  let username = data["username"];
+  let password = data["password"];
 
-    # Verify credentials (example)
-    if username == "admin" && password == "secret"
-        let payload = {
-            "sub": username,
-            "role": "admin",
-            "name": "Administrator"
-        };
-        let secret = getenv("JWT_SECRET");
-        let token = jwt_sign(payload, secret, {"expires_in": 3600});
+  # Verify credentials (example)
+  if username == "admin" && password == "secret"
+    let payload = {
+      "sub": username,
+      "role": "admin",
+      "name": "Administrator"
+    };
+    let secret = getenv("JWT_SECRET");
+    let token = jwt_sign(payload, secret, {"expires_in": 3600});
 
-        return {
-            "status": 200,
-            "body": json_stringify({
-                "token": token,
-                "expires_in": 3600
-            })
-        };
-    end
+    return {
+      "status": 200,
+      "body": json_stringify({
+        "token": token,
+        "expires_in": 3600
+      })
+    };
+  end
 
-    {"status": 401, "body": "Invalid credentials"}
+  {"status": 401, "body": "Invalid credentials"}
 end
 ```
 
@@ -41,22 +41,22 @@ Use `jwt_verify()` to validate tokens and extract claims:
 
 ```soli
 fn authenticate_middleware(req)
-    let auth_header = req["headers"]["Authorization"];
+  let auth_header = req["headers"]["Authorization"];
 
-    if (auth_header == null || !Regex.matches("^Bearer ", auth_header))
-        return {"status": 401, "body": "Missing or invalid Authorization header"};
-    end
+  if (auth_header == null || !Regex.matches("^Bearer ", auth_header))
+    return {"status": 401, "body": "Missing or invalid Authorization header"};
+  end
 
-    let token = Regex.replace("^Bearer ", auth_header, "");
-    let result = jwt_verify(token, getenv("JWT_SECRET"));
+  let token = Regex.replace("^Bearer ", auth_header, "");
+  let result = jwt_verify(token, getenv("JWT_SECRET"));
 
-    if result["error"] == true
-        return {"status": 401, "body": "Invalid token: " + result["message"]};
-    end
+  if result["error"] == true
+    return {"status": 401, "body": "Invalid token: " + result["message"]};
+  end
 
-    # Token is valid - add user info to request
-    req["current_user"] = result;
-    null  # Continue to next middleware/controller
+  # Token is valid - add user info to request
+  req["current_user"] = result;
+  null  # Continue to next middleware/controller
 end
 ```
 
@@ -66,20 +66,20 @@ Use `jwt_decode()` to read token claims without verification:
 
 ```soli
 fn get_token_info(req)
-    let token = req["headers"]["Authorization"];
-    let token = Regex.replace("^Bearer ", token, "");
+  let token = req["headers"]["Authorization"];
+  let token = Regex.replace("^Bearer ", token, "");
 
-    # Decode without verification (for reading only)
-    let claims = jwt_decode(token);
+  # Decode without verification (for reading only)
+  let claims = jwt_decode(token);
 
-    {
-        "status": 200,
-        "body": json_stringify({
-            "subject": claims["sub"],
-            "issued_at": claims["iat"],
-            "expires": claims["exp"]
-        })
-    }
+  {
+    "status": 200,
+    "body": json_stringify({
+      "subject": claims["sub"],
+      "issued_at": claims["iat"],
+      "expires": claims["exp"]
+    })
+  }
 end
 ```
 

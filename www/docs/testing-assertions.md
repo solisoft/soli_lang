@@ -200,10 +200,10 @@ All assertion functions return a result hash with the following structure:
 
 ```soli
 {
-    "passed": true,
-    "message": "description of the test",
-    "expected": value_that_was_expected,
-    "actual": value_that_was_actual
+  "passed": true,
+  "message": "description of the test",
+  "expected": value_that_was_expected,
+  "actual": value_that_was_actual
 }
 ```
 
@@ -227,21 +227,21 @@ A typical test file structure with assertions:
 
 ```soli
 class UserModelTest
-    static fn run
-        let results = []
+  static fn run
+    let results = []
 
-        # Test 1: Create user
-        let user = User.create({"email": "test@example.com", "name": "Test"})
-        results.push(assert_true(contains(user, "id"), "create() returns user with id"))
-        results.push(assert_equal("test@example.com", user["email"], "email is stored correctly"))
+    # Test 1: Create user
+    let user = User.create({"email": "test@example.com", "name": "Test"})
+    results.push(assert_true(contains(user, "id"), "create() returns user with id"))
+    results.push(assert_equal("test@example.com", user["email"], "email is stored correctly"))
 
-        # Test 2: Find user
-        let found = User.find_by_email("test@example.com")
-        results.push(assert_not_nil(found, "find_by_email() returns user"))
-        results.push(assert_equal(user["id"], found["id"], "same user is returned"))
+    # Test 2: Find user
+    let found = User.find_by_email("test@example.com")
+    results.push(assert_not_nil(found, "find_by_email() returns user"))
+    results.push(assert_equal(user["id"], found["id"], "same user is returned"))
 
-        results
-    end
+    results
+  end
 end
 ```
 
@@ -264,15 +264,15 @@ let passed = 0
 let failed = 0
 
 for result in results
-    if result["passed"]
-        passed = passed + 1
-        print("  [PASS] " + result["message"])
-    else
-        failed = failed + 1
-        print("  [FAIL] " + result["message"])
-        print("         Expected: " + string(result["expected"]))
-        print("         Actual: " + string(result["actual"]))
-    end
+  if result["passed"]
+    passed = passed + 1
+    print("  [PASS] " + result["message"])
+  else
+    failed = failed + 1
+    print("  [FAIL] " + result["message"])
+    print("         Expected: " + string(result["expected"]))
+    print("         Actual: " + string(result["actual"]))
+  end
 end
 
 print("")
@@ -285,23 +285,23 @@ You can create custom assertions by defining new functions:
 
 ```soli
 fn assert_length(expected_len, collection, message)
-    let actual_len = len(collection)
-    {
-        "passed": actual_len == expected_len,
-        "message": message,
-        "expected": expected_len,
-        "actual": actual_len
-    }
+  let actual_len = len(collection)
+  {
+    "passed": actual_len == expected_len,
+    "message": message,
+    "expected": expected_len,
+    "actual": actual_len
+  }
 end
 
 fn assert_starts_with(prefix, str, message)
-    let starts_with = len(str) >= len(prefix) && substring(str, 0, len(prefix)) == prefix
-    {
-        "passed": starts_with,
-        "message": message,
-        "expected": prefix + "...",
-        "actual": str
-    }
+  let starts_with = len(str) >= len(prefix) && substring(str, 0, len(prefix)) == prefix
+  {
+    "passed": starts_with,
+    "message": message,
+    "expected": prefix + "...",
+    "actual": str
+  }
 end
 ```
 
@@ -317,29 +317,29 @@ end
 
 ```soli
 class TransactionModelTest
-    static fn run
-        let results = []
-        MockDatabase.reset()
+  static fn run
+    let results = []
+    MockDatabase.reset()
 
-        # Test create
-        let tx = TransactionModel.create({"amount": 100, "currency": "EUR"})
-        results.push(assert_not_nil(tx["id"], "create() returns id"))
-        results.push(assert_equal("pending", tx["status"], "default status is pending"))
+    # Test create
+    let tx = TransactionModel.create({"amount": 100, "currency": "EUR"})
+    results.push(assert_not_nil(tx["id"], "create() returns id"))
+    results.push(assert_equal("pending", tx["status"], "default status is pending"))
 
-        # Test find
-        let found = TransactionModel.find_by_id(tx["id"])
-        results.push(assert_not_nil(found, "find_by_id() returns transaction"))
-        results.push(assert_equal(tx["amount"], found["amount"], "amount matches"))
+    # Test find
+    let found = TransactionModel.find_by_id(tx["id"])
+    results.push(assert_not_nil(found, "find_by_id() returns transaction"))
+    results.push(assert_equal(tx["amount"], found["amount"], "amount matches"))
 
-        # Test update
-        let updated = TransactionModel.update_status(tx["id"], "paid")
-        results.push(assert_equal("paid", updated["status"], "status updated"))
+    # Test update
+    let updated = TransactionModel.update_status(tx["id"], "paid")
+    results.push(assert_equal("paid", updated["status"], "status updated"))
 
-        # Test stats
-        let stats = TransactionModel.stats()
-        results.push(assert_equal(1, stats["total"], "one transaction in stats"))
+    # Test stats
+    let stats = TransactionModel.stats()
+    results.push(assert_equal(1, stats["total"], "one transaction in stats"))
 
-        results
-    end
+    results
+  end
 end
 ```

@@ -13,11 +13,11 @@ Use the `create_state_machine()` function to create a new state machine instance
 ```soli
 let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
 let transitions = [
-    {"event": "confirm", "from": "pending", "to": "confirmed"},
-    {"event": "process", "from": "confirmed", "to": "processing"},
-    {"event": "ship", "from": "processing", "to": "shipped"},
-    {"event": "deliver", "from": "shipped", "to": "delivered"},
-    {"event": "cancel", "from": "pending", "to": "cancelled"}
+  {"event": "confirm", "from": "pending", "to": "confirmed"},
+  {"event": "process", "from": "confirmed", "to": "processing"},
+  {"event": "ship", "from": "processing", "to": "shipped"},
+  {"event": "deliver", "from": "shipped", "to": "delivered"},
+  {"event": "cancel", "from": "pending", "to": "cancelled"}
 ];
 
 let order = create_state_machine("pending", states, transitions);
@@ -49,10 +49,10 @@ Guard conditions allow you to conditionally enable transitions based on context 
 
 ```soli
 let transitions = [
-    {"event": "confirm", "from": "pending", "to": "confirmed"},
-    {"event": "ship", "from": "processing", "to": "shipped", "if": "can_ship"},
-    {"event": "deliver", "from": "shipped", "to": "delivered", "guard": "is_deliverable"},
-    {"event": "cancel", "from": "pending", "to": "cancelled"}
+  {"event": "confirm", "from": "pending", "to": "confirmed"},
+  {"event": "ship", "from": "processing", "to": "shipped", "if": "can_ship"},
+  {"event": "deliver", "from": "shipped", "to": "delivered", "guard": "is_deliverable"},
+  {"event": "cancel", "from": "pending", "to": "cancelled"}
 ];
 
 let order = create_state_machine("pending", states, transitions);
@@ -86,7 +86,7 @@ Checks if an event is available from the current state:
 
 ```soli
 if (order.can("ship"))
-    print("Order can be shipped")
+  print("Order can be shipped")
 end
 ```
 
@@ -115,7 +115,7 @@ Check if the state machine is in a specific state:
 
 ```soli
 if (order.is("pending"))
-    print("Order is waiting for confirmation")
+  print("Order is waiting for confirmation")
 end
 ```
 
@@ -125,7 +125,7 @@ Check if the state machine is in any of the given states:
 
 ```soli
 if (order.is_in(["shipped", "delivered"]))
-    print("Order is on its way or delivered")
+  print("Order is on its way or delivered")
 end
 ```
 
@@ -177,7 +177,7 @@ Checks if an event is available from the current state:
 
 ```soli
 if (order.can("ship"))
-    print("Order can be shipped")
+  print("Order can be shipped")
 end
 # Returns: true or false
 ```
@@ -215,35 +215,35 @@ order.ship();
 
 ```soli
 class OrderWorkflow
-    fn create_order(items: Array, total: Float)
-        let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
-        let transitions = [
-            {"event": "confirm", "from": "pending", "to": "confirmed"},
-            {"event": "process", "from": "confirmed", "to": "processing"},
-            {"event": "ship", "from": "processing", "to": "shipped"},
-            {"event": "deliver", "from": "shipped", "to": "delivered"},
-            {"event": "cancel", "from": "pending", "to": "cancelled"}
-        ]
+  fn create_order(items: Array, total: Float)
+    let states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
+    let transitions = [
+      {"event": "confirm", "from": "pending", "to": "confirmed"},
+      {"event": "process", "from": "confirmed", "to": "processing"},
+      {"event": "ship", "from": "processing", "to": "shipped"},
+      {"event": "deliver", "from": "shipped", "to": "delivered"},
+      {"event": "cancel", "from": "pending", "to": "cancelled"}
+    ]
 
-        let order = create_state_machine("pending", states, transitions)
-        order.set("items", items)
-        order.set("total", total)
-        order.set("created_at", clock())
+    let order = create_state_machine("pending", states, transitions)
+    order.set("items", items)
+    order.set("total", total)
+    order.set("created_at", clock())
 
-        return order
+    return order
+  end
+
+  fn process_order(order: Any)
+    if (order.is("pending"))
+      order.confirm()
     end
 
-    fn process_order(order: Any)
-        if (order.is("pending"))
-            order.confirm()
-        end
-
-        if (order.is("confirmed"))
-            order.process()
-        end
-
-        return order
+    if (order.is("confirmed"))
+      order.process()
     end
+
+    return order
+  end
 end
 ```
 
@@ -252,11 +252,11 @@ end
 ```soli
 let payment_states = ["pending", "authorized", "captured", "failed", "refunded"];
 let payment_transitions = [
-    {"event": "authorize", "from": "pending", "to": "authorized"},
-    {"event": "capture", "from": "authorized", "to": "captured"},
-    {"event": "fail", "from": ["pending", "authorized"], "to": "failed"},
-    {"event": "refund", "from": ["captured", "failed"], "to": "refunded"},
-    {"event": "retry", "from": "failed", "to": "pending"}
+  {"event": "authorize", "from": "pending", "to": "authorized"},
+  {"event": "capture", "from": "authorized", "to": "captured"},
+  {"event": "fail", "from": ["pending", "authorized"], "to": "failed"},
+  {"event": "refund", "from": ["captured", "failed"], "to": "refunded"},
+  {"event": "retry", "from": "failed", "to": "pending"}
 ];
 
 let payment = create_state_machine("pending", payment_states, payment_transitions);
@@ -277,22 +277,22 @@ State machines can be persisted to the database for long-running workflows:
 ```soli
 # Save state to database
 let state_data = {
-    "machine_type": "Order",
-    "machine_id": order.get("id"),
-    "current_state": order.current_state(),
-    "context": {
-        "total": order.get("total"),
-        "items": order.get("items")
-    }
+  "machine_type": "Order",
+  "machine_id": order.get("id"),
+  "current_state": order.current_state(),
+  "context": {
+    "total": order.get("total"),
+    "items": order.get("items")
+  }
 };
 Order.update(order.get("id"), state_data);
 
 # Load state from database
 let saved_data = Order.find(order.get("id"));
 let loaded_order = create_state_machine(
-    saved_data["current_state"],
-    ["pending", "confirmed", "processing", "shipped", "delivered"],
-    [...]
+  saved_data["current_state"],
+  ["pending", "confirmed", "processing", "shipped", "delivered"],
+  [...]
 );
 loaded_order.set("total", saved_data["context"]["total"]);
 loaded_order.set("items", saved_data["context"]["items"]);

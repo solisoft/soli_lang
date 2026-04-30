@@ -12,9 +12,9 @@
             <span class="bg-gradient-to-r from-lime-400 to-green-400 bg-clip-text text-transparent">Modules</span>
         </h1>
         <pre data-filename="my_module.sl"><code class="language-soli text-sm">module MyModule
-    def hello
-        println("Hello from MyModule!")
-    end
+  def hello
+    println("Hello from MyModule!")
+  end
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Import a module.</p>
@@ -55,34 +55,34 @@ hello()</code></pre>
 
 # Private function (not exported)
 def validate_number(n: Int) -> Bool
-    n >= 0
+  n >= 0
 end
 
 # Exported functions
 export def add(a: Int, b: Int) -> Int
-    a + b
+  a + b
 end
 
 export def subtract(a: Int, b: Int) -> Int
-    a - b
+  a - b
 end
 
 export def multiply(a: Int, b: Int) -> Int
-    a * b
+  a * b
 end
 
 export def divide(a: Int, b: Int) -> Float
-    if (b == 0)
-        panic("Division by zero")
-    end
-    float(a) / float(b)
+  if (b == 0)
+    panic("Division by zero")
+  end
+  float(a) / float(b)
 end
 
 export def factorial(n: Int) -> Int
-    if (n <= 1)
-        return 1
-    end
-    n * factorial(n - 1)
+  if (n <= 1)
+    return 1
+  end
+  n * factorial(n - 1)
 end</code></pre>
             </div>
         </section>
@@ -99,39 +99,39 @@ end</code></pre>
 <pre data-filename="shapes.sl"><code class="language-soli text-sm"># shapes.sl
 
 module Shapes
-    class Circle
-        radius: Float
+  class Circle
+    radius: Float
 
-        new(radius: Float)
-            this.radius = radius
-        end
-
-        def area -> Float
-            3.14159 * this.radius * this.radius
-        end
-
-        def perimeter -> Float
-            2 * 3.14159 * this.radius
-        end
+    new(radius: Float)
+      this.radius = radius
     end
 
-    class Rectangle
-        width: Float
-        height: Float
-
-        new(width: Float, height: Float)
-            this.width = width
-            this.height = height
-        end
-
-        def area -> Float
-            this.width * this.height
-        end
-
-        def perimeter -> Float
-            2 * (this.width + this.height)
-        end
+    def area -> Float
+      3.14159 * this.radius * this.radius
     end
+
+    def perimeter -> Float
+      2 * 3.14159 * this.radius
+    end
+  end
+
+  class Rectangle
+    width: Float
+    height: Float
+
+    new(width: Float, height: Float)
+      this.width = width
+      this.height = height
+    end
+
+    def area -> Float
+      this.width * this.height
+    end
+
+    def perimeter -> Float
+      2 * (this.width + this.height)
+    end
+  end
 end</code></pre>
             </div>
         </section>
@@ -148,45 +148,45 @@ end</code></pre>
 <pre data-filename="commerce.sl"><code class="language-soli text-sm"># commerce.sl
 
 module Commerce
-    class Product
-        name: String
-        price: Float
-        quantity: Int
+  class Product
+    name: String
+    price: Float
+    quantity: Int
 
-        new(name: String, price: Float, quantity: Int)
-            this.name = name
-            this.price = price
-            this.quantity = quantity
-        end
-
-        def in_stock -> Bool
-            this.quantity > 0
-        end
-
-        def discounted(percent: Float) -> Float
-            this.price * (1 - percent / 100)
-        end
+    new(name: String, price: Float, quantity: Int)
+      this.name = name
+      this.price = price
+      this.quantity = quantity
     end
 
-    class Cart
-        items: Product[]
-
-        new
-            this.items = []
-        end
-
-        def add(product: Product)
-            this.items.push(product)
-        end
-
-        def total -> Float
-            let sum = 0.0
-            for item in this.items
-                sum = sum + item.price
-            end
-            sum
-        end
+    def in_stock -> Bool
+      this.quantity > 0
     end
+
+    def discounted(percent: Float) -> Float
+      this.price * (1 - percent / 100)
+    end
+  end
+
+  class Cart
+    items: Product[]
+
+    new
+      this.items = []
+    end
+
+    def add(product: Product)
+      this.items.push(product)
+    end
+
+    def total -> Float
+      let sum = 0.0
+      for item in this.items
+        sum = sum + item.price
+      end
+      sum
+    end
+  end
 end</code></pre>
             </div>
         </section>
@@ -269,10 +269,10 @@ let formatted = utils.format_date(DateTime.utc());</code></pre>
 │       ├── array.sl
 │       └── datetime.sl
 └── lib/
-    └── math/
-        ├── mod.sl
-        ├── basic.sl
-        └── advanced.sl</code></pre>
+  └── math/
+    ├── mod.sl
+    ├── basic.sl
+    └── advanced.sl</code></pre>
             </div>
         </div>
     </section>

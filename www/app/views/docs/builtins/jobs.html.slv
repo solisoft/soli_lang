@@ -44,10 +44,10 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">Create a file under <code class="text-amber-400">app/jobs/</code>. Filename and class name follow the same convention as controllers and models — <code class="text-amber-400">welcome_email_job.sl</code> defines <code class="text-amber-400">class WelcomeEmailJob</code>.</p>
             <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
-    static fn perform(args: Hash) {
-        let user = User.find(args["user_id"])
-        Mailer.send(user.email, "Welcome to the app")
-    }
+  static fn perform(args: Hash) {
+    let user = User.find(args["user_id"])
+    Mailer.send(user.email, "Welcome to the app")
+  }
 }</code></pre>
             <p class="text-gray-400 mt-3 text-sm">Every job class must define <code class="text-amber-400">static fn perform(args: Hash)</code>. That's the entry point SolidB triggers when the job runs.</p>
         </div>
@@ -269,11 +269,11 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">A class can declare a <code class="text-amber-400">static cron</code> field. On boot, worker 0 upserts a cron entry named after the class — the auto-derived name is the snake-case of the class (<code class="text-amber-400">nightly_report_job</code>).</p>
             <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob {
-    static cron = Cron.daily_at("03:00")
+  static cron = Cron.daily_at("03:00")
 
-    static fn perform(args: Hash) {
-        Report.generate()
-    }
+  static fn perform(args: Hash) {
+    Report.generate()
+  }
 }</code></pre>
             <p class="text-gray-400 mt-3 text-sm">Re-registers idempotently on hot reload. Removing the field does <strong class="text-white">not</strong> auto-delete the SolidB entry — call <code class="text-amber-400">Cron.delete(id)</code> explicitly to avoid surprise data loss.</p>
         </div>
@@ -334,27 +334,27 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Send an email asynchronously</h3>
             <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
-    static fn perform(args: Hash) {
-        let user = User.find(args["user_id"])
-        Mailer.send(user.email, "Welcome!")
-    }
+  static fn perform(args: Hash) {
+    let user = User.find(args["user_id"])
+    Mailer.send(user.email, "Welcome!")
+  }
 }</code></pre>
             <pre data-filename="app/controllers/users_controller.sl" class="mt-3"><code class="language-soli text-sm">fn create(req) {
-    let user = User.create(req["json"])
-    WelcomeEmailJob.perform_later({ "user_id": user.id })
-    return redirect("/users/" + str(user.id))
+  let user = User.create(req["json"])
+  WelcomeEmailJob.perform_later({ "user_id": user.id })
+  return redirect("/users/" + str(user.id))
 }</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Recurring report (declarative)</h3>
             <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob {
-    static cron = Cron.daily_at("03:00")
+  static cron = Cron.daily_at("03:00")
 
-    static fn perform(args: Hash) {
-        Report.generate()
-        AdminMailer.send_summary()
-    }
+  static fn perform(args: Hash) {
+    Report.generate()
+    AdminMailer.send_summary()
+  }
 }</code></pre>
         </div>
 
@@ -362,13 +362,13 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
             <h3 class="text-lg font-semibold text-white mb-3">Idempotent retries</h3>
             <p class="text-gray-400 text-sm mb-3">SolidB owns retry semantics. Treat handlers as idempotent. The callback receives <code class="text-amber-400">job_id</code> and <code class="text-amber-400">attempt</code> in the request body if you need to dedupe.</p>
             <pre data-filename="app/jobs/charge_job.sl"><code class="language-soli text-sm">class ChargeJob {
-    static fn perform(args: Hash) {
-        let charge_id = args["charge_id"]
-        if Charge.find(charge_id).processed {
-            return  # already done — no-op on retry
-        }
-        Charge.process(charge_id)
+  static fn perform(args: Hash) {
+    let charge_id = args["charge_id"]
+    if Charge.find(charge_id).processed {
+      return  # already done — no-op on retry
     }
+    Charge.process(charge_id)
+  }
 }</code></pre>
         </div>
     </section>

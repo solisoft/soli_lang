@@ -9,14 +9,14 @@ Create a file in `app/middleware/`:
 ```soli
 # app/middleware/auth.sl
 fn authenticate(req)
-    let token = req.headers["Authorization"];
+  let token = req.headers["Authorization"];
 
-    if token == null || token == ""
-        return error(401, "Unauthorized");
-    end
+  if token == null || token == ""
+    return error(401, "Unauthorized");
+  end
 
-    # Validate token...
-    req
+  # Validate token...
+  req
 end
 ```
 
@@ -29,9 +29,9 @@ Log all incoming requests:
 ```soli
 # app/middleware/logging.sl
 fn log_request(req)
-    let timestamp = datetime::now();
-    println(timestamp + " " + req.method + " " + req.path);
-    req
+  let timestamp = datetime::now();
+  println(timestamp + " " + req.method + " " + req.path);
+  req
 end
 ```
 
@@ -42,11 +42,11 @@ Handle Cross-Origin Resource Sharing:
 ```soli
 # app/middleware/cors.sl
 fn cors(req)
-    let response = req;
-    response.headers["Access-Control-Allow-Origin"] = "*";
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-    response
+  let response = req;
+  response.headers["Access-Control-Allow-Origin"] = "*";
+  response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+  response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+  response
 end
 ```
 
@@ -55,14 +55,14 @@ end
 ```soli
 # app/middleware/auth.sl
 fn auth(req)
-    let session = req.cookies["session"];
+  let session = req.cookies["session"];
 
-    if session == null
-        return redirect("/login");
-    end
+  if session == null
+    return redirect("/login");
+  end
 
-    # Verify session...
-    req
+  # Verify session...
+  req
 end
 ```
 
@@ -102,9 +102,9 @@ Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
 
 ```soli
 fn add_locale(req)
-    let lang = req.query["lang"] ?? "en";
-    req.locale = lang;
-    req
+  let lang = req.query["lang"] ?? "en";
+  req.locale = lang;
+  req
 end
 ```
 
@@ -112,9 +112,9 @@ end
 
 ```soli
 fn add_headers(req, response)
-    response.headers["X-Frame-Options"] = "SAMEORIGIN";
-    response.headers["X-Content-Type-Options"] = "nosniff";
-    response
+  response.headers["X-Frame-Options"] = "SAMEORIGIN";
+  response.headers["X-Content-Type-Options"] = "nosniff";
+  response
 end
 ```
 
@@ -122,7 +122,7 @@ end
 
 ```soli
 fn handle_errors(req, error)
-    error(500, "Internal Server Error")
+  error(500, "Internal Server Error")
 end
 ```
 

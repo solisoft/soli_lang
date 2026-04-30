@@ -11,10 +11,10 @@ Create a file under `app/jobs/`. The filename and class name follow the same con
 ```soli
 // app/jobs/welcome_email_job.sl
 class WelcomeEmailJob {
-    static fn perform(args: Hash) {
-        let user = User.find(args["user_id"]);
-        Mailer.send(user.email, "Welcome to the app");
-    }
+  static fn perform(args: Hash) {
+    let user = User.find(args["user_id"]);
+    Mailer.send(user.email, "Welcome to the app");
+  }
 }
 ```
 
@@ -76,11 +76,11 @@ A class can declare a `static cron`. On boot, worker 0 upserts a cron entry name
 
 ```soli
 class NightlyReportJob {
-    static cron = Cron.daily_at("03:00");
+  static cron = Cron.daily_at("03:00");
 
-    static fn perform(args: Hash) {
-        Report.generate();
-    }
+  static fn perform(args: Hash) {
+    Report.generate();
+  }
 }
 ```
 

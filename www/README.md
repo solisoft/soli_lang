@@ -84,12 +84,13 @@ Apply middleware only to specific routes:
 ```soli
 // Only /admin/* routes require authentication
 middleware("authenticate", -> {
-    get("/admin", "admin#index");
-    get("/admin/users", "admin#users");
-});
+  get("/admin", "admin#index");
+  get("/admin/users", "admin#users");
+  });
 
 // Public routes - no auth needed
 get("/", "home#index");
+
 ```
 
 ### 2. Middleware Types
@@ -106,6 +107,7 @@ Generate standard CRUD routes automatically:
 
 ```soli
 resources("users", null);
+
 ```
 
 Creates: `GET /users`, `POST /users`, `GET /users/:id`, etc.
@@ -116,10 +118,11 @@ Group routes under a common prefix:
 
 ```soli
 namespace("api", -> {
-    middleware("authenticate", -> {
-        get("/api/users", "users#index");
+  middleware("authenticate", -> {
+    get("/api/users", "users#index");
     });
-});
+  });
+
 ```
 
 ## 📚 Documentation
@@ -147,6 +150,7 @@ Configure middleware behavior using special comments:
 // order: 20          // Execution order (lower runs first)
 // global_only: true  // Only runs globally, cannot be scoped
 // scope_only: true   // Only runs when explicitly scoped
+
 ```
 
 ### Route DSL
@@ -171,9 +175,9 @@ Available helpers in `routes.sl`:
 
 // Scoped authentication middleware
 middleware("authenticate", -> {
-    get("/admin", "admin#index");
-    get("/admin/users", "admin#users");
-});
+  get("/admin", "admin#index");
+  get("/admin/users", "admin#users");
+  });
 
 // Public routes
 get("/", "home#index");
@@ -181,6 +185,7 @@ get("/about", "home#about");
 
 // RESTful resources
 resources("users", null);
+
 ```
 
 ## 🧪 Testing
@@ -191,23 +196,24 @@ Solilang provides a Rails-like E2E testing framework for testing your controller
 
 ```soli
 describe("PostsController", fn() {
-    before_each(fn() {
-        as_guest();
+  before_each(fn() {
+    as_guest();
     });
-    
-    test("creates post", fn() {
-        login("user@example.com", "password");
-        
-        let response = post("/posts", {
-            "title": "New Post",
-            "body": "Content"
-        });
-        
-        assert_eq(res_status(response), 201);
-        let data = res_json(response);
-        assert_eq(data["title"], "New Post");
+
+  test("creates post", fn() {
+    login("user@example.com", "password");
+
+    let response = post("/posts", {
+      "title": "New Post",
+      "body": "Content"
+      });
+
+    assert_eq(res_status(response), 201);
+    let data = res_json(response);
+    assert_eq(data["title"], "New Post");
     });
-});
+  });
+
 ```
 
 #### Request Helpers
@@ -306,13 +312,14 @@ No restart needed!
 
 ```soli
 fn index(req: Any) {
-    return {"status": 200, "body": "Hello!"};
+  return {"status": 200, "body": "Hello!"};
 }
 
 fn show(req: Any) {
-    let id = req["params"]["id"];
-    return {"status": 200, "body": "User " + id};
+  let id = req["params"]["id"];
+  return {"status": 200, "body": "User " + id};
 }
+
 ```
 
 2. Add routes in `config/routes.sl`:
@@ -320,6 +327,7 @@ fn show(req: Any) {
 ```soli
 get("/users", "users#index");
 get("/users/:id", "users#show");
+
 ```
 
 ## 🔒 Security Notes

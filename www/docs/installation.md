@@ -76,9 +76,9 @@ Create controllers in `app/controllers/`:
 
 ```soli
 fn index(req)
-    return render("home/index", {
-        "title": "Welcome"
-    })
+  return render("home/index", {
+    "title": "Welcome"
+  })
 end
 ```
 

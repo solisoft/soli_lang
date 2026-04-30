@@ -38,26 +38,26 @@
                 <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
-    let result = 10 / 0
+  let result = 10 / 0
 catch e
-    print("Error: " + str(e))
+  print("Error: " + str(e))
 end
 
 # With finally (always runs)
 try
-    let data = read_file("config.sl")
-    print(data)
+  let data = read_file("config.sl")
+  print(data)
 catch e
-    print("Failed: " + str(e))
+  print("Failed: " + str(e))
 finally
-    print("Cleanup done")
+  print("Cleanup done")
 end
 
 # Try/finally without catch
 try
-    process_data()
+  process_data()
 finally
-    close_connection()
+  close_connection()
 end</code></pre>
             </div>
         </section>
@@ -71,16 +71,16 @@ end</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Without parentheses
 try
-    risky()
+  risky()
 catch e
-    print(e)
+  print(e)
 end
 
 # With parentheses
 try
-    risky()
+  risky()
 catch (e)
-    print(e)
+  print(e)
 end</code></pre>
             </div>
         </div>
@@ -107,16 +107,16 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Raises an exception that can be caught by a surrounding <code class="text-indigo-400">try/catch</code> block.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def divide(a: Int, b: Int) -> Int
-    if b == 0
-        throw "Division by zero"
-    end
-    a / b
+  if b == 0
+    throw "Division by zero"
+  end
+  a / b
 end
 
 try
-    let result = divide(10, 0)
+  let result = divide(10, 0)
 catch e
-    print("Caught: " + str(e))  # "Caught: Division by zero"
+  print("Caught: " + str(e))  # "Caught: Division by zero"
 end</code></pre>
             </div>
         </section>
@@ -129,11 +129,11 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
-    let result = risky_operation()
+  let result = risky_operation()
 catch e
-    print("Error: " + str(e))
+  print("Error: " + str(e))
 finally
-    cleanup()
+  cleanup()
 end</code></pre>
             </div>
         </div>
@@ -161,28 +161,28 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">Catch specific error types by class name. Multiple <code class="text-indigo-400">catch</code> blocks are tried in order. A bare <code class="text-indigo-400">catch</code> without a type acts as a catch-all.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Define error classes
 class NotFoundError
-    message: String
-    new(msg: String)
-        this.message = msg
-    end
+  message: String
+  new(msg: String)
+    this.message = msg
+  end
 end
 
 class ValidationError
-    message: String
-    new(msg: String)
-        this.message = msg
-    end
+  message: String
+  new(msg: String)
+    this.message = msg
+  end
 end
 
 # Multiple typed catch blocks
 try
-    throw new NotFoundError("User not found")
+  throw new NotFoundError("User not found")
 catch NotFoundError e
-    print("404: " + e.message)
+  print("404: " + e.message)
 catch ValidationError e
-    print("Invalid: " + e.message)
+  print("Invalid: " + e.message)
 catch e
-    print("Unknown error: " + str(e))
+  print("Unknown error: " + str(e))
 end</code></pre>
             </div>
         </section>
@@ -197,29 +197,29 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Typed catches walk the inheritance chain. A <code class="text-indigo-400">catch BaseError</code> will also catch any subclass of <code class="text-indigo-400">BaseError</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">class AppError
-    message: String
-    new(msg: String)
-        this.message = msg
-    end
+  message: String
+  new(msg: String)
+    this.message = msg
+  end
 end
 
 class NotFoundError extends AppError
-    new(msg: String)
-        super(msg)
-    end
+  new(msg: String)
+    super(msg)
+  end
 end
 
 class PermissionError extends AppError
-    new(msg: String)
-        super(msg)
-    end
+  new(msg: String)
+    super(msg)
+  end
 end
 
 # Catches NotFoundError because it extends AppError
 try
-    throw new NotFoundError("Page not found")
+  throw new NotFoundError("Page not found")
 catch AppError e
-    print("App error: " + e.message)
+  print("App error: " + e.message)
 end</code></pre>
             </div>
         </section>
@@ -237,15 +237,15 @@ end</code></pre>
 class ErrorB {}
 
 try
-    try
-        throw new ErrorB()
-    catch ErrorA e
-        # Does NOT match ErrorB
-        print("A")
-    end
+  try
+    throw new ErrorB()
+  catch ErrorA e
+    # Does NOT match ErrorB
+    print("A")
+  end
 catch e
-    # ErrorB bubbles up here
-    print("Caught in outer: " + str(e))
+  # ErrorB bubbles up here
+  print("Caught in outer: " + str(e))
 end</code></pre>
             </div>
         </section>
@@ -276,15 +276,15 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
-    print("Outer try")
-    try
-        throw "inner error"
-    catch e
-        print("Inner catch: " + str(e))
-    end
-    print("After inner try")
+  print("Outer try")
+  try
+    throw "inner error"
+  catch e
+    print("Inner catch: " + str(e))
+  end
+  print("After inner try")
 catch e
-    print("Outer catch: " + str(e))
+  print("Outer catch: " + str(e))
 end</code></pre>
             </div>
         </div>

@@ -19,23 +19,23 @@ V.hash()     # Hash/object validator
 
 ```soli
 let schema = {
-    "email": V.string().required().email(),
-    "password": V.string().required().min_length(8),
-    "age": V.int().optional().min(18)
+  "email": V.string().required().email(),
+  "password": V.string().required().min_length(8),
+  "age": V.int().optional().min(18)
 };
 
 let result = validate(req["json"], schema);
 
 if result["valid"]
-    let data = result["data"];
-    # Use validated and coerced data
-    print("Email:", data["email"]);
-    print("Age:", data["age"]);  # Already converted to int
+  let data = result["data"];
+  # Use validated and coerced data
+  print("Email:", data["email"]);
+  print("Age:", data["age"]);  # Already converted to int
 else
-    # Handle validation errors
-    for error in result["errors"]
-        print(error["field"], ":", error["message"]);
-    end
+  # Handle validation errors
+  for error in result["errors"]
+    print(error["field"], ":", error["message"]);
+  end
 end
 ```
 
@@ -94,15 +94,15 @@ Validate complex objects with nested schemas:
 
 ```soli
 let address_schema = {
-    "street": V.string().required(),
-    "city": V.string().required(),
-    "zip": V.string().pattern("^\\d{5}$")
+  "street": V.string().required(),
+  "city": V.string().required(),
+  "zip": V.string().pattern("^\\d{5}$")
 };
 
 let user_schema = {
-    "name": V.string().required(),
-    "email": V.string().required().email(),
-    "address": V.hash(address_schema).required()
+  "name": V.string().required(),
+  "email": V.string().required().email(),
+  "address": V.hash(address_schema).required()
 };
 
 let result = validate(req["json"], user_schema);
@@ -118,25 +118,25 @@ let tags_schema = V.array(V.string().required()).required();
 
 # Validate array of objects
 let items_schema = V.array(
-    V.hash({
-        "id": V.int().required(),
-        "name": V.string().required()
-    })
+  V.hash({
+    "id": V.int().required(),
+    "name": V.string().required()
+  })
 ).required();
 
 # Usage
 let result = validate({
-    "items": [
-        {"id": 1, "name": "Item 1"},
-        {"id": 2, "name": "Item 2"}
-    ]
+  "items": [
+    {"id": 1, "name": "Item 1"},
+    {"id": 2, "name": "Item 2"}
+  ]
 }, {
-    "items": V.array(
-        V.hash({
-            "id": V.int().required(),
-            "name": V.string().required()
-        })
-    ).required()
+  "items": V.array(
+    V.hash({
+      "id": V.int().required(),
+      "name": V.string().required()
+    })
+  ).required()
 });
 ```
 
@@ -146,58 +146,58 @@ let result = validate({
 # app/controllers/users_controller.sl
 
 fn new(req)
-    {
-        "status": 200,
-        "body": render("users/new.html", {})
-    }
+  {
+    "status": 200,
+    "body": render("users/new.html", {})
+  }
 end
 
 fn create(req)
-    let schema = {
-        "username": V.string().required()
-            .min_length(3)
-            .max_length(20)
-            .pattern(r"^[a-zA-Z0-9_]+$"),
-        "email": V.string().required().email(),
-        "password": V.string().required().min_length(8),
-        "confirm_password": V.string().required(),
-        "age": V.int().optional().min(13)
+  let schema = {
+    "username": V.string().required()
+      .min_length(3)
+      .max_length(20)
+      .pattern(r"^[a-zA-Z0-9_]+$"),
+    "email": V.string().required().email(),
+    "password": V.string().required().min_length(8),
+    "confirm_password": V.string().required(),
+    "age": V.int().optional().min(13)
+  };
+
+  let result = validate(req["json"], schema);
+
+  if !result["valid"]
+    return {
+      "status": 422,
+      "body": json_stringify({
+        "errors": result["errors"]
+      })
     };
+  end
 
-    let result = validate(req["json"], schema);
+  let data = result["data"];
 
-    if !result["valid"]
-        return {
-            "status": 422,
-            "body": json_stringify({
-                "errors": result["errors"]
-            })
-        };
-    end
+  # Check password confirmation
+  if data["password"] != data["confirm_password"]
+    return {
+      "status": 422,
+      "body": json_stringify({
+        "errors": [{
+          "field": "confirm_password",
+          "message": "passwords do not match",
+          "code": "mismatch"
+        }]
+      })
+    };
+  end
 
-    let data = result["data"];
+  # Create user (example)
+  let user = create_user(data["username"], data["email"], data["password"]);
 
-    # Check password confirmation
-    if data["password"] != data["confirm_password"]
-        return {
-            "status": 422,
-            "body": json_stringify({
-                "errors": [{
-                    "field": "confirm_password",
-                    "message": "passwords do not match",
-                    "code": "mismatch"
-                }]
-            })
-        };
-    end
-
-    # Create user (example)
-    let user = create_user(data["username"], data["email"], data["password"]);
-
-    {
-        "status": 201,
-        "body": json_stringify({"user": user})
-    }
+  {
+    "status": 201,
+    "body": json_stringify({"user": user})
+  }
 end
 ```
 
@@ -220,9 +220,9 @@ Returns `{ "valid": Bool, "data": Hash, "errors": Array }`
 
 ```soli
 {
-    "field": "email",
-    "message": "must be a valid email",
-    "code": "invalid_email"
+  "field": "email",
+  "message": "must be a valid email",
+  "code": "invalid_email"
 }
 ```
 
@@ -253,16 +253,16 @@ The validation system automatically coerces types:
 
 ```soli
 let schema = {
-    "age": V.int().required(),
-    "active": V.bool().required(),
-    "score": V.float().required()
+  "age": V.int().required(),
+  "active": V.bool().required(),
+  "score": V.float().required()
 };
 
 # Input (strings get converted)
 let input = {
-    "age": "25",       # -> 25 (int)
-    "active": "true",  # -> true (bool)
-    "score": "95.5"    # -> 95.5 (float)
+  "age": "25",       # -> 25 (int)
+  "active": "true",  # -> true (bool)
+  "score": "95.5"    # -> 95.5 (float)
 };
 
 let result = validate(input, schema);

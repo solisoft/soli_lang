@@ -40,9 +40,9 @@ with powerful methods for data manipulation.
                     <p class="text-gray-400 mb-3">Create hashes using curly braces with key-value pairs.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Colon syntax (keys are strings)
 let person = {
-    name: "Alice",
-    age: 30,
-    city: "New York"
+  name: "Alice",
+  age: 30,
+  city: "New York"
 }
 
 # Fat arrow syntax (=>)
@@ -56,12 +56,12 @@ let empty = {}
 
 # Mixed values
 let mixed = {
-    number: 42,
-    string: "hello",
-    bool: true,
-    null_val: null,
-    array: [1, 2, 3],
-    nested: {a: 1, b: 2}
+  number: 42,
+  string: "hello",
+  bool: true,
+  null_val: null,
+  array: [1, 2, 3],
+  nested: {a: 1, b: 2}
 };</code></pre>
                 </div>
             </section>
@@ -76,21 +76,21 @@ let mixed = {
                     </a>
                     <p class="text-gray-400 mb-3">Hashes can contain other hashes for complex data structures.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let user = {
-    id: 1,
-    name: "Alice",
-    profile: {
-        email: "alice@example.com",
-        phone: "555-1234",
-        address: {
-            street: "123 Main St",
-            city: "NYC",
-            zip: "10001"
-        }
-    },
-    preferences: {
-        theme: "dark",
-        notifications: true
+  id: 1,
+  name: "Alice",
+  profile: {
+    email: "alice@example.com",
+    phone: "555-1234",
+    address: {
+      street: "123 Main St",
+      city: "NYC",
+      zip: "10001"
     }
+  },
+  preferences: {
+    theme: "dark",
+    notifications: true
+  }
 };</code></pre>
                 </div>
             </section>
@@ -491,11 +491,11 @@ let high = scores.select |k, v| v >= 90 end</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Get subset with specified keys or without specified keys.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let user = {
-    name: "Alice",
-    age: 30,
-    email: "alice@example.com",
-    city: "NYC",
-    password: "secret123"
+  name: "Alice",
+  age: 30,
+  email: "alice@example.com",
+  city: "NYC",
+  password: "secret123"
 }
 
 # slice - only these keys
@@ -536,10 +536,10 @@ print(dupes.invert());  # {1: "b"}</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Remove entries with null values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let user = {
-    name: "Alice",
-    age: null,
-    email: "alice@example.com",
-    phone: null
+  name: "Alice",
+  age: null,
+  email: "alice@example.com",
+  phone: null
 }
 let cleaned = user.compact# {name: "Alice", email: "alice@example.com"}</code></pre>
                 </div>
@@ -555,12 +555,12 @@ let cleaned = user.compact# {name: "Alice", email: "alice@example.com"}</code></
                     </a>
                     <p class="text-gray-400 mb-3">Navigate nested hashes safely. Returns null if any key is not found (no error raised).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let data = {
-    user: {
-        profile: {
-            name: "Alice",
-            address: {city: "NYC"}
-        }
+  user: {
+    profile: {
+      name: "Alice",
+      address: {city: "NYC"}
     }
+  }
 }
 
 # Safe navigation with dig
@@ -600,7 +600,7 @@ print(data.dig("user", "nonexistent", "key"));        # null (safe, no error)
 # Count occurrences
 let counts = {}
 words.each(def(word)
-    let current = counts.get(word, 0)
+  let current = counts.get(word, 0)
 counts[word] = current + 1
 end)
 print(counts);  # {apple: 3, banana: 2, cherry: 1}</code></pre>
@@ -616,19 +616,19 @@ print(counts);  # {apple: 3, banana: 2, cherry: 1}</code></pre>
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">let people = [
-    {name: "Alice", department: "Engineering"},
-    {name: "Bob", department: "Sales"},
-    {name: "Charlie", department: "Engineering"}
+  {name: "Alice", department: "Engineering"},
+  {name: "Bob", department: "Sales"},
+  {name: "Charlie", department: "Engineering"}
 ]
 
 # Group by department
 let by_dept = {}
 people.each(def(person)
-    let dept = person["department"]
-    if (!has_key(by_dept, dept))
-        by_dept[dept] = []
-    end
-    push(by_dept[dept], person["name"])
+  let dept = person["department"]
+  if (!has_key(by_dept, dept))
+    by_dept[dept] = []
+  end
+  push(by_dept[dept], person["name"])
 end)
 print(by_dept)
 # {Engineering: ["Alice", "Charlie"], Sales: ["Bob"]}</code></pre>
@@ -645,10 +645,10 @@ print(by_dept)
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Default configuration
 let defaults = {
-    host: "localhost",
-    port: 3000,
-    debug: false,
-    timeout: 30
+  host: "localhost",
+  port: 3000,
+  debug: false,
+  timeout: 30
 }
 
 # User-provided config (partial)

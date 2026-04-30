@@ -112,8 +112,8 @@ let round_trip = Base64.decode(Base64.encode(original))assert_eq(round_trip, ori
 <pre data-filename="Example"><code class="language-soli text-sm">let image_data = slurp("avatar.png")
 let base64_image = Base64.encode(image_data)
 let json_response = json_stringify({
-    "avatar": base64_image,
-    "filename": "avatar.png"
+  "avatar": base64_image,
+  "filename": "avatar.png"
 });</code></pre>
                 </div>
             </section>
@@ -128,8 +128,8 @@ let json_response = json_stringify({
                     </a>
                     <p class="text-gray-400 mb-3">Create Basic Auth credentials for HTTP requests.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">def basic_auth_header(username: String, password: String) -> String
-    let credentials = username + ":" + password
-    let encoded = Base64.encode(credentials)    "Basic " + encoded
+  let credentials = username + ":" + password
+  let encoded = Base64.encode(credentials)    "Basic " + encoded
 end
 
 # Usage
@@ -177,19 +177,19 @@ will return an error if:</p>
             </ul>
 <pre data-filename="Example"><code class="language-soli text-sm"># Invalid Base64 (wrong padding)
 try
-    Base64.decode("invalid==")
+  Base64.decode("invalid==")
 catch e
-    print("Error: " + e)  # "Error: Invalid Base64: ..."
+  print("Error: " + e)  # "Error: Invalid Base64: ..."
 end
 
 # Valid Base64 with proper error handling
 def safe_decode(input: String) -> String
-    try
-        return Base64.decode(input)
-    catch e
-        print("Failed to decode: " + e)
-        ""
-    end
+  try
+    return Base64.decode(input)
+  catch e
+    print("Failed to decode: " + e)
+    ""
+  end
 end</code></pre>
         </div>
     </section>

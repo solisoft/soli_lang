@@ -53,7 +53,7 @@ let response = HTTP.request("DELETE", "https://api.example.com/users/1")</code><
             <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns a Future that resolves to the response body as a string.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.get("https://api.example.com/users")
 if resp["status"] == 200
-    println(resp["body"])
+  println(resp["body"])
 end</code></pre>
         </section>
 
@@ -66,9 +66,9 @@ end</code></pre>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.post(
-    "https://api.example.com/users",
-    "name=Alice",
-    { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
+  "https://api.example.com/users",
+  "name=Alice",
+  { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
 )</code></pre>
         </section>
 
@@ -81,8 +81,8 @@ end</code></pre>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP PUT request with a body.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.put(
-    "https://api.example.com/users/1",
-    { "name": "Alice Updated" }
+  "https://api.example.com/users/1",
+  { "name": "Alice Updated" }
 )</code></pre>
         </section>
 
@@ -106,8 +106,8 @@ end</code></pre>
             </a>
             <p class="text-gray-400 mb-3">Perform an HTTP PATCH request with a body.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.patch(
-    "https://api.example.com/users/1",
-    { "email": "new_email@example.com" }
+  "https://api.example.com/users/1",
+  { "email": "new_email@example.com" }
 )</code></pre>
         </section>
 
@@ -149,8 +149,8 @@ println(data["body"]["name"])</code></pre>
             </a>
             <p class="text-gray-400 mb-3">POST request with automatic JSON serialization.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.post_json(
-    "https://api.example.com/users",
-    { "name": "Alice", "email": "alice@example.com" }
+  "https://api.example.com/users",
+  { "name": "Alice", "email": "alice@example.com" }
 )</code></pre>
         </section>
 
@@ -163,8 +163,8 @@ println(data["body"]["name"])</code></pre>
             </a>
             <p class="text-gray-400 mb-3">PUT request with automatic JSON serialization.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.put_json(
-    "https://api.example.com/users/1",
-    { "name": "Alice Updated", "email": "alice_updated@example.com" }
+  "https://api.example.com/users/1",
+  { "name": "Alice Updated", "email": "alice_updated@example.com" }
 )</code></pre>
         </section>
 
@@ -177,8 +177,8 @@ println(data["body"]["name"])</code></pre>
             </a>
             <p class="text-gray-400 mb-3">PATCH request with automatic JSON serialization.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">let resp = HTTP.patch_json(
-    "https://api.example.com/users/1",
-    { "email": "new_email@example.com" }
+  "https://api.example.com/users/1",
+  { "email": "new_email@example.com" }
 )</code></pre>
         </section>
     </section>
@@ -302,8 +302,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                 </a>
                 <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let responses = HTTP.get_all([
-    "https://api.example.com/users",
-    "https://api.example.com/posts"
+  "https://api.example.com/users",
+  "https://api.example.com/posts"
 ])</code></pre>
             </div>
         </section>
@@ -318,8 +318,8 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                 </a>
                 <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let responses = HTTP.parallel([
-    { "method": "GET", "url": "https://api.example.com/users" },
-    { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
+  { "method": "GET", "url": "https://api.example.com/users" },
+  { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])</code></pre>
             </div>
         </section>
@@ -354,7 +354,7 @@ let resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</cod
                     <div><code class="text-amber-400">handler_name</code> : <code class="text-purple-400">String</code> - Handler function name</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">def health(req)
-    return {"status": 200, "body": "OK"}
+  return {"status": 200, "body": "OK"}
 end
 
 http_server_get("/health", "health")http_server_get("/users/:id", "get_user");</code></pre>
@@ -371,8 +371,8 @@ http_server_get("/health", "health")http_server_get("/users/:id", "get_user");</
                 </a>
                 <p class="text-gray-400 mb-3">Register a POST route handler.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def create_user(req)
-    let name = req["json"]["name"]
-    return {"status": 201, "body": "Created: " + name}
+  let name = req["json"]["name"]
+  return {"status": 201, "body": "Created: " + name}
 end
 
 http_server_post("/users", "create_user");</code></pre>
@@ -433,13 +433,13 @@ http_server_listen(3000);</code></pre>
             </p>
             <pre data-filename="Example"><code class="language-soli text-sm">def my_handler(req)
 let id = req["params"]["id"];           # Path parameters
-    let name = req["query"]["name"];         # Query string
-    let data = req["json"]["field"];         # JSON body
-    let token = req["headers"]["Authorization"];  # Headers
-    
-    return {"status": 200, "body": "Hello"}
-    
-    return render_json({"message": "Hello"})
+  let name = req["query"]["name"];         # Query string
+  let data = req["json"]["field"];         # JSON body
+  let token = req["headers"]["Authorization"];  # Headers
+  
+  return {"status": 200, "body": "Hello"}
+  
+  return render_json({"message": "Hello"})
 return render_text("Plain text")
 return redirect("/other-page")
 end</code></pre>

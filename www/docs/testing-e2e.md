@@ -18,11 +18,11 @@ Every E2E test file follows the same structure using Soli's test DSL. The framew
 
 ```soli
 describe("HomeController", fn()
-    test("GET /up returns UP status", fn()
-        let response = get("/up")
-        assert_eq(res_status(response), 200)
-        assert_eq(res_body(response), "UP")
-    end)
+  test("GET /up returns UP status", fn()
+    let response = get("/up")
+    assert_eq(res_status(response), 200)
+    assert_eq(res_body(response), "UP")
+  end)
 end)
 ```
 
@@ -69,8 +69,8 @@ The `post()` function submits data to create new resources. Pass the request pat
 
 ```soli
 let response = post("/posts", {
-    "title": "New Post",
-    "content": "Hello World"
+  "title": "New Post",
+  "content": "Hello World"
 });
 assert_eq(res_status(response), 201);
 ```
@@ -81,8 +81,8 @@ The `put()` function replaces existing resources entirely. Provide the resource 
 
 ```soli
 let response = put("/posts/42", {
-    "title": "Updated Title",
-    "content": "Modified content"
+  "title": "Updated Title",
+  "content": "Modified content"
 });
 assert_eq(res_status(response), 200);
 ```
@@ -93,7 +93,7 @@ The `patch()` function performs partial updates, modifying only specified fields
 
 ```soli
 let response = patch("/posts/42", {
-    "title": "Just the Title"
+  "title": "Just the Title"
 });
 assert_eq(res_status(response), 200);
 ```
@@ -175,8 +175,8 @@ assert_eq(status, 200);
 
 ```soli
 if (res_ok(response))
-    let data = res_json(response)
-    # Process successful response
+  let data = res_json(response)
+  # Process successful response
 end
 ```
 
@@ -260,7 +260,7 @@ Session helpers manage authentication state and session data during tests. These
 
 ```soli
 before_each(fn()
-    as_guest()
+  as_guest()
 end)
 ```
 
@@ -397,8 +397,8 @@ assert_eq(path, "users/show.html");
 
 ```soli
 if (render_template())
-    let content = assigns()
-    # Inspect rendered content
+  let content = assigns()
+  # Inspect rendered content
 end
 ```
 
@@ -422,99 +422,99 @@ This comprehensive example demonstrates testing a typical PostsController with f
 
 ```soli
 describe("PostsController", fn()
-    before_each(fn()
-        as_guest()
+  before_each(fn()
+    as_guest()
+  end)
+
+  describe("GET /posts", fn()
+    test("returns list of posts", fn()
+      let response = get("/posts")
+      assert_eq(res_status(response), 200)
+      let data = res_json(response)
+      assert_gt(len(data["posts"]), 0)
     end)
 
-    describe("GET /posts", fn()
-        test("returns list of posts", fn()
-            let response = get("/posts")
-            assert_eq(res_status(response), 200)
-            let data = res_json(response)
-            assert_gt(len(data["posts"]), 0)
-        end)
+    test("includes pagination metadata", fn()
+      let response = get("/posts?page=1&per_page=10")
+      let data = res_json(response)
+      assert_hash_has_key(data, "pagination")
+    end)
+  end)
 
-        test("includes pagination metadata", fn()
-            let response = get("/posts?page=1&per_page=10")
-            let data = res_json(response)
-            assert_hash_has_key(data, "pagination")
-        end)
+  describe("GET /posts/:id", fn()
+    test("shows single post", fn()
+      let response = get("/posts/1")
+      assert_eq(res_status(response), 200)
+      let post = res_json(response)
+      assert_eq(post["title"], "First Post")
     end)
 
-    describe("GET /posts/:id", fn()
-        test("shows single post", fn()
-            let response = get("/posts/1")
-            assert_eq(res_status(response), 200)
-            let post = res_json(response)
-            assert_eq(post["title"], "First Post")
-        end)
+    test("returns 404 for missing post", fn()
+      let response = get("/posts/99999")
+      assert_eq(res_status(response), 404)
+    end)
+  end)
 
-        test("returns 404 for missing post", fn()
-            let response = get("/posts/99999")
-            assert_eq(res_status(response), 404)
-        end)
+  describe("POST /posts", fn()
+    test("creates post with valid data", fn()
+      login("author@example.com", "password123")
+      
+      let response = post("/posts", {
+        "title": "New Post Title",
+        "body": "Post content here"
+      })
+      
+      assert_eq(res_status(response), 201)
+      let result = res_json(response)
+      assert_not_null(result["id"])
     end)
 
-    describe("POST /posts", fn()
-        test("creates post with valid data", fn()
-            login("author@example.com", "password123")
-            
-            let response = post("/posts", {
-                "title": "New Post Title",
-                "body": "Post content here"
-            })
-            
-            assert_eq(res_status(response), 201)
-            let result = res_json(response)
-            assert_not_null(result["id"])
-        end)
-
-        test("rejects unauthenticated request", fn()
-            let response = post("/posts", {"title": "Test"})
-            assert_eq(res_status(response), 302) # Redirect to login
-        end)
-
-        test("validates required fields", fn()
-            login("author@example.com", "password123")
-            
-            let response = post("/posts", {})
-            assert_eq(res_status(response), 422)
-            let errors = res_json(response)["errors"]
-            assert_hash_has_key(errors, "title")
-        end)
+    test("rejects unauthenticated request", fn()
+      let response = post("/posts", {"title": "Test"})
+      assert_eq(res_status(response), 302) # Redirect to login
     end)
 
-    describe("PUT /posts/:id", fn()
-        test("updates post with valid data", fn()
-            login("author@example.com", "password123")
-            
-            let response = put("/posts/1", {
-                "title": "Updated Title"
-            })
-            
-            assert_eq(res_status(response), 200)
-        end)
+    test("validates required fields", fn()
+      login("author@example.com", "password123")
+      
+      let response = post("/posts", {})
+      assert_eq(res_status(response), 422)
+      let errors = res_json(response)["errors"]
+      assert_hash_has_key(errors, "title")
+    end)
+  end)
 
-        test("prevents unauthorized updates", fn()
-            let other_user = create_user({"email": "other@example.com"})
-            as_user(other_user["id"])
-            
-            let response = put("/posts/1", {"title": "Hacked"})
-            assert_eq(res_status(response), 403)
-        end)
+  describe("PUT /posts/:id", fn()
+    test("updates post with valid data", fn()
+      login("author@example.com", "password123")
+      
+      let response = put("/posts/1", {
+        "title": "Updated Title"
+      })
+      
+      assert_eq(res_status(response), 200)
     end)
 
-    describe("DELETE /posts/:id", fn()
-        test("deletes post", fn()
-            login("author@example.com", "password123")
-            
-            let response = delete("/posts/1")
-            assert_eq(res_status(response), 204)
-            
-            let check_response = get("/posts/1")
-            assert_eq(res_status(check_response), 404)
-        end)
+    test("prevents unauthorized updates", fn()
+      let other_user = create_user({"email": "other@example.com"})
+      as_user(other_user["id"])
+      
+      let response = put("/posts/1", {"title": "Hacked"})
+      assert_eq(res_status(response), 403)
     end)
+  end)
+
+  describe("DELETE /posts/:id", fn()
+    test("deletes post", fn()
+      login("author@example.com", "password123")
+      
+      let response = delete("/posts/1")
+      assert_eq(res_status(response), 204)
+      
+      let check_response = get("/posts/1")
+      assert_eq(res_status(check_response), 404)
+    end)
+  end)
 end)
 ```
 
@@ -524,67 +524,67 @@ This example demonstrates comprehensive authentication testing:
 
 ```soli
 describe("Authentication Flow", fn()
-    before_each(fn()
-        as_guest()
-    end)
+  before_each(fn()
+    as_guest()
+  end)
 
-    test("login with valid credentials succeeds", fn()
-        let response = post("/login", {
-            "email": "admin@example.com",
-            "password": "secret123"
-        })
-        
-        assert_eq(res_status(response), 200)
-        assert(signed_in())
-    end)
+  test("login with valid credentials succeeds", fn()
+    let response = post("/login", {
+      "email": "admin@example.com",
+      "password": "secret123"
+    })
+    
+    assert_eq(res_status(response), 200)
+    assert(signed_in())
+  end)
 
-    test("login with invalid credentials fails", fn()
-        let response = post("/login", {
-            "email": "wrong@example.com",
-            "password": "wrongpassword"
-        })
-        
-        assert_eq(res_status(response), 401)
-        assert(signed_out())
-    end)
+  test("login with invalid credentials fails", fn()
+    let response = post("/login", {
+      "email": "wrong@example.com",
+      "password": "wrongpassword"
+    })
+    
+    assert_eq(res_status(response), 401)
+    assert(signed_out())
+  end)
 
-    test("profile requires authentication", fn()
-        let response = get("/users/profile")
-        assert_eq(res_status(response), 302)
-        assert_eq(res_location(response), "/login")
-    end)
+  test("profile requires authentication", fn()
+    let response = get("/users/profile")
+    assert_eq(res_status(response), 302)
+    assert_eq(res_location(response), "/login")
+  end)
 
-    test("profile accessible after login", fn()
-        login("user@example.com", "password")
-        
-        let response = get("/users/profile")
-        assert_eq(res_status(response), 200)
-    end)
+  test("profile accessible after login", fn()
+    login("user@example.com", "password")
+    
+    let response = get("/users/profile")
+    assert_eq(res_status(response), 200)
+  end)
 
-    test("logout destroys session", fn()
-        login("user@example.com", "password")
-        
-        post("/logout")
-        
-        assert(signed_out())
-        let response = get("/users/profile")
-        assert_eq(res_status(response), 302)
-    end)
+  test("logout destroys session", fn()
+    login("user@example.com", "password")
+    
+    post("/logout")
+    
+    assert(signed_out())
+    let response = get("/users/profile")
+    assert_eq(res_status(response), 302)
+  end)
 
-    test("JWT token authentication works", fn()
-        # Create a token
-        let token_response = post("/auth/token", {
-            "user_id": "123",
-            "role": "admin"
-        })
-        let token_data = res_json(token_response)
-        let token = token_data["token"]
-        
-        # Use token for authentication
-        with_token(token)
-        let response = get("/api/admin")
-        assert_eq(res_status(response), 200)
-    end)
+  test("JWT token authentication works", fn()
+    # Create a token
+    let token_response = post("/auth/token", {
+      "user_id": "123",
+      "role": "admin"
+    })
+    let token_data = res_json(token_response)
+    let token = token_data["token"]
+    
+    # Use token for authentication
+    with_token(token)
+    let response = get("/api/admin")
+    assert_eq(res_status(response), 200)
+  end)
 end)
 ```
 
@@ -594,33 +594,33 @@ Examples of testing various header scenarios:
 
 ```soli
 describe("Request Headers", fn()
-    test("custom headers are received by controller", fn()
-        set_header("X-Request-ID", "test-123-uuid")
-        set_header("X-Custom-Header", "custom-value")
-        
-        let response = get("/api/headers")
-        let headers = res_json(response)
-        
-        assert_eq(headers["X-Request-ID"], "test-123-uuid")
-        assert_eq(headers["X-Custom-Header"], "custom-value")
-    end)
+  test("custom headers are received by controller", fn()
+    set_header("X-Request-ID", "test-123-uuid")
+    set_header("X-Custom-Header", "custom-value")
+    
+    let response = get("/api/headers")
+    let headers = res_json(response)
+    
+    assert_eq(headers["X-Request-ID"], "test-123-uuid")
+    assert_eq(headers["X-Custom-Header"], "custom-value")
+  end)
 
-    test("authorization header is processed", fn()
-        with_token("Bearer eyJhbGciOiJIUzI1NiIs...")
-        
-        let response = get("/api/protected")
-        let data = res_json(response)
-        assert_eq(data["authenticated"], true)
-    end)
+  test("authorization header is processed", fn()
+    with_token("Bearer eyJhbGciOiJIUzI1NiIs...")
+    
+    let response = get("/api/protected")
+    let data = res_json(response)
+    assert_eq(data["authenticated"], true)
+  end)
 
-    test("cookies persist across requests", fn()
-        set_cookie("session_id", "session-abc-123")
-        
-        let response = get("/dashboard")
-        let data = res_json(response)
-        
-        assert_eq(data["session_id"], "session-abc-123")
-    end)
+  test("cookies persist across requests", fn()
+    set_cookie("session_id", "session-abc-123")
+    
+    let response = get("/dashboard")
+    let data = res_json(response)
+    
+    assert_eq(data["session_id"], "session-abc-123")
+  end)
 end)
 ```
 
@@ -630,33 +630,33 @@ Examples of testing template rendering and assigns:
 
 ```soli
 describe("View Rendering", fn()
-    test("index renders with correct assigns", fn()
-        let response = get("/users")
-        
-        assert(render_template())
-        assert_eq(view_path(), "users/index.html")
-        
-        let assigns_data = assigns()
-        assert_hash_has_key(assigns_data, "users")
-        assert_hash_has_key(assigns_data, "page_title")
-    end)
+  test("index renders with correct assigns", fn()
+    let response = get("/users")
+    
+    assert(render_template())
+    assert_eq(view_path(), "users/index.html")
+    
+    let assigns_data = assigns()
+    assert_hash_has_key(assigns_data, "users")
+    assert_hash_has_key(assigns_data, "page_title")
+  end)
 
-    test("show action passes correct user data", fn()
-        let response = get("/users/42")
-        
-        let user_assign = assign("user")
-        assert_eq(user_assign["id"], 42)
-        assert_eq(user_assign["name"], "John Doe")
-    end)
+  test("show action passes correct user data", fn()
+    let response = get("/users/42")
+    
+    let user_assign = assign("user")
+    assert_eq(user_assign["id"], 42)
+    assert_eq(user_assign["name"], "John Doe")
+  end)
 
-    test("flash messages are available", fn()
-        post("/users/1/comments", {"body": "Test comment"})
-        
-        let response = get("/users/1")
-        let flash_data = flash()
-        assert_hash_has_key(flash_data, "notice")
-        assert_eq(flash("notice"), "Comment posted successfully")
-    end)
+  test("flash messages are available", fn()
+    post("/users/1/comments", {"body": "Test comment"})
+    
+    let response = get("/users/1")
+    let flash_data = flash()
+    assert_hash_has_key(flash_data, "notice")
+    assert_eq(flash("notice"), "Comment posted successfully")
+  end)
 end)
 ```
 
@@ -668,15 +668,15 @@ Structure your tests hierarchically using `describe()` blocks. Group tests by co
 
 ```soli
 describe("PostsController", fn()
-    describe("index action", fn()
-        describe("authentication", fn()
-            # Tests for authenticated/unauthenticated access
-        end)
-        
-        describe("response format", fn()
-            # Tests for JSON, HTML responses
-        end)
+  describe("index action", fn()
+    describe("authentication", fn()
+      # Tests for authenticated/unauthenticated access
     end)
+    
+    describe("response format", fn()
+      # Tests for JSON, HTML responses
+    end)
+  end)
 end)
 ```
 
@@ -686,14 +686,14 @@ Use `before_each()` and `after_each()` to set up and clean up test state. Always
 
 ```soli
 describe("UsersController", fn()
-    before_each(fn()
-        as_guest()
-        clear_cookies()
-    end)
-    
-    after_each(fn()
-        # Cleanup after each test if needed
-    end)
+  before_each(fn()
+    as_guest()
+    clear_cookies()
+  end)
+  
+  after_each(fn()
+    # Cleanup after each test if needed
+  end)
 end)
 ```
 
@@ -703,14 +703,14 @@ Each test should be independent and not rely on the state created by other tests
 
 ```soli
 test("can update own post", fn()
-    let post = create_post({"title": "Test", "author_id": 1})
-    as_user(1)
-    
-    let response = put("/posts/" + post["id"], {
-        "title": "Updated"
-    })
-    
-    assert_eq(res_status(response), 200)
+  let post = create_post({"title": "Test", "author_id": 1})
+  as_user(1)
+  
+  let response = put("/posts/" + post["id"], {
+    "title": "Updated"
+  })
+  
+  assert_eq(res_status(response), 200)
 end)
 ```
 
@@ -780,7 +780,7 @@ If `res_json()` fails, verify the response body is valid JSON. Some responses ma
 # Check content type first
 let content_type = res_header(response, "Content-Type")
 if (contains(content_type, "application/json"))
-    let data = res_json(response)
+  let data = res_json(response)
 end
 ```
 

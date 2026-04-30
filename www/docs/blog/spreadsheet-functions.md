@@ -29,12 +29,12 @@ When your data is in a file, use `csv_parse_file()`:
 users = csv_parse_file("exports/users.csv")
 
 for user in users
-    u = User.create({
-        "name": user["name"],
-        "email": user["email"],
-        "role": user["role"]
-    })
-    print("Created: " + u.email)
+  u = User.create({
+    "name": user["name"],
+    "email": user["email"],
+    "role": user["role"]
+  })
+  print("Created: " + u.email)
 end
 ```
 
@@ -47,7 +47,7 @@ The `excel_parse()` function reads `.xlsx` files directly, making it easy to pro
 sales = excel_parse("reports/monthly_sales.xlsx")
 
 for row in sales
-    print(row["Product"] + ": $" + str(row["Revenue"]))
+  print(row["Product"] + ": $" + str(row["Revenue"]))
 end
 ```
 
@@ -57,37 +57,37 @@ Here's a complete example that imports users from a CSV file, validates the data
 
 ```soli
 def import_users_from_csv(filepath)
-    users = csv_parse_file(filepath)
-    imported = 0
-    errors = []
+  users = csv_parse_file(filepath)
+  imported = 0
+  errors = []
 
-    for row in users
-        # Validate required fields
-        if !row["email"] || !row["name"]
-            errors.push("Row missing required field: " + str(row))
-            next
-        end
-
-        # Check for existing user
-        if User.find_by("email", row["email"])
-            print("Skipping existing user: " + row["email"])
-            next
-        end
-
-        # Create the user
-        user = User.create({
-            "name": row["name"],
-            "email": row["email"],
-            "role": row["role"] || "user"
-        })
-
-        imported = imported + 1
+  for row in users
+    # Validate required fields
+    if !row["email"] || !row["name"]
+      errors.push("Row missing required field: " + str(row))
+      next
     end
 
-    return {
-        "imported": imported,
-        "errors": errors
-    }
+    # Check for existing user
+    if User.find_by("email", row["email"])
+      print("Skipping existing user: " + row["email"])
+      next
+    end
+
+    # Create the user
+    user = User.create({
+      "name": row["name"],
+      "email": row["email"],
+      "role": row["role"] || "user"
+    })
+
+    imported = imported + 1
+  end
+
+  return {
+    "imported": imported,
+    "errors": errors
+  }
 end
 
 # Usage
@@ -101,27 +101,27 @@ Process monthly Excel reports to generate summaries:
 
 ```soli
 def process_sales_report(filepath)
-    data = excel_parse(filepath)
-    total_revenue = 0
-    by_category = {}
+  data = excel_parse(filepath)
+  total_revenue = 0
+  by_category = {}
 
-    for row in data
-        revenue = float(row["Revenue"])
-        category = row["Category"]
+  for row in data
+    revenue = float(row["Revenue"])
+    category = row["Category"]
 
-        total_revenue = total_revenue + revenue
+    total_revenue = total_revenue + revenue
 
-        if !by_category.has_key(category)
-            by_category[category] = 0
-        end
-        by_category[category] = by_category[category] + revenue
+    if !by_category.has_key(category)
+      by_category[category] = 0
     end
+    by_category[category] = by_category[category] + revenue
+  end
 
-    print("Total Revenue: $" + str(total_revenue))
-    print("\nBy Category:")
-    for category, total in by_category
-        print("  " + category + ": $" + str(total))
-    end
+  print("Total Revenue: $" + str(total_revenue))
+  print("\nBy Category:")
+  for category, total in by_category
+    print("  " + category + ": $" + str(total))
+  end
 end
 
 process_sales_report("reports/q4_sales.xlsx")
@@ -133,27 +133,27 @@ Migrate data from a legacy system exported as CSV to your Soli app:
 
 ```soli
 def migrate_products_from_legacy(csv_path)
-    products = csv_parse_file(csv_path)
-    migrated = 0
+  products = csv_parse_file(csv_path)
+  migrated = 0
 
-    for row in products
-        # Skip if product already exists by SKU
-        if Product.find_by("sku", row["sku"])
-            next
-        end
-
-        product = Product.create({
-            "sku": row["sku"],
-            "name": row["product_name"],
-            "price": float(row["price"]),
-            "stock": int(row["quantity"]),
-            "category": row["category"]
-        })
-
-        migrated = migrated + 1
+  for row in products
+    # Skip if product already exists by SKU
+    if Product.find_by("sku", row["sku"])
+      next
     end
 
-    print("Migrated " + str(migrated) + " products")
+    product = Product.create({
+      "sku": row["sku"],
+      "name": row["product_name"],
+      "price": float(row["price"]),
+      "stock": int(row["quantity"]),
+      "category": row["category"]
+    })
+
+    migrated = migrated + 1
+  end
+
+  print("Migrated " + str(migrated) + " products")
 end
 ```
 

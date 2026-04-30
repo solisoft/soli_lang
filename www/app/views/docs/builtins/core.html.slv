@@ -126,7 +126,7 @@ user.is_a?("String")    # false</code></pre>
 defined("x");        # true
 defined("y");        # false</code></pre>
                     <pre data-filename="In a function"><code class="language-soli text-sm">fn check(val) {
-    if defined("val") { "exists" } else { "not set" }
+  if defined("val") { "exists" } else { "not set" }
 }</code></pre>
                 </div>
             </section>

@@ -70,11 +70,11 @@ SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
 // global_only: true
 
 fn add_cors_headers(req: Any) -&gt; Any {
-    // Continue to next middleware/handler
-    return {
-        "continue": true,
-        "request": req
-    };
+  // Continue to next middleware/handler
+  return {
+    "continue": true,
+    "request": req
+  };
 }</code></pre>
         </div>
     </div>
@@ -86,33 +86,33 @@ fn add_cors_headers(req: Any) -&gt; Any {
 // scope_only: true
 
 fn authenticate(req: Any) -&gt; Any {
-    let headers = req["headers"];
-    let api_key = "";
+  let headers = req["headers"];
+  let api_key = "";
 
-    if (has_key(headers, "X-Api-Key")) {
-        api_key = headers["X-Api-Key"];
-    }
+  if (has_key(headers, "X-Api-Key")) {
+    api_key = headers["X-Api-Key"];
+  }
 
-    if (api_key == "") {
-        // Short-circuit with error response
-        return {
-            "continue": false,
-            "response": {
-                "status": 401,
-                "headers": {"Content-Type": "application/json"},
-                "body": json_stringify({
-                    "error": "Unauthorized",
-                    "message": "API key required"
-                })
-            }
-        };
-    }
-
-    // Continue to handler
+  if (api_key == "") {
+    // Short-circuit with error response
     return {
-        "continue": true,
-        "request": req
+      "continue": false,
+      "response": {
+        "status": 401,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify({
+          "error": "Unauthorized",
+          "message": "API key required"
+        })
+      }
     };
+  }
+
+  // Continue to handler
+  return {
+    "continue": true,
+    "request": req
+  };
 }</code></pre>
         </div>
     </div>
@@ -125,8 +125,8 @@ fn authenticate(req: Any) -&gt; Any {
             <label class="block px-4 py-2 bg-green-500/10 text-xs text-green-400 font-mono border-b border-white/5">Continue Processing</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
-    "continue": true,
-    "request": req
+  "continue": true,
+  "request": req
 }</code></pre>
             </div>
         </div>
@@ -134,11 +134,11 @@ fn authenticate(req: Any) -&gt; Any {
             <label class="block px-4 py-2 bg-red-500/10 text-xs text-red-400 font-mono border-b border-white/5">Short-circuit Response</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
-    "continue": false,
-    "response": {
-        "status": 401,
-        "body": "Unauthorized"
-    }
+  "continue": false,
+  "response": {
+    "status": 401,
+    "body": "Unauthorized"
+  }
 }</code></pre>
             </div>
         </div>
@@ -232,15 +232,15 @@ get("/login", "auth#login");
 
 // Protected routes (auth middleware applied)
 middleware("authenticate", fn() {
-    get("/dashboard", "dashboard#index");
-    get("/profile", "users#profile");
-    post("/settings", "users#update_settings");
+  get("/dashboard", "dashboard#index");
+  get("/profile", "users#profile");
+  post("/settings", "users#update_settings");
 });
 
 // Multiple middleware
 middleware(["authenticate", "admin_only"], fn() {
-    get("/admin", "admin#index");
-    get("/admin/users", "admin#users");
+  get("/admin", "admin#index");
+  get("/admin/users", "admin#users");
 });</code></pre>
         </div>
     </div>

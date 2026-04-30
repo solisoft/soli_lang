@@ -128,10 +128,10 @@ let trial_period = Duration.days(30)</code></pre>
     <section id="section-conversion" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Converting Durations</h2>
 
-        <section id="def-to-seconds" class="scroll-mt-20 mb-6">
+        <section id="def-total-seconds" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-to-seconds" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">.to_seconds()</code>
+                <a href="#def-total-seconds" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.total_seconds()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -139,17 +139,17 @@ let trial_period = Duration.days(30)</code></pre>
                 <p class="text-gray-400 mb-3">Get the total duration in seconds.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Int</code> - Total seconds
+                    <code class="text-purple-400">Float</code> - Total seconds
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
-println(duration.to_seconds())  # 7200</code></pre>
+println(duration.total_seconds())  # 7200</code></pre>
             </div>
         </section>
 
-        <section id="def-to-minutes" class="scroll-mt-20 mb-6">
+        <section id="def-total-minutes" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-to-minutes" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">.to_minutes()</code>
+                <a href="#def-total-minutes" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.total_minutes()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -157,17 +157,17 @@ println(duration.to_seconds())  # 7200</code></pre>
                 <p class="text-gray-400 mb-3">Get the total duration in minutes.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Int</code> - Total minutes
+                    <code class="text-purple-400">Float</code> - Total minutes
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
-println(duration.to_minutes())  # 120</code></pre>
+println(duration.total_minutes())  # 120</code></pre>
             </div>
         </section>
 
-        <section id="def-to-hours" class="scroll-mt-20 mb-6">
+        <section id="def-total-hours" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#def-to-hours" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">.to_hours()</code>
+                <a href="#def-total-hours" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.total_hours()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -175,10 +175,46 @@ println(duration.to_minutes())  # 120</code></pre>
                 <p class="text-gray-400 mb-3">Get the total duration in hours.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Int</code> - Total hours
+                    <code class="text-purple-400">Float</code> - Total hours
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.days(1)
-println(duration.to_hours())  # 24</code></pre>
+println(duration.total_hours())  # 24</code></pre>
+            </div>
+        </section>
+
+        <section id="def-total-days" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-total-days" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.total_days()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the total duration in days.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Float</code> - Total days
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.weeks(1)
+println(duration.total_days())  # 7</code></pre>
+            </div>
+        </section>
+
+        <section id="def-to-string" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-to-string" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.to_string()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the duration as a formatted string.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Formatted duration (e.g., "7200s")
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.of_seconds(3661)
+println(duration.to_string())  # "3661s"</code></pre>
             </div>
         </section>
     </section>
@@ -195,14 +231,14 @@ let work_day = Duration.hours(8)
 let trial = Duration.days(7)
 
 # Convert to different units
-println("Timeout: " + timeout.to_seconds() + " seconds")
-println("Break: " + break_time.to_minutes() + " minutes")
-println("Work day: " + work_day.to_hours() + " hours")
-println("Trial: " + trial.to_hours() + " hours")
+println("Timeout: " + timeout.total_seconds() + " seconds")
+println("Break: " + break_time.total_minutes() + " minutes")
+println("Work day: " + work_day.total_hours() + " hours")
+println("Trial: " + trial.total_days() + " days")
 
 # Practical example: session expiry
 let session_duration = Duration.hours(1)
-let expiry_seconds = session_duration.to_seconds
+let expiry_seconds = session_duration.total_seconds()
 println("Session expires in " + expiry_seconds + " seconds")</code></pre>
         </div>
     </section>

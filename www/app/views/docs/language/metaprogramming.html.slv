@@ -39,13 +39,13 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Person
-    def greet
-        "Hello!"
-    end
+  def greet
+    "Hello!"
+  end
 
-    def greet_with(name)
-        "Hello, " + name + "!"
-    end
+  def greet_with(name)
+    "Hello, " + name + "!"
+  end
 end
 
 let person = Person.new
@@ -85,13 +85,13 @@ person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Person
-    def method_missing(method_name)
-        if (method_name.starts_with("find_by_"))
-            let field = method_name.sub("find_by_", "")
-            return "Finding person by " + field
-        end
-        return "Method '" + method_name + "' was called"
+  def method_missing(method_name)
+    if (method_name.starts_with("find_by_"))
+      let field = method_name.sub("find_by_", "")
+      return "Finding person by " + field
     end
+    return "Method '" + method_name + "' was called"
+  end
 end
 
 let person = Person.new
@@ -132,9 +132,9 @@ person.any_undefined_method     # => "Method 'any_undefined_method' was called"<
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Person
-    def greet
-        "Hello"
-    end
+  def greet
+    "Hello"
+  end
 end
 
 let person = Person.new
@@ -153,10 +153,10 @@ person.respond_to?("inspect")      # => true (universal method)</code></pre>
 // Universal methods (inspect, class, nil?, etc.) are handled inline
 // and need explicit inclusion in respond_to? checks
 let is_universal = matches!(method_name.as_str(),
-    "inspect" | "class" | "nil?" | "blank?" | "present?"
-    | "respond_to?" | "send" | "instance_variables"
-    | "instance_variable_get" | "instance_variable_set"
-    | "methods" | "method_missing"
+  "inspect" | "class" | "nil?" | "blank?" | "present?"
+  | "respond_to?" | "send" | "instance_variables"
+  | "instance_variable_get" | "instance_variable_set"
+  | "methods" | "method_missing"
 );</code></pre>
         </div>
     </section>
@@ -234,9 +234,9 @@ class.methods.insert(method_name, function_rc);
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Foo {
-    fn greet(name) {
-        return "Hello, " + name + "!";
-    }
+  fn greet(name) {
+    return "Hello, " + name + "!";
+  }
 }
 
 let foo = Foo.new()
@@ -273,9 +273,9 @@ class.all_methods_cache.borrow_mut().take();</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Parent {
-    static fn inherited(child) {
-        print("Child class created: " + child.to_string())
-    }
+  static fn inherited(child) {
+    print("Child class created: " + child.to_string())
+  }
 }
 
 class Child < Parent { }
@@ -289,13 +289,13 @@ class Child < Parent { }
             </p>
             <pre><code class="language-rust text-sm">// After class creation, call inherited hook if superclass has one
 if let Some(inherited_func) = superclass.find_static_method("inherited") {
-    self.call_function(&inherited_func, vec![Value::Class(class_rc.clone())])?;
+  self.call_function(&inherited_func, vec![Value::Class(class_rc.clone())])?;
 }
 if let Some(inherited_native) = superclass.find_native_static_method("inherited") {
-    let span = Span::new(0, 0, 1, 1);
-    let result: Result&lt;Value, String&gt; =
-        (inherited_native.func)(vec![Value::Class(class_rc.clone())]);
-    result.map_err(|e| RuntimeError::new(e, span))?;
+  let span = Span::new(0, 0, 1, 1);
+  let result: Result&lt;Value, String&gt; =
+    (inherited_native.func)(vec![Value::Class(class_rc.clone())]);
+  result.map_err(|e| RuntimeError::new(e, span))?;
 }</code></pre>
         </div>
     </section>
@@ -318,12 +318,12 @@ if let Some(inherited_native) = superclass.find_native_static_method("inherited"
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Counter
-    count: Int = 0
+  count: Int = 0
 end
 
 let c = new Counter()
 c.instance_eval {
-    this.count = 42
+  this.count = 42
 }
 c.count  # => 42
 
@@ -365,22 +365,22 @@ val  # => 42</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli (Planned)</h3>
             <pre><code class="language-soli text-sm">module Serializable
-    static def included(base)
-        base.define_method("to_json", def {
-            JSON.encode(this.as_hash)
-        })
-        base.define_method("as_hash", def {
-            let result = {}
-            for v in this.instance_variables
-                result[v] = this.instance_variable_get(v)
-            end
-            result
-        })
-    end
+  static def included(base)
+    base.define_method("to_json", def {
+      JSON.encode(this.as_hash)
+    })
+    base.define_method("as_hash", def {
+      let result = {}
+      for v in this.instance_variables
+        result[v] = this.instance_variable_get(v)
+      end
+      result
+    })
+  end
 end
 
 class User
-    include Serializable
+  include Serializable
 end
 
 User.new.to_json</code></pre>
@@ -474,12 +474,12 @@ User.new.to_json</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Example Usage</h3>
             <pre><code class="language-soli text-sm">class User
-    name: String
-    email: String
+  name: String
+  email: String
 
-    def greet
-        "Hello!"
-    end
+  def greet
+    "Hello!"
+  end
 end
 
 let user = User.new
@@ -519,17 +519,17 @@ user.respond_to?("greet") # => true</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre><code class="language-soli text-sm">class ApplicationRecord
-    static def method_missing(method_name)
-        if (method_name.starts_with("find_by_"))
-            let field = method_name.sub("find_by_", "")
-            return "Finding by " + field
-        end
-        return "Method '" + method_name + "' was called"
+  static def method_missing(method_name)
+    if (method_name.starts_with("find_by_"))
+      let field = method_name.sub("find_by_", "")
+      return "Finding by " + field
     end
+    return "Method '" + method_name + "' was called"
+  end
 end
 
 class User < ApplicationRecord
-    # Inherit dynamic finder capability
+  # Inherit dynamic finder capability
 end
 
 # These all work automatically:

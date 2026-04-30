@@ -72,16 +72,16 @@ Custom error templates have access to these variables:
 
 ```erb
 <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa;">
-    <div style="text-align: center;">
-        <h1 style="font-size: 6rem; font-weight: bold; color: #343a40; margin-bottom: 1rem;"><%= status %></h1>
-        <h2 style="font-size: 1.5rem; font-weight: 600; color: #6c757d; margin-bottom: 1rem;">Page Not Found</h2>
-        <p style="color: #6c757d; margin-bottom: 2rem;"><%= message %></p>
-        <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
-            <a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; text-decoration: none; border-radius: 0.375rem;">Go Home</a>
-            <button onclick="history.back()" style="padding: 0.75rem 1.5rem; border: 1px solid #dee2e6; background: white; border-radius: 0.375rem; cursor: pointer;">Go Back</button>
-        </div>
-        <p style="margin-top: 2rem; font-size: 0.75rem; color: #adb5bd;">Error ID: <%= request_id %></p>
+  <div style="text-align: center;">
+    <h1 style="font-size: 6rem; font-weight: bold; color: #343a40; margin-bottom: 1rem;"><%= status %></h1>
+    <h2 style="font-size: 1.5rem; font-weight: 600; color: #6c757d; margin-bottom: 1rem;">Page Not Found</h2>
+    <p style="color: #6c757d; margin-bottom: 2rem;"><%= message %></p>
+    <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+      <a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #007bff; color: white; text-decoration: none; border-radius: 0.375rem;">Go Home</a>
+      <button onclick="history.back()" style="padding: 0.75rem 1.5rem; border: 1px solid #dee2e6; background: white; border-radius: 0.375rem; cursor: pointer;">Go Back</button>
     </div>
+    <p style="margin-top: 2rem; font-size: 0.75rem; color: #adb5bd;">Error ID: <%= request_id %></p>
+  </div>
 </div>
 ```
 
@@ -89,18 +89,18 @@ Custom error templates have access to these variables:
 
 ```erb
 <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #fff5f5;">
-    <div style="text-align: center; max-width: 400px;">
-        <div style="margin-bottom: 1.5rem;">
-            <svg style="width: 5rem; height: 5rem; margin: 0 auto; color: #e53e3e;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-        </div>
-        <h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"><%= status %></h1>
-        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;">Something went wrong</h2>
-        <p style="color: #4a5568; margin-bottom: 2rem;">We're sorry, but something unexpected happened. Our team has been notified.</p>
-        <a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; text-decoration: none; border-radius: 0.375rem;">Return to Homepage</a>
-        <p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;">Reference ID: <%= request_id %></p>
+  <div style="text-align: center; max-width: 400px;">
+    <div style="margin-bottom: 1.5rem;">
+      <svg style="width: 5rem; height: 5rem; margin: 0 auto; color: #e53e3e;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
     </div>
+    <h1 style="font-size: 3rem; font-weight: bold; color: #c53030; margin-bottom: 1rem;"><%= status %></h1>
+    <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a202c; margin-bottom: 1rem;">Something went wrong</h2>
+    <p style="color: #4a5568; margin-bottom: 2rem;">We're sorry, but something unexpected happened. Our team has been notified.</p>
+    <a href="/" style="display: inline-block; padding: 0.75rem 1.5rem; background-color: #c53030; color: white; text-decoration: none; border-radius: 0.375rem;">Return to Homepage</a>
+    <p style="margin-top: 2rem; font-size: 0.75rem; color: #718096;">Reference ID: <%= request_id %></p>
+  </div>
 </div>
 ```
 
@@ -108,13 +108,13 @@ Custom error templates have access to these variables:
 
 If your application already uses Tailwind CSS, you can use Tailwind classes:</```erb
 <div class="min-h-screen flex items-center justify-center bg-gray-100">
-    <div class="text-center">
-        <h1 class="text-6xl font-bold text-gray-800 mb-4"><%= status %></h1>
-        <h2 class="text-2xl font-semibold text-gray-600 mb-4">Page Not Found</h2>
-        <p class="text-gray-500 mb-8"><%= message %></p>
-        <a href="/" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Go Home</a>
-        <p class="mt-8 text-xs text-gray-400">Error ID: <%= request_id %></p>
-    </div>
+  <div class="text-center">
+    <h1 class="text-6xl font-bold text-gray-800 mb-4"><%= status %></h1>
+    <h2 class="text-2xl font-semibold text-gray-600 mb-4">Page Not Found</h2>
+    <p class="text-gray-500 mb-8"><%= message %></p>
+    <a href="/" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Go Home</a>
+    <p class="mt-8 text-xs text-gray-400">Error ID: <%= request_id %></p>
+  </div>
 </div>
 ```
 
@@ -122,21 +122,21 @@ If your application already uses Tailwind CSS, you can use Tailwind classes:</``
 
 ```erb
 <div class="min-h-screen flex items-center justify-center bg-red-50">
-    <div class="text-center max-w-md">
-        <div class="mb-6">
-            <svg class="w-20 h-20 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-        </div>
-        <h1 class="text-5xl font-bold text-red-600 mb-4"><%= status %></h1>
-        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Something went wrong</h2>
-        <p class="text-gray-600 mb-8">We're sorry, but something unexpected happened. Our team has been notified.</p>
-        <a href="/" class="inline-block px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700">
-            Return to Homepage
-        </a>
-        <p class="mt-8 text-xs text-gray-500">Reference ID: <%= request_id %></p>
+  <div class="text-center max-w-md">
+    <div class="mb-6">
+      <svg class="w-20 h-20 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
     </div>
+    <h1 class="text-5xl font-bold text-red-600 mb-4"><%= status %></h1>
+    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Something went wrong</h2>
+    <p class="text-gray-600 mb-8">We're sorry, but something unexpected happened. Our team has been notified.</p>
+    <a href="/" class="inline-block px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700">
+      Return to Homepage
+    </a>
+    <p class="mt-8 text-xs text-gray-500">Reference ID: <%= request_id %></p>
+  </div>
 </div>
 ```
 
@@ -156,17 +156,17 @@ You can also handle errors explicitly in your controllers by returning appropria
 
 ```soli
 fn show(req)
-    let id = req["params"]["id"]
-    let user = database.get_user(id)
-    
-    if user == null
-        return {
-            "status": 404,
-            "body": "User not found"
-        }
-    end
-    
-    render("users/show.html.slv", { "user": user })
+  let id = req["params"]["id"]
+  let user = database.get_user(id)
+  
+  if user == null
+    return {
+      "status": 404,
+      "body": "User not found"
+    }
+  end
+  
+  render("users/show.html.slv", { "user": user })
 end
 ```
 

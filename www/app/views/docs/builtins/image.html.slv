@@ -262,9 +262,9 @@ cropped.to_file("cropped.jpg")</code></pre>
 
         <p class="text-gray-400 text-sm mb-3">All transform methods return a new Image and can be chained:</p>
         <pre data-filename="Chaining transforms"><code class="language-soli text-sm">let img = Image.new("photo.jpg")
-    .grayscale()
-    .flip_horizontal()
-    .rotate90()
+  .grayscale()
+  .flip_horizontal()
+  .rotate90()
 img.to_file("transformed.jpg")</code></pre>
     </section>
 
@@ -345,9 +345,9 @@ img.to_file("transformed.jpg")</code></pre>
         </section>
 
         <pre data-filename="Combining adjustments"><code class="language-soli text-sm">let adjusted = Image.new("photo.jpg")
-    .brightness(20)
-    .contrast(1.5)
-    .hue_rotate(90)
+  .brightness(20)
+  .contrast(1.5)
+  .hue_rotate(90)
 adjusted.to_file("adjusted.jpg")</code></pre>
     </section>
 
@@ -394,8 +394,8 @@ adjusted.to_file("adjusted.jpg")</code></pre>
                 </div>
                 <pre data-filename="Format conversion"><code class="language-soli text-sm"># Convert PNG to JPEG at 70% quality
 let img = Image.new("photo.png")
-    .format("jpeg")
-    .quality(70)
+  .format("jpeg")
+  .quality(70)
 img.to_file("photo.jpg")</code></pre>
             </div>
         </section>
@@ -447,7 +447,7 @@ let base64_data = img.to_buffer()
 
 # Store in S3
 S3.put_object("my-bucket", "thumb.jpg", base64_data, {
-    "content_type": "image/jpeg"
+  "content_type": "image/jpeg"
 })</code></pre>
             </div>
         </section>
@@ -468,19 +468,19 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Thumbnail generation in a controller</h3>
                 <pre><code class="language-soli text-sm">fn upload(req)
-    let file = req.files["avatar"]
-    let img = Image.from_buffer(file.data)
+  let file = req.files["avatar"]
+  let img = Image.from_buffer(file.data)
 
-    # Create multiple sizes
-    let large = img.resize(800, 800)
-    let medium = img.thumbnail(400)
-    let small = img.thumbnail(100)
+  # Create multiple sizes
+  let large = img.resize(800, 800)
+  let medium = img.thumbnail(400)
+  let small = img.thumbnail(100)
 
-    large.to_file("public/uploads/avatar_large.jpg")
-    medium.to_file("public/uploads/avatar_medium.jpg")
-    small.to_file("public/uploads/avatar_small.jpg")
+  large.to_file("public/uploads/avatar_large.jpg")
+  medium.to_file("public/uploads/avatar_medium.jpg")
+  small.to_file("public/uploads/avatar_small.jpg")
 
-    return { "status": 200, "body": "Upload complete" }
+  return { "status": 200, "body": "Upload complete" }
 end</code></pre>
             </div>
         </section>
@@ -489,10 +489,10 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Image processing pipeline</h3>
                 <pre><code class="language-soli text-sm">let img = Image.new("raw_photo.jpg")
-    .resize(1200, 900)
-    .brightness(10)
-    .contrast(1.2)
-    .quality(85)
+  .resize(1200, 900)
+  .brightness(10)
+  .contrast(1.2)
+  .quality(85)
 
 img.to_file("processed.jpg")
 
@@ -507,16 +507,16 @@ img.grayscale().thumbnail(200).to_file("thumb_gray.jpg")</code></pre>
                 <pre><code class="language-soli text-sm"># Convert all PNGs to WebP
 let files = S3.list_objects("images", "photos/")
 for file in files
-    if file.ends_with(".png")
-        let data = S3.get_object("images", file)
-        let img = Image.from_buffer(data)
-            .format("webp")
-            .quality(80)
-        let new_key = file.replace(".png", ".webp")
-        S3.put_object("images", new_key, img.to_buffer(), {
-            "content_type": "image/webp"
-        })
-    end
+  if file.ends_with(".png")
+    let data = S3.get_object("images", file)
+    let img = Image.from_buffer(data)
+      .format("webp")
+      .quality(80)
+    let new_key = file.replace(".png", ".webp")
+    S3.put_object("images", new_key, img.to_buffer(), {
+      "content_type": "image/webp"
+    })
+  end
 end</code></pre>
             </div>
         </section>

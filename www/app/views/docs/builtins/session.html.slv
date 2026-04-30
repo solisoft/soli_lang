@@ -189,28 +189,28 @@ print(config["ttl"])</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login
 def login(email: String, password: String) -> Bool
-    let user = User.find_by_email(email)
-    if !user || !argon2_verify(password, user["password_hash"])
-        return false
-    end
+  let user = User.find_by_email(email)
+  if !user || !argon2_verify(password, user["password_hash"])
+    return false
+  end
 
-    session_set("user_id", user["id"])
-    session_regenerate  # Prevent session fixation
-    true
+  session_set("user_id", user["id"])
+  session_regenerate  # Prevent session fixation
+  true
 end
 
 # Check authentication
 def current_user -> Hash?
-    let user_id = session_get("user_id")
-    if !user_id
-        return null
-    end
-    User.find(user_id)
+  let user_id = session_get("user_id")
+  if !user_id
+    return null
+  end
+  User.find(user_id)
 end
 
 # Logout
 def logout
-    session_destroy
+  session_destroy
 end</code></pre>
         </div>
 
@@ -218,16 +218,16 @@ end</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Set a flash message
 def flash(type: String, message: String)
-    let flashes = session_get("_flashes") ?? []
-    push(flashes, { "type": type, "message": message })
-    session_set("_flashes", flashes)
+  let flashes = session_get("_flashes") ?? []
+  push(flashes, { "type": type, "message": message })
+  session_set("_flashes", flashes)
 end
 
 # Get and clear flash messages
 def get_flashes -> Array
-    let flashes = session_get("_flashes") ?? []
-    session_delete("_flashes")
-    flashes
+  let flashes = session_get("_flashes") ?? []
+  session_delete("_flashes")
+  flashes
 end
 
 # Usage

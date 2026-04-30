@@ -8,11 +8,11 @@ Soli now ships all of that out of the box.
 
 ```soli
 class Contact < Model
-    uploader("photo", {
-        "multiple":      false,
-        "content_types": ["image/jpeg", "image/png", "image/webp"],
-        "max_size":      2_000_000
-    })
+  uploader("photo", {
+    "multiple":      false,
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      2_000_000
+  })
 end
 ```
 
@@ -46,13 +46,13 @@ The contacts edit form posts multipart to `/contacts/:id`. The controller's `upd
 
 ```soli
 def update(req)
-    @contact = Contact.find(params.id)
-    if @contact.update(this._permit(params))
-        return @contact.detach_photo() if params["remove_photo"] == "1"
-        file = find_uploaded_file(req, "photo")
-        @contact.attach_photo(file) unless file.nil?
-        # ...
-    end
+  @contact = Contact.find(params.id)
+  if @contact.update(this._permit(params))
+    return @contact.detach_photo() if params["remove_photo"] == "1"
+    file = find_uploaded_file(req, "photo")
+    @contact.attach_photo(file) unless file.nil?
+    # ...
+  end
 end
 ```
 

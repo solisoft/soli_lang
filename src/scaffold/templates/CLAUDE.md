@@ -118,7 +118,7 @@ db.query("REMOVE @key IN users", { "key": user_id });
 
 `@name` is a bind placeholder — the value comes from the hash and is bound safely at query time.
 
-### `@sdql{}` block
+### `@sdbql{}` block
 
 Preferred for multi-line queries. Inline expressions with `#{expr}` — they are evaluated and bound as parameters, never inlined as text:
 
@@ -126,23 +126,25 @@ Preferred for multi-line queries. Inline expressions with `#{expr}` — they are
 let min_age = 18;
 let city = params.city;
 
-let users = @sdql{
-    FOR u IN users
-    FILTER u.age >= #{min_age} AND u.city == #{city}
-    SORT u.name ASC
-    LIMIT 50
-    RETURN u
+let users = @sdbql{
+  FOR u IN users
+  FILTER u.age >= #{min_age} AND u.city == #{city}
+  SORT u.name ASC
+  LIMIT 50
+  RETURN u
 };
 
-@sdql{
-    UPDATE #{user_id} IN users
-    SET { last_login: NOW() }
+@sdbql{
+  UPDATE #{user_id} IN users
+  SET { last_login: NOW() }
 };
 
-@sdql{ REMOVE #{user_id} IN users };
+@sdbql{ REMOVE #{user_id} IN users };
 ```
 
 Supports all SDBQL operations: `FOR`, `FILTER`, `SORT`, `LIMIT`, `RETURN`, `INSERT`, `UPDATE`, `REMOVE`.
+
+> `@sdql{}` is accepted as a legacy alias for `@sdbql{}`. New code should use `@sdbql{}` to match the language name (SDBQL).
 
 ### When to use which
 
@@ -150,7 +152,7 @@ Supports all SDBQL operations: `FOR`, `FILTER`, `SORT`, `LIMIT`, `RETURN`, `INSE
 |----------|------------|
 | `Model.where(...)` / ORM | Standard CRUD — your first choice |
 | `db.query(sdbql, {...})` | Parameterized query where bind values are already a hash |
-| `@sdql{ ... }` | Multi-line query, inline `#{expr}` interpolation, readability |
+| `@sdbql{ ... }` | Multi-line query, inline `#{expr}` interpolation, readability |
 
 ## Views (ERB Templates)
 

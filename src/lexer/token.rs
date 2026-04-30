@@ -220,7 +220,7 @@ impl std::fmt::Display for TokenKind {
             }
             TokenKind::BacktickString(s) => write!(f, "`{}`", s),
             TokenKind::SdqlBlock { query, .. } => {
-                write!(f, "@sdql{{{}}}...", &query[..query.len().min(30)])
+                write!(f, "@sdbql{{{}}}...", &query[..query.len().min(30)])
             }
             TokenKind::BoolLiteral(b) => write!(f, "{}", b),
             TokenKind::SymbolLiteral(s) => write!(f, ":{}", s),

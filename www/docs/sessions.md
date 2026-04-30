@@ -12,18 +12,18 @@ Sessions are automatically available in your controllers. The session cookie is 
 
 ```soli
 fn profile(req)
-    # Check if user is logged in
-    if session_get("authenticated") != true
-        return {"status": 401, "body": "Please log in"};
-    end
+  # Check if user is logged in
+  if session_get("authenticated") != true
+    return {"status": 401, "body": "Please log in"};
+  end
 
-    {
-        "status": 200,
-        "body": json_stringify({
-            "user": session_get("user"),
-            "email": session_get("email")
-        })
-    }
+  {
+    "status": 200,
+    "body": json_stringify({
+      "user": session_get("user"),
+      "email": session_get("email")
+    })
+  }
 end
 ```
 
@@ -31,18 +31,18 @@ end
 
 ```soli
 fn login(req)
-    let data = req["json"];
-    let username = data["username"];
+  let data = req["json"];
+  let username = data["username"];
 
-    # Store user data in session
-    session_set("user", username);
-    session_set("role", "admin");
-    session_set("authenticated", true);
+  # Store user data in session
+  session_set("user", username);
+  session_set("role", "admin");
+  session_set("authenticated", true);
 
-    {
-        "status": 200,
-        "body": json_stringify({"success": true})
-    }
+  {
+    "status": 200,
+    "body": json_stringify({"success": true})
+  }
 end
 ```
 
@@ -50,7 +50,7 @@ end
 
 ```soli
 fn is_logged_in() -> Bool
-    session_has("authenticated") && session_get("authenticated") == true
+  session_has("authenticated") && session_get("authenticated") == true
 end
 ```
 
@@ -58,9 +58,9 @@ end
 
 ```soli
 fn remove_item(req)
-    let removed = session_delete("temporary_data");
-    print("Removed:", removed);
-    {"status": 200}
+  let removed = session_delete("temporary_data");
+  print("Removed:", removed);
+  {"status": 200}
 end
 ```
 
@@ -72,20 +72,20 @@ Always regenerate the session ID after successful authentication to prevent sess
 
 ```soli
 fn login(req)
-    let data = req["json"];
+  let data = req["json"];
 
-    if verify_credentials(data["username"], data["password"])
-        # Regenerate session for security
-        session_regenerate();
+  if verify_credentials(data["username"], data["password"])
+    # Regenerate session for security
+    session_regenerate();
 
-        # Now set auth data
-        session_set("user_id", get_user_id(data["username"]));
-        session_set("authenticated", true);
+    # Now set auth data
+    session_set("user_id", get_user_id(data["username"]));
+    session_set("authenticated", true);
 
-        return {"status": 200, "body": "Logged in"};
-    end
+    return {"status": 200, "body": "Logged in"};
+  end
 
-    {"status": 401, "body": "Invalid credentials"}
+  {"status": 401, "body": "Invalid credentials"}
 end
 ```
 
@@ -93,12 +93,12 @@ end
 
 ```soli
 fn logout(req)
-    session_destroy();
+  session_destroy();
 
-    {
-        "status": 200,
-        "body": json_stringify({"success": true})
-    }
+  {
+    "status": 200,
+    "body": json_stringify({"success": true})
+  }
 end
 ```
 
@@ -109,30 +109,30 @@ Create a reusable authentication middleware:
 ```soli
 # app/middleware/auth.sl
 fn require_auth(req)
-    if !session_has("authenticated") || session_get("authenticated") != true
-        return {
-            "status": 401,
-            "body": json_stringify({"error": "Authentication required"})
-        };
-    end
-    null  # Allow request to continue
+  if !session_has("authenticated") || session_get("authenticated") != true
+    return {
+      "status": 401,
+      "body": json_stringify({"error": "Authentication required"})
+    };
+  end
+  null  # Allow request to continue
 end
 
 fn require_role(req, required_role: String)
-    let result = require_auth(req);
-    if result != null
-        return result;  # Return auth error
-    end
+  let result = require_auth(req);
+  if result != null
+    return result;  # Return auth error
+  end
 
-    let user_role = session_get("role");
-    if user_role != required_role
-        return {
-            "status": 403,
-            "body": json_stringify({"error": "Insufficient permissions"})
-        };
-    end
+  let user_role = session_get("role");
+  if user_role != required_role
+    return {
+      "status": 403,
+      "body": json_stringify({"error": "Insufficient permissions"})
+    };
+  end
 
-    null
+  null
 end
 ```
 

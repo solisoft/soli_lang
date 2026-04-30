@@ -51,8 +51,8 @@ vsce package
             <p class="text-gray-400 text-sm mb-4">Customize in settings.json:</p>
             <div class="rounded-lg bg-gray-950 p-3">
                 <pre><code class="language-json text-xs">{
-  "soli.lsp.enable": true,
-  "soli.lint.onSave": true
+ "soli.lsp.enable": true,
+ "soli.lint.onSave": true
 }</code></pre>
             </div>
         </div>
@@ -108,15 +108,15 @@ vsce package
 local lspconfig = require('lspconfig')
 
 lspconfig.soli.setup({
-  cmd = {"soli", "lsp"},
-  filetypes = {"soli"},
-  root_dir = function(filename)
-    return lspconfig.util.root_pattern("soli.toml", ".git")(filename)
-  end,
-  settings = {
-    soli = {}
-  },
-  capabilities = require('cmp_nvim_lsp').default_capabilities(),
+ cmd = {"soli", "lsp"},
+ filetypes = {"soli"},
+ root_dir = function(filename)
+  return lspconfig.util.root_pattern("soli.toml", ".git")(filename)
+ end,
+ settings = {
+  soli = {}
+ },
+ capabilities = require('cmp_nvim_lsp').default_capabilities(),
 })</code></pre>
     </div>
 
@@ -126,9 +126,9 @@ lspconfig.soli.setup({
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <pre data-filename="lua"><code class="language-lua text-sm">vim.lsp.config('soli', {
-  cmd = {"soli", "lsp"},
-  filetypes = {"soli"},
-  root_markers = {"soli.toml"},
+ cmd = {"soli", "lsp"},
+ filetypes = {"soli"},
+ root_markers = {"soli.toml"},
 })
 
 vim.lsp.enable('soli')</code></pre>
@@ -141,11 +141,11 @@ vim.lsp.enable('soli')</code></pre>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <pre data-filename="Generic LSP Config"><code class="language-json text-sm">{
-  "name": "soli",
-  "command": "soli lsp",
-  "filetypes": ["soli"],
-  "rootPatterns": ["soli.toml"],
-  "languageId": "soli"
+ "name": "soli",
+ "command": "soli lsp",
+ "filetypes": ["soli"],
+ "rootPatterns": ["soli.toml"],
+ "languageId": "soli"
 }</code></pre>
     </div>
 

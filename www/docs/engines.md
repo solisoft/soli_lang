@@ -33,8 +33,8 @@ Each engine has a manifest file `engine.sl`:
 
 ```soli
 engine "shop" {
-    version: "1.0.0",
-    dependencies: []
+  version: "1.0.0",
+  dependencies: []
 }
 ```
 

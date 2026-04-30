@@ -232,7 +232,7 @@ let typed: Int = 10</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Execute a block n times, passing the index (0 to n-1).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">3.times |i|
-    println(i)
+  println(i)
 end
 # 0
 # 1
@@ -250,7 +250,7 @@ end
                     </a>
                     <p class="text-gray-400 mb-3">Iterate from the integer up to the limit (inclusive).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">1.upto(5) |i|
-    print(i + " ")
+  print(i + " ")
 end
 # 1 2 3 4 5</code></pre>
                 </div>
@@ -266,7 +266,7 @@ end
                     </a>
                     <p class="text-gray-400 mb-3">Iterate from the integer down to the limit (inclusive).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">5.downto(1) |i|
-    print(i + " ")
+  print(i + " ")
 end
 # 5 4 3 2 1</code></pre>
                 </div>

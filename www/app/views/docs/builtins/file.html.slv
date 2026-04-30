@@ -55,7 +55,7 @@
                     </a>
                     <p class="text-gray-400 mb-3">Check if file exists.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">if File.exists("config.json") {
-    # do something
+  # do something
 }</code></pre>
                 </div>
             </section>

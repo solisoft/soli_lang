@@ -93,18 +93,18 @@
 
         <div class="bg-gray-950 rounded-xl p-4 overflow-x-auto">
 <pre class="text-sm"><code class="language-soli"><span class="text-purple-400">let</span> schema = {
-    <span class="text-green-400">"username"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
-        .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">3</span>)
-        .<span class="text-blue-400">max_length</span>(<span class="text-orange-300">20</span>)
-        .<span class="text-blue-400">pattern</span>(<span class="text-green-400">r"^[a-zA-Z0-9_]+$"</span>),
-    <span class="text-green-400">"email"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>().<span class="text-blue-400">email</span>(),
-    <span class="text-green-400">"password"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
-        .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">8</span>),
-    <span class="text-green-400">"age"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">int</span>().<span class="text-blue-400">optional</span>()
-        .<span class="text-blue-400">min</span>(<span class="text-orange-300">13</span>).<span class="text-blue-400">max</span>(<span class="text-orange-300">150</span>),
-    <span class="text-green-400">"website"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>().<span class="text-blue-400">url</span>(),
-    <span class="text-green-400">"role"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>()
-        .<span class="text-blue-400">one_of</span>([<span class="text-green-400">"admin"</span>, <span class="text-green-400">"user"</span>, <span class="text-green-400">"guest"</span>])
+  <span class="text-green-400">"username"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
+    .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">3</span>)
+    .<span class="text-blue-400">max_length</span>(<span class="text-orange-300">20</span>)
+    .<span class="text-blue-400">pattern</span>(<span class="text-green-400">r"^[a-zA-Z0-9_]+$"</span>),
+  <span class="text-green-400">"email"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>().<span class="text-blue-400">email</span>(),
+  <span class="text-green-400">"password"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">required</span>()
+    .<span class="text-blue-400">min_length</span>(<span class="text-orange-300">8</span>),
+  <span class="text-green-400">"age"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">int</span>().<span class="text-blue-400">optional</span>()
+    .<span class="text-blue-400">min</span>(<span class="text-orange-300">13</span>).<span class="text-blue-400">max</span>(<span class="text-orange-300">150</span>),
+  <span class="text-green-400">"website"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>().<span class="text-blue-400">url</span>(),
+  <span class="text-green-400">"role"</span>: <span class="text-yellow-200">V</span>.<span class="text-blue-400">string</span>().<span class="text-blue-400">optional</span>()
+    .<span class="text-blue-400">one_of</span>([<span class="text-green-400">"admin"</span>, <span class="text-green-400">"user"</span>, <span class="text-green-400">"guest"</span>])
 };
 
 <span class="text-purple-400">let</span> result = <span class="text-blue-400">validate</span>(data, schema);</code></pre>

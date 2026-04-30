@@ -92,16 +92,16 @@
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt
 &lt;% if user_logged_in %&gt
-    &lt;span&gt;Welcome back!&lt;/span&gt
+  &lt;span&gt;Welcome back!&lt;/span&gt
 &lt;% else %&gt
-    &lt;a href="/login"&gt;Login&lt;/a&gt
+  &lt;a href="/login"&gt;Login&lt;/a&gt
 &lt;% end %&gt
 
 &lt;!-- Loops --&gt
 &lt;ul&gt
-    &lt;% for post in posts %&gt
-        &lt;li&gt;&lt;%= post["title"] %&gt;&lt;/li&gt
-    &lt;% end %&gt
+  &lt;% for post in posts %&gt
+    &lt;li&gt;&lt;%= post["title"] %&gt;&lt;/li&gt
+  &lt;% end %&gt
 &lt;/ul&gt;</code></pre>
         </div>
     </div>
@@ -388,19 +388,19 @@
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Generate a range for loops --&gt
 &lt;% for i in range(1, 5) %&gt
-    &lt;p&gt;Item &lt;%= i %&gt;&lt;/p&gt
+  &lt;p&gt;Item &lt;%= i %&gt;&lt;/p&gt
 &lt;% end %&gt
 &lt;!-- Output: 1, 2, 3, 4 --&gt;
 
 &lt;!-- Range with step parameter --&gt
 &lt;% for i in range(0, 10, 2) %&gt
-    &lt;p&gt;Even: &lt;%= i %&gt;&lt;/p&gt;
+  &lt;p&gt;Even: &lt;%= i %&gt;&lt;/p&gt;
 &lt;% end %&gt;
 &lt;!-- Output: 0, 2, 4, 6, 8 --&gt;
 
 &lt;!-- Reverse range with negative step --&gt
 &lt;% for i in range(5, 0, -1) %&gt
-    &lt;p&gt;Countdown: &lt;%= i %&gt;&lt;/p&gt;
+  &lt;p&gt;Countdown: &lt;%= i %&gt;&lt;/p&gt;
 &lt;% end %&gt;
 &lt;!-- Output: 5, 4, 3, 2, 1 --&gt;
 
@@ -437,8 +437,8 @@
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Active-link pattern</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;nav&gt;
-    &lt;a href="/users" class="&lt;%= current_path?("/users") ? "active" : "" %&gt;"&gt;Users&lt;/a&gt;
-    &lt;a href="/posts" class="&lt;%= current_path?("/posts") ? "active" : "" %&gt;"&gt;Posts&lt;/a&gt;
+  &lt;a href="/users" class="&lt;%= current_path?("/users") ? "active" : "" %&gt;"&gt;Users&lt;/a&gt;
+  &lt;a href="/posts" class="&lt;%= current_path?("/posts") ? "active" : "" %&gt;"&gt;Posts&lt;/a&gt;
 &lt;/nav&gt;
 
 &lt;p&gt;You are viewing &lt;%= current_path() %&gt; (&lt;%= current_method() %&gt;).&lt;/p&gt;</code></pre>
@@ -472,8 +472,8 @@
 
 &lt;!-- Also skips everything inside the container --&gt;
 &lt;section data-no-prefetch&gt;
-    &lt;a href="/a"&gt;A&lt;/a&gt;
-    &lt;a href="/b"&gt;B&lt;/a&gt;
+  &lt;a href="/a"&gt;A&lt;/a&gt;
+  &lt;a href="/b"&gt;B&lt;/a&gt;
 &lt;/section&gt;</code></pre>
 
     <p class="text-gray-400 mb-2 mt-6"><strong class="text-white">Opt out globally</strong> with an env var:</p>
@@ -498,12 +498,12 @@
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Controller</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn downloads(req)
-    # One-shot download &mdash; never reuse; always re-fetch.
-    return {
-        "status": 200,
-        "headers": { "Cache-Control": "no-store", "Content-Type": "text/csv" },
-        "body": csv_bytes
-    }
+  # One-shot download &mdash; never reuse; always re-fetch.
+  return {
+    "status": 200,
+    "headers": { "Cache-Control": "no-store", "Content-Type": "text/csv" },
+    "body": csv_bytes
+  }
 end</code></pre>
         </div>
     </div>
@@ -625,7 +625,7 @@ end</code></pre>
 
 &lt;!-- Use in URLs --&gt
 &lt;a href="/posts/&lt;%= slugify(post["title"]) %&gt;"&gt
-    &lt;%= post["title"] %&gt
+  &lt;%= post["title"] %&gt
 &lt;/a&gt;</code></pre>
         </div>
     </div>
@@ -676,35 +676,35 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/posts/show.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;article class="post"&gt
-    &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt
+  &lt;h1&gt;&lt;%= post["title"] %&gt;&lt;/h1&gt
 
-    &lt;div class="meta"&gt
-        &lt;!-- Localized date (respects I18n.set_locale) --&gt
-        &lt;span&gt;Published: &lt;%= l(post["created_at"], "long") %&gt;&lt;/span&gt
-        &lt;span&gt;(&lt;%= time_ago(post["created_at"]) %&gt;)&lt;/span&gt
-    &lt;/div&gt
+  &lt;div class="meta"&gt
+    &lt;!-- Localized date (respects I18n.set_locale) --&gt
+    &lt;span&gt;Published: &lt;%= l(post["created_at"], "long") %&gt;&lt;/span&gt
+    &lt;span&gt;(&lt;%= time_ago(post["created_at"]) %&gt;)&lt;/span&gt
+  &lt;/div&gt
 
-    &lt;% if post["updated_at"] != post["created_at"] %&gt
-        &lt;p class="updated"&gt;Last updated: &lt;%= time_ago(post["updated_at"]) %&gt;&lt;/p&gt
-    &lt;% end %&gt
+  &lt;% if post["updated_at"] != post["created_at"] %&gt
+    &lt;p class="updated"&gt;Last updated: &lt;%= time_ago(post["updated_at"]) %&gt;&lt;/p&gt
+  &lt;% end %&gt
 
-    &lt;div class="content"&gt
-        &lt;%= truncate(post["content"], 500) %&gt
-    &lt;/div&gt
+  &lt;div class="content"&gt
+    &lt;%= truncate(post["content"], 500) %&gt
+  &lt;/div&gt
 
-    &lt;div class="stats"&gt
-        &lt;span&gt;&lt;%= number_with_delimiter(post["views"]) %&gt; views&lt;/span&gt
-        &lt;span&gt;&lt;%= pluralize(post["comment_count"], "comment") %&gt;&lt;/span&gt
-    &lt;/div&gt
+  &lt;div class="stats"&gt
+    &lt;span&gt;&lt;%= number_with_delimiter(post["views"]) %&gt; views&lt;/span&gt
+    &lt;span&gt;&lt;%= pluralize(post["comment_count"], "comment") %&gt;&lt;/span&gt
+  &lt;/div&gt
 
-    &lt;div class="actions"&gt
-        &lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-secondary") %&gt
-        &lt;%= link_to("Back to Posts", "/posts", "btn btn-link") %&gt
-    &lt;/div&gt
+  &lt;div class="actions"&gt
+    &lt;%= link_to("Edit", "/posts/" + post["id"] + "/edit", "btn btn-secondary") %&gt
+    &lt;%= link_to("Back to Posts", "/posts", "btn btn-link") %&gt
+  &lt;/div&gt
 
-    &lt;footer&gt
-        &lt;p&gt;&amp;copy; &lt;%= datetime_format(datetime_now(), "%Y") %&gt; My Blog&lt;/p&gt
-    &lt;/footer&gt
+  &lt;footer&gt
+    &lt;p&gt;&amp;copy; &lt;%= datetime_format(datetime_now(), "%Y") %&gt; My Blog&lt;/p&gt
+  &lt;/footer&gt
 &lt;/article&gt;</code></pre>
         </div>
     </div>
@@ -718,14 +718,14 @@ end</code></pre>
 <pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt
 &lt;html&gt
 &lt;head&gt
-    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt
+  &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt
 &lt;/head&gt
 &lt;body&gt
-    &lt;nav&gt;...&lt;/nav&gt
-    
-    &lt;main&gt
-        &lt;%= yield %&gt
-    &lt;/main&gt
+  &lt;nav&gt;...&lt;/nav&gt
+  
+  &lt;main&gt
+    &lt;%= yield %&gt
+  &lt;/main&gt
 &lt;/body&gt
 &lt;/html&gt;</code></pre>
         </div>
@@ -910,11 +910,11 @@ soli serve
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/posts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show(req)
-    let post = Post.find(req.params["id"])    
-    render("posts/show", {
-        "title": post["title"],
-        "post": post
-    })
+  let post = Post.find(req.params["id"])    
+  render("posts/show", {
+    "title": post["title"],
+    "post": post
+  })
 end</code></pre>
         </div>
     </div>

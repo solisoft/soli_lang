@@ -156,17 +156,17 @@ print(result);  # [1, 2, 3]</code></pre>
 let has_license = true
 
 if age >= 18 && has_license
-    print("Can drive")
+  print("Can drive")
 end</code></pre>
 
                 <p class="text-gray-400 mb-3">At least one condition must be true.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if is_weekend || is_holiday
-    print("Day off!")
+  print("Day off!")
 end</code></pre>
 
                 <p class="text-gray-400 mb-3">Negates the condition.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if !is_raining
-    print("No umbrella needed")
+  print("No umbrella needed")
 end</code></pre>
 
                 <p class="text-gray-400 mb-3">String Concatenation.</p>
@@ -235,7 +235,7 @@ print("hello world".truncate(5)); # "he..."</code></pre>
 # Traditional null check
 let email = user["email"]
 if email == null
-    email = "unknown"
+  email = "unknown"
 end
 
 # Null coalescing operator
@@ -267,7 +267,7 @@ let numbers = 1..5  # [1, 2, 3, 4]
 
 # Use in for loops
 for i in 0..10
-    print(i)  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  print(i)  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 end</code></pre>
     </section>
 
@@ -441,8 +441,8 @@ let old = i--  # old is 2, i is now 1
 # Common pattern: loop counter
 let n = 0
 while n < 5
-    println(n)
-    n = n + 1
+  println(n)
+  n = n + 1
 end</code></pre>
     </section>
 

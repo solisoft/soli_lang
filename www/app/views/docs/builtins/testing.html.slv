@@ -66,23 +66,23 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
             <pre data-filename="test_example.sl"><code class="language-soli text-sm">describe("Calculator", fn() {
-    test("adds numbers", fn() {
-        assert_eq(add(1, 2), 3)
+  test("adds numbers", fn() {
+    assert_eq(add(1, 2), 3)
+  })
+
+  it("subtracts numbers", fn() {
+    assert_eq(subtract(5, 3), 2)
+  })
+
+  describe("division", fn() {
+    it("divides numbers", fn() {
+      assert_eq(divide(10, 2), 5)
     })
 
-    it("subtracts numbers", fn() {
-        assert_eq(subtract(5, 3), 2)
+    it("handles division by zero", fn() {
+      # Test error handling
     })
-
-    describe("division", fn() {
-        it("divides numbers", fn() {
-            assert_eq(divide(10, 2), 5)
-        })
-
-        it("handles division by zero", fn() {
-            # Test error handling
-        })
-    })
+  })
 })</code></pre>
         </div>
     </section>
@@ -252,10 +252,10 @@
             <h3 class="text-lg font-semibold text-white mb-3">Assertion Result</h3>
             <p class="text-gray-400 mb-3">All assertion functions return a result hash with the following structure:</p>
             <pre data-filename="Result Structure"><code class="language-soli text-sm">{
-    "passed": true,
-    "message": "description of the test",
-    "expected": value_that_was_expected,
-    "actual": value_that_was_actual
+  "passed": true,
+  "message": "description of the test",
+  "expected": value_that_was_expected,
+  "actual": value_that_was_actual
 }</code></pre>
         </div>
     </section>
@@ -493,9 +493,9 @@ expect(user).to_not_be_null();</code></pre>
                 <p class="text-gray-400 mb-3">Define a factory with default data.</p>
                 <div class="mt-4">
                     <pre data-filename="Example"><code class="language-soli text-sm">Factory.define("user", {
-    "name": "Test User",
-    "email": "test@example.com",
-    "age": 25
+  "name": "Test User",
+  "email": "test@example.com",
+  "age": 25
 })</code></pre>
                 </div>
             </div>

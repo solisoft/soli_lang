@@ -25,16 +25,16 @@ myapp/
 
 ```soli
 describe("UsersController", fn()
-    test("creates a new user", fn()
-        # Test code here
-        expect(true).to_be(true)
+  test("creates a new user", fn()
+    # Test code here
+    expect(true).to_be(true)
+  end)
+  
+  context("when valid", fn()
+    test("returns success", fn()
+      # Nested context
     end)
-    
-    context("when valid", fn()
-        test("returns success", fn()
-            # Nested context
-        end)
-    end)
+  end)
 end)
 ```
 
@@ -75,29 +75,29 @@ expect(json_string).to_be_valid_json();
 
 ```soli
 describe("Users API", fn()
-    test("GET /users returns list", fn()
-        let response = TestHTTP.get("/users")
-        expect(response.status).to_equal(200)
-        expect(response.body).to_contain("users")
-    end)
-    
-    test("POST /users creates user", fn()
-        let response = TestHTTP.post("/users", hash(
-            "email": "test@example.com",
-            "name": "Test User"
-        ))
-        expect(response.status).to_equal(201)
-    end)
-    
-    test("PUT /users/:id updates user", fn()
-        let response = TestHTTP.put("/users/1", hash("name": "Updated"))
-        expect(response.status).to_equal(200)
-    end)
-    
-    test("DELETE /users/:id removes user", fn()
-        let response = TestHTTP.delete("/users/1")
-        expect(response.status).to_equal(204)
-    end)
+  test("GET /users returns list", fn()
+    let response = TestHTTP.get("/users")
+    expect(response.status).to_equal(200)
+    expect(response.body).to_contain("users")
+  end)
+  
+  test("POST /users creates user", fn()
+    let response = TestHTTP.post("/users", hash(
+      "email": "test@example.com",
+      "name": "Test User"
+    ))
+    expect(response.status).to_equal(201)
+  end)
+  
+  test("PUT /users/:id updates user", fn()
+    let response = TestHTTP.put("/users/1", hash("name": "Updated"))
+    expect(response.status).to_equal(200)
+  end)
+  
+  test("DELETE /users/:id removes user", fn()
+    let response = TestHTTP.delete("/users/1")
+    expect(response.status).to_equal(204)
+  end)
 end)
 ```
 
@@ -119,28 +119,28 @@ TestHTTP.delete("/users/1");
 
 ```soli
 describe("UsersController", fn()
-    before_each(fn()
-        Factory.clear()
-    end)
-    
-    test("create action", fn()
-        let result = ControllerTest.helpers.users_controller.create(
-            params: hash("email": "test@example.com"),
-            session: Session.new(),
-            headers: Headers.new()
-        )
-        expect(result.status).to_equal(201)
-    end)
-    
-    test("show action", fn()
-        let user = Factory.create("user")
-        let result = ControllerTest.helpers.users_controller.show(
-            params: hash("id": user.id),
-            session: Session.new(),
-            headers: Headers.new()
-        )
-        expect(result.status).to_equal(200)
-    end)
+  before_each(fn()
+    Factory.clear()
+  end)
+  
+  test("create action", fn()
+    let result = ControllerTest.helpers.users_controller.create(
+      params: hash("email": "test@example.com"),
+      session: Session.new(),
+      headers: Headers.new()
+    )
+    expect(result.status).to_equal(201)
+  end)
+  
+  test("show action", fn()
+    let user = Factory.create("user")
+    let result = ControllerTest.helpers.users_controller.show(
+      params: hash("id": user.id),
+      session: Session.new(),
+      headers: Headers.new()
+    )
+    expect(result.status).to_equal(200)
+  end)
 end)
 ```
 
@@ -152,14 +152,14 @@ Tests are isolated using database transactions:
 
 ```soli
 describe("User model", fn()
-    test("creates user", fn()
-        with_transaction(fn()
-            let user = Factory.create("user", hash("name": "Test"))
-            expect(User.count()).to_equal(1)
-            expect(user.name).to_equal("Test")
-        end)
-        # Transaction automatically rolls back
+  test("creates user", fn()
+    with_transaction(fn()
+      let user = Factory.create("user", hash("name": "Test"))
+      expect(User.count()).to_equal(1)
+      expect(user.name).to_equal("Test")
     end)
+    # Transaction automatically rolls back
+  end)
 end)
 ```
 
@@ -168,13 +168,13 @@ end)
 ```soli
 # Define factories
 Factory.define("user", hash(
-    "email": "user@example.com",
-    "name": "Test User"
+  "email": "user@example.com",
+  "name": "Test User"
 ))
 
 Factory.define("post", hash(
-    "title": "Test Post",
-    "content": "Content here"
+  "title": "Test Post",
+  "content": "Content here"
 ))
 
 # Use factories
@@ -230,58 +230,58 @@ coverage_exclude("**/migrations/**")
 
 ```soli
 describe("UsersController", fn()
-    before_each(fn()
-        Factory.clear()
-        Database.clean_all()
+  before_each(fn()
+    Factory.clear()
+    Database.clean_all()
+  end)
+  
+  context("POST /users", fn()
+    test("creates user with valid data", fn()
+      let response = TestHTTP.post("/users", hash(
+        "email": "user@example.com",
+        "name": "Test User"
+      ))
+      expect(response.status).to_equal(201)
+      expect(response.body).to_contain("Test User")
     end)
     
-    context("POST /users", fn()
-        test("creates user with valid data", fn()
-            let response = TestHTTP.post("/users", hash(
-                "email": "user@example.com",
-                "name": "Test User"
-            ))
-            expect(response.status).to_equal(201)
-            expect(response.body).to_contain("Test User")
-        end)
-        
-        test("returns 422 with invalid email", fn()
-            let response = TestHTTP.post("/users", hash(
-                "email": "invalid-email"
-            ))
-            expect(response.status).to_equal(422)
-        end)
-        
-        test("returns 422 without email", fn()
-            let response = TestHTTP.post("/users", hash(
-                "name": "Test"
-            ))
-            expect(response.status).to_equal(422)
-        end)
+    test("returns 422 with invalid email", fn()
+      let response = TestHTTP.post("/users", hash(
+        "email": "invalid-email"
+      ))
+      expect(response.status).to_equal(422)
     end)
     
-    context("GET /users/:id", fn()
-        test("shows user profile", fn()
-            let user = Factory.create("user")
-            let response = TestHTTP.get("/users/" + user.id)
-            expect(response.status).to_equal(200)
-            expect(response.body).to_contain(user.name)
-        end)
-        
-        test("returns 404 for unknown user", fn()
-            let response = TestHTTP.get("/users/99999")
-            expect(response.status).to_equal(404)
-        end)
+    test("returns 422 without email", fn()
+      let response = TestHTTP.post("/users", hash(
+        "name": "Test"
+      ))
+      expect(response.status).to_equal(422)
+    end)
+  end)
+  
+  context("GET /users/:id", fn()
+    test("shows user profile", fn()
+      let user = Factory.create("user")
+      let response = TestHTTP.get("/users/" + user.id)
+      expect(response.status).to_equal(200)
+      expect(response.body).to_contain(user.name)
     end)
     
-    context("DELETE /users/:id", fn()
-        test("removes user", fn()
-            let user = Factory.create("user")
-            let response = TestHTTP.delete("/users/" + user.id)
-            expect(response.status).to_equal(204)
-            expect(User.find(user.id)).to_be_null()
-        end)
+    test("returns 404 for unknown user", fn()
+      let response = TestHTTP.get("/users/99999")
+      expect(response.status).to_equal(404)
     end)
+  end)
+  
+  context("DELETE /users/:id", fn()
+    test("removes user", fn()
+      let user = Factory.create("user")
+      let response = TestHTTP.delete("/users/" + user.id)
+      expect(response.status).to_equal(204)
+      expect(User.find(user.id)).to_be_null()
+    end)
+  end)
 end)
 ```
 
@@ -312,31 +312,31 @@ For integration tests that don't need a real database, use `Model.mock_query_res
 
 ```soli
 describe("User queries", fn()
-    before_each(fn()
-        User.clear_mocks()
-    end)
+  before_each(fn()
+    User.clear_mocks()
+  end)
+  
+  after_each(fn()
+    User.clear_mocks()
+  end)
+  
+  test("finds user by id", fn()
+    User.mock_query_result(
+      "FOR doc IN users FILTER doc._key == @key RETURN doc",
+      [
+        {
+          "_key": "123",
+          "_id": "default:users/123",
+          "name": "Alice",
+          "email": "alice@example.com"
+        }
+      ]
+    )
     
-    after_each(fn()
-        User.clear_mocks()
-    end)
-    
-    test("finds user by id", fn()
-        User.mock_query_result(
-            "FOR doc IN users FILTER doc._key == @key RETURN doc",
-            [
-                {
-                    "_key": "123",
-                    "_id": "default:users/123",
-                    "name": "Alice",
-                    "email": "alice@example.com"
-                }
-            ]
-        )
-        
-        let user = User.find("123")
-        expect(user.name).to_equal("Alice")
-        expect(user.class_name).to_equal("User")
-    end)
+    let user = User.find("123")
+    expect(user.name).to_equal("Alice")
+    expect(user.class_name).to_equal("User")
+  end)
 end)
 ```
 
@@ -346,44 +346,44 @@ When testing relations with `includes()`, mock both the parent and related queri
 
 ```soli
 describe("Contact with organisation", fn()
-    before_each(fn()
-        Contact.clear_mocks()
-        Organisation.clear_mocks()
-    end)
+  before_each(fn()
+    Contact.clear_mocks()
+    Organisation.clear_mocks()
+  end)
+  
+  test("returns correct class for included relations", fn()
+    # Mock Contact query
+    Contact.mock_query_result(
+      "FOR doc IN contacts RETURN doc",
+      [
+        {
+          "_key": "c1",
+          "_id": "default:contacts/c1",
+          "name": "Bob",
+          "organisation_id": "default:organisations/o1"
+        }
+      ]
+    )
     
-    test("returns correct class for included relations", fn()
-        # Mock Contact query
-        Contact.mock_query_result(
-            "FOR doc IN contacts RETURN doc",
-            [
-                {
-                    "_key": "c1",
-                    "_id": "default:contacts/c1",
-                    "name": "Bob",
-                    "organisation_id": "default:organisations/o1"
-                }
-            ]
-        )
-        
-        # Mock Organisation query (for includes)
-        Organisation.mock_query_result(
-            "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
-            [
-                {
-                    "_key": "o1",
-                    "_id": "default:organisations/o1",
-                    "name": "Acme Corp"
-                }
-            ]
-        )
-        
-        let contact = Contact.includes("organisation").first
-        let org = contact.organisation
-        
-        # Verify the relation has the correct class
-        expect(org.class_name).to_equal("Organisation")
-        expect(org.name).to_equal("Acme Corp")
-    end)
+    # Mock Organisation query (for includes)
+    Organisation.mock_query_result(
+      "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
+      [
+        {
+          "_key": "o1",
+          "_id": "default:organisations/o1",
+          "name": "Acme Corp"
+        }
+      ]
+    )
+    
+    let contact = Contact.includes("organisation").first
+    let org = contact.organisation
+    
+    # Verify the relation has the correct class
+    expect(org.class_name).to_equal("Organisation")
+    expect(org.name).to_equal("Acme Corp")
+  end)
 end)
 ```
 
@@ -413,20 +413,20 @@ Post.mock_query_result("FOR doc IN posts SORT doc.created_at DESC LIMIT 10 RETUR
 
 ```soli
 describe("Model Integration Tests", fn()
-    before_each(fn()
-        # Clear mocks before each test to avoid cross-test contamination
-        Model.clear_mocks()
-    end)
-    
-    after_each(fn()
-        # Ensure clean state
-        Model.clear_mocks()
-    end)
-    
-    test("specific scenario", fn()
-        # Register only the mocks needed for this test
-        Model.mock_query_result("FOR doc IN model RETURN doc", [...])
-    end)
+  before_each(fn()
+    # Clear mocks before each test to avoid cross-test contamination
+    Model.clear_mocks()
+  end)
+  
+  after_each(fn()
+    # Ensure clean state
+    Model.clear_mocks()
+  end)
+  
+  test("specific scenario", fn()
+    # Register only the mocks needed for this test
+    Model.mock_query_result("FOR doc IN model RETURN doc", [...])
+  end)
 end)
 ```
 

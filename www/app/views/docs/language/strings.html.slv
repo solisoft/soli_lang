@@ -95,8 +95,8 @@ the wild west.]]
 
 # HTML template example
 let html = """<div class="container">
-    <h1>Welcome</h1>
-    <p>This is a paragraph.</p>
+  <h1>Welcome</h1>
+  <p>This is a paragraph.</p>
 </div>"""
 
 # SQL query example
@@ -189,7 +189,7 @@ let names: String[] = ["Alice", "Bob", "Charlie"]
 
 # Function parameters
 def greet(name: String) -> String
-    "Hello, " + name + "!"
+  "Hello, " + name + "!"
 end</code></pre>
                 </div>
             </section>
@@ -604,7 +604,7 @@ print(text)  # "HELLO"</code></pre>
 "line1\nline2\nline3".lines      # ["line1", "line2", "line3"]
 
 for (c in "Soli".chars)
-    print(c)
+  print(c)
 end</code></pre>
                 </div>
             </section>
@@ -838,15 +838,15 @@ let job = fields[2]       # "Engineer"
 
 # Parse URL query string
 def parse_query(query: String) -> Hash
-    let result = {}
-    let pairs = query.split("&")
-    for (pair in pairs)
-        let parts = pair.split("=")
-        if (parts.length == 2)
-            result[parts[0]] = parts[1]
-        end
+  let result = {}
+  let pairs = query.split("&")
+  for (pair in pairs)
+    let parts = pair.split("=")
+    if (parts.length == 2)
+      result[parts[0]] = parts[1]
     end
-    result
+  end
+  result
 end
 let params = parse_query("name=Alice&age=30")
 # {"name": "Alice", "age": "30"}</code></pre>
@@ -863,31 +863,31 @@ let params = parse_query("name=Alice&age=30")
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic email validation
 def is_valid_email(email: String) -> Bool
-    email.contains("@") && email.contains(".")
+  email.contains("@") && email.contains(".")
 end
 
 # Check minimum length
 def has_min_length(s: String, min: Int) -> Bool
-    s.length >= min
+  s.length >= min
 end
 
 # Check if string is numeric
 def is_numeric(s: String) -> Bool
-    if (s.empty?)
-        return false
+  if (s.empty?)
+    return false
+  end
+  for (c in s.chars)
+    if (!"0123456789".contains(c))
+      return false
     end
-    for (c in s.chars)
-        if (!"0123456789".contains(c))
-            return false
-        end
-    end
-    true
+  end
+  true
 end
 
 # Validate username
 def is_valid_username(username: String) -> Bool
-    let trimmed = username.trim
-    trimmed.length >= 3 && trimmed.length <= 20
+  let trimmed = username.trim
+  trimmed.length >= 3 && trimmed.length <= 20
 end</code></pre>
                 </div>
             </section>
@@ -902,13 +902,13 @@ end</code></pre>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple template replacement
 def template(text: String, vars: Hash) -> String
-    let result = text
-    for (pair in entries(vars))
-        let key = pair[0]
-        let value = pair[1]
-        result = result.replace("{{" + key + "}}", value.to_string)
-    end
-    result
+  let result = text
+  for (pair in entries(vars))
+    let key = pair[0]
+    let value = pair[1]
+    result = result.replace("{{" + key + "}}", value.to_string)
+  end
+  result
 end
 
 let tmpl = "Hello, {{name}}! You have {{count}} messages."
@@ -917,7 +917,7 @@ let output = template(tmpl, {"name": "Alice", "count": 5})
 
 # Build HTML safely
 def build_link(url: String, text: String) -> String
-    "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
+  "<a href=\"" + html_escape(url) + "\">" + html_escape(text) + "</a>"
 end</code></pre>
                 </div>
             </section>

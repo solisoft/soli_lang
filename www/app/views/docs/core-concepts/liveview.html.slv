@@ -66,10 +66,10 @@ to update the DOM.
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/counter.sliv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="counter-component"&gt
-    &lt;h2&gt;Count: @count&lt;/h2&gt
+  &lt;h2&gt;Count: @count&lt;/h2&gt
 
-    &lt;button soli-click="decrement"&gt;-&lt;/button&gt
-    &lt;button soli-click="increment"&gt;+&lt;/button&gt
+  &lt;button soli-click="decrement"&gt;-&lt;/button&gt
+  &lt;button soli-click="increment"&gt;+&lt;/button&gt
 &lt;/div&gt;</code></pre>
         </div>
     </div>
@@ -94,24 +94,24 @@ router_live("counter", "live#counter")router_live("metrics", "live#metrics");</c
 <pre><code class="language-soli text-sm"># Counter component handler
 def counter(event_data: Any)
 let event = event_data["event"];   # Event name (e.g., "increment")
-    let params = event_data["params"]; # Event parameters
-    let state = event_data["state"];   # Current component state
-    let count = state["count"]
+  let params = event_data["params"]; # Event parameters
+  let state = event_data["state"];   # Current component state
+  let count = state["count"]
 
-    if (count == null)
-        count = 0
-    end
+  if (count == null)
+    count = 0
+  end
 
-    if (event == "increment")
-        return { "count": count + 1 }
-    end
+  if (event == "increment")
+    return { "count": count + 1 }
+  end
 
-    if (event == "decrement")
-        return { "count": count - 1 }
-    end
+  if (event == "decrement")
+    return { "count": count - 1 }
+  end
 
-    # Return unchanged state for unknown events
-    state
+  # Return unchanged state for unknown events
+  state
 end</code></pre></code></pre>
         </div>
     </div>
@@ -171,14 +171,14 @@ end</code></pre></code></pre>
 
 &lt;!-- Conditional rendering --&gt
 &lt;% if @logged_in %&gt
-    &lt;a href="/logout"&gt;Sign Out&lt;/a&gt
+  &lt;a href="/logout"&gt;Sign Out&lt;/a&gt
 &lt;% else %&gt
-    &lt;a href="/login"&gt;Sign In&lt;/a&gt
+  &lt;a href="/login"&gt;Sign In&lt;/a&gt
 &lt;% end %&gt
 
 &lt;!-- Iteration --&gt
 &lt;% for item in @items %&gt
-    &lt;li&gt;&lt;%= item["name"] %&gt;&lt;/li&gt
+  &lt;li&gt;&lt;%= item["name"] %&gt;&lt;/li&gt
 &lt;% end %&gt;</code></pre>
         </div>
     </div>
@@ -196,8 +196,8 @@ end</code></pre></code></pre>
 &lt;div id="counter" data-live-view="counter"&gt;&lt;/div&gt
 
 &lt;script&gt
-    # Initialize Live View
-    SoliLive.connect()&lt;/script&gt;</code></pre>
+  # Initialize Live View
+  SoliLive.connect()&lt;/script&gt;</code></pre>
         </div>
     </div>
 
@@ -224,27 +224,27 @@ router_live("/live/counter", "live#counter");</code></pre>
 <pre><code class="language-soli text-sm">def metrics_dashboard(event: Any)
 let type = event["type"]
 
-    if (type == "connect")
-        # Set tick interval in milliseconds (50ms = 20 updates/sec)
-        return {
-            "state": { "cpu": 0, "memory": 0, "requests": 0 },
-            "tick_interval": 50
-        }
-    end
+  if (type == "connect")
+    # Set tick interval in milliseconds (50ms = 20 updates/sec)
+    return {
+      "state": { "cpu": 0, "memory": 0, "requests": 0 },
+      "tick_interval": 50
+    }
+  end
 
-    if (type == "tick")
-        # Server pushes fresh data on each tick
-        return {
-            "state": {
-                "time": datetime_now(),
-                "cpu": system_cpu_usage(),
-                "memory": system_memory_mb(),
-                "requests": request_counter
-            }
-        }
-    end
+  if (type == "tick")
+    # Server pushes fresh data on each tick
+    return {
+      "state": {
+        "time": datetime_now(),
+        "cpu": system_cpu_usage(),
+        "memory": system_memory_mb(),
+        "requests": request_counter
+      }
+    }
+  end
 
-    {}
+  {}
 end</code></pre></code></pre>
         </div>
     </div>
@@ -253,22 +253,22 @@ end</code></pre></code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/metrics.sliv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;div class="dashboard"&gt
-    &lt;div class="metric"&gt
-        &lt;span class="label"&gt;Server Time&lt;/span&gt
-        &lt;span class="value"&gt;@time&lt;/span&gt
-    &lt;/div&gt
-    &lt;div class="metric"&gt
-        &lt;span class="label"&gt;CPU&lt;/span&gt
-        &lt;span class="value"&gt;@cpu%&lt;/span&gt
-    &lt;/div&gt
-    &lt;div class="metric"&gt
-        &lt;span class="label"&gt;Memory&lt;/span&gt
-        &lt;span class="value"&gt;@memory MB&lt;/span&gt
-    &lt;/div&gt
-    &lt;div class="metric"&gt
-        &lt;span class="label"&gt;Requests/sec&lt;/span&gt
-        &lt;span class="value"&gt;@requests&lt;/span&gt
-    &lt;/div&gt
+  &lt;div class="metric"&gt
+    &lt;span class="label"&gt;Server Time&lt;/span&gt
+    &lt;span class="value"&gt;@time&lt;/span&gt
+  &lt;/div&gt
+  &lt;div class="metric"&gt
+    &lt;span class="label"&gt;CPU&lt;/span&gt
+    &lt;span class="value"&gt;@cpu%&lt;/span&gt
+  &lt;/div&gt
+  &lt;div class="metric"&gt
+    &lt;span class="label"&gt;Memory&lt;/span&gt
+    &lt;span class="value"&gt;@memory MB&lt;/span&gt
+  &lt;/div&gt
+  &lt;div class="metric"&gt
+    &lt;span class="label"&gt;Requests/sec&lt;/span&gt
+    &lt;span class="value"&gt;@requests&lt;/span&gt
+  &lt;/div&gt
 &lt;/div&gt;</code></pre>
         </div>
     </div>

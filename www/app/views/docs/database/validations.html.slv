@@ -18,10 +18,10 @@
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-    validates("email", { "presence": true, "uniqueness": true })
-    validates("name", { "presence": true, "min_length": 2 })
-    validates("age", { "numericality": true, "min": 0, "max": 150 })
-    validates("password", { "min_length": 8 })
+  validates("email", { "presence": true, "uniqueness": true })
+  validates("name", { "presence": true, "min_length": 2 })
+  validates("age", { "numericality": true, "min": 0, "max": 150 })
+  validates("password", { "min_length": 8 })
 end</code></pre>
         </div>
     </div>
@@ -96,11 +96,11 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">let user = User.create({ "email": "" })
 if user._errors
-    for error in user._errors
-        print(error["field"] + ": " + error["message"])
-    end
+  for error in user._errors
+    print(error["field"] + ": " + error["message"])
+  end
 else
-    print("Created user: " + user._key)
+  print("Created user: " + user._key)
 end</code></pre>
         </div>
     </div>
@@ -121,18 +121,18 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-    def is_admin -> Bool
-        this.role == "admin"
-    end
+  def is_admin -> Bool
+    this.role == "admin"
+  end
 
-    def full_name -> String
-        this.first_name + " " + this.last_name
-    end
+  def full_name -> String
+    this.first_name + " " + this.last_name
+  end
 end
 
 let user = User.find("user123")
 if user.is_admin
-    print("Welcome, admin " + user.full_name())
+  print("Welcome, admin " + user.full_name())
 end</code></pre>
         </div>
     </div>
@@ -152,18 +152,18 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-    before_save("normalize_email")
-    after_create("send_welcome_email")
-    before_update("log_changes")
-    after_delete("cleanup_related")
+  before_save("normalize_email")
+  after_create("send_welcome_email")
+  before_update("log_changes")
+  after_delete("cleanup_related")
 
-    def normalize_email
-        this.email = this.email.downcase()
-    end
+  def normalize_email
+    this.email = this.email.downcase()
+  end
 
-    def send_welcome_email
-        # Send email logic
-    end
+  def send_welcome_email
+    # Send email logic
+  end
 end</code></pre>
         </div>
     </div>
@@ -216,57 +216,57 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-    validates("email", { "presence": true, "uniqueness": true, "format": "^[^@]+@[^@]+$" })
-    validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
-    validates("age", { "numericality": true, "min": 0, "max": 150 })
-    validates("password", { "min_length": 8 })
-    validates("role", { "custom": "validate_role" })
+  validates("email", { "presence": true, "uniqueness": true, "format": "^[^@]+@[^@]+$" })
+  validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
+  validates("age", { "numericality": true, "min": 0, "max": 150 })
+  validates("password", { "min_length": 8 })
+  validates("role", { "custom": "validate_role" })
 
-    before_save("normalize_email")
-    after_create("send_welcome_email")
-    before_delete("cleanup_related")
+  before_save("normalize_email")
+  after_create("send_welcome_email")
+  before_delete("cleanup_related")
 
-    def normalize_email
-        this.email = this.email.downcase()
+  def normalize_email
+    this.email = this.email.downcase()
+  end
+
+  def send_welcome_email
+    # Send welcome email to new users
+  end
+
+  def cleanup_related
+    # Remove associated data before deletion
+  end
+
+  def validate_role
+    let valid_roles = ["admin", "user", "moderator"]
+    if !valid_roles.includes?(this.role)
+      return "must be one of: admin, user, moderator"
     end
+  end
 
-    def send_welcome_email
-        # Send welcome email to new users
-    end
+  def is_admin -> Bool
+    this.role == "admin"
+  end
 
-    def cleanup_related
-        # Remove associated data before deletion
-    end
-
-    def validate_role
-        let valid_roles = ["admin", "user", "moderator"]
-        if !valid_roles.includes?(this.role)
-            return "must be one of: admin, user, moderator"
-        end
-    end
-
-    def is_admin -> Bool
-        this.role == "admin"
-    end
-
-    def full_name -> String
-        this.first_name + " " + this.last_name
-    end
+  def full_name -> String
+    this.first_name + " " + this.last_name
+  end
 end
 
 # Creating a user with validation
 let user = User.create({
-    "email": "Alice@Example.com",
-    "name": "Alice",
-    "age": 30,
-    "password": "securepass",
-    "role": "admin"
+  "email": "Alice@Example.com",
+  "name": "Alice",
+  "age": 30,
+  "password": "securepass",
+  "role": "admin"
 })
 
 if !user._errors
-    print(user.email)       # => "alice@example.com" (normalized by before_save)
-    print(user.is_admin)    # => true
-    print(user.full_name()) # => "Alice "
+  print(user.email)       # => "alice@example.com" (normalized by before_save)
+  print(user.is_admin)    # => true
+  print(user.full_name()) # => "Alice "
 end</code></pre>
         </div>
     </div>

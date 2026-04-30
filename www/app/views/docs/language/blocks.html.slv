@@ -42,11 +42,11 @@
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">def greet(name: String) {
-    print("Hello, " + name + "!")
+  print("Hello, " + name + "!")
 }
 
 def add(a: Int, b: Int) -> Int {
-    a + b
+  a + b
 }</code></pre>
             </div>
         </section>
@@ -58,7 +58,7 @@ def add(a: Int, b: Int) -> Int {
 end
 
 def add(a: Int, b: Int) -> Int
-    a + b
+  a + b
 end</code></pre>
             </div>
         </section>
@@ -81,13 +81,13 @@ end</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
 if age >= 18
-    print("Adult")
+  print("Adult")
 end
 
 if age >= 21
-    print("Can drink")
+  print("Can drink")
 else
-    print("Too young")
+  print("Too young")
 end</code></pre>
             </div>
         </section>
@@ -98,13 +98,13 @@ end</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
 
 if age >= 18
-    print("Adult")
+  print("Adult")
 end
 
 if age >= 21
-    print("Can drink")
+  print("Can drink")
 else
-    print("Too young")
+  print("Too young")
 end</code></pre>
             </div>
         </section>
@@ -126,8 +126,8 @@ end</code></pre>
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
 while i < 5
-    print(i)
-    i = i + 1
+  print(i)
+  i = i + 1
 end</code></pre>
             </div>
         </section>
@@ -141,8 +141,8 @@ end
 
 let j = 0
 while j < 5
-    print(j)
-    j = j + 1
+  print(j)
+  j = j + 1
 end</code></pre>
             </div>
         </section>
@@ -163,7 +163,7 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">for item in items
-    print(item)
+  print(item)
 end</code></pre>
             </div>
         </section>
@@ -174,7 +174,7 @@ end</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">for item in items end
 
 for item in items
-    print(item)
+  print(item)
 end</code></pre>
             </div>
         </section>
@@ -195,15 +195,15 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Person
-    name: String
+  name: String
 
-    new(name: String)
-        this.name = name
-    end
+  new(name: String)
+    this.name = name
+  end
 
-    def greet
-        print("Hello, " + this.name)
-    end
+  def greet
+    print("Hello, " + this.name)
+  end
 end</code></pre>
             </div>
         </section>
@@ -214,11 +214,11 @@ end</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Person end
 
 class Person
-    name: String
+  name: String
 
-    new(name: String) end
+  new(name: String) end
 
-    def greet end
+  def greet end
 end</code></pre>
             </div>
         </section>
@@ -242,9 +242,9 @@ def placeholder end
 
 # Function with body - use end
 def process_data(data)
-    validate(data)
-    transform(data)
-    save(data)
+  validate(data)
+  transform(data)
+  save(data)
 end
 
 # Empty class - use end
@@ -252,11 +252,11 @@ class EmptyMarker end
 
 # Class with methods - use end
 class Service
-    def init end
+  def init end
 
-    def process
-        fetch_data()
-    end
+  def process
+    fetch_data()
+  end
 end
 
 # Control flow - use end for simple guards
@@ -264,7 +264,7 @@ if user.is_admin()
 end
 
 if user.is_valid()
-    authorize(user)
+  authorize(user)
 end</code></pre>
         </div>
     </section>

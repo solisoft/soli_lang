@@ -60,17 +60,17 @@
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def process_user(user_id: Int) -> Hash
-    let user = database.find(user_id)
-    # Set a breakpoint to inspect the user object
-    break()
-    if (user == null)
-        return {"error": "User not found"}
-    end
+  let user = database.find(user_id)
+  # Set a breakpoint to inspect the user object
+  break()
+  if (user == null)
+    return {"error": "User not found"}
+  end
 
-    let profile = enrich_profile(user)
-    # Another breakpoint to see enriched data
-    break()
-    profile
+  let profile = enrich_profile(user)
+  # Another breakpoint to see enriched data
+  break()
+  profile
 end</code></pre></code></pre>
             </div>
         </div>
@@ -143,9 +143,9 @@ end</code></pre></code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-text text-sm">Stack Trace:
-  0. process_user at ./src/users.sl:15
-  1. handle_request at ./src/routes.sl:42
-  2. main at ./src/main.sl:8
+ 0. process_user at ./src/users.sl:15
+ 1. handle_request at ./src/routes.sl:42
+ 2. main at ./src/main.sl:8
 
 Click on any frame to see the source code.</code></pre>
             </div>
@@ -270,15 +270,15 @@ headers    # View HTTP headers</code></pre>
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req)
-    let users = User.where("doc.active == true").all()
-    let posts = Post.includes("author").all()
+  let users = User.where("doc.active == true").all()
+  let posts = Post.includes("author").all()
 
-    # dev_queries() returns [] in production, populated under --dev
-    render("users/index", {
-        "users":   users,
-        "posts":   posts,
-        "queries": dev_queries()
-    })
+  # dev_queries() returns [] in production, populated under --dev
+  render("users/index", {
+    "users":   users,
+    "posts":   posts,
+    "queries": dev_queries()
+  })
 end</code></pre>
             </div>
         </div>
@@ -288,20 +288,20 @@ end</code></pre>
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/shared/_dev_bar.html.erb</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;% if queries.length &gt; 0 %&gt;
-    &lt;div class="dev-bar"&gt;
-        &lt;h3&gt;&lt;%= queries.length %&gt; AQL queries&lt;/h3&gt;
-        &lt;ol&gt;
-            &lt;% for q in queries %&gt;
-                &lt;li&gt;
-                    &lt;code&gt;&lt;%= h(q["query"]) %&gt;&lt;/code&gt;
-                    &lt;% if q["bind_vars"] != null %&gt;
-                        &lt;small&gt;binds: &lt;%= h(json_stringify(q["bind_vars"])) %&gt;&lt;/small&gt;
-                    &lt;% end %&gt;
-                    &lt;span&gt;&lt;%= q["duration_ms"] %&gt; ms&lt;/span&gt;
-                &lt;/li&gt;
-            &lt;% end %&gt;
-        &lt;/ol&gt;
-    &lt;/div&gt;
+  &lt;div class="dev-bar"&gt;
+    &lt;h3&gt;&lt;%= queries.length %&gt; AQL queries&lt;/h3&gt;
+    &lt;ol&gt;
+      &lt;% for q in queries %&gt;
+        &lt;li&gt;
+          &lt;code&gt;&lt;%= h(q["query"]) %&gt;&lt;/code&gt;
+          &lt;% if q["bind_vars"] != null %&gt;
+            &lt;small&gt;binds: &lt;%= h(json_stringify(q["bind_vars"])) %&gt;&lt;/small&gt;
+          &lt;% end %&gt;
+          &lt;span&gt;&lt;%= q["duration_ms"] %&gt; ms&lt;/span&gt;
+        &lt;/li&gt;
+      &lt;% end %&gt;
+    &lt;/ol&gt;
+  &lt;/div&gt;
 &lt;% end %&gt;</code></pre>
             </div>
         </div>

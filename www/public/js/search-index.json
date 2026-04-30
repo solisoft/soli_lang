@@ -453,6 +453,62 @@
       ]
     },
     {
+      "title": "Cache",
+      "type": "class",
+      "category": "Cache",
+      "path": "/docs/builtins/cache",
+      "signature": "Cache",
+      "description": "Persistent caching backed by SoliKV with automatic TTL expiration",
+      "keywords": [
+        "cache",
+        "kv",
+        "solikv",
+        "ttl",
+        "memory"
+      ]
+    },
+    {
+      "title": "Cache.fetch",
+      "type": "method",
+      "category": "Cache",
+      "path": "/docs/builtins/cache#def-cache-fetch",
+      "signature": "Cache.fetch(key, ttl?) do...end",
+      "description": "Cache-aside pattern: returns cached value on hit, or executes the block on miss, caches and returns the result",
+      "keywords": [
+        "cache",
+        "fetch",
+        "memoize",
+        "ttl"
+      ]
+    },
+    {
+      "title": "Cache.get",
+      "type": "method",
+      "category": "Cache",
+      "path": "/docs/builtins/cache#def-cache-get",
+      "signature": "Cache.get(key)",
+      "description": "Retrieve a value from the cache",
+      "keywords": [
+        "cache",
+        "get",
+        "kv"
+      ]
+    },
+    {
+      "title": "Cache.set",
+      "type": "method",
+      "category": "Cache",
+      "path": "/docs/builtins/cache#def-cache-set",
+      "signature": "Cache.set(key, value, ttl?)",
+      "description": "Store a value in the cache with optional TTL",
+      "keywords": [
+        "cache",
+        "set",
+        "store",
+        "ttl"
+      ]
+    },
+    {
       "title": "HTTP",
       "type": "class",
       "category": "HTTP",
@@ -1356,6 +1412,48 @@
       ]
     },
     {
+      "title": "DateTime.epoch",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-datetime-epoch",
+      "signature": "DateTime.epoch()",
+      "description": "Create a DateTime at Unix epoch (1970-01-01 00:00:00 UTC)",
+      "keywords": [
+        "datetime",
+        "epoch",
+        "unix",
+        "1970"
+      ]
+    },
+    {
+      "title": "DateTime.from_unix",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-datetime-from-unix",
+      "signature": "DateTime.from_unix(timestamp)",
+      "description": "Create a DateTime from a Unix timestamp (seconds since epoch)",
+      "keywords": [
+        "datetime",
+        "unix",
+        "timestamp",
+        "from_unix"
+      ]
+    },
+    {
+      "title": "DateTime.microtime",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-datetime-microtime",
+      "signature": "DateTime.microtime()",
+      "description": "Get the current Unix timestamp in microseconds as a Float",
+      "keywords": [
+        "datetime",
+        "microtime",
+        "microseconds",
+        "timestamp"
+      ]
+    },
+    {
       "title": ".year()",
       "type": "method",
       "category": "DateTime",
@@ -1622,45 +1720,176 @@
       ]
     },
     {
-      "title": ".to_seconds()",
+      "title": "Duration.weeks",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#def-to-seconds",
-      "signature": "duration.to_seconds()",
+      "path": "/docs/builtins/duration#def-duration-weeks",
+      "signature": "Duration.weeks(n)",
+      "description": "Create a duration from a number of weeks",
+      "keywords": [
+        "duration",
+        "weeks",
+        "time",
+        "create"
+      ]
+    },
+    {
+      "title": "Duration.of_seconds",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-of-seconds",
+      "signature": "Duration.of_seconds(n)",
+      "description": "Create a duration from a number of seconds",
+      "keywords": [
+        "duration",
+        "seconds",
+        "time",
+        "create",
+        "of"
+      ]
+    },
+    {
+      "title": "Duration.of_minutes",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-of-minutes",
+      "signature": "Duration.of_minutes(n)",
+      "description": "Create a duration from a number of minutes",
+      "keywords": [
+        "duration",
+        "minutes",
+        "time",
+        "create",
+        "of"
+      ]
+    },
+    {
+      "title": "Duration.of_hours",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-of-hours",
+      "signature": "Duration.of_hours(n)",
+      "description": "Create a duration from a number of hours",
+      "keywords": [
+        "duration",
+        "hours",
+        "time",
+        "create",
+        "of"
+      ]
+    },
+    {
+      "title": "Duration.of_days",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-of-days",
+      "signature": "Duration.of_days(n)",
+      "description": "Create a duration from a number of days",
+      "keywords": [
+        "duration",
+        "days",
+        "time",
+        "create",
+        "of"
+      ]
+    },
+    {
+      "title": "Duration.of_weeks",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-of-weeks",
+      "signature": "Duration.of_weeks(n)",
+      "description": "Create a duration from a number of weeks",
+      "keywords": [
+        "duration",
+        "weeks",
+        "time",
+        "create",
+        "of"
+      ]
+    },
+    {
+      "title": "Duration.between",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-duration-between",
+      "signature": "Duration.between(dt1, dt2)",
+      "description": "Create a Duration representing the difference between two DateTime instances",
+      "keywords": [
+        "duration",
+        "between",
+        "datetime",
+        "difference"
+      ]
+    },
+    {
+      "title": ".total_seconds()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-total-seconds",
+      "signature": "duration.total_seconds()",
       "description": "Get the total duration in seconds",
       "keywords": [
         "duration",
         "seconds",
-        "convert",
-        "total"
+        "total",
+        "convert"
       ]
     },
     {
-      "title": ".to_minutes()",
+      "title": ".total_minutes()",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#def-to-minutes",
-      "signature": "duration.to_minutes()",
+      "path": "/docs/builtins/duration#def-total-minutes",
+      "signature": "duration.total_minutes()",
       "description": "Get the total duration in minutes",
       "keywords": [
         "duration",
         "minutes",
-        "convert",
-        "total"
+        "total",
+        "convert"
       ]
     },
     {
-      "title": ".to_hours()",
+      "title": ".total_hours()",
       "type": "method",
       "category": "Duration",
-      "path": "/docs/builtins/duration#def-to-hours",
-      "signature": "duration.to_hours()",
+      "path": "/docs/builtins/duration#def-total-hours",
+      "signature": "duration.total_hours()",
       "description": "Get the total duration in hours",
       "keywords": [
         "duration",
         "hours",
-        "convert",
-        "total"
+        "total",
+        "convert"
+      ]
+    },
+    {
+      "title": ".total_days()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-total-days",
+      "signature": "duration.total_days()",
+      "description": "Get the total duration in days",
+      "keywords": [
+        "duration",
+        "days",
+        "total",
+        "convert"
+      ]
+    },
+    {
+      "title": ".to_string()",
+      "type": "method",
+      "category": "Duration",
+      "path": "/docs/builtins/duration#def-to-string",
+      "signature": "duration.to_string()",
+      "description": "Get the duration as a formatted string",
+      "keywords": [
+        "duration",
+        "string",
+        "format",
+        "convert"
       ]
     },
     {
@@ -5802,6 +6031,106 @@
       ]
     },
     {
+      "title": "Solidb",
+      "type": "class",
+      "category": "Database",
+      "path": "/docs/builtins/solidb",
+      "signature": "Solidb(host, database)",
+      "description": "SoliDB client for connecting to SolidB database server with authentication, CRUD operations, and blob storage",
+      "keywords": [
+        "solidb",
+        "database",
+        "nosql",
+        "blob",
+        "storage"
+      ]
+    },
+    {
+      "title": "Solidb.store_blob",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-store-blob",
+      "signature": "solidb.store_blob(collection, data_base64, filename, content_type)",
+      "description": "Store binary data (images, files) in SolidB blob storage",
+      "keywords": [
+        "solidb",
+        "blob",
+        "upload",
+        "binary",
+        "storage"
+      ]
+    },
+    {
+      "title": "Solidb.get_blob",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-get-blob",
+      "signature": "solidb.get_blob(collection, blob_id)",
+      "description": "Retrieve binary data from SolidB blob storage, returns base64-encoded content",
+      "keywords": [
+        "solidb",
+        "blob",
+        "download",
+        "binary",
+        "storage"
+      ]
+    },
+    {
+      "title": "Solidb.get_blob_metadata",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-get-blob-metadata",
+      "signature": "solidb.get_blob_metadata(collection, blob_id)",
+      "description": "Get metadata for a blob (filename, content_type, size, created_at)",
+      "keywords": [
+        "solidb",
+        "blob",
+        "metadata",
+        "storage"
+      ]
+    },
+    {
+      "title": "Solidb.delete_blob",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-delete-blob",
+      "signature": "solidb.delete_blob(collection, blob_id)",
+      "description": "Delete a blob from SolidB storage",
+      "keywords": [
+        "solidb",
+        "blob",
+        "delete",
+        "storage"
+      ]
+    },
+    {
+      "title": "solidb_connect",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-connect",
+      "signature": "solidb_connect(address)",
+      "description": "Connect to a SolidB server and ping it",
+      "keywords": [
+        "solidb",
+        "connect",
+        "database"
+      ]
+    },
+    {
+      "title": "solidb_query",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/builtins/solidb#def-query",
+      "signature": "solidb_query(address, database, sdbql, bindvars?)",
+      "description": "Execute a SDBQL query against a SolidB database",
+      "keywords": [
+        "solidb",
+        "query",
+        "sdbql",
+        "database"
+      ]
+    },
+    {
       "title": "has_and_belongs_to_many",
       "type": "dsl",
       "category": "Database",
@@ -5834,6 +6163,187 @@
         "fallback",
         "try catch",
         "swallow error"
+      ]
+    },
+    {
+      "title": "WebSocket",
+      "type": "class",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket",
+      "signature": "WebSocket",
+      "description": "Real-time bidirectional communication for live updates, chat, and collaborative features",
+      "keywords": [
+        "websocket",
+        "realtime",
+        "live",
+        "chat",
+        "presence"
+      ]
+    },
+    {
+      "title": "ws_send",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-send",
+      "signature": "ws_send(connection_id, message)",
+      "description": "Send a message to a specific connected client",
+      "keywords": [
+        "websocket",
+        "send",
+        "message",
+        "realtime"
+      ]
+    },
+    {
+      "title": "ws_broadcast",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-broadcast",
+      "signature": "ws_broadcast(message)",
+      "description": "Broadcast a message to all connected clients",
+      "keywords": [
+        "websocket",
+        "broadcast",
+        "message",
+        "realtime"
+      ]
+    },
+    {
+      "title": "ws_broadcast_room",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-broadcast-room",
+      "signature": "ws_broadcast_room(channel, message)",
+      "description": "Broadcast a message to all clients in a specific channel/room",
+      "keywords": [
+        "websocket",
+        "room",
+        "channel",
+        "broadcast",
+        "realtime"
+      ]
+    },
+    {
+      "title": "ws_join",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-join",
+      "signature": "ws_join(channel)",
+      "description": "Join a channel/room for targeted messaging",
+      "keywords": [
+        "websocket",
+        "join",
+        "room",
+        "channel"
+      ]
+    },
+    {
+      "title": "ws_leave",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-leave",
+      "signature": "ws_leave(channel)",
+      "description": "Leave a channel/room",
+      "keywords": [
+        "websocket",
+        "leave",
+        "room",
+        "channel"
+      ]
+    },
+    {
+      "title": "ws_clients",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-clients",
+      "signature": "ws_clients()",
+      "description": "Get list of all connected client IDs",
+      "keywords": [
+        "websocket",
+        "clients",
+        "connections"
+      ]
+    },
+    {
+      "title": "ws_clients_in",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-clients-in",
+      "signature": "ws_clients_in(channel)",
+      "description": "Get list of clients connected to a specific channel",
+      "keywords": [
+        "websocket",
+        "clients",
+        "room",
+        "channel"
+      ]
+    },
+    {
+      "title": "ws_count",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-count",
+      "signature": "ws_count()",
+      "description": "Get the total number of connected clients",
+      "keywords": [
+        "websocket",
+        "count",
+        "connections"
+      ]
+    },
+    {
+      "title": "ws_close",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-close",
+      "signature": "ws_close(connection_id, reason)",
+      "description": "Close a specific client connection",
+      "keywords": [
+        "websocket",
+        "close",
+        "disconnect"
+      ]
+    },
+    {
+      "title": "ws_list_presence",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-list-presence",
+      "signature": "ws_list_presence(channel)",
+      "description": "List all user IDs with presence in a channel",
+      "keywords": [
+        "websocket",
+        "presence",
+        "users",
+        "channel"
+      ]
+    },
+    {
+      "title": "ws_presence_count",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-presence-count",
+      "signature": "ws_presence_count(channel)",
+      "description": "Get the number of users with presence in a channel",
+      "keywords": [
+        "websocket",
+        "presence",
+        "count",
+        "channel"
+      ]
+    },
+    {
+      "title": "ws_get_presence",
+      "type": "function",
+      "category": "WebSocket",
+      "path": "/docs/builtins/websocket#def-ws-get-presence",
+      "signature": "ws_get_presence(channel, user_id)",
+      "description": "Get presence info for a specific user in a channel",
+      "keywords": [
+        "websocket",
+        "presence",
+        "user",
+        "channel"
       ]
     }
   ]

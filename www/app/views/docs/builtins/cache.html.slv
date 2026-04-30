@@ -1,266 +1,285 @@
 <div>
-    <div class="mb-16">
+    <!-- Hero -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-in Functions</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Cache</span>
+        </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-yellow-400 via-orange-400 to-amber-400 bg-clip-text text-transparent">Cache Functions</span>
+            <span class="bg-gradient-to-r from-yellow-400 via-orange-400 to-amber-400 bg-clip-text text-transparent">Cache</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Persistent caching backed by SoliKV with automatic TTL expiration. Data persists across restarts and is shared between server instances.
+            Persistent caching backed by SoliKV with automatic TTL expiration. Values survive restarts, are shared across server instances, and are namespaced under <code class="text-amber-400">soli:cache:</code> so they never collide with raw <a href="/docs/builtins/kv" class="text-amber-400 hover:underline">KV</a> data.
         </p>
     </div>
 
-    <!-- Configuration -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Configuration</h2>
-        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <p class="text-gray-400 mb-4">Cache connects to a SoliKV instance via environment variables or programmatic configuration:</p>
-            <ul class="text-gray-300 space-y-2 ml-4 mb-4">
-                <li><code class="text-purple-400">SOLIKV_RESP_HOST</code> - SoliKV host (default: <code>localhost</code>)</li>
-                <li><code class="text-purple-400">SOLIKV_RESP_PORT</code> - SoliKV RESP port (default: <code>6380</code>)</li>
-                <li><code class="text-purple-400">SOLIKV_TOKEN</code> - Optional token for authentication</li>
-                <li><strong>Default TTL:</strong> 3600 seconds (1 hour)</li>
-                <li><strong>Key prefix:</strong> <code>soli:cache:</code> (isolates cache keys from other KV data)</li>
+    <!-- How it works -->
+    <section id="section-how-it-works" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            How it works
+        </h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
+                <li>Values are JSON-serialized on <code class="text-amber-400">set</code> and parsed back on <code class="text-amber-400">get</code> — works for any value <code class="text-purple-400">JSON.stringify</code> would handle.</li>
+                <li>Keys are transparently prefixed with <code class="text-amber-400">soli:cache:</code>; <code class="text-amber-400">Cache.keys()</code> returns them with the prefix stripped.</li>
+                <li>TTL expiration is enforced by SoliKV — there is no Soli-side reaper. Default TTL is <code class="text-purple-400">3600s</code> (1 hour).</li>
+                <li>Misses return <code class="text-purple-400">null</code>. <code class="text-amber-400">Cache.fetch</code> turns the cache-aside pattern into one expression.</li>
             </ul>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code># In .env file
-SOLIKV_RESP_HOST=localhost
+        </div>
+    </section>
+
+    <!-- Configuration -->
+    <section id="section-configuration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-400 mb-4">Cache reuses the SoliKV connection. Configure via env vars or programmatically:</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Variable</th>
+                            <th class="pb-3 pr-4">Description</th>
+                            <th class="pb-3">Default</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_RESP_HOST</code></td>
+                            <td class="py-3 pr-4">SoliKV host</td>
+                            <td class="py-3"><code class="text-purple-400">localhost</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_RESP_PORT</code></td>
+                            <td class="py-3 pr-4">RESP port</td>
+                            <td class="py-3"><code class="text-purple-400">6380</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_TOKEN</code></td>
+                            <td class="py-3 pr-4">Bearer token (optional)</td>
+                            <td class="py-3 text-gray-500">—</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <pre data-filename=".env" class="mt-4"><code class="language-bash text-sm">SOLIKV_RESP_HOST=localhost
 SOLIKV_RESP_PORT=6380
-SOLIKV_TOKEN=my-secret-token
-
-# Or configure programmatically
-Cache.configure("my-solikv-host", "my-secret-token")
-
-# Set default TTL
-cache_config(1800)  # 30 minute default TTL</code></pre>
+SOLIKV_TOKEN=my-secret-token</code></pre>
+            <pre data-filename="Programmatic" class="mt-3"><code class="language-soli text-sm">Cache.configure("my-solikv-host", "my-secret-token")</code></pre>
         </div>
     </section>
 
-    <!-- Cache Static Methods -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Cache Static Methods</h2>
-        <p class="text-gray-400 mb-4">Call methods directly on the Cache class without instantiation.</p>
-        <div class="space-y-6">
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.set(key, value, ttl_seconds?)</h3>
-                <p class="text-gray-400 mb-4">Stores a value in the cache.</p>
-                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
-                    <li><code class="text-purple-400">key</code> (String) - Cache key</li>
-                    <li><code class="text-purple-400">value</code> (Any) - Value to cache (JSON serialized)</li>
-                    <li><code class="text-purple-400">ttl_seconds</code> (Int, optional) - Time to live (default: 3600)</li>
-                </ul>
-                <p class="text-gray-400">Returns: null</p>
-                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>Cache.set("user:123", { "name": "Alice" })
-Cache.set("session", data, 1800)  # 30 minute TTL</code></pre>
-            </div>
+    <!-- Read / Write -->
+    <section id="section-read-write" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Read &amp; Write</h2>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.get(key)</h3>
-                <p class="text-gray-400 mb-4">Retrieves a value from the cache.</p>
-                <p class="text-gray-400">Returns: Any|null - Cached value or null if not found/expired</p>
-                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let user = Cache.get("user:123")
+        <section id="def-set" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-set" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.set(key, value, ttl_seconds?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Store a value, JSON-serialized. <code class="text-amber-400">ttl_seconds</code> defaults to <code class="text-purple-400">3600</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cache.set("user:123", { "name": "Alice" })
+Cache.set("session", data, 1800)   # 30 minute TTL</code></pre>
+                <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-purple-400">null</code></p>
+            </div>
+        </section>
+
+        <section id="def-get" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-get" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.get(key)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Retrieve a value. Returns <code class="text-purple-400">null</code> if the key is missing or expired.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let user = Cache.get("user:123")
 if user != null
-    println("Cached user: " + user["name"])
+  println("Cached user: " + user["name"])
 end</code></pre>
             </div>
+        </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.delete(key)</h3>
-                <p class="text-gray-400">Removes a value from the cache.</p>
-                <p class="text-gray-400">Returns: Bool - true if key was removed</p>
+        <section id="def-fetch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-fetch" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.fetch(key, ttl?) do ... end</code>
+                    <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">cache-aside</span>
+                </a>
+                <p class="text-gray-400 mb-3">Returns the cached value on hit. On miss, runs the block, caches the result, and returns it. Without a block it behaves like <code class="text-amber-400">Cache.get</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let user = Cache.fetch("user:" + str(user_id), 300) do
+  User.find(user_id)
+end</code></pre>
+                <p class="text-gray-500 text-xs mt-3">If the block raises, nothing is cached.</p>
             </div>
+        </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.has(key)</h3>
-                <p class="text-gray-400">Checks if a key exists in the cache.</p>
-                <p class="text-gray-400">Returns: Bool</p>
+        <section id="def-delete" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-delete" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.delete(key)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Remove a key. Returns <code class="text-purple-400">true</code> if it existed.</p>
             </div>
+        </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear()</h3>
-                <p class="text-gray-400">Removes all cache entries (only keys with the <code>soli:cache:</code> prefix).</p>
-                <p class="text-gray-400">Returns: null</p>
+        <section id="def-has" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-has" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.has(key)</code>
+                </a>
+                <p class="text-gray-400">Check whether a key exists. Returns <code class="text-purple-400">Bool</code>.</p>
             </div>
+        </section>
+    </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.clear_expired()</h3>
-                <p class="text-gray-400">No-op. SoliKV handles TTL expiration automatically.</p>
-                <p class="text-gray-400">Returns: null</p>
+    <!-- TTL -->
+    <section id="section-ttl" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">TTL Management</h2>
+
+        <section id="def-ttl" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-ttl" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.ttl(key)</code>
+                </a>
+                <p class="text-gray-400">Seconds until expiration, or <code class="text-purple-400">null</code> if the key is missing or has no TTL.</p>
             </div>
+        </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.keys()</h3>
-                <p class="text-gray-400">Returns all cache keys (prefix stripped).</p>
-                <p class="text-gray-400">Returns: Array</p>
+        <section id="def-touch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-touch" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.touch(key, ttl)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Reset the TTL of an existing key. Returns <code class="text-purple-400">true</code> on success, <code class="text-purple-400">false</code> if the key does not exist.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cache.touch("user:123", 3600)   # extend by 1 hour</code></pre>
             </div>
+        </section>
+    </section>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.size()</h3>
-                <p class="text-gray-400">Returns the number of entries in the cache.</p>
-                <p class="text-gray-400">Returns: Int</p>
-            </div>
+    <!-- Inspection / Bulk -->
+    <section id="section-inspection" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Inspection &amp; Bulk Operations</h2>
 
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.ttl(key)</h3>
-                <p class="text-gray-400">Gets the remaining TTL for a key in seconds.</p>
-                <p class="text-gray-400">Returns: Int|null - Seconds remaining, or null if key doesn't exist</p>
-            </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.touch(key, ttl)</h3>
-                <p class="text-gray-400">Sets or updates the TTL for an existing key.</p>
-                <p class="text-gray-400">Returns: Bool - true if key existed and was updated</p>
-            </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.fetch(key, ttl?) do...end</h3>
-                <p class="text-gray-400 mb-4">Cache-aside pattern: returns cached value on hit, or executes the block on miss, caches and returns the result.</p>
-                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
-                    <li><code class="text-purple-400">key</code> (String) - Cache key</li>
-                    <li><code class="text-purple-400">ttl</code> (Int, optional) - Time to live in seconds (default: 3600)</li>
-                    <li><code class="text-purple-400">do...end</code> - Block to execute on cache miss</li>
-                </ul>
-                <p class="text-gray-400">Returns: Any - Cached value or block result</p>
-                <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code># Basic usage
-let user = Cache.fetch("user:123") do
-    User.find(123)
-end
-
-# With TTL (5 minutes)
-let user = Cache.fetch("user:123", 300) do
-    User.find(123)
-end
-
-# Without block — acts like Cache.get()
-let user = Cache.fetch("user:123")</code></pre>
-            </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Cache.configure(host, token?)</h3>
-                <p class="text-gray-400">Programmatically configure the SoliKV connection.</p>
-                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
-                    <li><code class="text-purple-400">host</code> (String) - SoliKV URL</li>
-                    <li><code class="text-purple-400">token</code> (String, optional) - Bearer token</li>
-                </ul>
-                <p class="text-gray-400">Returns: null</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Method</th>
+                            <th class="pb-3">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.keys()</code></td>
+                            <td class="py-3">All cache keys with the <code class="text-purple-400">soli:cache:</code> prefix stripped. Returns <code class="text-purple-400">Array</code>.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.size()</code></td>
+                            <td class="py-3">Number of cached entries. Returns <code class="text-purple-400">Int</code>.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.clear()</code></td>
+                            <td class="py-3">Remove every key under the cache prefix. Other SoliKV data is untouched.</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.clear_expired()</code></td>
+                            <td class="py-3">No-op. SoliKV expires keys on its own — kept for API symmetry with file-based caches.</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </section>
 
-    <!-- Cache Instance -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Cache Instance</h2>
-        <p class="text-gray-400 mb-4">Create a Cache instance using <code class="text-purple-400">cache()</code>. All instances share the same underlying SoliKV store.</p>
-        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code>let c = cache()
-c.set("key", "value")
-let value = c.get("key")</code></pre>
+    <!-- Configuration method -->
+    <section id="section-configure" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Connection</h2>
+        <section id="def-configure" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-configure" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Cache.configure(host, token?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Override the SoliKV connection at runtime. Affects <a href="/docs/builtins/kv" class="text-amber-400 hover:underline">KV</a> too — both share one client.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cache.configure("kv.internal:6380", env("SOLIKV_TOKEN"))</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Instance form -->
+    <section id="section-instance" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Instance Form</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Call <code class="text-amber-400">cache()</code> to get a thin wrapper instance. All instances share the same backing store — useful when you want to pass a cache object as a dependency rather than reaching for the static class.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">let c = cache()
+c.set("greeting", "hello")
+c.get("greeting")   # => "hello"</code></pre>
         </div>
     </section>
 
-    <!-- Global Functions -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Global Functions</h2>
-        <p class="text-gray-400 mb-4">Global cache functions are also available and share the same SoliKV store.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_set(key, value, ttl?)</h3>
-                <p class="text-gray-400 text-sm">Store a value in cache</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_get(key)</h3>
-                <p class="text-gray-400 text-sm">Retrieve a value from cache</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_delete(key)</h3>
-                <p class="text-gray-400 text-sm">Remove a value from cache</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_has(key)</h3>
-                <p class="text-gray-400 text-sm">Check if key exists</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_clear()</h3>
-                <p class="text-gray-400 text-sm">Clear all cache entries</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_config(ttl)</h3>
-                <p class="text-gray-400 text-sm">Set default TTL in seconds</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_keys()</h3>
-                <p class="text-gray-400 text-sm">List all cache keys</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_size()</h3>
-                <p class="text-gray-400 text-sm">Get number of cache entries</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_ttl(key)</h3>
-                <p class="text-gray-400 text-sm">Get remaining TTL for a key</p>
-            </div>
-            <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">cache_touch(key, ttl)</h3>
-                <p class="text-gray-400 text-sm">Update TTL for existing key</p>
-            </div>
+    <!-- Patterns -->
+    <section id="section-patterns" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Common Patterns</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-2">Cache-aside reads</h3>
+            <p class="text-gray-400 mb-3">Wrap an expensive read with <code class="text-amber-400">Cache.fetch</code> — one expression replaces the read-check-set dance.</p>
+            <pre data-filename="With Cache.fetch"><code class="language-soli text-sm">let user = Cache.fetch("user:" + str(user_id), 300) do
+  User.find(user_id)
+end</code></pre>
+            <pre data-filename="Manual equivalent" class="mt-3"><code class="language-soli text-sm">fn get_user_cached(user_id) {
+  let key = "user:" + str(user_id)
+  let cached = Cache.get(key)
+  return cached if cached != null
+
+  let user = User.find(user_id)
+  Cache.set(key, user, 300)
+  user
+}</code></pre>
         </div>
-    </section>
 
-    <!-- Complete Example -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
-        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Using static methods (recommended)
-Cache.set("user:123", { "name": "Alice", "email": "alice@example.com" })
-Cache.set("session", session_data, 1800)  # 30 minute TTL
-
-# Retrieve data
-let user = Cache.get("user:123")
-if user != null
-    println("Cached user: " + user["name"])
-end
-
-# Check existence
-if Cache.has("user:123")
-    println("User still cached")
-end
-
-# Update TTL
-Cache.touch("user:123", 3600)
-
-# List keys and size
-let keys = Cache.keys()
-let count = Cache.size()
-
-# Clear cache
-Cache.clear()
-
-# Global functions also work
-cache_set("global_key", "value")
-let value = cache_get("global_key")</code></pre>
-        </div>
-    </section>
-
-    <!-- Practical Example -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Practical Example: Database Query Caching</h2>
-        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
-            <p class="text-gray-400 mb-4">Using <code class="text-purple-400">Cache.fetch</code> for concise cache-aside pattern:</p>
-            <pre class="text-sm text-gray-300 overflow-x-auto"><code># Cache-aside with Cache.fetch — one line instead of five
-let user = Cache.fetch("user:" + str(user_id), 300) do
-    User.find(user_id)
-end
-
-# Equivalent manual approach:
-def get_user_cached(user_id)
-    let cache_key = "user:" + str(user_id)
-    let cached = Cache.get(cache_key)
-
-    if cached != null
-        return cached
-    end
-
-    let user = User.find(user_id)
-    Cache.set(cache_key, user, 300)
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-2">Write-through invalidation</h3>
+            <p class="text-gray-400 mb-3">Drop the cache entry whenever the underlying record changes — simpler than trying to keep them in sync.</p>
+            <pre data-filename="app/models/user.sl"><code class="language-soli text-sm">class User {
+  static fn update(id, attrs) {
+    let user = db.update("users", id, attrs)
+    Cache.delete("user:" + str(id))
     user
-end</code></pre>
+  }
+}</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-2">Short-TTL fragment caching</h3>
+            <p class="text-gray-400 mb-3">Cache rendered fragments or aggregated views for a few seconds to absorb traffic spikes without going stale.</p>
+            <pre data-filename="app/controllers/dashboard_controller.sl"><code class="language-soli text-sm">fn index(req) {
+  let stats = Cache.fetch("dashboard:stats", 30) do
+    compute_dashboard_stats()
+  end
+  return render("dashboard/index", { "stats": stats })
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- See also -->
+    <section id="section-see-also" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">See also</h2>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <a href="/docs/builtins/kv" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:bg-white/10 transition-colors">
+                <div class="text-white font-semibold mb-1">KV</div>
+                <p class="text-gray-400 text-sm">Lower-level access to the same SoliKV store — strings, counters, lists, sets, hashes.</p>
+            </a>
+            <a href="/docs/builtins/session" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:bg-white/10 transition-colors">
+                <div class="text-white font-semibold mb-1">Session</div>
+                <p class="text-gray-400 text-sm">Per-user session storage, with SoliKV as one of the supported backends.</p>
+            </a>
         </div>
     </section>
 </div>

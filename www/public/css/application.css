@@ -2436,6 +2436,10 @@ video {
   background-color: rgb(245 158 11 / 0.1);
 }
 
+.bg-amber-500\/15 {
+  background-color: rgb(245 158 11 / 0.15);
+}
+
 .bg-amber-500\/20 {
   background-color: rgb(245 158 11 / 0.2);
 }

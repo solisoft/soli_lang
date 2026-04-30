@@ -21,15 +21,15 @@ Use `req["all"]` to access all parameters unified:
 # Body: {"bio": "Developer", "age": "25"}
 
 fn update_profile(req)
-    # Unified access to all params
-    let all = req["all"];
+  # Unified access to all params
+  let all = req["all"];
 
-    print("User ID:", all["id"]);       # "123" (from route)
-    print("Name:", all["name"]);        # "alice" (query overrides route)
-    print("Age:", all["age"]);          # "25" (JSON body overrides query)
-    print("Bio:", all["bio"]);          # "Developer" (from JSON body)
+  print("User ID:", all["id"]);       # "123" (from route)
+  print("Name:", all["name"]);        # "alice" (query overrides route)
+  print("Age:", all["age"]);          # "25" (JSON body overrides query)
+  print("Bio:", all["bio"]);          # "Developer" (from JSON body)
 
-    {"status": 200, "body": "Profile updated"}
+  {"status": 200, "body": "Profile updated"}
 end
 ```
 
@@ -42,11 +42,11 @@ For convenience, the server sets a global `params` variable to the same value as
 # Body: {"bio": "Developer"}
 
 fn update_profile(req)
-    print("User ID:", params.id);       # "123" (from route)
-    print("Name:", params.name);        # "alice" (from query)
-    print("Bio:", params.bio);          # "Developer" (from JSON body)
+  print("User ID:", params.id);       # "123" (from route)
+  print("Name:", params.name);        # "alice" (from query)
+  print("Bio:", params.bio);          # "Developer" (from JSON body)
 
-    {"status": 200, "body": "Profile updated"}
+  {"status": 200, "body": "Profile updated"}
 end
 ```
 
@@ -65,19 +65,19 @@ When the same parameter exists in multiple sources, values are merged with this 
 # Body: {"status": "urgent", "quantity": "5"}
 
 fn update_item(req)
-    let all = req["all"];
+  let all = req["all"];
 
-    # "status" appears in both query and body
-    # Body wins: all["status"] = "urgent"
-    print("Status:", all["status"]);
+  # "status" appears in both query and body
+  # Body wins: all["status"] = "urgent"
+  print("Status:", all["status"]);
 
-    # "id" only in route
-    print("ID:", all["id"]);
+  # "id" only in route
+  print("ID:", all["id"]);
 
-    # "quantity" only in body
-    print("Quantity:", all["quantity"]);
+  # "quantity" only in body
+  print("Quantity:", all["quantity"]);
 
-    {"status": 200, "body": "OK"}
+  {"status": 200, "body": "OK"}
 end
 ```
 
@@ -87,22 +87,22 @@ You can still access individual parameter sources separately:
 
 ```soli
 fn handler(req)
-    # Route parameters only
-    let id = req["params"]["id"];
+  # Route parameters only
+  let id = req["params"]["id"];
 
-    # Query parameters only
-    let page = req["query"]["page"];
+  # Query parameters only
+  let page = req["query"]["page"];
 
-    # JSON body only
-    let data = req["json"];
+  # JSON body only
+  let data = req["json"];
 
-    # Form data only
-    let form = req["form"];
+  # Form data only
+  let form = req["form"];
 
-    # Or unified access
-    let all = req["all"];
+  # Or unified access
+  let all = req["all"];
 
-    {"status": 200, "body": "OK"}
+  {"status": 200, "body": "OK"}
 end
 ```
 
@@ -110,37 +110,37 @@ end
 
 ```soli
 fn search(req)
-    let all = req["all"];
+  let all = req["all"];
 
-    # Unified params allow flexible API design
-    # Can pass filters via query, body, or both
-    let query = all["q"] or "";
-    let page = all["page"] or "1";
-    let limit = all["limit"] or "20";
-    let sort = all["sort"] or "relevance";
+  # Unified params allow flexible API design
+  # Can pass filters via query, body, or both
+  let query = all["q"] or "";
+  let page = all["page"] or "1";
+  let limit = all["limit"] or "20";
+  let sort = all["sort"] or "relevance";
 
-    # Use unified params for flexible filtering
-    let filters = {
-        "query": query,
-        "page": page,
-        "limit": limit,
-        "sort": sort,
-        "category": all["category"],  # Optional, may be null
-        "min_price": all["min_price"], # Optional
-        "max_price": all["max_price"]  # Optional
-    };
+  # Use unified params for flexible filtering
+  let filters = {
+    "query": query,
+    "page": page,
+    "limit": limit,
+    "sort": sort,
+    "category": all["category"],  # Optional, may be null
+    "min_price": all["min_price"], # Optional
+    "max_price": all["max_price"]  # Optional
+  };
 
-    # Execute search with filters
-    let results = execute_search(filters);
+  # Execute search with filters
+  let results = execute_search(filters);
 
-    {
-        "status": 200,
-        "body": json_stringify({
-            "results": results,
-            "page": page,
-            "limit": limit
-        })
-    }
+  {
+    "status": 200,
+    "body": json_stringify({
+      "results": results,
+      "page": page,
+      "limit": limit
+    })
+  }
 end
 ```
 
@@ -172,7 +172,7 @@ let id = params.id;
 
 # Check if param exists
 if params.page != null
-    let page = params.page;
+  let page = params.page;
 end
 
 # Get with default value
@@ -180,7 +180,7 @@ let limit = params.limit or "20";
 
 # Iterate over all params (hashes iterate via entries/keys/values)
 for pair in entries(params)
-    print(pair[0] + ": " + str(pair[1]));
+  print(pair[0] + ": " + str(pair[1]));
 end
 ```
 

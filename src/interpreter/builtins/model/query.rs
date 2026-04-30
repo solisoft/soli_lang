@@ -788,7 +788,7 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
 /// Execute a QueryBuilder as a bulk REMOVE — every row matching the
 /// accumulated filter / join clauses is deleted in a single AQL statement.
 /// Mirrors Rails' `Model.where(...).delete_all` so callers don't have to
-/// hand-roll `@sdql{ FOR ... REMOVE ... }`. Returns `Null`.
+/// hand-roll `@sdbql{ FOR ... REMOVE ... }`. Returns `Null`.
 ///
 /// Limitations: order/limit/offset/select/pluck/group_by are intentionally
 /// ignored — they don't compose with REMOVE. Soft-deleted models still get

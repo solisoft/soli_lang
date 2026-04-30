@@ -56,12 +56,12 @@ let result = 5 |> add(3) |> multiply(2);  # (5 + 3) * 2 = 16
 
 # More complex chaining
 let calc = 100
-    |> fn(x)
+  |> fn(x)
 x - 10 end
-    |> fn(x)
+  |> fn(x)
 int(x / 3)
 end
-    |> fn(x)
+  |> fn(x)
 x * 4 end()
 print(calc);  # ((100 - 10) / 3) * 4 = 120</code></pre>
             </div>
@@ -77,19 +77,19 @@ print(calc);  # ((100 - 10) / 3) * 4 = 120</code></pre>
 
 # Method chaining with pipeline
 let result = numbers
-    .filter(fn(x)
+  .filter(fn(x)
 x % 2 == 0)
-    .map(fn(x)
+  .map(fn(x)
 x * x)
-    .each(fn(x)
+  .each(fn(x)
 print(x))
 # Pipeline style
 let processed = numbers
-    |> filter(fn(x)
+  |> filter(fn(x)
 x > 5)
-    |> map(fn(x)
+  |> map(fn(x)
 x * 2)
-    |> reduce(fn(acc, x)
+  |> reduce(fn(acc, x)
 acc + x, 0)
 print(processed);  # (6+7+8+9+10) * 2 = 80</code></pre>
             </div>
@@ -103,22 +103,22 @@ print(processed);  # (6+7+8+9+10) * 2 = 80</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Data processing pipeline
 def process_user_data(raw_data: Hash) -> Hash
-    raw_data
-        |> fn(d)
+  raw_data
+    |> fn(d)
 d["sanitized_email"] = d["email"].lower().trim(); d end
-        |> validate_user
-        |> enrich_profile
-        |> calculate_metrics
+    |> validate_user
+    |> enrich_profile
+    |> calculate_metrics
 end
 
 # HTTP request pipeline
 def fetch_and_process -> Hash
-    url
-        |>(url: String)
+  url
+    |>(url: String)
 HTTP.get_json
-        |> transform_response
-        |> validate_data
-        |> format_output
+    |> transform_response
+    |> validate_data
+    |> format_output
 end</code></pre>
 
 # Complex data pipeline

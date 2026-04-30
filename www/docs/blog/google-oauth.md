@@ -31,91 +31,91 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
 # app/controllers/auth_controller.sl
 
 def google_login(req)
-    let client_id = getenv("GOOGLE_CLIENT_ID")
-    let redirect_uri = getenv("GOOGLE_REDIRECT_URI")
-    let scope = "openid email profile"
-    
-    let auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
-        "client_id=" + client_id +
-        "&redirect_uri=" + redirect_uri +
-        "&response_type=code" +
-        "&scope=" + scope +
-        "&access_type=offline"
-    
-    {
-        "status": 302,
-        "headers": {
-            "Location": auth_url
-        }
+  let client_id = getenv("GOOGLE_CLIENT_ID")
+  let redirect_uri = getenv("GOOGLE_REDIRECT_URI")
+  let scope = "openid email profile"
+  
+  let auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
+    "client_id=" + client_id +
+    "&redirect_uri=" + redirect_uri +
+    "&response_type=code" +
+    "&scope=" + scope +
+    "&access_type=offline"
+  
+  {
+    "status": 302,
+    "headers": {
+      "Location": auth_url
     }
+  }
 end
 
 def google_callback(req)
-    let code = req["query_params"]["code"]
-    
-    if code == null
-        return {"status": 400, "body": "Missing authorization code"}
-    end
-    
-    # Exchange code for tokens
-    let token_response = google_exchange_code(code)
-    
-    if token_response["error"] != null
-        return {"status": 401, "body": "Failed to exchange code: " + token_response["error_description"]}
-    end
-    
-    let access_token = token_response["access_token"]
-    
-    # Get user info from Google
-    let user_info = google_get_user_info(access_token)
-    
-    # Find or create user in database
-    let user = find_or_create_google_user(user_info)
-    
-    # Create session
-    req["session"]["user_id"] = user["id"]
-    
-    {
-        "status": 302,
-        "headers": {
-            "Location": "/dashboard"
-        }
+  let code = req["query_params"]["code"]
+  
+  if code == null
+    return {"status": 400, "body": "Missing authorization code"}
+  end
+  
+  # Exchange code for tokens
+  let token_response = google_exchange_code(code)
+  
+  if token_response["error"] != null
+    return {"status": 401, "body": "Failed to exchange code: " + token_response["error_description"]}
+  end
+  
+  let access_token = token_response["access_token"]
+  
+  # Get user info from Google
+  let user_info = google_get_user_info(access_token)
+  
+  # Find or create user in database
+  let user = find_or_create_google_user(user_info)
+  
+  # Create session
+  req["session"]["user_id"] = user["id"]
+  
+  {
+    "status": 302,
+    "headers": {
+      "Location": "/dashboard"
     }
+  }
 end
 
 def google_exchange_code(code)
-    let client_id = getenv("GOOGLE_CLIENT_ID")
-    let client_secret = getenv("GOOGLE_CLIENT_SECRET")
-    let redirect_uri = getenv("GOOGLE_REDIRECT_URI")
-    
-    let params = {
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code"
+  let client_id = getenv("GOOGLE_CLIENT_ID")
+  let client_secret = getenv("GOOGLE_CLIENT_SECRET")
+  let redirect_uri = getenv("GOOGLE_REDIRECT_URI")
+  
+  let params = {
+    "code": code,
+    "client_id": client_id,
+    "client_secret": client_secret,
+    "redirect_uri": redirect_uri,
+    "grant_type": "authorization_code"
+  }
+  
+  let response = HTTP.post(
+    "https://oauth2.googleapis.com/token",
+    json_stringify(params),
+    {
+      "headers": { "Content-Type": "application/json" }
     }
-    
-    let response = HTTP.post(
-        "https://oauth2.googleapis.com/token",
-        json_stringify(params),
-        {
-            "headers": { "Content-Type": "application/json" }
-        }
-    )
-    
-    json_parse(response["body"])
+  )
+  
+  json_parse(response["body"])
 end
 
 def google_get_user_info(access_token)
-    let response = HTTP.get(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-        {
-            "headers": { "Authorization": "Bearer " + access_token }
-        }
-    )
-    
-    json_parse(response["body"])
+  let response = HTTP.get(
+    "https://www.googleapis.com/oauth2/v2/userinfo",
+    {
+      "headers": { "Authorization": "Bearer " + access_token }
+    }
+  )
+  
+  json_parse(response["body"])
 end
 ```
 
@@ -125,24 +125,24 @@ end
 # app/models/user.sl
 
 class User extends Model
-    id: Int
-    google_id: String
-    email: String
-    name: String
-    avatar_url: String
-    created_at: DateTime
+  id: Int
+  google_id: String
+  email: String
+  name: String
+  avatar_url: String
+  created_at: DateTime
+  
+  def find_or_create_google_user(google_data)
+    let existing = User.find_by_google_id(google_data["id"])
     
-    def find_or_create_google_user(google_data)
-        let existing = User.find_by_google_id(google_data["id"])
-        
-        return existing if existing != nil
-    
-    User.create({
-        "google_id": google_data["id"],
-        "email": google_data["email"],
-        "name": google_data["name"],
-        "avatar_url": google_data["picture"]
-    })
+    return existing if existing != nil
+  
+  User.create({
+    "google_id": google_data["id"],
+    "email": google_data["email"],
+    "name": google_data["name"],
+    "avatar_url": google_data["picture"]
+  })
 end
 end
 ```
@@ -161,8 +161,8 @@ get "/auth/google/callback", "auth#google_callback"
 ```html
 <!-- app/views/sessions/new.sl.html -->
 <a href="/auth/google" class="btn btn-google">
-    <img src="/images/google-icon.svg" alt="Google" />
-    Sign in with Google
+  <img src="/images/google-icon.svg" alt="Google" />
+  Sign in with Google
 </a>
 ```
 
@@ -177,33 +177,33 @@ get "/auth/google/callback", "auth#google_callback"
 
 ```soli
 def generate_state()
-    let random_bytes = crypto_random_bytes(32)
-    hex_encode(random_bytes)
+  let random_bytes = crypto_random_bytes(32)
+  hex_encode(random_bytes)
 end
 
 def google_login(req)
-    let state = generate_state()
-    req["session"]["oauth_state"] = state
-    
-    let auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
-        "client_id=" + getenv("GOOGLE_CLIENT_ID") +
-        "&redirect_uri=" + getenv("GOOGLE_REDIRECT_URI") +
-        "&response_type=code" +
-        "&scope=openid email profile" +
-        "&state=" + state
-    
-    {"status": 302, "headers": {"Location": auth_url}}
+  let state = generate_state()
+  req["session"]["oauth_state"] = state
+  
+  let auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
+    "client_id=" + getenv("GOOGLE_CLIENT_ID") +
+    "&redirect_uri=" + getenv("GOOGLE_REDIRECT_URI") +
+    "&response_type=code" +
+    "&scope=openid email profile" +
+    "&state=" + state
+  
+  {"status": 302, "headers": {"Location": auth_url}}
 end
 
 def google_callback(req)
-    let received_state = req["query_params"]["state"]
-    let stored_state = req["session"]["oauth_state"]
-    
-    if received_state != stored_state
-        return {"status": 400, "body": "Invalid state parameter"}
-    end
-    
-    # Continue with authentication...
+  let received_state = req["query_params"]["state"]
+  let stored_state = req["session"]["oauth_state"]
+  
+  if received_state != stored_state
+    return {"status": 400, "body": "Invalid state parameter"}
+  end
+  
+  # Continue with authentication...
 end
 ```
 

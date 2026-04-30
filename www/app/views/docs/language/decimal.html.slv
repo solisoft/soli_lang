@@ -301,23 +301,23 @@ print("Total: $" + str(total));        # $323.97</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Product < Model
-    price: Decimal(2),
-    cost: Decimal(2),
-    tax_rate: Decimal(4),
+  price: Decimal(2),
+  cost: Decimal(2),
+  tax_rate: Decimal(4),
 
-    def profit -> Decimal(2)
-        self.price - self.cost
-    end
+  def profit -> Decimal(2)
+    self.price - self.cost
+  end
 end
 
 class Order < Model
-    subtotal: Decimal(2),
-    tax: Decimal(2),
-    total: Decimal(2),
+  subtotal: Decimal(2),
+  tax: Decimal(2),
+  total: Decimal(2),
 
-    def calculate_total -> Decimal(2)
-        self.subtotal + self.tax
-    end
+  def calculate_total -> Decimal(2)
+    self.subtotal + self.tax
+  end
 end</code></pre>
             </div>
         </div>
@@ -336,9 +336,9 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">create_collection("products", [
-    {"name": "price", "type": "decimal(2)"},
-    {"name": "cost", "type": "decimal(2)"},
-    {"name": "discount_rate", "type": "decimal(4)"}
+  {"name": "price", "type": "decimal(2)"},
+  {"name": "cost", "type": "decimal(2)"},
+  {"name": "discount_rate", "type": "decimal(4)"}
 ]);</code></pre>
             </div>
         </div>

@@ -47,12 +47,12 @@ I18n.set_locale("de");</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Define translations
 let translations = {
-    "en.greeting" => "Hello",
-    "fr.greeting" => "Bonjour",
-    "de.greeting" => "Hallo",
-    "es.greeting" => "Hola",
-    "en.welcome" => "Welcome to our app!",
-    "fr.welcome" => "Bienvenue dans notre application!"
+  "en.greeting" => "Hello",
+  "fr.greeting" => "Bonjour",
+  "de.greeting" => "Hallo",
+  "es.greeting" => "Hola",
+  "en.welcome" => "Welcome to our app!",
+  "fr.welcome" => "Bienvenue dans notre application!"
 }
 
 # Translate using current locale
@@ -77,12 +77,12 @@ print(missing);  # "unknown_key"</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Pluralization</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let translations = {
-    "en.item_zero" => "No items",
-    "en.item_one" => "1 item",
-    "en.item_other" => "{count} items",
-    "fr.item_zero" => "Aucun article",
-    "fr.item_one" => "1 article",
-    "fr.item_other" => "{count} articles"
+  "en.item_zero" => "No items",
+  "en.item_one" => "1 item",
+  "en.item_other" => "{count} items",
+  "fr.item_zero" => "Aucun article",
+  "fr.item_one" => "1 article",
+  "fr.item_other" => "{count} articles"
 }
 
 I18n.set_locale("en")
@@ -209,15 +209,15 @@ dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/en.json</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
-    "en.app_name": "My Application",
-    "en.nav.home": "Home",
-    "en.nav.about": "About Us",
-    "en.nav.contact": "Contact",
-    "en.messages.success": "Operation completed successfully!",
-    "en.messages.error": "An error occurred. Please try again.",
-    "en.user.greeting": "Hello, {name}!",
-    "en.items_one": "You have 1 item",
-    "en.items_other": "You have {count} items"
+  "en.app_name": "My Application",
+  "en.nav.home": "Home",
+  "en.nav.about": "About Us",
+  "en.nav.contact": "Contact",
+  "en.messages.success": "Operation completed successfully!",
+  "en.messages.error": "An error occurred. Please try again.",
+  "en.user.greeting": "Hello, {name}!",
+  "en.items_one": "You have 1 item",
+  "en.items_other": "You have {count} items"
 }</code></pre>
         </div>
     </div>

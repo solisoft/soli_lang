@@ -47,9 +47,9 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl &mdash; no import needed</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class UsersController extends Controller
-    fn index(req)
-        render("users/index", { "users": User.all() })
-    end
+  fn index(req)
+    render("users/index", { "users": User.all() })
+  end
 end</code></pre>
         </div>
     </div>
@@ -81,9 +81,9 @@ end</code></pre>
                 Creating Records
             </h3>
             <pre><code class="language-soli text-sm">let user = User.create({
-    "email": "alice@example.com",
-    "name": "Alice",
-    "age": 30
+  "email": "alice@example.com",
+  "name": "Alice",
+  "age": 30
 })
 # Returns a User instance. On success, user._errors is nil.
 # On validation or DB failure the instance is NOT persisted and
@@ -112,8 +112,8 @@ let adults = User.where("age >= @age", { "age": 18 }).all
 
 # Complex conditions
 let results = User.where("age >= @min AND role == @role", {
-    "min": 21,
-    "role": "admin"
+  "min": 21,
+  "role": "admin"
 }).all
 
 # Dynamic finder methods — automatically generated
@@ -252,9 +252,9 @@ user.save()
 
 # Write:
 user.save({
-    "name":  "Alice",
-    "email": "alice@example.com",
-    "role":  "admin"
+  "name":  "Alice",
+  "email": "alice@example.com",
+  "role":  "admin"
 })</code></pre>
         </div>
     </div>
@@ -425,12 +425,12 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contact.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Contact &lt; Model
-    uploader("photo", {
-        "multiple":      false,
-        "content_types": ["image/jpeg", "image/png", "image/webp"],
-        "max_size":      2_000_000,
-        "collection":    "contact_photos"   # optional, defaults to &lt;snake&gt;_&lt;field&gt;s
-    })
+  uploader("photo", {
+    "multiple":      false,
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      2_000_000,
+    "collection":    "contact_photos"   # optional, defaults to &lt;snake&gt;_&lt;field&gt;s
+  })
 end</code></pre>
         </div>
     </div>
@@ -466,13 +466,13 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">def update(req)
-    @contact = Contact.find(params.id)
-    if @contact.update(this._permit(params))
-        return @contact.detach_photo() if params["remove_photo"] == "1"
-        file = find_uploaded_file(req, "photo")
-        @contact.attach_photo(file) unless file.nil?
-        # ...
-    end
+  @contact = Contact.find(params.id)
+  if @contact.update(this._permit(params))
+    return @contact.detach_photo() if params["remove_photo"] == "1"
+    file = find_uploaded_file(req, "photo")
+    @contact.attach_photo(file) unless file.nil?
+    # ...
+  end
 end</code></pre>
         </div>
     </div>
@@ -485,13 +485,13 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contact.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Contact &lt; Model
-    uploader("document", {
-        "multiple":      true,
-        "content_types": ["application/pdf", "image/jpeg", "image/png",
-                          "application/zip", "text/csv"],
-        "max_size":      10_000_000,
-        "collection":    "contact_documents"
-    })
+  uploader("document", {
+    "multiple":      true,
+    "content_types": ["application/pdf", "image/jpeg", "image/png",
+             "application/zip", "text/csv"],
+    "max_size":      10_000_000,
+    "collection":    "contact_documents"
+  })
 end</code></pre>
         </div>
     </div>
@@ -503,27 +503,27 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># POST /contacts/:id/documents
 def attach_document(req)
-    contact = Contact.find(params.id)
-    file = find_uploaded_file(req, "document")
-    if file.nil?
-        flash("error", "Pick a file before submitting.")
-    elsif contact.attach_document(file)
-        flash("success", "Document filed.")
-    else
-        flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
-    end
-    redirect("/contacts/#{contact._key}")
+  contact = Contact.find(params.id)
+  file = find_uploaded_file(req, "document")
+  if file.nil?
+    flash("error", "Pick a file before submitting.")
+  elsif contact.attach_document(file)
+    flash("success", "Document filed.")
+  else
+    flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
+  end
+  redirect("/contacts/#{contact._key}")
 end
 
 # POST /contacts/:id/document/:blob_id/delete
 def detach_document(req)
-    contact = Contact.find(params.id)
-    if contact.detach_document(params.blob_id)
-        flash("success", "Document removed.")
-    else
-        flash("error", "Document not found on this record.")
-    end
-    redirect("/contacts/#{contact._key}")
+  contact = Contact.find(params.id)
+  if contact.detach_document(params.blob_id)
+    flash("success", "Document removed.")
+  else
+    flash("error", "Document not found on this record.")
+  end
+  redirect("/contacts/#{contact._key}")
 end</code></pre>
         </div>
     </div>
@@ -618,11 +618,11 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">A grayscale 800×600 WebP at 80% quality</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({
-    "w":    800,
-    "h":    600,
-    "fmt":  "webp",
-    "q":    80,
-    "gray": true
+  "w":    800,
+  "h":    600,
+  "fmt":  "webp",
+  "q":    80,
+  "gray": true
 })
 # →  /contacts/42/photo?v=abc&amp;w=800&amp;h=600&amp;fmt=webp&amp;q=80&amp;gray=1</code></pre>
         </div>
@@ -654,10 +654,10 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rotate, blur, and brightness adjustment</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({
-    "rot":      90,
-    "blur":     2.5,
-    "bright":   15,
-    "contrast": 1.2
+  "rot":      90,
+  "blur":     2.5,
+  "bright":   15,
+  "contrast": 1.2
 })
 # →  /contacts/42/photo?v=abc&amp;rot=90&amp;blur=2.5&amp;bright=15&amp;contrast=1.2</code></pre>
         </div>
@@ -694,12 +694,12 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/attachments_controller.sl &mdash; custom auth + response shape</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class AttachmentsController &lt; ApplicationController
-    static {
-        this.before_action(:create, :destroy, fn(req) {
-            return halt(403) unless req["current_user"].is_admin()
-        })
-    }
-    # ... or override individual actions
+  static {
+    this.before_action(:create, :destroy, fn(req) {
+      return halt(403) unless req["current_user"].is_admin()
+    })
+  }
+  # ... or override individual actions
 end</code></pre>
         </div>
     </div>
@@ -714,10 +714,10 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">def destroy(req)
-    contact = Contact.find(params.id)
-    detach_all_uploads(contact) unless contact.nil?
-    Contact.delete(params.id)
-    redirect("/contacts")
+  contact = Contact.find(params.id)
+  detach_all_uploads(contact) unless contact.nil?
+  Contact.delete(params.id)
+  redirect("/contacts")
 end</code></pre>
         </div>
     </div>
@@ -740,79 +740,79 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># app/models/user.sl
 class User < Model
-    has_many("posts")
-    has_one("profile")
+  has_many("posts")
+  has_one("profile")
 
-    validates("email", { "presence": true, "uniqueness": true })
-    validates("name", { "presence": true, "min_length": 2 })
+  validates("email", { "presence": true, "uniqueness": true })
+  validates("name", { "presence": true, "min_length": 2 })
 
-    before_save("normalize_email")
+  before_save("normalize_email")
 
-    def normalize_email
-        this.email = this.email.downcase()
-    end
+  def normalize_email
+    this.email = this.email.downcase()
+  end
 
-    def is_adult -> Bool
-        this.age >= 18
-    end
+  def is_adult -> Bool
+    this.age >= 18
+  end
 end
 
 # app/models/post.sl
 class Post < Model
-    belongs_to("user")
-    has_many("comments")
+  belongs_to("user")
+  has_many("comments")
 
-    validates("title", { "presence": true, "min_length": 3 })
+  validates("title", { "presence": true, "min_length": 3 })
 end
 
 # Usage in controller
 class UsersController < Controller
-    def index(req: Any)
-        # Eager load posts and profiles to avoid N+1 queries
-        let users = User.includes("posts", "profile").all
-        render("users/index", { "users": users })
-    end
+  def index(req: Any)
+    # Eager load posts and profiles to avoid N+1 queries
+    let users = User.includes("posts", "profile").all
+    render("users/index", { "users": users })
+  end
 
-    def show(req: Any)
-        let id = req["params"]["id"]
-        let user = User.includes("posts").find(id)
-        render("users/show", { "user": user })
-    end
+  def show(req: Any)
+    let id = req["params"]["id"]
+    let user = User.includes("posts").find(id)
+    render("users/show", { "user": user })
+  end
 
-    def active(req: Any)
-        # Find active users who have at least one post
-        let users = User.join("posts")
-            .where("active = @a", { "a": true })
-            .order("created_at", "desc")
-            .limit(10)
-            .all
-        render("users/active", { "users": users })
-    end
+  def active(req: Any)
+    # Find active users who have at least one post
+    let users = User.join("posts")
+      .where("active = @a", { "a": true })
+      .order("created_at", "desc")
+      .limit(10)
+      .all
+    render("users/active", { "users": users })
+  end
 
-    def create(req: Any)
-        let user = User.create({
-            "name": req["params"]["name"],
-            "email": req["params"]["email"]
-        })
-        if user._errors
-            render("users/new", { "errors": user._errors })
-        else
-            return redirect("/users/" + user._key)
-        end
+  def create(req: Any)
+    let user = User.create({
+      "name": req["params"]["name"],
+      "email": req["params"]["email"]
+    })
+    if user._errors
+      render("users/new", { "errors": user._errors })
+    else
+      return redirect("/users/" + user._key)
     end
+  end
 
-    def update(req: Any)
-        let user = User.find(req["params"]["id"])
-        user.name = req["params"]["name"]
-        user.save()
-        redirect("/users/" + user._key)
-    end
+  def update(req: Any)
+    let user = User.find(req["params"]["id"])
+    user.name = req["params"]["name"]
+    user.save()
+    redirect("/users/" + user._key)
+  end
 
-    def destroy(req: Any)
-        let user = User.find(req["params"]["id"])
-        user.delete()
-        redirect("/users")
-    end
+  def destroy(req: Any)
+    let user = User.find(req["params"]["id"])
+    user.delete()
+    redirect("/users")
+  end
 end</code></pre>
         </div>
     </div>
@@ -824,8 +824,8 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req)
-    let users = User.where("doc.active == true").all()
-    render("users/index", { "users": users, "queries": dev_queries() })
+  let users = User.where("doc.active == true").all()
+  render("users/index", { "users": users, "queries": dev_queries() })
 end
 
 # dev_queries() returns Array&lt;Hash&gt; with keys: query, bind_vars, duration_ms.

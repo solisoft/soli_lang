@@ -21,10 +21,10 @@ get("/users", "users#index")
 
 # A model with validation
 class User extends Model
-    name: String
-    email: String
-    
-    validates("email", {"presence": true, "format": "email"})
+  name: String
+  email: String
+  
+  validates("email", {"presence": true, "format": "email"})
 end
 ```
 
@@ -48,9 +48,9 @@ With AI assistance, we can focus on **what** the code should do, not **how** it 
 // "create a web server that handles 10k concurrent connections"
 
 async fn handle_request(req: Request) -> Result<Response, Error> {
-    // AI handles the async complexity
-    let handler = RouteHandler::new();
-    handler.route(req).await
+  // AI handles the async complexity
+  let handler = RouteHandler::new();
+  handler.route(req).await
 }
 ```
 

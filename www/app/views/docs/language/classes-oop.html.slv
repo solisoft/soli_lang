@@ -39,31 +39,31 @@
                 </a>
                 <p class="text-gray-400 mb-3">Defines a class with properties and methods.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Person
-    name: String
-    age: Int
-    email: String
+  name: String
+  age: Int
+  email: String
 
-    new(name: String, age: Int, email: String = null)
-        this.name = name
-        this.age = age
-        this.email = email ?? ""
-    end
+  new(name: String, age: Int, email: String = null)
+    this.name = name
+    this.age = age
+    this.email = email ?? ""
+  end
 
-    def greet -> String
-        "Hello, I'm " + this.name
-    end
+  def greet -> String
+    "Hello, I'm " + this.name
+  end
 
-    def introduce -> String
-        let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old"
-        if (this.email != "")
-            intro = intro + ". You can reach me at " + this.email
-        end
-        intro
+  def introduce -> String
+    let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old"
+    if (this.email != "")
+      intro = intro + ". You can reach me at " + this.email
     end
+    intro
+  end
 
-    def have_birthday
-        this.age = this.age + 1
-    end
+  def have_birthday
+    this.age = this.age + 1
+  end
 end</code></pre>
             </div>
         </section>
@@ -105,19 +105,19 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>)
 are considered internal/private helpers:</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class PostsController < Controller
-    # Underscore prefix marks internal helper methods
-    def _permit_params(params: Any)
-        {
-            "title": params["title"],
-            "content": params["content"]
-        }
-    end
+  # Underscore prefix marks internal helper methods
+  def _permit_params(params: Any)
+    {
+      "title": params["title"],
+      "content": params["content"]
+    }
+  end
 
-    def create(req: Any)
-        # Using the private helper
-        let permitted = this._permit_params(req["params"])
-        Posts.create(permitted)
-    end
+  def create(req: Any)
+    # Using the private helper
+    let permitted = this._permit_params(req["params"])
+    Posts.create(permitted)
+  end
 end</code></pre>
                 <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private def</code> keyword OR underscore prefix (<code>_</code>)
 for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
@@ -127,21 +127,21 @@ for internal helper methods. The underscore convention is used throughout the co
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class BankAccount
-    public account_number: String
-    private balance: Float
+  public account_number: String
+  private balance: Float
 
-    new(account_number: String, initial_deposit: Float)
-        this.account_number = account_number
-        this.balance = initial_deposit
-    end
+  new(account_number: String, initial_deposit: Float)
+    this.account_number = account_number
+    this.balance = initial_deposit
+  end
 
-    public def deposit(amount: Float) -> Bool
-        if (this.validate_amount(amount))
-            this.balance = this.balance + amount
-            return true
-        end
-        return false
+  public def deposit(amount: Float) -> Bool
+    if (this.validate_amount(amount))
+      this.balance = this.balance + amount
+      return true
     end
+    return false
+  end
 end
 
 let account = new BankAccount("123456789", 1000.0)
@@ -165,31 +165,31 @@ print(account.get_balance())     # 1500.0</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Properties and methods that belong to the class, not instances.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class MathUtils
-    static PI: Float = 3.14159265359
-    static E: Float = 2.71828182846
+  static PI: Float = 3.14159265359
+  static E: Float = 2.71828182846
 
-    static def square(x: Float) -> Float
-        x * x
-    end
+  static def square(x: Float) -> Float
+    x * x
+  end
 
-    static def cube(x: Float) -> Float
-        x * x * x
-    end
+  static def cube(x: Float) -> Float
+    x * x * x
+  end
 
-    static def max(a: Float, b: Float) -> Float
-        if (a > b) then return a end
-        b
-    end
+  static def max(a: Float, b: Float) -> Float
+    if (a > b) then return a end
+    b
+  end
 
-    static def clamp(value: Float, min_val: Float, max_val: Float) -> Float
-        if (value < min_val)
-            return min_val
-        end
-        if (value > max_val)
-            return max_val
-        end
-        value
+  static def clamp(value: Float, min_val: Float, max_val: Float) -> Float
+    if (value < min_val)
+      return min_val
     end
+    if (value > max_val)
+      return max_val
+    end
+    value
+  end
 end
 
 # Using static members
@@ -207,28 +207,28 @@ print(MathUtils.clamp(150, 0, 100))  # 100</code></pre>
 
         <p class="text-gray-400 mb-3">Reference to the current instance.</p>
         <pre data-filename="my_class.sl"><code class="language-soli text-sm">class User
-    new(name)
-        this.name = name
-    end
+  new(name)
+    this.name = name
+  end
 
-    def say_hello
-        println("Hello, " + this.name)
-    end
+  def say_hello
+    println("Hello, " + this.name)
+  end
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Inheritance with <code class="text-pink-400">super</code>.</p>
         <pre data-filename="inheritance.sl"><code class="language-soli text-sm">class Admin < User
-    def say_hello
-        super.say_hello()
-        println("I am an admin.")
-    end
+  def say_hello
+    super.say_hello()
+    println("I am an admin.")
+  end
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Static methods.</p>
         <pre data-filename="static_methods.sl"><code class="language-soli text-sm">class Math
-    static def add(a, b)
-        a + b
-    end
+  static def add(a, b)
+    a + b
+  end
 end</code></pre>
     </section>
 
@@ -241,19 +241,19 @@ end</code></pre>
         </p>
 
         <pre data-filename="counter.sl"><code class="language-soli text-sm">class Counter
-    n: Int
+  n: Int
 
-    new()
-        @n = 0          # same as this.n = 0
-    end
+  new()
+    @n = 0          # same as this.n = 0
+  end
 
-    def bump
-        @n += 1         # read + write via sugar
-    end
+  def bump
+    @n += 1         # read + write via sugar
+  end
 
-    def value -> Int
-        @n              # bare read, same as this.n
-    end
+  def value -> Int
+    @n              # bare read, same as this.n
+  end
 end</code></pre>
 
         <p class="text-gray-400 mb-3">Supported forms:</p>
@@ -277,11 +277,11 @@ end</code></pre>
         </p>
 
         <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends Controller
-    def show(req)
-        @post = Post.find(req.params["id"])
-        @comments = Comment.where({"post_id": @post.id}).all
-        render("posts/show")    # view sees `post` and `comments`
-    end
+  def show(req)
+    @post = Post.find(req.params["id"])
+    @comments = Comment.where({"post_id": @post.id}).all
+    render("posts/show")    # view sees `post` and `comments`
+  end
 end</code></pre>
 
         <p class="text-gray-400 mb-3">
@@ -304,34 +304,34 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <p class="text-gray-400 mb-3">Classes can extend other user-defined classes, forming deep inheritance chains. Methods, fields, constructors, and static methods are all inherited through the full chain.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Animal
-    name: String
+  name: String
 
-    new(name: String)
-        this.name = name
-    end
+  new(name: String)
+    this.name = name
+  end
 
-    def speak -> String
-        "..."
-    end
+  def speak -> String
+    "..."
+  end
 end
 
 class Pet extends Animal
-    owner: String
+  owner: String
 
-    new(name: String, owner: String)
-        super(name)
-        this.owner = owner
-    end
+  new(name: String, owner: String)
+    super(name)
+    this.owner = owner
+  end
 
-    def describe -> String
-        this.name + " belongs to " + this.owner
-    end
+  def describe -> String
+    this.name + " belongs to " + this.owner
+  end
 end
 
 class Dog extends Pet
-    def speak -> String
-        "Woof!"
-    end
+  def speak -> String
+    "Woof!"
+  end
 end
 
 let dog = new Dog("Rex", "Alice")
@@ -346,21 +346,21 @@ print(dog.name)        # "Rex" (inherited from Animal)</code></pre>
                 <h3 class="text-lg font-semibold text-white mb-3">Super Chaining</h3>
                 <p class="text-gray-400 mb-3">Each class's <code class="text-pink-400">super</code> refers to its direct parent, allowing calls to chain up through the hierarchy.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class A
-    def identify -> String
-        "A"
-    end
+  def identify -> String
+    "A"
+  end
 end
 
 class B extends A
-    def identify -> String
-        super.identify() + " -> B"
-    end
+  def identify -> String
+    super.identify() + " -> B"
+  end
 end
 
 class C extends B
-    def identify -> String
-        super.identify() + " -> C"
-    end
+  def identify -> String
+    super.identify() + " -> C"
+  end
 end
 
 print(new C().identify())  # "A -> B -> C"</code></pre>
@@ -376,33 +376,33 @@ print(new C().identify())  # "A -> B -> C"</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <p class="text-gray-400 mb-3">Classes can be defined inside other classes, providing logical grouping and access to the outer class's members.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Outer
-    outer_value: Int
+  outer_value: Int
 
-    new(value: Int)
-        this.outer_value = value
+  new(value: Int)
+    this.outer_value = value
+  end
+
+  def create_inner(x: Int) -> Inner
+    new Inner(this, x)
+  end
+
+  class Inner
+    outer: Outer
+    inner_value: Int
+
+    new(outer: Outer, value: Int)
+      this.outer = outer
+      this.inner_value = value
     end
 
-    def create_inner(x: Int) -> Inner
-        new Inner(this, x)
+    def get_combined -> Int
+      this.outer.outer_value + this.inner_value
     end
 
-    class Inner
-        outer: Outer
-        inner_value: Int
-
-        new(outer: Outer, value: Int)
-            this.outer = outer
-            this.inner_value = value
-        end
-
-        def get_combined -> Int
-            this.outer.outer_value + this.inner_value
-        end
-
-        def get_outer_value -> Int
-            this.outer.outer_value
-        end
+    def get_outer_value -> Int
+      this.outer.outer_value
     end
+  end
 end
 
 # Using nested classes
@@ -422,47 +422,47 @@ print(inner2.get_combined())   # 30</code></pre>
                 <h3 class="text-lg font-semibold text-white mb-3">Accessing Nested Classes</h3>
                 <p class="text-gray-400 mb-3">Nested classes can be accessed through the outer class using dot notation.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Tree
-    class Node
-        value: Int
-        left: Node?
-        right: Node?
+  class Node
+    value: Int
+    left: Node?
+    right: Node?
 
-        new(value: Int)
-            this.value = value
-            this.left = null
-            this.right = null
-        end
-
-        def insert(new_value: Int)
-            if (new_value < this.value)
-                if (this.left == null)
-                    this.left = new Tree::Node(new_value)
-                else
-                    this.left.insert(new_value)
-                end
-            else
-                if (this.right == null)
-                    this.right = new Tree::Node(new_value)
-                else
-                    this.right.insert(new_value)
-                end
-            end
-        end
+    new(value: Int)
+      this.value = value
+      this.left = null
+      this.right = null
     end
 
-    root: Tree::Node?
-
-    new
-        this.root = null
-    end
-
-    def insert(value: Int)
-        if (this.root == null)
-            this.root = new Tree::Node(value)
+    def insert(new_value: Int)
+      if (new_value < this.value)
+        if (this.left == null)
+          this.left = new Tree::Node(new_value)
         else
-            this.root.insert(value)
+          this.left.insert(new_value)
         end
+      else
+        if (this.right == null)
+          this.right = new Tree::Node(new_value)
+        else
+          this.right.insert(new_value)
+        end
+      end
     end
+  end
+
+  root: Tree::Node?
+
+  new
+    this.root = null
+  end
+
+  def insert(value: Int)
+    if (this.root == null)
+      this.root = new Tree::Node(value)
+    else
+      this.root.insert(value)
+    end
+  end
 end
 
 let tree = new Tree()
@@ -478,25 +478,25 @@ tree.insert(7)</code></pre>
                 <p class="text-gray-400 mb-3">Nested classes with the <code>::</code> separator follow a domain-driven naming convention, commonly used to organize related classes into logical namespaces. This pattern groups related functionality under a domain or context.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Domain model organization
 class User
-    class Profile
-        username: String
-        avatar_url: String
+  class Profile
+    username: String
+    avatar_url: String
 
-        new(username: String)
-            this.username = username
-            this.avatar_url = "https://example.com/avatars/" + username
-        end
+    new(username: String)
+      this.username = username
+      this.avatar_url = "https://example.com/avatars/" + username
     end
+  end
 
-    class Settings
-        theme: String
-        notifications: Bool
+  class Settings
+    theme: String
+    notifications: Bool
 
-        new
-            this.theme = "light"
-            this.notifications = true
-        end
+    new
+      this.theme = "light"
+      this.notifications = true
     end
+  end
 end
 
 let profile = new User::Profile("alice")
@@ -504,21 +504,21 @@ let settings = new User::Settings()
 
 # Controller action organization
 class Posts
-    class Action
-        def create(title: String, content: String)
-            "Creating post: " + title
-        end
-
-        def delete(id: Int)
-            "Deleting post: " + str(id)
-        end
+  class Action
+    def create(title: String, content: String)
+      "Creating post: " + title
     end
 
-    class Validator
-        def validate_post(post: Any) -> Bool
-            post["title"] != null && post["content"] != null
-        end
+    def delete(id: Int)
+      "Deleting post: " + str(id)
     end
+  end
+
+  class Validator
+    def validate_post(post: Any) -> Bool
+      post["title"] != null && post["content"] != null
+    end
+  end
 end
 
 let action = new Posts::Action()
@@ -531,17 +531,17 @@ action.create("Hello", "World")</code></pre>
                 <h3 class="text-lg font-semibold text-white mb-3">Fully Qualified Names</h3>
                 <p class="text-gray-400 mb-3">Nested classes can be accessed using fully qualified names from anywhere in the code.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class Service
-    class Database
-        def query(sql: String)
-            "Executing: " + sql
-        end
+  class Database
+    def query(sql: String)
+      "Executing: " + sql
     end
+  end
 
-    class Cache
-        def get(key: String) -> String?
-            return null
-        end
+  class Cache
+    def get(key: String) -> String?
+      return null
     end
+  end
 end
 
 # Accessing from any scope using fully qualified names
@@ -569,26 +569,26 @@ print(cache.get("session:123"))</code></pre>
         <section id="interface-basic" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <pre data-filename="Example"><code class="language-soli text-sm">interface Drawable {
-    fn draw() -> String;
-    fn get_color() -> String;
+  fn draw() -> String;
+  fn get_color() -> String;
 }
 
 class Circle implements Drawable {
-    radius: Float;
-    color: String;
+  radius: Float;
+  color: String;
 
-    new(radius: Float, color: String) {
-        this.radius = radius;
-        this.color = color;
-    }
+  new(radius: Float, color: String) {
+    this.radius = radius;
+    this.color = color;
+  }
 
-    fn draw() -> String {
-        "Circle with radius " + str(this.radius)
-    }
+  fn draw() -> String {
+    "Circle with radius " + str(this.radius)
+  }
 
-    fn get_color() -> String {
-        this.color
-    }
+  fn get_color() -> String {
+    this.color
+  }
 }</code></pre>
             </div>
         </section>
@@ -598,21 +598,21 @@ class Circle implements Drawable {
                 <h3 class="text-lg font-semibold text-white mb-3">Multiple Interfaces</h3>
                 <p class="text-gray-400 mb-3">A class can implement multiple interfaces.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">interface Printable {
-    fn print();
+  fn print();
 }
 
 interface Exportable {
-    fn export() -> String;
+  fn export() -> String;
 }
 
 class Report implements Printable, Exportable {
-    fn print() {
-        print("Printing report...");
-    }
+  fn print() {
+    print("Printing report...");
+  }
 
-    fn export() -> String {
-        "PDF"
-    }
+  fn export() -> String {
+    "PDF"
+  }
 }</code></pre>
             </div>
         </section>

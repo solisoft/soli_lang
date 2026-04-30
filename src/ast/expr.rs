@@ -49,7 +49,8 @@ pub enum ExprKind {
     /// Command substitution: `ls -l`
     CommandSubstitution(String),
 
-    /// SDBQL query block: @sdql{ FOR u IN users FILTER u.age >= #{age} RETURN u }
+    /// SDBQL query block: @sdbql{ FOR u IN users FILTER u.age >= #{age} RETURN u }
+    /// (also accepts the legacy `@sdql{ ... }` form)
     SdqlBlock {
         query: String,
         interpolations: Vec<SdqlInterpolation>,

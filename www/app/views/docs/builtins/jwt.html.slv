@@ -48,9 +48,9 @@
                     <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - HS256, HS384, or HS512 (default: HS256)</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let token = jwt_sign(
-    { "sub": "user123", "role": "admin" },
-    "my-secret-key",
-    { "expires_in": 3600 }
+  { "sub": "user123", "role": "admin" },
+  "my-secret-key",
+  { "expires_in": 3600 }
 )
 # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
             </div>
@@ -76,10 +76,10 @@
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = jwt_verify(token, "my-secret-key")
 if has_key(result, "error")
-    println("Invalid token: " + result["message"])
+  println("Invalid token: " + result["message"])
 else
-    println("User: " + result["sub"])
-    println("Role: " + result["role"])
+  println("User: " + result["sub"])
+  println("Role: " + result["role"])
 end</code></pre>
             </div>
         </section>
@@ -116,35 +116,35 @@ println(payload["sub"])  # User ID without verification</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login endpoint
 def login(email: String, password: String) -> Hash
-    let user = User.find_by_email(email)
-    if !user || !argon2_verify(password, user["password_hash"])
-        return { "error": "Invalid credentials" }
-    end
+  let user = User.find_by_email(email)
+  if !user || !argon2_verify(password, user["password_hash"])
+    return { "error": "Invalid credentials" }
+  end
 
-    let token = jwt_sign(
-        { "sub": str(user["id"]), "role": user["role"] },
-        getenv("JWT_SECRET"),
-        { "expires_in": 86400 }  # 24 hours
-    )
+  let token = jwt_sign(
+    { "sub": str(user["id"]), "role": user["role"] },
+    getenv("JWT_SECRET"),
+    { "expires_in": 86400 }  # 24 hours
+  )
 
-    { "token": token }
+  { "token": token }
 end
 
 # Protected endpoint middleware
 def authenticate(req: Hash) -> Hash?
-    let auth_header = req["headers"]["Authorization"] ?? ""
-    if !contains(auth_header, "Bearer ")
-        return null
-    end
+  let auth_header = req["headers"]["Authorization"] ?? ""
+  if !contains(auth_header, "Bearer ")
+    return null
+  end
 
-    let token = substring(auth_header, 7)
-    let result = jwt_verify(token, getenv("JWT_SECRET"))
+  let token = substring(auth_header, 7)
+  let result = jwt_verify(token, getenv("JWT_SECRET"))
 
-    if has_key(result, "error")
-        return null
-    }
+  if has_key(result, "error")
+    return null
+  }
 
-    result
+  result
 end</code></pre>
         </div>
     </section>

@@ -53,18 +53,18 @@ let envelope = SOAP.wrap(body)
 
 # Make the SOAP call (returns Hash directly, no await needed)
 let result = SOAP.call(
-    "https://weather.example.com/service",
-    "http://example.com/weather/GetWeather",
-    envelope
+  "https://weather.example.com/service",
+  "http://example.com/weather/GetWeather",
+  envelope
 )
 
 if result["status"] == 200
-    let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-    let temp = response["Temperature"]
-    let condition = response["Condition"]
-    
-    println("Temperature: " + temp)
-    println("Condition: " + condition)
+  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  let temp = response["Temperature"]
+  let condition = response["Condition"]
+  
+  println("Temperature: " + temp)
+  println("Condition: " + condition)
 end</code></pre>
             </div>
         </section>
@@ -210,15 +210,15 @@ to XML string. Supports attributes with @ prefix and text content with _text key
                     <div><code class="text-amber-400">_text</code> - Sets text content of element</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let data = {
-    "user" => {
-        "@id" => "123",
-        "name" => "John",
-        "address" => {
-            "street" => "123 Main St",
-            "city" => "Boston"
-        },
-        "tags" => ["admin", "user"]
-    }
+  "user" => {
+    "@id" => "123",
+    "name" => "John",
+    "address" => {
+      "street" => "123 Main St",
+      "city" => "Boston"
+    },
+    "tags" => ["admin", "user"]
+  }
 }
 
 let xml = SOAP.to_xml(data, "users")
@@ -237,13 +237,13 @@ let xml = SOAP.to_xml(data, "users")
 
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">With _text for Element Content</h4>
                 <pre data-filename="Example"><code class="language-soli text-sm">let data = {
-    "product" => {
-        "name" => "Laptop",
-        "description" => {
-            "_text" => "A high-performance laptop with 16GB RAM"
-        },
-        "price" => "999.99"
-    }
+  "product" => {
+    "name" => "Laptop",
+    "description" => {
+      "_text" => "A high-performance laptop with 16GB RAM"
+    },
+    "price" => "999.99"
+  }
 }
 
 let xml = SOAP.to_xml(data, "catalog")
@@ -270,22 +270,22 @@ let envelope = SOAP.wrap(body)
 
 # Make the SOAP call (auto-resolved, no await needed)
 let result = SOAP.call(
-    "https://weather.example.com/service",
-    "http://example.com/weather/GetWeather",
-    envelope,
-    { "Authorization": "Bearer token123" }
+  "https://weather.example.com/service",
+  "http://example.com/weather/GetWeather",
+  envelope,
+  { "Authorization": "Bearer token123" }
 )
 
 # Handle the response
 if result["status"] == 200
-    let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-    let temp = response["Temperature"]
-    let condition = response["Condition"]
-    
-    println("Temperature: " + temp)
-    println("Condition: " + condition)
+  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  let temp = response["Temperature"]
+  let condition = response["Condition"]
+  
+  println("Temperature: " + temp)
+  println("Condition: " + condition)
 else
-    println("Error: " + result["body"])
+  println("Error: " + result["body"])
 end</code></pre>
         </div>
     </section>
@@ -297,20 +297,20 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-4">The <code class="text-cyan-400">SOAP.call()</code> returns a Hash with the following structure:</p>
             <pre data-filename="Response Hash"><code class="language-soli text-sm">{
-  "status": 200,           # HTTP status code
-  "status_text": "OK",      # HTTP status text
-  "body": "&lt;?xml ...&gt;",  # Raw XML response string
-  "headers": {...},         # Response headers Hash
-  "parsed": {              # Parsed XML as nested Hash
-    "soap:Envelope": {
-      "soap:Body": {
-        "ResponseElement": {
-          "Field1": "value",
-          "Field2": "value"
-        }
-      }
+ "status": 200,           # HTTP status code
+ "status_text": "OK",      # HTTP status text
+ "body": "&lt;?xml ...&gt;",  # Raw XML response string
+ "headers": {...},         # Response headers Hash
+ "parsed": {              # Parsed XML as nested Hash
+  "soap:Envelope": {
+   "soap:Body": {
+    "ResponseElement": {
+     "Field1": "value",
+     "Field2": "value"
     }
+   }
   }
+ }
 }</code></pre>
         </div>
     </section>

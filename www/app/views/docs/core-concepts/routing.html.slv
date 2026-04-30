@@ -86,12 +86,12 @@ get("/users/:id?", "users#show");</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show(req: Any)
 let user_id = req["params"]["id"]
-    let post_id = req["params"]["post_id"]
+  let post_id = req["params"]["post_id"]
 
-    {
-        "status": 200,
-        "body": "User ID: " + user_id
-    }
+  {
+    "status": 200,
+    "body": "User ID: " + user_id
+  }
 end</code></pre>
         </div>
     </div>
@@ -119,13 +119,13 @@ get("/*path", "catchall#handle");</code></pre>
 <pre><code class="language-soli text-sm">def serve(req: Any)
 let filepath = req["params"]["filepath"]
 
-    # /files/docs/report.pdf -> filepath = "/docs/report.pdf"
-    # /files/images/photo.jpg -> filepath = "/images/photo.jpg"
+  # /files/docs/report.pdf -> filepath = "/docs/report.pdf"
+  # /files/images/photo.jpg -> filepath = "/images/photo.jpg"
 
-    {
-        "status": 200,
-        "body": "Serving: " + filepath
-    }
+  {
+    "status": 200,
+    "body": "Serving: " + filepath
+  }
 end</code></pre>
         </div>
     </div>
@@ -190,18 +190,18 @@ get("/files/*filepath", "files#serve");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/docs_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class DocsController < Controller
-    static
-        this.layout = "docs"
-    end
+  static
+    this.layout = "docs"
+  end
 
-    def routing(req: Any)
+  def routing(req: Any)
 let path = req["params"]["path"];  # "/routing"
-        render("docs/routing", {"active_page": "routing"})
-    end
+    render("docs/routing", {"active_page": "routing"})
+  end
 
-    def installation(req: Any)
+  def installation(req: Any)
 render("docs/installation", {"active_page": "installation"})
-    end
+  end
 end</code></pre>
         </div>
     </div>
@@ -250,12 +250,12 @@ end</code></pre>
 
 def search(req: Any)
 let query = req["query"]["q"];      # "solilang"
-    let page = req["query"]["page"];    # "1"
+  let page = req["query"]["page"];    # "1"
 
-    {
-        "status": 200,
-        "body": "Searching for: " + query
-    }
+  {
+    "status": 200,
+    "body": "Searching for: " + query
+  }
 end</code></pre>
         </div>
     </div>
@@ -296,7 +296,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">namespace("admin", ->
-    get("/dashboard", "admin#dashboard")
+  get("/dashboard", "admin#dashboard")
 get("/users", "admin#users")
 post("/users", "admin#create_user"))</code></pre>
         </div>
@@ -309,7 +309,7 @@ post("/users", "admin#create_user"))</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Only /admin/* routes require authentication
 middleware("authenticate", ->
-    get("/admin", "admin#index")
+  get("/admin", "admin#index")
 get("/admin/users", "admin#users"))
 
 # Public routes - no auth needed
@@ -366,11 +366,11 @@ get("/", "home#index")get("/about", "home#about");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">namespace("api", ->
-    resources("users", ->
-        resources("posts", ->
-            resources("comments")
-        )
+  resources("users", ->
+    resources("posts", ->
+      resources("comments")
     )
+  )
 )
 # Creates: /api/users/:user_id/posts/:post_id/comments/:id</code></pre>
         </div>

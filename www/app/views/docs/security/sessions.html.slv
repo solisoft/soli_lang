@@ -88,7 +88,7 @@ let current_user = session_get("username")
 
 # 3. Check if key exists
 if session_has("user_id")
-    print("User is authenticated!")
+  print("User is authenticated!")
 end
 
 # 4. Remove specific data
@@ -128,17 +128,17 @@ session_destroy()</code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
                 <pre><code class="language-soli text-sm">def login(req: Any)
-    let credentials = req["body"]
-    
-    if verify_user(credentials)
-        # CRITICAL: Regenerate session ID before setting sensitive data
-        session_regenerate
-        session_set("authenticated", true)
-        session_set("user_id", credentials["id"])        
-        return redirect("/dashboard")
-    end
+  let credentials = req["body"]
+  
+  if verify_user(credentials)
+    # CRITICAL: Regenerate session ID before setting sensitive data
+    session_regenerate
+    session_set("authenticated", true)
+    session_set("user_id", credentials["id"])        
+    return redirect("/dashboard")
+  end
 
-    render("login", { "error": "Invalid credentials" })
+  render("login", { "error": "Invalid credentials" })
 end</code></pre>
             </div>
         </div>

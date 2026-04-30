@@ -105,24 +105,24 @@
                         <!-- Model Content -->
                         <div id="content-model">
 <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
-    <span class="text-gray-500"># Validations</span>
-    <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
-        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-        <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">3</span>
-    })
-    <span class="text-blue-400">validates</span>(<span class="text-green-400">"author_id"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
+  <span class="text-gray-500"># Validations</span>
+  <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
+    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
+    <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">3</span>
+  })
+  <span class="text-blue-400">validates</span>(<span class="text-green-400">"author_id"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
 
-    <span class="text-gray-500"># Relationships via methods</span>
-    <span class="text-purple-400">def</span> <span class="text-blue-400">author</span>
-        <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id)
-    <span class="text-purple-400">end</span>
+  <span class="text-gray-500"># Relationships via methods</span>
+  <span class="text-purple-400">def</span> <span class="text-blue-400">author</span>
+    <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id)
+  <span class="text-purple-400">end</span>
 
-    <span class="text-purple-400">def</span> <span class="text-blue-400">comments</span>
-        <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
-            <span class="text-green-400">"doc.post_id == @id"</span>,
-            { <span class="text-green-400">"id"</span>: <span class="text-blue-400">this</span>.id }
-        )
-    <span class="text-purple-400">end</span>
+  <span class="text-purple-400">def</span> <span class="text-blue-400">comments</span>
+    <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
+      <span class="text-green-400">"doc.post_id == @id"</span>,
+      { <span class="text-green-400">"id"</span>: <span class="text-blue-400">this</span>.id }
+    )
+  <span class="text-purple-400">end</span>
 <span class="text-purple-400">end</span></code></pre>
                         </div>
 
@@ -132,41 +132,41 @@
 <span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
 
 <span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
-  <span class="text-white">&lt;% for post in posts %&gt;</span>
-    <span class="text-blue-400">&lt;article&gt;</span>
-      <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
-      <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
-      <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/posts/&lt;%= post["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>
-        Read more
-      <span class="text-blue-400">&lt;/a&gt;</span>
-    <span class="text-blue-400">&lt;/article&gt;</span>
-  <span class="text-purple-400">&lt;% end %&gt;</span>
+ <span class="text-white">&lt;% for post in posts %&gt;</span>
+  <span class="text-blue-400">&lt;article&gt;</span>
+   <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
+   <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
+   <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/posts/&lt;%= post["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>
+    Read more
+   <span class="text-blue-400">&lt;/a&gt;</span>
+  <span class="text-blue-400">&lt;/article&gt;</span>
+ <span class="text-purple-400">&lt;% end %&gt;</span>
 <span class="text-blue-400">&lt;/div&gt;</span></code></pre>
                         </div>
 
                         <!-- Controller Content -->
                         <div id="content-controller" class="hidden">
 <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span>
-    <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
-        <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>
-            .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
-            .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-            .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
-            .<span class="text-blue-400">all</span>
+  <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
+    <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>
+      .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
+      .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
+      .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
+      .<span class="text-blue-400">all</span>
 
-        <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
-            <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
-            <span class="text-green-400">"posts"</span>: posts
-        })
-    <span class="text-purple-400">end</span>
+    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
+      <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
+      <span class="text-green-400">"posts"</span>: posts
+    })
+  <span class="text-purple-400">end</span>
 
-    <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>)
-        <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>[<span class="text-green-400">"params"</span>]);
-        <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
-            <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
-        <span class="text-purple-400">end</span>
-        <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>)
+  <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>)
+    <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>[<span class="text-green-400">"params"</span>]);
+    <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
+      <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
     <span class="text-purple-400">end</span>
+    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>)
+  <span class="text-purple-400">end</span>
 <span class="text-purple-400">end</span></code></pre>
                         </div>
                     </div>
@@ -464,25 +464,25 @@
                     </div>
                     <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">User</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
-    <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, {
-        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-        <span class="text-green-400">"uniqueness"</span>: <span class="text-purple-400">true</span>
-    })
-    <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, {
-        <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-        <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">2</span>
-    })
+  <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, {
+    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
+    <span class="text-green-400">"uniqueness"</span>: <span class="text-purple-400">true</span>
+  })
+  <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, {
+    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
+    <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">2</span>
+  })
 
-    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_email"</span>)
-    <span class="text-blue-400">after_create</span>(<span class="text-green-400">"send_welcome_email"</span>)
+  <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_email"</span>)
+  <span class="text-blue-400">after_create</span>(<span class="text-green-400">"send_welcome_email"</span>)
 
-    <span class="text-purple-400">def</span> <span class="text-blue-400">normalize_email</span>
-        <span class="text-purple-400">this</span>.email = <span class="text-purple-400">this</span>.email.<span class="text-blue-400">downcase</span>
-    <span class="text-purple-400">end</span>
+  <span class="text-purple-400">def</span> <span class="text-blue-400">normalize_email</span>
+    <span class="text-purple-400">this</span>.email = <span class="text-purple-400">this</span>.email.<span class="text-blue-400">downcase</span>
+  <span class="text-purple-400">end</span>
 
-    <span class="text-purple-400">def</span> <span class="text-blue-400">posts</span>
-        <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.user_id == @id"</span>, { <span class="text-green-400">"id"</span>: <span class="text-purple-400">this</span>.id })
-    <span class="text-purple-400">end</span>
+  <span class="text-purple-400">def</span> <span class="text-blue-400">posts</span>
+    <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.user_id == @id"</span>, { <span class="text-green-400">"id"</span>: <span class="text-purple-400">this</span>.id })
+  <span class="text-purple-400">end</span>
 <span class="text-purple-400">end</span></code></pre>
                     </div>
                 </div>
@@ -497,22 +497,22 @@
                     <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Chainable query builder</span>
 <span class="text-purple-400">let</span> admins = <span class="text-yellow-200">User</span>
-    .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.role == @role"</span>, { <span class="text-green-400">"role"</span>: <span class="text-green-400">"admin"</span> })
-    .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.active == @a"</span>, { <span class="text-green-400">"a"</span>: <span class="text-purple-400">true</span> })
-    .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-    .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
-    .<span class="text-blue-400">all</span>
+  .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.role == @role"</span>, { <span class="text-green-400">"role"</span>: <span class="text-green-400">"admin"</span> })
+  .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.active == @a"</span>, { <span class="text-green-400">"a"</span>: <span class="text-purple-400">true</span> })
+  .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
+  .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
+  .<span class="text-blue-400">all</span>
 
 <span class="text-gray-500"># CRUD with validations</span>
 <span class="text-purple-400">let</span> result = <span class="text-yellow-200">User</span>.<span class="text-blue-400">create</span>({
-    <span class="text-green-400">"name"</span>: <span class="text-green-400">"Alice"</span>,
-    <span class="text-green-400">"email"</span>: <span class="text-green-400">"alice@example.com"</span>
+  <span class="text-green-400">"name"</span>: <span class="text-green-400">"Alice"</span>,
+  <span class="text-green-400">"email"</span>: <span class="text-green-400">"alice@example.com"</span>
 })
 
 <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
-    <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users/"</span> + result[<span class="text-green-400">"record"</span>][<span class="text-green-400">"id"</span>])
+  <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users/"</span> + result[<span class="text-green-400">"record"</span>][<span class="text-green-400">"id"</span>])
 <span class="text-purple-400">else</span>
-    <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, { <span class="text-green-400">"errors"</span>: result[<span class="text-green-400">"errors"</span>] })
+  <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, { <span class="text-green-400">"errors"</span>: result[<span class="text-green-400">"errors"</span>] })
 <span class="text-purple-400">end</span></code></pre>
                     </div>
                 </div>
@@ -527,13 +527,13 @@
                 </div>
                 <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">def</span> <span class="text-blue-400">up</span>(<span class="text-orange-300">db</span>)
-    db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>)
-    db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_email"</span>, [<span class="text-green-400">"email"</span>], { <span class="text-green-400">"unique"</span>: <span class="text-purple-400">true</span> })
-    db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_role"</span>, [<span class="text-green-400">"role"</span>], {})
+  db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>)
+  db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_email"</span>, [<span class="text-green-400">"email"</span>], { <span class="text-green-400">"unique"</span>: <span class="text-purple-400">true</span> })
+  db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_role"</span>, [<span class="text-green-400">"role"</span>], {})
 <span class="text-purple-400">end</span>
 
 <span class="text-purple-400">def</span> <span class="text-blue-400">down</span>(<span class="text-orange-300">db</span>)
-    db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>)
+  db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>)
 <span class="text-purple-400">end</span></code></pre>
                 </div>
             </div>
@@ -680,9 +680,9 @@
                         <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-html"><span class="text-gray-500">&lt;!-- That's it. No JavaScript needed! --&gt;</span>
 <span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"counter"</span><span class="text-blue-400">&gt;</span>
-    <span class="text-blue-400">&lt;h2&gt;</span><span class="text-orange-300">@count</span><span class="text-blue-400">&lt;/h2&gt;</span>
-    <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"decrement"</span><span class="text-blue-400">&gt;</span>-<span class="text-blue-400">&lt;/button&gt;</span>
-    <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"increment"</span><span class="text-blue-400">&gt;</span>+<span class="text-blue-400">&lt;/button&gt;</span>
+  <span class="text-blue-400">&lt;h2&gt;</span><span class="text-orange-300">@count</span><span class="text-blue-400">&lt;/h2&gt;</span>
+  <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"decrement"</span><span class="text-blue-400">&gt;</span>-<span class="text-blue-400">&lt;/button&gt;</span>
+  <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"increment"</span><span class="text-blue-400">&gt;</span>+<span class="text-blue-400">&lt;/button&gt;</span>
 <span class="text-blue-400">&lt;/div&gt;</span></code></pre>
                         </div>
                     </div>
@@ -697,16 +697,16 @@
                         <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Server pushes updates via tick events</span>
 <span class="text-purple-400">def</span> <span class="text-blue-400">metrics</span>(<span class="text-orange-300">event</span>)
-    <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"tick"</span>
-        <span class="text-purple-400">return</span> {
-            <span class="text-green-400">"state"</span>: {
-                <span class="text-green-400">"time"</span>: <span class="text-blue-400">now</span>(),
-                <span class="text-green-400">"cpu"</span>: <span class="text-blue-400">system_cpu</span>(),
-                <span class="text-green-400">"memory"</span>: <span class="text-blue-400">system_memory</span>()
-            }
-        };
-    <span class="text-purple-400">end</span>
-    {}
+  <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"tick"</span>
+    <span class="text-purple-400">return</span> {
+      <span class="text-green-400">"state"</span>: {
+        <span class="text-green-400">"time"</span>: <span class="text-blue-400">now</span>(),
+        <span class="text-green-400">"cpu"</span>: <span class="text-blue-400">system_cpu</span>(),
+        <span class="text-green-400">"memory"</span>: <span class="text-blue-400">system_memory</span>()
+      }
+    };
+  <span class="text-purple-400">end</span>
+  {}
 <span class="text-purple-400">end</span></code></pre>
                         </div>
                     </div>

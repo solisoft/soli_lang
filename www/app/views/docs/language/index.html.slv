@@ -125,7 +125,7 @@ print("Hello, World!");</code></pre>
             <h3 class="text-xl font-semibold text-white mb-4">Your First Soli Program</h3>
             <pre data-filename="area.sl"><code class="language-soli text-sm"># A simple program that calculates the area of a circle
 def calculate_area(radius: Float) -> Float
-    3.14159 * radius * radius
+  3.14159 * radius * radius
 end
 
 let radius = 5.0
@@ -174,41 +174,41 @@ const PI = 3.14159
 
 # Function
 def add(a: Int, b: Int) -> Int
-    a + b
+  a + b
 end</code></pre>
 
             <pre data-filename="Class"><code class="language-soli text-sm">class Person
-    name: String
-    new(name: String)
-        this.name = name
-    end
-    def greet -> String
-        "Hello, " + this.name
-    end
+  name: String
+  new(name: String)
+    this.name = name
+  end
+  def greet -> String
+    "Hello, " + this.name
+  end
 end</code></pre>
 
             <pre data-filename="Control Flow"><code class="language-soli text-sm"># If/Else
 if (condition)
-    # code
+  # code
 else
-    # code
+  # code
 end
 
 # For Loop
 for (item in collection)
-    # code
+  # code
 end
 
 # Try/Catch
 try
-    risky_operation()catch e
-    print(e)
+  risky_operation()catch e
+  print(e)
 end
 
 # Match
 match value
-    pattern => result,
-    _ => default,
+  pattern => result,
+  _ => default,
 end</code></pre>
 
             <pre data-filename="Pipeline & Collections"><code class="language-soli text-sm"># Pipeline

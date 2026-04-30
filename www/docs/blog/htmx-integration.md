@@ -10,7 +10,7 @@ HTMx is a JavaScript library that extends HTML with modern capabilities. Instead
 
 ```html
 <button hx-get="/api/users" hx-target="#user-list">
-    Load Users
+  Load Users
 </button>
 ```
 
@@ -44,27 +44,27 @@ To make HTMx even easier to use in Soli, let's create some helper functions:
 # stdlib/htmx.sl
 
 fn hx_get(url)
-    'hx-get="' + url + '"'
+  'hx-get="' + url + '"'
 end
 
 fn hx_post(url)
-    'hx-post="' + url + '"'
+  'hx-post="' + url + '"'
 end
 
 fn hx_target(selector)
-    'hx-target="' + selector + '"'
+  'hx-target="' + selector + '"'
 end
 
 fn hx_swap(method)
-    'hx-swap="' + method + '"'
+  'hx-swap="' + method + '"'
 end
 
 fn hx_trigger(event)
-    'hx-trigger="' + event + '"'
+  'hx-trigger="' + event + '"'
 end
 
 fn hx_push_url(enabled)
-    'hx-push-url="' + (enabled ? "true" : "false") + '"'
+  'hx-push-url="' + (enabled ? "true" : "false") + '"'
 end
 ```
 
@@ -84,24 +84,24 @@ Let's build a simple todo list with HTMx:
 # app/controllers/todos_controller.sl
 
 fn index(req)
-    let todos = Todo.all
-    render("todos/index", {"todos": todos})
+  let todos = Todo.all
+  render("todos/index", {"todos": todos})
 end
 
 fn create(req)
-    let params = req["all"]
-    let todo = Todo.create({"title": params["title"], "done": false})
-    
-    render("todos/_todo", {"todo": todo})
+  let params = req["all"]
+  let todo = Todo.create({"title": params["title"], "done": false})
+  
+  render("todos/_todo", {"todo": todo})
 end
 
 fn toggle(req)
-    let id = req["all"]["id"]
-    let todo = Todo.find(id)
-    todo["done"] = !todo["done"]
-    todo.save
-    
-    render("todos/_todo", {"todo": todo})
+  let id = req["all"]["id"]
+  let todo = Todo.find(id)
+  todo["done"] = !todo["done"]
+  todo.save
+  
+  render("todos/_todo", {"todo": todo})
 end
 ```
 
@@ -111,12 +111,12 @@ end
 <h1>My Todos</h1>
 
 <form <%= hx_post("/todos", target: "#todos") %>>
-    <input type="text" name="title" placeholder="New todo...">
-    <button type="submit">Add</button>
+  <input type="text" name="title" placeholder="New todo...">
+  <button type="submit">Add</button>
 </form>
 
 <div id="todos">
-    <%= render("_todos", {"todos": todos}) %>
+  <%= render("_todos", {"todos": todos}) %>
 </div>
 ```
 
@@ -124,12 +124,12 @@ end
 # app/views/todos/_todo.html.slv
 
 <div class="todo <%= todo["done"] ? "completed" : "" %>">
-    <input 
-        type="checkbox" 
-        <%= todo["done"] ? "checked" : "" %>
-        <%= hx_patch("/todos/" + todo["id"], target: "#todo-" + todo["id"]) %>
-    >
-    <span><%= todo["title"] %></span>
+  <input 
+    type="checkbox" 
+    <%= todo["done"] ? "checked" : "" %>
+    <%= hx_patch("/todos/" + todo["id"], target: "#todo-" + todo["id"]) %>
+  >
+  <span><%= todo["title"] %></span>
 </div>
 ```
 

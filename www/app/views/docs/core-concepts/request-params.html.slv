@@ -101,19 +101,19 @@
 # Body: {"status": "urgent", "quantity": "5"}
 
 def update_item(req: Any)    # Unified access to all parameters
-    let all = req["all"]
+  let all = req["all"]
 
-    # ID from route params
-    print("ID:", all["id"]);           # "42"
+  # ID from route params
+  print("ID:", all["id"]);           # "42"
 
-    # Status appears in both query and body
-    # Body value takes precedence!
-    print("Status:", all["status"]);   # "urgent" (from JSON body)
+  # Status appears in both query and body
+  # Body value takes precedence!
+  print("Status:", all["status"]);   # "urgent" (from JSON body)
 
-    # Quantity from body only
-    print("Quantity:", all["quantity"]); # "5"
+  # Quantity from body only
+  print("Quantity:", all["quantity"]); # "5"
 
-    {"status": 200, "body": "Updated"}
+  {"status": 200, "body": "Updated"}
 end</code></pre></code></pre>
             </div>
         </div>
@@ -141,15 +141,15 @@ end</code></pre></code></pre>
 # Body: {"bio": "Developer"}
 
 fn update_profile(req: Any) -> Any
-    # Dot access works on the global params hash
-    print("User ID:", params.id);       # "123" (from route)
-    print("Name:", params.name);        # "alice" (from query)
-    print("Bio:", params.bio);          # "Developer" (from JSON body)
+  # Dot access works on the global params hash
+  print("User ID:", params.id);       # "123" (from route)
+  print("Name:", params.name);        # "alice" (from query)
+  print("Bio:", params.bio);          # "Developer" (from JSON body)
 
-    # Bracket access is also supported
-    let limit = params["limit"] or "20";
+  # Bracket access is also supported
+  let limit = params["limit"] or "20";
 
-    {"status": 200, "body": "Profile updated"}
+  {"status": 200, "body": "Profile updated"}
 end</code></pre>
             </div>
         </div>
@@ -220,21 +220,21 @@ end</code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handler(req: Any)    # Route parameters only
-    let id = req["params"]["id"]
+  let id = req["params"]["id"]
 
-    # Query parameters only
-    let page = req["query"]["page"]
+  # Query parameters only
+  let page = req["query"]["page"]
 
-    # JSON body only
-    let data = req["json"]
+  # JSON body only
+  let data = req["json"]
 
-    # Form data only
-    let form = req["form"]
+  # Form data only
+  let form = req["form"]
 
-    # Or unified access
-    let all = req["all"]
+  # Or unified access
+  let all = req["all"]
 
-    {"status": 200, "body": "OK"}
+  {"status": 200, "body": "OK"}
 end</code></pre></code></pre>
             </div>
         </div>
@@ -261,32 +261,32 @@ end</code></pre></code></pre>
 def search(req: Any)
 let all = req["all"]
 
-    # Unified params allow flexible API design
-    let query = all["q"] or ""
-    let page = all["page"] or "1"
-    let limit = all["limit"] or "20"
+  # Unified params allow flexible API design
+  let query = all["q"] or ""
+  let page = all["page"] or "1"
+  let limit = all["limit"] or "20"
 
-    # Use unified params for filtering
-    let filters = {
-        "query": query,
-        "page": page,
-        "limit": limit,
-        "category": all["category"],      # Optional
-        "sort": all["sort"] or "relevance",
-        "min_price": all["min_price"],    # Optional
-        "max_price": all["max_price"]     # Optional
-    }
+  # Use unified params for filtering
+  let filters = {
+    "query": query,
+    "page": page,
+    "limit": limit,
+    "category": all["category"],      # Optional
+    "sort": all["sort"] or "relevance",
+    "min_price": all["min_price"],    # Optional
+    "max_price": all["max_price"]     # Optional
+  }
 
-    # Execute search
-    let results = execute_search(filters)
-    {
-        "status": 200,
-        "body": json_stringify({
-            "results": results,
-            "page": page,
-            "limit": limit
-        })
-    }
+  # Execute search
+  let results = execute_search(filters)
+  {
+    "status": 200,
+    "body": json_stringify({
+      "results": results,
+      "page": page,
+      "limit": limit
+    })
+  }
 end</code></pre></code></pre>
             </div>
         </div>

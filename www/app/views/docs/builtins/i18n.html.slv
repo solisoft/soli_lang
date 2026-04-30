@@ -83,10 +83,10 @@ I18n.set_locale("de")</code></pre>
                     <div><code class="text-amber-400">translations</code> : <code class="text-purple-400">Hash?</code> - Optional translations hash</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let translations = {
-    "en.greeting": "Hello",
-    "fr.greeting": "Bonjour",
-    "de.greeting": "Hallo",
-    "en.welcome": "Welcome, {name}!"
+  "en.greeting": "Hello",
+  "fr.greeting": "Bonjour",
+  "de.greeting": "Hallo",
+  "en.welcome": "Welcome, {name}!"
 }
 
 I18n.translate("greeting", "fr", translations)  # "Bonjour"
@@ -108,9 +108,9 @@ I18n.translate("greeting", "en", translations)  # "Hello"</code></pre>
                     Use suffixes: <code class="text-amber-400">_zero</code>, <code class="text-amber-400">_one</code>, <code class="text-amber-400">_other</code>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let translations = {
-    "en.items_zero": "No items",
-    "en.items_one": "1 item",
-    "en.items_other": "{count} items"
+  "en.items_zero": "No items",
+  "en.items_one": "1 item",
+  "en.items_other": "{count} items"
 }
 
 I18n.plural("items", 0, "en", translations)   # "No items"
@@ -131,18 +131,18 @@ I18n.plural("items", 5, "en", translations)   # "5 items"</code></pre>
 
             <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">JSON File Format</h4>
             <pre data-filename="locales/en.json"><code class="language-json text-sm">{
-    "app": {
-        "title": "My Application",
-        "welcome": "Welcome!"
-    },
-    "nav": {
-        "home": "Home",
-        "about": "About"
-    },
-    "common": {
-        "save": "Save",
-        "cancel": "Cancel"
-    }
+  "app": {
+    "title": "My Application",
+    "welcome": "Welcome!"
+  },
+  "nav": {
+    "home": "Home",
+    "about": "About"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel"
+  }
 }</code></pre>
         </div>
 
@@ -154,28 +154,28 @@ I18n.plural("items", 5, "en", translations)   # "5 items"</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm">let i18n_translations = {}
 
 def flatten_dict(dict, prefix) -> Hash
-    let result = {}
-    for (pair in entries(dict))
-        let key = pair[0]
-        let value = pair[1]
-        let full_key = prefix + "." + key
-        if type(value) == "Hash"
-            let nested = flatten_dict(value, full_key)
-            for (np in entries(nested))
-                result[np[0]] = np[1]
-            end
-        else
-            result[full_key] = value
-        end
+  let result = {}
+  for (pair in entries(dict))
+    let key = pair[0]
+    let value = pair[1]
+    let full_key = prefix + "." + key
+    if type(value) == "Hash"
+      let nested = flatten_dict(value, full_key)
+      for (np in entries(nested))
+        result[np[0]] = np[1]
+      end
+    else
+      result[full_key] = value
     end
-    return result
+  end
+  return result
 end
 
 def i18n_load_translations(locale, dict)
-    let flat = flatten_dict(dict, locale)
-    for (pair in entries(flat))
-        i18n_translations[pair[0]] = pair[1]
-    end
+  let flat = flatten_dict(dict, locale)
+  for (pair in entries(flat))
+    i18n_translations[pair[0]] = pair[1]
+  end
 end</code></pre>
         </div>
 
@@ -207,12 +207,12 @@ http_server_listen(3000)</code></pre>
                 Once loaded in app.sl, use translations anywhere in your controllers.
             </p>
             <pre data-filename="Example"><code class="language-soli text-sm">def home_index(req)
-    let welcome = I18n.translate("app.welcome", null, i18n_translations)
-    let home_link = I18n.translate("nav.home", null, i18n_translations)    
-    return render("home/index", {
-        "welcome": welcome,
-        "nav_home": home_link
-    })
+  let welcome = I18n.translate("app.welcome", null, i18n_translations)
+  let home_link = I18n.translate("nav.home", null, i18n_translations)    
+  return render("home/index", {
+    "welcome": welcome,
+    "nav_home": home_link
+  })
 end</code></pre>
         </div>
     </section>
@@ -304,17 +304,17 @@ dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre data-filename="Example"><code class="language-soli text-sm"># Define translations
 let translations = {
-    "en.welcome": "Welcome!",
-    "en.cart_items_zero": "Your cart is empty",
-    "en.cart_items_one": "You have 1 item in your cart",
-    "en.cart_items_other": "You have {count} items in your cart",
-    "en.total": "Total: {amount}",
+  "en.welcome": "Welcome!",
+  "en.cart_items_zero": "Your cart is empty",
+  "en.cart_items_one": "You have 1 item in your cart",
+  "en.cart_items_other": "You have {count} items in your cart",
+  "en.total": "Total: {amount}",
 
-    "fr.welcome": "Bienvenue!",
-    "fr.cart_items_zero": "Votre panier est vide",
-    "fr.cart_items_one": "Vous avez 1 article",
-    "fr.cart_items_other": "Vous avez {count} articles",
-    "fr.total": "Total: {amount}"
+  "fr.welcome": "Bienvenue!",
+  "fr.cart_items_zero": "Votre panier est vide",
+  "fr.cart_items_one": "Vous avez 1 article",
+  "fr.cart_items_other": "Vous avez {count} articles",
+  "fr.total": "Total: {amount}"
 }
 
 # Set locale based on user preference

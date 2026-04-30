@@ -37,11 +37,11 @@ let secret = "JBSWY3DPEHPK3PXP"
 let user_code = request.body["code"]
 
 if Crypto.totp_verify(secret, user_code)
-    # Code is valid - user is authenticated
-    println("2FA successful!")
+  # Code is valid - user is authenticated
+  println("2FA successful!")
 else
-    # Invalid code
-    println("Invalid code, try again")
+  # Invalid code
+  println("Invalid code, try again")
 end
 ```
 
@@ -75,49 +75,49 @@ Here's a full example of adding TOTP-based 2FA to a login flow:
 # app/controllers/auth_controller.sl
 
 fn login(req)
-    let params = req["all"]
-    let email = params["email"]
-    let password = params["password"]
-    
-    let user = User.find_by_email(email)
-    
-    if user == nil or not Crypto.argon2_verify(password, user["password_hash"])
-        return render("auth/login", {"error": "Invalid credentials"})
-    end
-    
-    if user["totp_secret"] != nil
-        # User has 2FA enabled - require code
-        let temp_token = generate_temp_token(user["id"])
-        return render("auth/verify_2fa", {"temp_token": temp_token})
-    end
-    
-    # No 2FA - complete login
-    session["user_id"] = user["id"]
-    redirect("/dashboard")
+  let params = req["all"]
+  let email = params["email"]
+  let password = params["password"]
+  
+  let user = User.find_by_email(email)
+  
+  if user == nil or not Crypto.argon2_verify(password, user["password_hash"])
+    return render("auth/login", {"error": "Invalid credentials"})
+  end
+  
+  if user["totp_secret"] != nil
+    # User has 2FA enabled - require code
+    let temp_token = generate_temp_token(user["id"])
+    return render("auth/verify_2fa", {"temp_token": temp_token})
+  end
+  
+  # No 2FA - complete login
+  session["user_id"] = user["id"]
+  redirect("/dashboard")
 end
 
 fn verify_2fa(req)
-    let params = req["all"]
-    let temp_token = params["temp_token"]
-    let code = params["code"]
-    
-    let user_id = validate_temp_token(temp_token)
-    if user_id == nil
-        return redirect("/login")
-    end
-    
-    let user = User.find(user_id)
-    
-    if not Crypto.totp_verify(user["totp_secret"], code)
-        return render("auth/verify_2fa", {
-            "temp_token": temp_token,
-            "error": "Invalid code"
-        })
-    end
-    
-    # 2FA verified - complete login
-    session["user_id"] = user["id"]
-    redirect("/dashboard")
+  let params = req["all"]
+  let temp_token = params["temp_token"]
+  let code = params["code"]
+  
+  let user_id = validate_temp_token(temp_token)
+  if user_id == nil
+    return redirect("/login")
+  end
+  
+  let user = User.find(user_id)
+  
+  if not Crypto.totp_verify(user["totp_secret"], code)
+    return render("auth/verify_2fa", {
+      "temp_token": temp_token,
+      "error": "Invalid code"
+    })
+  end
+  
+  # 2FA verified - complete login
+  session["user_id"] = user["id"]
+  redirect("/dashboard")
 end
 ```
 
@@ -129,21 +129,21 @@ To help users set up 2FA, generate their secret and QR code:
 # app/controllers/settings_controller.sl
 
 fn enable_2fa(req)
-    let user = User.find(session["user_id"])
-    
-    # Generate a new random secret
-    let keypair = Crypto.x25519_keypair
-    let secret = base64_encode(keypair["private"][0..20])  # 20 bytes = 32 Base32 chars
-    
-    # Save to user (in production, encrypt this!)
-    user["totp_secret"] = secret
-    user.save
-    
-    # Generate QR code URI
-    let uri = Crypto.totp_uri(secret, user["email"], "MyApp", 30)
-    let qr_code = QRCode.encode(uri)
-    
-    render("settings/2fa_setup", {"qr_code": qr_code, "secret": secret})
+  let user = User.find(session["user_id"])
+  
+  # Generate a new random secret
+  let keypair = Crypto.x25519_keypair
+  let secret = base64_encode(keypair["private"][0..20])  # 20 bytes = 32 Base32 chars
+  
+  # Save to user (in production, encrypt this!)
+  user["totp_secret"] = secret
+  user.save
+  
+  # Generate QR code URI
+  let uri = Crypto.totp_uri(secret, user["email"], "MyApp", 30)
+  let qr_code = QRCode.encode(uri)
+  
+  render("settings/2fa_setup", {"qr_code": qr_code, "secret": secret})
 end
 ```
 

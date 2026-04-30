@@ -45,18 +45,18 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def chat_handler(event: Any)
 let type = event["type"]
-    let id = event["connection_id"]
+  let id = event["connection_id"]
 
-    if (type == "connect")
-        return { "broadcast": json_encode({ "type": "join", "user": id }) }
-    end
+  if (type == "connect")
+    return { "broadcast": json_encode({ "type": "join", "user": id }) }
+  end
 
-    if (type == "message")
-        let msg = event["message"]
-        return { "broadcast": msg }
-    end
+  if (type == "message")
+    let msg = event["message"]
+    return { "broadcast": msg }
+  end
 
-    {}
+  {}
 end</code></pre>
         </div>
     </div>
@@ -115,18 +115,18 @@ end</code></pre>
 <pre><code class="language-soli text-sm">def room_handler(event: Any)
 let room = "room:" + event["params"]["room_id"]
 
-    if (event["type"] == "connect")
-        # Join the room channel on connect
-        return { "join": room }
-    end
+  if (event["type"] == "connect")
+    # Join the room channel on connect
+    return { "join": room }
+  end
 
-    if (event["type"] == "message")
-        let data = JSON.parse(event["message"])        # Broadcast only to users in this room
-        return { "broadcast_room": json_encode(data) }
-    end
+  if (event["type"] == "message")
+    let data = JSON.parse(event["message"])        # Broadcast only to users in this room
+    return { "broadcast_room": json_encode(data) }
+  end
 
-    # Leave is automatic on disconnect
-    {}
+  # Leave is automatic on disconnect
+  {}
 end</code></pre>
         </div>
     </div>
@@ -175,36 +175,36 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def chat_handler(event: Any)
 let room = "room:general"
-    # Get user from session/auth (example)
-    let user = get_current_user
-    if (event["type"] == "connect")
-        return {
-            "join": room,
-            "track": {
-                "channel": room,
-                "user_id": user["id"],      # Required - groups connections
-                "name": user["name"],       # Extra metadata
-                "avatar": user["avatar"]
-            }
-        }
+  # Get user from session/auth (example)
+  let user = get_current_user
+  if (event["type"] == "connect")
+    return {
+      "join": room,
+      "track": {
+        "channel": room,
+        "user_id": user["id"],      # Required - groups connections
+        "name": user["name"],       # Extra metadata
+        "avatar": user["avatar"]
+      }
+    }
+  end
+
+  if (event["type"] == "message")
+    let data = JSON.parse(event["message"])
+    # Handle typing indicators
+    if (data["event"] == "typing")
+      return { "set_presence": { "channel": room, "state": "typing" } }
+    end
+    if (data["event"] == "stop_typing")
+      return { "set_presence": { "channel": room, "state": "online" } }
     end
 
-    if (event["type"] == "message")
-        let data = JSON.parse(event["message"])
-        # Handle typing indicators
-        if (data["event"] == "typing")
-            return { "set_presence": { "channel": room, "state": "typing" } }
-        end
-        if (data["event"] == "stop_typing")
-            return { "set_presence": { "channel": room, "state": "online" } }
-        end
+    # Regular messages
+    return { "broadcast_room": json_encode(data) }
+  end
 
-        # Regular messages
-        return { "broadcast_room": json_encode(data) }
-    end
-
-    # Disconnect auto-untracks and broadcasts leave diff
-    {}
+  # Disconnect auto-untracks and broadcasts leave diff
+  {}
 end</code></pre>
         </div>
     </div>
@@ -235,18 +235,18 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_state (sent on join)</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
-  "event": "presence_state",
-  "payload": {
-    "user_123": {
-      "metas": [
-        { "phx_ref": "1", "state": "online", "name": "Alice", "avatar": "/alice.png" },
-        { "phx_ref": "2", "state": "typing", "name": "Alice", "avatar": "/alice.png" }
-      ]
-    },
-    "user_456": {
-      "metas": [{ "phx_ref": "3", "state": "online", "name": "Bob" }]
-    }
+ "event": "presence_state",
+ "payload": {
+  "user_123": {
+   "metas": [
+    { "phx_ref": "1", "state": "online", "name": "Alice", "avatar": "/alice.png" },
+    { "phx_ref": "2", "state": "typing", "name": "Alice", "avatar": "/alice.png" }
+   ]
+  },
+  "user_456": {
+   "metas": [{ "phx_ref": "3", "state": "online", "name": "Bob" }]
   }
+ }
 }</code></pre>
         </div>
     </div>
@@ -255,15 +255,15 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_diff (sent on changes)</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
-  "event": "presence_diff",
-  "payload": {
-    "joins": {
-      "user_789": { "metas": [{ "phx_ref": "4", "state": "online", "name": "Carol" }] }
-    },
-    "leaves": {
-      "user_456": { "metas": [{ "phx_ref": "3", "state": "online", "name": "Bob" }] }
-    }
+ "event": "presence_diff",
+ "payload": {
+  "joins": {
+   "user_789": { "metas": [{ "phx_ref": "4", "state": "online", "name": "Carol" }] }
+  },
+  "leaves": {
+   "user_456": { "metas": [{ "phx_ref": "3", "state": "online", "name": "Bob" }] }
   }
+ }
 }</code></pre>
         </div>
     </div>
@@ -274,28 +274,28 @@ end</code></pre>
 <pre><code class="language-javascript text-sm">let presences = {}
 
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    if (data.event === 'presence_state') {
-        // Initial state - replace all
-        presences = data.payload
-        renderUserList()    }
-    else if (data.event === 'presence_diff') {
-        // Apply diff
-        Object.entries(data.payload.joins).forEach(([userId, presence]) => {
-            presences[userId] = presence
-        })
+  const data = JSON.parse(event.data)
+  if (data.event === 'presence_state') {
+    // Initial state - replace all
+    presences = data.payload
+    renderUserList()    }
+  else if (data.event === 'presence_diff') {
+    // Apply diff
+    Object.entries(data.payload.joins).forEach(([userId, presence]) => {
+      presences[userId] = presence
+    })
 Object.entries(data.payload.leaves).forEach(([userId]) => {
-            delete presences[userId]
-        })
+      delete presences[userId]
+    })
 renderUserList()    }
 }
 
 function renderUserList() {
-    const users = Object.entries(presences).map(([userId, { metas }]) => ({
-        userId,
-        ...metas[0],  // Use first meta for display
-        connectionCount: metas.length
-    }))    // Render users...
+  const users = Object.entries(presences).map(([userId, { metas }]) => ({
+    userId,
+    ...metas[0],  // Use first meta for display
+    connectionCount: metas.length
+  }))    // Render users...
 }</code></pre>
         </div>
     </div>
@@ -328,7 +328,7 @@ let user = ws_get_presence("room:lobby", "user_123")
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
 const ws = new WebSocket(`${protocol}//${location.host}/ws/chat`)
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
+  const data = JSON.parse(event.data)
 console.log('Received:', data)}
 
 ws.send(JSON.stringify({ text: 'Hello!' }))

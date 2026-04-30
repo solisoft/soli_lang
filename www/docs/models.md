@@ -37,9 +37,9 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 ```soli
 # app/controllers/users_controller.sl — no import needed
 class UsersController extends Controller
-    fn index(req)
-        render("users/index", { "users": User.all() })
-    end
+  fn index(req)
+    render("users/index", { "users": User.all() })
+  end
 end
 ```
 
@@ -53,9 +53,9 @@ If you run a model or controller file directly with `soli run path/to/file.sl`, 
 
 ```soli
 let result = User.create({
-    "email": "alice@example.com",
-    "name": "Alice",
-    "age": 30
+  "email": "alice@example.com",
+  "name": "Alice",
+  "age": 30
 });
 # Returns: { "valid": true, "record": { "id": "...", "email": "...", ... } }
 # Or on validation failure: { "valid": false, "errors": [...] }
@@ -77,8 +77,8 @@ let active = User.where("doc.status == @status", { "status": "active" }).all();
 
 # Complex conditions
 let results = User.where("doc.age >= @min_age AND doc.role == @role", {
-    "min_age": 21,
-    "role": "admin"
+  "min_age": 21,
+  "role": "admin"
 }).all();
 ```
 
@@ -87,8 +87,8 @@ let results = User.where("doc.age >= @min_age AND doc.role == @role", {
 ```soli
 # Static method: update by ID
 User.update("user123", {
-    "name": "Alice Smith",
-    "age": 31
+  "name": "Alice Smith",
+  "age": 31
 });
 
 # Instance method: modify fields and save
@@ -124,12 +124,12 @@ Chain methods to build complex queries:
 
 ```soli
 let results = User
-    .where("doc.age >= @age", { "age": 18 })
-    .where("doc.active == @active", { "active": true })
-    .order("created_at", "desc")
-    .limit(10)
-    .offset(20)
-    .all();
+  .where("doc.age >= @age", { "age": 18 })
+  .where("doc.active == @active", { "active": true })
+  .order("created_at", "desc")
+  .limit(10)
+  .offset(20)
+  .all();
 
 # Get first result only
 let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
@@ -212,10 +212,10 @@ Define validation rules in your model class:
 
 ```soli
 class User extends Model
-    validates("email", { "presence": true, "uniqueness": true })
-    validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
-    validates("age", { "numericality": true, "min": 0, "max": 150 })
-    validates("website", { "format": "^https?://" })
+  validates("email", { "presence": true, "uniqueness": true })
+  validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
+  validates("age", { "numericality": true, "min": 0, "max": 150 })
+  validates("website", { "format": "^https?://" })
 end
 ```
 
@@ -243,11 +243,11 @@ holds an array of error entries. On success, `_errors` is `nil`.
 let user = User.create({ "email": "" });
 
 if user._errors
-    for error in user._errors
-        print(error["field"] + ": " + error["message"]);
-    end
+  for error in user._errors
+    print(error["field"] + ": " + error["message"]);
+  end
 else
-    print("Created user: " + user.id);
+  print("Created user: " + user.id);
 end
 ```
 
@@ -257,16 +257,16 @@ Define lifecycle callbacks to run code at specific points:
 
 ```soli
 class User extends Model
-    before_save("normalize_email")
-    after_create("send_welcome_email")
-    before_update("log_changes")
-    after_delete("cleanup_related")
+  before_save("normalize_email")
+  after_create("send_welcome_email")
+  before_update("log_changes")
+  after_delete("cleanup_related")
 
-    fn normalize_email()        this.email = this.email.downcase();
-    end
+  fn normalize_email()        this.email = this.email.downcase();
+  end
 
-    fn send_welcome_email()        # Send email logic
-    end
+  fn send_welcome_email()        # Send email logic
+  end
 end
 ```
 
@@ -291,12 +291,12 @@ Declare a blob attachment with `uploader(name, options)`. Soli registers the fie
 
 ```soli
 class Contact extends Model
-    uploader("photo", {
-        "multiple":      false,
-        "content_types": ["image/jpeg", "image/png", "image/webp"],
-        "max_size":      2_000_000,
-        "collection":    "contact_photos"   # optional; defaults to <snake>_<field>s
-    })
+  uploader("photo", {
+    "multiple":      false,
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      2_000_000,
+    "collection":    "contact_photos"   # optional; defaults to <snake>_<field>s
+  })
 end
 ```
 
@@ -306,40 +306,40 @@ Auto-generated on each instance: `attach_<field>(file)`, `detach_<field>([blob_i
 
 ```soli
 class Contact extends Model
-    uploader("document", {
-        "multiple":      true,
-        "content_types": ["application/pdf", "image/jpeg", "image/png",
-                          "application/zip", "text/csv"],
-        "max_size":      10_000_000,
-        "collection":    "contact_documents"
-    })
+  uploader("document", {
+    "multiple":      true,
+    "content_types": ["application/pdf", "image/jpeg", "image/png",
+             "application/zip", "text/csv"],
+    "max_size":      10_000_000,
+    "collection":    "contact_documents"
+  })
 end
 ```
 
 ```soli
 # POST /contacts/:id/documents (HTML form → redirect+flash)
 def attach_document(req)
-    contact = Contact.find(params.id)
-    file = find_uploaded_file(req, "document")
-    if file.nil?
-        flash("error", "Pick a file before submitting.")
-    elsif contact.attach_document(file)
-        flash("success", "Document filed.")
-    else
-        flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
-    end
-    redirect("/contacts/#{contact._key}")
+  contact = Contact.find(params.id)
+  file = find_uploaded_file(req, "document")
+  if file.nil?
+    flash("error", "Pick a file before submitting.")
+  elsif contact.attach_document(file)
+    flash("success", "Document filed.")
+  else
+    flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
+  end
+  redirect("/contacts/#{contact._key}")
 end
 
 # POST /contacts/:id/document/:blob_id/delete
 def detach_document(req)
-    contact = Contact.find(params.id)
-    if contact.detach_document(params.blob_id)
-        flash("success", "Document removed.")
-    else
-        flash("error", "Document not found on this record.")
-    end
-    redirect("/contacts/#{contact._key}")
+  contact = Contact.find(params.id)
+  if contact.detach_document(params.blob_id)
+    flash("success", "Document removed.")
+  else
+    flash("error", "Document not found on this record.")
+  end
+  redirect("/contacts/#{contact._key}")
 end
 ```
 
@@ -349,10 +349,10 @@ For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `upl
 
 ```soli
 def destroy(req)
-    contact = Contact.find(params.id)
-    detach_all_uploads(contact) unless contact.nil?
-    Contact.delete(params.id)
-    redirect("/contacts")
+  contact = Contact.find(params.id)
+  detach_all_uploads(contact) unless contact.nil?
+  Contact.delete(params.id)
+  redirect("/contacts")
 end
 ```
 
@@ -364,13 +364,13 @@ Declare associations using the built-in DSL:
 
 ```soli
 class User extends Model
-    has_many("posts")
-    has_one("profile")
+  has_many("posts")
+  has_one("profile")
 end
 
 class Post extends Model
-    belongs_to("user")
-    has_many("comments")
+  belongs_to("user")
+  has_many("comments")
 end
 ```
 
@@ -389,14 +389,14 @@ Override defaults with an options hash:
 
 ```soli
 class Post extends Model
-    belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
+  belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
 
-    has_and_belongs_to_many("labels", {
-        "class_name": "Tag",
-        "join_table": "post_labels",
-        "foreign_key": "post_id",
-        "association_foreign_key": "label_id"
-    })
+  has_and_belongs_to_many("labels", {
+    "class_name": "Tag",
+    "join_table": "post_labels",
+    "foreign_key": "post_id",
+    "association_foreign_key": "label_id"
+  })
 end
 ```
 
@@ -454,8 +454,8 @@ Combine a filter with field projection using the `"fields"` key in the bind hash
 ```soli
 # Only load title and body of published posts
 let users = User.includes("posts", "published = @p", {
-    "p": true,
-    "fields": ["title", "body"]
+  "p": true,
+  "fields": ["title", "body"]
 }).all()
 # => ... RETURN {title: rel.title, body: rel.body} ...
 ```
@@ -477,8 +477,8 @@ Chain `.includes()` calls to eagerly load multiple relations with different opti
 ```soli
 # Filtered posts + unfiltered profile
 let users = User.includes("posts", "published = @p", { "p": true })
-    .includes("profile")
-    .all()
+  .includes("profile")
+  .all()
 ```
 
 ### Field Selection (select / fields)
@@ -496,10 +496,10 @@ let users = User.fields("name", "email").all()
 
 # Combine with other query methods
 let users = User.where("active = @a", { "a": true })
-    .select("name", "email")
-    .order("name")
-    .limit(10)
-    .all()
+  .select("name", "email")
+  .order("name")
+  .limit(10)
+  .all()
 
 # Combine with includes
 let users = User.select("name", "email").includes("posts").all()
@@ -507,8 +507,8 @@ let users = User.select("name", "email").includes("posts").all()
 
 # Full combo: select + filtered includes with field projection
 let users = User.select("name")
-    .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
-    .all()
+  .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
+  .all()
 ```
 
 ### Has And Belongs To Many
@@ -517,11 +517,11 @@ Many-to-many associations use a join table that stores `(<foreign_key>, <associa
 
 ```soli
 class Post extends Model
-    has_and_belongs_to_many("tags")
+  has_and_belongs_to_many("tags")
 end
 
 class Tag extends Model
-    has_and_belongs_to_many("posts")
+  has_and_belongs_to_many("posts")
 end
 ```
 
@@ -571,12 +571,12 @@ let tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
 
 ```soli
 class Article extends Model
-    has_and_belongs_to_many("labels", {
-        "class_name": "Tag",
-        "join_table": "article_labels",
-        "foreign_key": "article_id",
-        "association_foreign_key": "tag_id"
-    })
+  has_and_belongs_to_many("labels", {
+    "class_name": "Tag",
+    "join_table": "article_labels",
+    "foreign_key": "article_id",
+    "association_foreign_key": "tag_id"
+  })
 end
 ```
 
@@ -586,9 +586,9 @@ You can also implement relationships as custom methods for more control:
 
 ```soli
 class Post extends Model
-    fn author()
-        User.find(this.author_id)
-    end
+  fn author()
+    User.find(this.author_id)
+  end
 end
 ```
 
@@ -703,9 +703,9 @@ user.save();
 
 # Write:
 user.save({
-    "name": "Alice",
-    "email": "alice@example.com",
-    "role": "admin"
+  "name": "Alice",
+  "email": "alice@example.com",
+  "role": "admin"
 });
 ```
 
@@ -740,8 +740,8 @@ Define reusable query scopes:
 
 ```soli
 class User extends Model
-    scope("active", "active = @a", { "a": true })
-    scope("recent", "1 = 1", {})  # no filter, just for chaining
+  scope("active", "active = @a", { "a": true })
+  scope("recent", "1 = 1", {})  # no filter, just for chaining
 end
 
 # Use scopes
@@ -755,7 +755,7 @@ Mark records as deleted without removing them:
 
 ```soli
 class Post extends Model
-    soft_delete
+  soft_delete
 end
 
 # Delete sets deleted_at timestamp
@@ -804,7 +804,7 @@ let user = User.find("user_id");
 
 # Iterate — each iteration runs the FK-filtered query once
 for post in user.posts
-    print(post.title);
+  print(post.title);
 end
 
 # Indexing materializes the result set
@@ -849,9 +849,9 @@ Insert or update multiple records:
 ```soli
 # Batch create
 let result = User.create_many([
-    { "name": "Alice", "email": "alice@example.com" },
-    { "name": "Bob", "email": "bob@example.com" },
-    { "name": "Charlie", "email": "charlie@example.com" }
+  { "name": "Alice", "email": "alice@example.com" },
+  { "name": "Bob", "email": "bob@example.com" },
+  { "name": "Charlie", "email": "charlie@example.com" }
 ]);
 # Returns: { "created": 3, "errors": [] }
 
@@ -875,8 +875,8 @@ Execute multiple operations atomically within a database transaction:
 ```soli
 # Execute block in a transaction
 User.transaction {
-    User.create({ name: "Alice", age: 30 });
-    User.create({ name: "Bob", age: 25 });
+  User.create({ name: "Alice", age: 30 });
+  User.create({ name: "Bob", age: 25 });
 }
 # All operations commit together, or rollback on error
 ```
@@ -886,9 +886,9 @@ User.transaction {
 ```soli
 # Execute AQL in a transaction
 let result = User.transaction("
-    INSERT { name: 'Alice', age: 30 } INTO users;
-    INSERT { name: 'Bob', age: 25 } INTO users;
-    RETURN users
+  INSERT { name: 'Alice', age: 30 } INTO users;
+  INSERT { name: 'Bob', age: 25 } INTO users;
+  RETURN users
 ");
 ```
 
@@ -918,19 +918,19 @@ Add custom methods to your models:
 
 ```soli
 class User extends Model
-    fn is_admin() -> Bool
-        this.role == "admin"
-    end
+  fn is_admin() -> Bool
+    this.role == "admin"
+  end
 
-    fn full_name() -> String
-        this.first_name + " " + this.last_name
-    end
+  fn full_name() -> String
+    this.first_name + " " + this.last_name
+  end
 end
 
 # Usage
 let user = User.find("user123");
 if user.is_admin()
-    print("Welcome, admin " + user.full_name());
+  print("Welcome, admin " + user.full_name());
 end
 ```
 
@@ -963,73 +963,73 @@ SDBQL uses:
 ```soli
 # app/models/user.sl
 class User extends Model
-    has_many("posts")
-    has_one("profile")
+  has_many("posts")
+  has_one("profile")
 
-    validates("email", { "presence": true, "uniqueness": true })
-    validates("name", { "presence": true, "min_length": 2 })
+  validates("email", { "presence": true, "uniqueness": true })
+  validates("name", { "presence": true, "min_length": 2 })
 
-    before_save("normalize_email")
+  before_save("normalize_email")
 
-    fn normalize_email()
-        this.email = this.email.downcase();
-    end
+  fn normalize_email()
+    this.email = this.email.downcase();
+  end
 
-    fn is_adult() -> Bool
-        this.age >= 18
-    end
+  fn is_adult() -> Bool
+    this.age >= 18
+  end
 end
 
 # app/models/post.sl
 class Post extends Model
-    belongs_to("user")
-    has_many("comments")
+  belongs_to("user")
+  has_many("comments")
 
-    validates("title", { "presence": true, "min_length": 3 })
+  validates("title", { "presence": true, "min_length": 3 })
 end
 
 # app/models/profile.sl
 class Profile extends Model
-    belongs_to("user")
+  belongs_to("user")
 end
 
 # Usage in controller
 class UsersController extends Controller
-    fn index(req)
-        # Eager load posts and profiles to avoid N+1 queries
-        let users = User.includes("posts", "profile").all();
-        render("users/index", { "users": users })
-    end
+  fn index(req)
+    # Eager load posts and profiles to avoid N+1 queries
+    let users = User.includes("posts", "profile").all();
+    render("users/index", { "users": users })
+  end
 
-    fn show(req)
-        let id = req["params"]["id"];
-        let user = User.includes("posts").find(id);
-        render("users/show", { "user": user })
-    end
+  fn show(req)
+    let id = req["params"]["id"];
+    let user = User.includes("posts").find(id);
+    render("users/show", { "user": user })
+  end
 
-    fn active(req)
-        # Find active users who have at least one post
-        let users = User.join("posts")
-            .where("active = @a", { "a": true })
-            .order("created_at", "desc")
-            .limit(10)
-            .all();
-        render("users/active", { "users": users })
-    end
+  fn active(req)
+    # Find active users who have at least one post
+    let users = User.join("posts")
+      .where("active = @a", { "a": true })
+      .order("created_at", "desc")
+      .limit(10)
+      .all();
+    render("users/active", { "users": users })
+  end
 
-    fn create(req)
-        let user = User.create({
-            "name": req["params"]["name"],
-            "email": req["params"]["email"],
-            "age": req["params"]["age"]
-        });
+  fn create(req)
+    let user = User.create({
+      "name": req["params"]["name"],
+      "email": req["params"]["email"],
+      "age": req["params"]["age"]
+    });
 
-        if user._errors
-            render("users/new", { "errors": user._errors })
-        else
-            redirect("/users/" + user.id)
-        end
+    if user._errors
+      render("users/new", { "errors": user._errors })
+    else
+      redirect("/users/" + user.id)
     end
+  end
 end
 ```
 
@@ -1043,64 +1043,64 @@ For integration tests without a real database, use `Model.mock_query_result()`:
 
 ```soli
 describe("User queries", fn()
-    before_each(fn()
-        User.clear_mocks()
-    end)
+  before_each(fn()
+    User.clear_mocks()
+  end)
+  
+  after_each(fn()
+    User.clear_mocks()
+  end)
+  
+  test("finds user by id", fn()
+    User.mock_query_result(
+      "FOR doc IN users FILTER doc._key == @key RETURN doc",
+      [
+        {
+          "_key": "123",
+          "_id": "default:users/123",
+          "name": "Alice",
+          "email": "alice@example.com"
+        }
+      ]
+    )
     
-    after_each(fn()
-        User.clear_mocks()
-    end)
+    let user = User.find("123")
+    expect(user.name).to_equal("Alice")
+  end)
+  
+  test("includes returns correct class for relations", fn()
+    # Mock the parent query
+    Contact.mock_query_result(
+      "FOR doc IN contacts RETURN doc",
+      [
+        {
+          "_key": "c1",
+          "_id": "default:contacts/c1",
+          "name": "Bob",
+          "organisation_id": "default:organisations/o1"
+        }
+      ]
+    )
     
-    test("finds user by id", fn()
-        User.mock_query_result(
-            "FOR doc IN users FILTER doc._key == @key RETURN doc",
-            [
-                {
-                    "_key": "123",
-                    "_id": "default:users/123",
-                    "name": "Alice",
-                    "email": "alice@example.com"
-                }
-            ]
-        )
-        
-        let user = User.find("123")
-        expect(user.name).to_equal("Alice")
-    end)
+    # Mock the included relation query
+    Organisation.mock_query_result(
+      "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
+      [
+        {
+          "_key": "o1",
+          "_id": "default:organisations/o1",
+          "name": "Acme Corp"
+        }
+      ]
+    )
     
-    test("includes returns correct class for relations", fn()
-        # Mock the parent query
-        Contact.mock_query_result(
-            "FOR doc IN contacts RETURN doc",
-            [
-                {
-                    "_key": "c1",
-                    "_id": "default:contacts/c1",
-                    "name": "Bob",
-                    "organisation_id": "default:organisations/o1"
-                }
-            ]
-        )
-        
-        # Mock the included relation query
-        Organisation.mock_query_result(
-            "FOR doc IN organisations FILTER doc._key IN @keys RETURN doc",
-            [
-                {
-                    "_key": "o1",
-                    "_id": "default:organisations/o1",
-                    "name": "Acme Corp"
-                }
-            ]
-        )
-        
-        let contact = Contact.includes("organisation").first
-        let org = contact.organisation
-        
-        # Verify the relation has the correct class (not Contact)
-        expect(org.class_name).to_equal("Organisation")
-        expect(org.name).to_equal("Acme Corp")
-    end)
+    let contact = Contact.includes("organisation").first
+    let org = contact.organisation
+    
+    # Verify the relation has the correct class (not Contact)
+    expect(org.class_name).to_equal("Organisation")
+    expect(org.name).to_equal("Acme Corp")
+  end)
 end)
 ```
 
@@ -1112,28 +1112,28 @@ Key points:
 
 ```soli
 describe("User model", fn()
-    test("creates user with valid data", fn()
-        let user = User.create({
-            "email": "test@example.com",
-            "name": "Test User"
-        });
-        expect(user._errors).to_equal(null);
-        expect(user.email).to_equal("test@example.com");
-    end)
+  test("creates user with valid data", fn()
+    let user = User.create({
+      "email": "test@example.com",
+      "name": "Test User"
+    });
+    expect(user._errors).to_equal(null);
+    expect(user.email).to_equal("test@example.com");
+  end)
 
-    test("fails validation for invalid data", fn()
-        let user = User.create({ "email": "" });
-        expect(user._errors).not_to_equal(null);
-    end)
+  test("fails validation for invalid data", fn()
+    let user = User.create({ "email": "" });
+    expect(user._errors).not_to_equal(null);
+  end)
 
-    test("finds users with where clause", fn()
-        User.create({ "name": "Alice", "age": 25 });
-        User.create({ "name": "Bob", "age": 17 });
+  test("finds users with where clause", fn()
+    User.create({ "name": "Alice", "age": 25 });
+    User.create({ "name": "Bob", "age": 17 });
 
-        # where() returns QueryBuilder - chain .all() to get results
-        let adults = User.where("doc.age >= @age", { "age": 18 }).all();
-        expect(len(adults)).to_equal(1);
-    end)
+    # where() returns QueryBuilder - chain .all() to get results
+    let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+    expect(len(adults)).to_equal(1);
+  end)
 end)
 ```
 
@@ -1157,14 +1157,14 @@ In production (without `--dev`), `dev_queries()` always returns an empty array �
 
 ```soli
 fn index(req)
-    let users = User.where("doc.active == true").all();
-    let posts = Post.includes("author").all();
+  let users = User.where("doc.active == true").all();
+  let posts = Post.includes("author").all();
 
-    return render("users/index", {
-        "users":   users,
-        "posts":   posts,
-        "queries": dev_queries()
-    });
+  return render("users/index", {
+    "users":   users,
+    "posts":   posts,
+    "queries": dev_queries()
+  });
 end
 ```
 
@@ -1173,20 +1173,20 @@ end
 ```erb
 <%# app/views/shared/_dev_bar.erb %>
 <% if queries.length > 0 %>
-    <div class="dev-bar">
-        <h3><%= queries.length %> AQL queries</h3>
-        <ol>
-            <% for q in queries %>
-                <li>
-                    <code><%= h(q["query"]) %></code>
-                    <% if q["bind_vars"] != null %>
-                        <small>binds: <%= h(json_stringify(q["bind_vars"])) %></small>
-                    <% end %>
-                    <span><%= q["duration_ms"] %> ms</span>
-                </li>
-            <% end %>
-        </ol>
-    </div>
+  <div class="dev-bar">
+    <h3><%= queries.length %> AQL queries</h3>
+    <ol>
+      <% for q in queries %>
+        <li>
+          <code><%= h(q["query"]) %></code>
+          <% if q["bind_vars"] != null %>
+            <small>binds: <%= h(json_stringify(q["bind_vars"])) %></small>
+          <% end %>
+          <span><%= q["duration_ms"] %> ms</span>
+        </li>
+      <% end %>
+    </ol>
+  </div>
 <% end %>
 ```
 

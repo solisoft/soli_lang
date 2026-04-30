@@ -32,17 +32,17 @@ SoliLang uses ERB-style templates. Tag types:
 
 ```erb
 <% if user_logged_in %>
-    <p>Welcome back!</p>
+  <p>Welcome back!</p>
 <% else %>
-    <p>Please log in.</p>
+  <p>Please log in.</p>
 <% end %>
 
 <% for item in items %>
-    <li><%= item.name %></li>
+  <li><%= item.name %></li>
 <% end %>
 
 <% if count > 0 %>
-    <p>You have <%= count %> items.</p>
+  <p>You have <%= count %> items.</p>
 <% end %>
 ```
 
@@ -67,7 +67,7 @@ Creates an array of numbers for iteration.
 
 ```erb
 <% for i in range(1, 5) %>
-    <p>Item <%= i %></p>
+  <p>Item <%= i %></p>
 <% end %>
 ```
 
@@ -139,8 +139,8 @@ Read fields off the current request directly — no need to plumb them through t
 
 ```erb
 <nav>
-    <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
-    <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
+  <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
+  <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
 </nav>
 
 <p>You are viewing <%= current_path() %> (<%= current_method() %>).</p>
@@ -167,8 +167,8 @@ Soli auto-injects a small `<script>` tag into every HTML response that listens f
 
 <!-- Or on a container to cover everything inside -->
 <section data-no-prefetch>
-    <a href="/a">A</a>
-    <a href="/b">B</a>
+  <a href="/a">A</a>
+  <a href="/b">B</a>
 </section>
 ```
 
@@ -193,12 +193,12 @@ On the actual click, the browser sends `If-None-Match: "<etag>"`. If the rendere
 
 ```soli
 fn downloads(req)
-    # One-shot download — never reuse; always re-fetch.
-    return {
-        "status": 200,
-        "headers": {"Cache-Control": "no-store", "Content-Type": "text/csv"},
-        "body": csv_bytes
-    }
+  # One-shot download — never reuse; always re-fetch.
+  return {
+    "status": 200,
+    "headers": {"Cache-Control": "no-store", "Content-Type": "text/csv"},
+    "body": csv_bytes
+  }
 end
 ```
 
@@ -318,26 +318,26 @@ Output examples:
 
 ```erb
 <article>
-    <h1><%= post["title"] %></h1>
+  <h1><%= post["title"] %></h1>
 
-    <div class="meta">
-        <span>Published: <%= datetime_format(post["created_at"], "%B %d, %Y") %></span>
-        <span>(<%= time_ago(post["created_at"]) %>)</span>
+  <div class="meta">
+    <span>Published: <%= datetime_format(post["created_at"], "%B %d, %Y") %></span>
+    <span>(<%= time_ago(post["created_at"]) %>)</span>
+  </div>
+
+  <% if post["updated_at"] != post["created_at"] %>
+    <div class="updated">
+      Last updated: <%= time_ago(post["updated_at"]) %>
     </div>
+  <% end %>
 
-    <% if post["updated_at"] != post["created_at"] %>
-        <div class="updated">
-            Last updated: <%= time_ago(post["updated_at"]) %>
-        </div>
-    <% end %>
+  <div class="content">
+    <%= post["content"] %>
+  </div>
 
-    <div class="content">
-        <%= post["content"] %>
-    </div>
-
-    <footer>
-        <p>Copyright <%= datetime_format(datetime_now(), "%Y") %></p>
-    </footer>
+  <footer>
+    <p>Copyright <%= datetime_format(datetime_now(), "%Y") %></p>
+  </footer>
 </article>
 ```
 
@@ -376,15 +376,15 @@ Translation files are stored in `config/locales/`:
 ```yaml
 # config/locales/en.yml
 en:
-  welcome:
-    title: "Welcome"
-    greeting: "Hello, %{name}!"
+ welcome:
+  title: "Welcome"
+  greeting: "Hello, %{name}!"
 
 # config/locales/fr.yml
 fr:
-  welcome:
-    title: "Bienvenue"
-    greeting: "Bonjour, %{name}!"
+ welcome:
+  title: "Bienvenue"
+  greeting: "Bonjour, %{name}!"
 ```
 
 #### l(timestamp, format)
@@ -418,23 +418,23 @@ Localizes a date/time according to the current locale.
 
 <html lang="<%= locale() %>">
 <head>
-    <title><%= t("site.title") %></title>
+  <title><%= t("site.title") %></title>
 </head>
 <body>
-    <h1><%= t("products.header") %></h1>
+  <h1><%= t("products.header") %></h1>
 
-    <% for product in products %>
-        <div class="product">
-            <h2><%= product["name"] %></h2>
-            <p class="price"><%= currency(product["price"]) %></p>
-            <p class="stock"><%= t("products.in_stock", {"count": product["quantity"]}) %></p>
-            <p class="updated"><%= t("products.last_updated") %>: <%= l(product["updated_at"], "long") %></p>
-        </div>
-    <% end %>
+  <% for product in products %>
+    <div class="product">
+      <h2><%= product["name"] %></h2>
+      <p class="price"><%= currency(product["price"]) %></p>
+      <p class="stock"><%= t("products.in_stock", {"count": product["quantity"]}) %></p>
+      <p class="updated"><%= t("products.last_updated") %>: <%= l(product["updated_at"], "long") %></p>
+    </div>
+  <% end %>
 
-    <footer>
-        <p><%= t("footer.copyright", {"year": datetime_format(datetime_now(), "%Y")}) %></p>
-    </footer>
+  <footer>
+    <p><%= t("footer.copyright", {"year": datetime_format(datetime_now(), "%Y")}) %></p>
+  </footer>
 </body>
 </html>
 ```
@@ -569,9 +569,9 @@ Generates an HTML anchor tag with proper escaping to prevent XSS attacks.
 <!-- <a href="/posts/456/edit" class="btn btn-primary">Edit</a> -->
 
 <nav>
-    <%= link_to("Dashboard", "/dashboard", "nav-link") %>
-    <%= link_to("Settings", "/settings", "nav-link") %>
-    <%= link_to("Logout", "/logout", "nav-link text-danger") %>
+  <%= link_to("Dashboard", "/dashboard", "nav-link") %>
+  <%= link_to("Settings", "/settings", "nav-link") %>
+  <%= link_to("Logout", "/logout", "nav-link text-danger") %>
 </nav>
 ```
 
@@ -593,7 +593,7 @@ Converts text to a URL-friendly slug by lowercasing, replacing spaces and specia
 <!-- "cafe-restaurant" -->
 
 <a href="/posts/<%= slugify(post["title"]) %>">
-    <%= post["title"] %>
+  <%= post["title"] %>
 </a>
 <!-- <a href="/posts/my-awesome-post">My Awesome Post</a> -->
 ```
@@ -602,26 +602,26 @@ Converts text to a URL-friendly slug by lowercasing, replacing spaces and specia
 
 ```erb
 <div class="product-card">
-    <h2><%= capitalize(product["name"]) %></h2>
+  <h2><%= capitalize(product["name"]) %></h2>
 
-    <p class="description">
-        <%= truncate(product["description"], 150) %>
-    </p>
+  <p class="description">
+    <%= truncate(product["description"], 150) %>
+  </p>
 
-    <div class="pricing">
-        <span class="price"><%= currency(product["price"]) %></span>
-        <span class="stock"><%= pluralize(product["stock"], "unit") %> available</span>
-    </div>
+  <div class="pricing">
+    <span class="price"><%= currency(product["price"]) %></span>
+    <span class="stock"><%= pluralize(product["stock"], "unit") %> available</span>
+  </div>
 
-    <div class="stats">
-        <span><%= number_with_delimiter(product["views"]) %> views</span>
-        <span><%= pluralize(product["review_count"], "review") %></span>
-    </div>
+  <div class="stats">
+    <span><%= number_with_delimiter(product["views"]) %> views</span>
+    <span><%= pluralize(product["review_count"], "review") %></span>
+  </div>
 
-    <div class="actions">
-        <%= link_to("View Details", "/products/" + product["id"], "btn btn-secondary") %>
-        <%= link_to("Add to Cart", "/cart/add/" + product["id"], "btn btn-primary") %>
-    </div>
+  <div class="actions">
+    <%= link_to("View Details", "/products/" + product["id"], "btn btn-secondary") %>
+    <%= link_to("Add to Cart", "/cart/add/" + product["id"], "btn btn-primary") %>
+  </div>
 </div>
 ```
 
@@ -636,19 +636,19 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 # Custom helper: Format a phone number
 fn format_phone(number)
-    let digits = replace(number, "[^0-9]", "")
-    if len(digits) == 10
-        return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
-    end
-    number
+  let digits = replace(number, "[^0-9]", "")
+  if len(digits) == 10
+    return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
+  end
+  number
 end
 
 # Custom helper: Generate a mailto link
 fn mail_to(email, text = null)
-    if text == null
-        text = email
-    end
-    "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
+  if text == null
+    text = email
+  end
+  "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
 end
 ```
 
@@ -663,21 +663,21 @@ Wrap views in a common layout:
 <!DOCTYPE html>
 <html>
 <head>
-    <title><%= title %></title>
+  <title><%= title %></title>
 </head>
 <body>
-    <nav>
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-    </nav>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about">About</a>
+  </nav>
 
-    <main>
-        <%= yield %>
-    </main>
+  <main>
+    <%= yield %>
+  </main>
 
-    <footer>
-        &copy; 2024 My App
-    </footer>
+  <footer>
+    &copy; 2024 My App
+  </footer>
 </body>
 </html>
 ```
@@ -686,9 +686,9 @@ Use layout with render:
 
 ```soli
 fn index(req)
-    render("home/index", {
-        "title": "Welcome"
-    }, "layouts/application")
+  render("home/index", {
+    "title": "Welcome"
+  }, "layouts/application")
 end
 ```
 
@@ -699,8 +699,8 @@ Reuse template fragments:
 ```erb
 <!-- app/views/partials/user_card.html.slv -->
 <div class="user-card">
-    <h3><%= user.name %></h3>
-    <p><%= user.email %></p>
+  <h3><%= user.name %></h3>
+  <p><%= user.email %></p>
 </div>
 ```
 
@@ -710,7 +710,7 @@ Include partials — use `partial(...)` as the short alias for `render_partial(.
 <%= partial("partials/user_card", {"user": current_user}) %>
 
 <% for user in users %>
-    <%= partial("partials/user_card", {"user": user}) %>
+  <%= partial("partials/user_card", {"user": user}) %>
 <% end %>
 
 <!-- render_partial(...) still works and is identical -->
@@ -729,7 +729,7 @@ identifiers work and read better:
 
 <!-- Inside the partial -->
 <div class="user-card user-card--<%= size %>">
-    <h3><%= user.name %></h3>
+  <h3><%= user.name %></h3>
 </div>
 ```
 
@@ -764,12 +764,12 @@ Controllers pass data to views:
 
 ```soli
 fn show(req)
-    render("posts/show", {
-        "title": "My Post",
-        "post": post,
-        "comments": comments,
-        "author": author
-    })
+  render("posts/show", {
+    "title": "My Post",
+    "post": post,
+    "comments": comments,
+    "author": author
+  })
 end
 ```
 
@@ -781,10 +781,10 @@ Access in template:
 
 <h2>Comments</h2>
 <% for comment in comments %>
-    <div class="comment">
-        <strong><%= comment.author %></strong>
-        <p><%= comment.text %></p>
-    </div>
+  <div class="comment">
+    <strong><%= comment.author %></strong>
+    <p><%= comment.text %></p>
+  </div>
 <% end %>
 ```
 

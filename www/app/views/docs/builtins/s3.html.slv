@@ -160,7 +160,7 @@ S3.put_object("my-bucket", "hello.txt", "Hello World!")
 
 # With content type
 S3.put_object("my-bucket", "data.json", '{"key": "value"}', {
-    "content_type": "application/json"
+  "content_type": "application/json"
 })</code></pre>
             </div>
         </section>

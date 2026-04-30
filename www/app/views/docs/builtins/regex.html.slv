@@ -179,8 +179,8 @@ Regex.split(r"\s+", "hello   world")  # ["hello", "world"]</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Capture named groups from a pattern.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = Regex.capture(
-    r"(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
-    "2024-01-15"
+  r"(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
+  "2024-01-15"
 )
 println(result["year"])   # "2024"
 println(result["month"])  # "01"

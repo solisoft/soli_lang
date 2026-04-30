@@ -271,15 +271,23 @@ impl<'a> Scanner<'a> {
             // Identifiers and keywords
             c if c.is_alphabetic() || c == '_' => self.scan_identifier(c),
 
-            // SDBQL query block: @sdql{ ... }
+            // SDBQL query block: @sdbql{ ... } (preferred) or @sdql{ ... } (legacy alias)
             '@' => {
-                if self.peek() == Some('s')
-                    && self.peek_at(1) == Some('d')
-                    && self.peek_at(2) == Some('q')
-                    && self.peek_at(3) == Some('l')
-                    && self.peek_at(4) == Some('{')
-                {
-                    self.scan_sdql_block()
+                if self.peek() == Some('s') && self.peek_at(1) == Some('d') {
+                    if self.peek_at(2) == Some('b')
+                        && self.peek_at(3) == Some('q')
+                        && self.peek_at(4) == Some('l')
+                        && self.peek_at(5) == Some('{')
+                    {
+                        self.scan_sdql_block(true)
+                    } else if self.peek_at(2) == Some('q')
+                        && self.peek_at(3) == Some('l')
+                        && self.peek_at(4) == Some('{')
+                    {
+                        self.scan_sdql_block(false)
+                    } else {
+                        self.scan_identifier('@')
+                    }
                 } else {
                     // Regular identifier starting with @
                     self.scan_identifier('@')
@@ -778,15 +786,19 @@ impl<'a> Scanner<'a> {
         Ok(Token::new(TokenKind::NumberArrayLiteral(elements), span))
     }
 
-    /// Scan a SDBQL query block: @sdql{ ... #{interpolation} ... }
-    fn scan_sdql_block(&mut self) -> Result<Token, LexerError> {
+    /// Scan an SDBQL query block: `@sdbql{ ... #{interpolation} ... }` (preferred)
+    /// or `@sdql{ ... }` (legacy alias). `with_b` is true for the `@sdbql` form.
+    fn scan_sdql_block(&mut self, with_b: bool) -> Result<Token, LexerError> {
         let start_position = self.start_pos;
         let start_line = self.start_line;
 
-        // Consume "@sdql{"
-        self.advance(); // @
+        // The leading '@' was already consumed by the dispatcher in scan_token.
+        // Consume the remaining keyword chars and the opening '{'.
         self.advance(); // s
         self.advance(); // d
+        if with_b {
+            self.advance(); // b
+        }
         self.advance(); // q
         self.advance(); // l
         self.advance(); // {
@@ -1553,5 +1565,30 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn test_sdbql_block_preserves_first_body_char() {
+        // Regression: scan_sdql_block previously consumed one extra char before
+        // entering the body loop, silently dropping the first body character.
+        // Real-world queries always started with whitespace so the bug went
+        // unnoticed — but `@sdbql{ABC}` should lex to "ABC", not "BC".
+        for src in ["@sdbql{ABC}", "@sdql{ABC}"] {
+            let tokens = scan(src);
+            match &tokens[0] {
+                TokenKind::SdqlBlock { query, .. } => {
+                    assert_eq!(query, "ABC", "input {src:?} produced query {query:?}");
+                }
+                other => panic!("expected SdqlBlock for {src:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_sdbql_block_alias_equivalence() {
+        // `@sdql{ ... }` and `@sdbql{ ... }` must produce identical tokens.
+        let a = scan("@sdql{ FOR x IN y RETURN x }");
+        let b = scan("@sdbql{ FOR x IN y RETURN x }");
+        assert_eq!(a, b);
     }
 }

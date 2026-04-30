@@ -40,30 +40,30 @@
 
 # Simple if
 if (age >= 18)
-    print("Adult")
+  print("Adult")
 end
 
 # If-else
 let score = 75
 if (score >= 60)
-    print("Pass")
+  print("Pass")
 else
-    print("Fail")
+  print("Fail")
 end
 
 # Else-if chain
 let grade = 85
 let letter
 if (grade >= 90)
-    letter = "A"
+  letter = "A"
 elsif (grade >= 80)
-    letter = "B"
+  letter = "B"
 elsif (grade >= 70)
-    letter = "C"
+  letter = "C"
 elsif (grade >= 60)
-    letter = "D"
+  letter = "D"
 else
-    letter = "F"
+  letter = "F"
 end
 print(letter);  # "B"</code></pre>
             </div>
@@ -95,7 +95,7 @@ print(letter);  # "B"</code></pre>
                 </p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Multi-line with then
 if age >= 18 then
-    print("Adult")
+  print("Adult")
 end
 
 # Single-line with then
@@ -104,21 +104,21 @@ if user != null then print("Welcome, " + user.name) end
 # Works with elsif too
 let x = 42
 if x > 100 then
-    print("big")
+  print("big")
 elsif x > 10 then
-    print("medium")
+  print("medium")
 else
-    print("small")
+  print("small")
 end
 
 # Parentheses and then can be combined
 if (score >= 90) then
-    grade = "A"
+  grade = "A"
 end
 
 # Without then (also valid)
 if age >= 18
-    print("Adult")
+  print("Adult")
 end</code></pre>
                 <p class="text-gray-400 mt-3 text-sm">
                     <strong class="text-yellow-400">Note:</strong> <code>then</code> is purely syntactic sugar. Both <code>if condition then ... end</code> and <code>if condition ... end</code> are equivalent.
@@ -143,8 +143,8 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">Repeats while a condition is true.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
 while (i < 5)
-    print("Count: " + str(i))
-    i = i + 1
+  print("Count: " + str(i))
+  i = i + 1
 end
 # Output: Count: 0, 1, 2, 3, 4</code></pre>
             </div>
@@ -167,23 +167,23 @@ end
                 <pre data-filename="Example"><code class="language-soli text-sm"># Iterate over array
 let fruits = ["apple", "banana", "cherry"]
 for (fruit in fruits)
-    print(fruit)
+  print(fruit)
 end
 
 # Iterate with range
 for (i in range(0, 5))
-    print(i);  # 0, 1, 2, 3, 4
+  print(i);  # 0, 1, 2, 3, 4
 end
 
 # Range with step
 for (i in range(0, 10, 2))
-    print(i);  # 0, 2, 4, 6, 8
+  print(i);  # 0, 2, 4, 6, 8
 end
 
 # Nested loops
 for (i in range(1, 4))
-    for (j in range(1, 4))
-        print(str(i) + " x " + str(j) + " = " + str(i * j))
+  for (j in range(1, 4))
+    print(str(i) + " x " + str(j) + " = " + str(i * j))
 end
 end</code></pre>
             </div>
@@ -236,10 +236,10 @@ print(size);  # "large"
 # Nested ternary
 let grade = 85
 let letter = grade >= 90 ? "A"
-             : grade >= 80 ? "B"
-             : grade >= 70 ? "C"
-             : grade >= 60 ? "D"
-             : "F"
+      : grade >= 80 ? "B"
+      : grade >= 70 ? "C"
+      : grade >= 60 ? "D"
+      : "F"
 print(letter);  # "B"</code></pre>
             </div>
         </section>
@@ -276,13 +276,13 @@ print(letter);  # "B"</code></pre>
 <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 let sum = 0
 for (n in numbers)
-    if (n % 2 == 0)
-        next
-    end
-    if (n > 7)
-        break
-    end
-    sum = sum + n
+  if (n % 2 == 0)
+    next
+  end
+  if (n > 7)
+    break
+  end
+  sum = sum + n
 end
 print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5+7 = 16</code></pre>
     </section>

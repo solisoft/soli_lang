@@ -47,7 +47,7 @@ print(data[0]["name"])  # "Alice"</code></pre>
                     <p class="text-gray-400 mb-3">Reads and parses a CSV file from disk.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let data = Spreadsheet.csv_file("users.csv")
 for row in data {
-    print(row["email"])
+  print(row["email"])
 }</code></pre>
                 </div>
             </section>
@@ -70,7 +70,7 @@ for row in data {
                     <p class="text-gray-400 mb-3">Reads and parses an Excel (.xlsx) file. Returns an array of hashes using the first row as headers.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">let data = Spreadsheet.excel("report.xlsx")
 for row in data {
-    print(row["Name"])
+  print(row["Name"])
 }</code></pre>
                 </div>
             </section>

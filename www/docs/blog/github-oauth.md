@@ -41,59 +41,59 @@ Load these with `getenv()` — never hardcode secrets.
 # app/controllers/auth_controller.sl
 
 def github_login(req)
-    let state = Crypto.random_hex(32)
-    req["session"]["oauth_state"] = state
+  let state = Crypto.random_hex(32)
+  req["session"]["oauth_state"] = state
 
-    let auth_url = "https://github.com/login/oauth/authorize?" +
-        "client_id=" + getenv("GITHUB_CLIENT_ID") +
-        "&redirect_uri=" + getenv("GITHUB_REDIRECT_URI") +
-        "&scope=read:user user:email" +
-        "&state=" + state
+  let auth_url = "https://github.com/login/oauth/authorize?" +
+    "client_id=" + getenv("GITHUB_CLIENT_ID") +
+    "&redirect_uri=" + getenv("GITHUB_REDIRECT_URI") +
+    "&scope=read:user user:email" +
+    "&state=" + state
 
-    {"status": 302, "headers": {"Location": auth_url}}
+  {"status": 302, "headers": {"Location": auth_url}}
 end
 
 def github_callback(req)
-    let params = req["query_params"]
+  let params = req["query_params"]
 
-    # Verify state to prevent CSRF
-    if params["state"] != req["session"]["oauth_state"]
-        return {"status": 403, "body": "Invalid state parameter"}
-    end
+  # Verify state to prevent CSRF
+  if params["state"] != req["session"]["oauth_state"]
+    return {"status": 403, "body": "Invalid state parameter"}
+  end
 
-    # Check for errors (user denied access, etc.)
-    if params["error"] != null
-        return {"status": 401, "body": "Authorization denied: " + params["error_description"]}
-    end
+  # Check for errors (user denied access, etc.)
+  if params["error"] != null
+    return {"status": 401, "body": "Authorization denied: " + params["error_description"]}
+  end
 
-    let code = params["code"]
+  let code = params["code"]
 
-    # Exchange code for access token
-    let token_data = github_exchange_code(code)
+  # Exchange code for access token
+  let token_data = github_exchange_code(code)
 
-    if token_data["error"] != null
-        return {"status": 401, "body": "Token exchange failed: " + token_data["error_description"]}
-    end
+  if token_data["error"] != null
+    return {"status": 401, "body": "Token exchange failed: " + token_data["error_description"]}
+  end
 
-    let access_token = token_data["access_token"]
+  let access_token = token_data["access_token"]
 
-    # Fetch user profile from GitHub
-    let github_user = github_get_user(access_token)
+  # Fetch user profile from GitHub
+  let github_user = github_get_user(access_token)
 
-    # If email is private, fetch from the emails endpoint
-    if github_user["email"] == null
-        let emails = github_get_emails(access_token)
-        github_user["email"] = find_primary_email(emails)
-    end
+  # If email is private, fetch from the emails endpoint
+  if github_user["email"] == null
+    let emails = github_get_emails(access_token)
+    github_user["email"] = find_primary_email(emails)
+  end
 
-    # Find or create user in our database
-    let user = find_or_create_github_user(github_user)
+  # Find or create user in our database
+  let user = find_or_create_github_user(github_user)
 
-    # Create session
-    session_regenerate()
-    req["session"]["user_id"] = user["id"]
+  # Create session
+  session_regenerate()
+  req["session"]["user_id"] = user["id"]
 
-    {"status": 302, "headers": {"Location": "/dashboard"}}
+  {"status": 302, "headers": {"Location": "/dashboard"}}
 end
 ```
 
@@ -103,53 +103,53 @@ end
 # app/controllers/auth_controller.sl (continued)
 
 def github_exchange_code(code)
-    let response = HTTP.post(
-        "https://github.com/login/oauth/access_token",
-        JSON.stringify({
-            "client_id": getenv("GITHUB_CLIENT_ID"),
-            "client_secret": getenv("GITHUB_CLIENT_SECRET"),
-            "code": code
-        }),
-        {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-    )
+  let response = HTTP.post(
+    "https://github.com/login/oauth/access_token",
+    JSON.stringify({
+      "client_id": getenv("GITHUB_CLIENT_ID"),
+      "client_secret": getenv("GITHUB_CLIENT_SECRET"),
+      "code": code
+    }),
+    {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    }
+  )
 
-    JSON.parse(response["body"])
+  JSON.parse(response["body"])
 end
 
 def github_get_user(access_token)
-    let response = HTTP.get(
-        "https://api.github.com/user",
-        {
-            "Authorization": "Bearer " + access_token,
-            "Accept": "application/json"
-        }
-    )
+  let response = HTTP.get(
+    "https://api.github.com/user",
+    {
+      "Authorization": "Bearer " + access_token,
+      "Accept": "application/json"
+    }
+  )
 
-    JSON.parse(response["body"])
+  JSON.parse(response["body"])
 end
 
 def github_get_emails(access_token)
-    let response = HTTP.get(
-        "https://api.github.com/user/emails",
-        {
-            "Authorization": "Bearer " + access_token,
-            "Accept": "application/json"
-        }
-    )
+  let response = HTTP.get(
+    "https://api.github.com/user/emails",
+    {
+      "Authorization": "Bearer " + access_token,
+      "Accept": "application/json"
+    }
+  )
 
-    JSON.parse(response["body"])
+  JSON.parse(response["body"])
 end
 
 def find_primary_email(emails)
-    for email in emails
-        if email["primary"] == true && email["verified"] == true
-            return email["email"]
-        end
+  for email in emails
+    if email["primary"] == true && email["verified"] == true
+      return email["email"]
     end
-    null
+  end
+  null
 end
 ```
 
@@ -161,25 +161,25 @@ Note the `Accept: application/json` header on the token exchange — without it,
 # app/models/user.sl
 
 class User extends Model
-    id: Int
-    github_id: Int
-    username: String
-    email: String
-    avatar_url: String
-    created_at: DateTime
+  id: Int
+  github_id: Int
+  username: String
+  email: String
+  avatar_url: String
+  created_at: DateTime
 
-    def find_or_create_github_user(github_data)
-        let existing = User.find_by_github_id(github_data["id"])
+  def find_or_create_github_user(github_data)
+    let existing = User.find_by_github_id(github_data["id"])
 
-        return existing if existing != nil
+    return existing if existing != nil
 
-        User.create({
-            "github_id": github_data["id"],
-            "username": github_data["login"],
-            "email": github_data["email"],
-            "avatar_url": github_data["avatar_url"]
-        })
-    end
+    User.create({
+      "github_id": github_data["id"],
+      "username": github_data["login"],
+      "email": github_data["email"],
+      "avatar_url": github_data["avatar_url"]
+    })
+  end
 end
 ```
 
@@ -197,7 +197,7 @@ get "/auth/github/callback", "auth#github_callback"
 ```html
 <!-- app/views/sessions/new.html.slv -->
 <a href="/auth/github" class="btn">
-    Sign in with GitHub
+  Sign in with GitHub
 </a>
 ```
 
@@ -211,9 +211,9 @@ Once users can log in, you need to protect routes that require authentication:
 # app/middleware/require_login.sl
 
 def call(req)
-    if req["session"]["user_id"] == null
-        return {"status": 302, "headers": {"Location": "/auth/github"}}
-    end
+  if req["session"]["user_id"] == null
+    return {"status": 302, "headers": {"Location": "/auth/github"}}
+  end
 end
 ```
 
@@ -221,8 +221,8 @@ end
 # config/routes.sl
 
 scope "/dashboard", middleware: ["require_login"] do
-    get "/", "dashboard#index"
-    get "/settings", "dashboard#settings"
+  get "/", "dashboard#index"
+  get "/settings", "dashboard#settings"
 end
 ```
 
@@ -232,8 +232,8 @@ end
 # app/controllers/auth_controller.sl
 
 def logout(req)
-    session_destroy()
-    {"status": 302, "headers": {"Location": "/"}}
+  session_destroy()
+  {"status": 302, "headers": {"Location": "/"}}
 end
 ```
 
@@ -248,17 +248,17 @@ If your app also has an API, you can issue a JWT after OAuth login instead of (o
 
 ```soli
 def github_callback_api(req)
-    # ... same OAuth flow as above ...
+  # ... same OAuth flow as above ...
 
-    let user = find_or_create_github_user(github_user)
+  let user = find_or_create_github_user(github_user)
 
-    let token = jwt_sign(
-        {"sub": user["id"], "username": user["username"]},
-        getenv("JWT_SECRET"),
-        {"expires_in": 86400}
-    )
+  let token = jwt_sign(
+    {"sub": user["id"], "username": user["username"]},
+    getenv("JWT_SECRET"),
+    {"expires_in": 86400}
+  )
 
-    {"status": 200, "json": {"token": token, "user": user}}
+  {"status": 200, "json": {"token": token, "user": user}}
 end
 ```
 

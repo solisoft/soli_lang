@@ -92,6 +92,64 @@ println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
 let date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
+
+        <section id="def-datetime-epoch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-datetime-epoch" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.epoch()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a DateTime at Unix epoch (1970-01-01 00:00:00 UTC).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A DateTime instance at epoch
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let epoch = DateTime.epoch()
+println(epoch.year())  # 1970</code></pre>
+            </div>
+        </section>
+
+        <section id="def-datetime-from-unix" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-datetime-from-unix" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.from_unix(timestamp)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Create a DateTime from a Unix timestamp (seconds since epoch).</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">timestamp</code> : <code class="text-purple-400">Int</code> - Unix timestamp in seconds
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.from_unix(1704067200)
+println(dt.to_iso())  # "2024-01-01T00:00:00Z"</code></pre>
+            </div>
+        </section>
+
+        <section id="def-datetime-microtime" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-datetime-microtime" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">DateTime.microtime()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the current Unix timestamp in microseconds as a Float.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Float</code> - Microseconds since epoch
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">let mt = DateTime.microtime()
+println(mt)  # 1712832000000000.0</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Component Methods -->

@@ -63,17 +63,17 @@ The model includes:
 ```soli
 # Users model - auto-generated scaffold
 class Users extends Model
-    static
-        # Fields
-        # name (string)
-        # email (email)
+  static
+    # Fields
+    # name (string)
+    # email (email)
 
-        # Validations
-        validates("name", { "presence": true })
-        validates("email", { "presence": true })
-    end
+    # Validations
+    validates("name", { "presence": true })
+    validates("email", { "presence": true })
+  end
 
-    before_save("normalize_fields")
+  before_save("normalize_fields")
 end
 ```
 
@@ -83,19 +83,19 @@ Standard CRUD actions:
 
 ```soli
 class UsersController extends Controller
-    fn index(req)
-        let users = Users.all();
-        return render("users/index", { "users": users });
-    end
+  fn index(req)
+    let users = Users.all();
+    return render("users/index", { "users": users });
+  end
 
-    fn show(req)
-        let id = req.params["id"];
-        let user = Users.find(id);
-        if user == null
-            return halt(404, "User not found");
-        end
-        return render("users/show", { "user": user });
+  fn show(req)
+    let id = req.params["id"];
+    let user = Users.find(id);
+    if user == null
+      return halt(404, "User not found");
     end
+    return render("users/show", { "user": user });
+  end
 end
 ```
 
@@ -141,11 +141,11 @@ Migrations create the collection and indexes:
 
 ```soli
 fn up(db: Any)    db.create_collection("users");
-    db.create_index("users", "idx_email", ["email"], { "unique": true });
+  db.create_index("users", "idx_email", ["email"], { "unique": true });
 end
 
 fn down(db: Any)    db.drop_index("users", "idx_email");
-    db.drop_collection("users");
+  db.drop_collection("users");
 end
 ```
 

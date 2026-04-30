@@ -113,11 +113,11 @@ print(nums);  # [1, 2.5, 3.5]
 
 # Multiline for readability
 const HTTP_METHODS = %i[
-    get
-    post
-    put
-    delete
-    patch
+  get
+  post
+  put
+  delete
+  patch
 ]
 
 # Number arrays for coordinates
@@ -233,8 +233,8 @@ print(fruits - to_remove);  # ["apple", "cherry"]
 
 # Instance comparison uses identity (pointer equality)
 class Person {
-    name: String;
-    fn new(n) { this.name = n; }
+  name: String;
+  fn new(n) { this.name = n; }
 }
 let p1 = Person.new({"name": "Alice"})
 let p2 = Person.new({"name": "Bob"})
@@ -500,9 +500,9 @@ print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Sort an array of hashes by a key, or use a function to extract the sort value from each element.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let people = [
-  { "name": "Charlie", "age": 30 },
-  { "name": "Alice", "age": 25 },
-  { "name": "Bob", "age": 20 }
+ { "name": "Charlie", "age": 30 },
+ { "name": "Alice", "age": 25 },
+ { "name": "Bob", "age": 20 }
 ]
 
 # Sort by hash key (string argument)
@@ -760,17 +760,17 @@ print(paths.join("/"));   # "usr/local/bin"</code></pre>
 
 # Chain multiple methods together
 let result = numbers
-    .filter(|x| x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
-    .map(|x| x * x)           # Square them: [4, 16, 36, 64, 100]
-    .filter(|x| x < 50)       # Keep less than 50: [4, 16, 36]
+  .filter(|x| x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
+  .map(|x| x * x)           # Square them: [4, 16, 36, 64, 100]
+  .filter(|x| x < 50)       # Keep less than 50: [4, 16, 36]
 
 print(result);  # [4, 16, 36]
 
 # With pipeline operator
 let result2 = numbers
-    |> filter(|x| x > 5)
-    |> map(|x| x * 2)
-    |> sum
+  |> filter(|x| x > 5)
+  |> map(|x| x * 2)
+  |> sum
 print(result2);  # 90</code></pre>
             </div>
         </div>

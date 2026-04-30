@@ -9,20 +9,20 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 ```soli
 # app/controllers/users_controller.sl
 class UsersController extends Controller
-    fn index(req)
-        render("users/index", {
-            "title": "Users",
-            "users": []
-        })
-    end
+  fn index(req)
+    render("users/index", {
+      "title": "Users",
+      "users": []
+    })
+  end
 
-    fn show(req)
-        let user_id = req.params["id"];
-        render("users/show", {
-            "title": "User Details",
-            "user_id": user_id
-        })
-    end
+  fn show(req)
+    let user_id = req.params["id"];
+    render("users/show", {
+      "title": "User Details",
+      "user_id": user_id
+    })
+  end
 end
 ```
 
@@ -36,9 +36,9 @@ Controllers are classes that extend the base `Controller` class:
 
 ```soli
 class PostsController extends Controller
-    # Actions go here
-    fn index(req) end
-    fn show(req) end
+  # Actions go here
+  fn index(req) end
+  fn show(req) end
 end
 ```
 
@@ -48,19 +48,19 @@ Configure controllers using a `static { ... }` block. The `static { ... }` block
 
 ```soli
 class ApplicationController extends Controller
-    static {
-        # Set the layout for all actions
-        this.layout = "application";
+  static {
+    # Set the layout for all actions
+    this.layout = "application";
 
-        # Before action that runs for all actions
-        this.before_action = fn(req) {
-            let user_id = req.session["user_id"];
-            if user_id != null {
-                req["current_user"] = User.find(user_id);
-            }
-            req
-        }
+    # Before action that runs for all actions
+    this.before_action = fn(req) {
+      let user_id = req.session["user_id"];
+      if user_id != null {
+        req["current_user"] = User.find(user_id);
+      }
+      req
     }
+  }
 end
 ```
 
@@ -70,18 +70,18 @@ Each public function in a controller is an action:
 
 ```soli
 class PostsController extends Controller
-    fn index(req) end
-    fn show(req) end
-    fn new(req) end
-    fn create(req) end
-    fn edit(req) end
-    fn update(req) end
-    fn delete(req) end
+  fn index(req) end
+  fn show(req) end
+  fn new(req) end
+  fn create(req) end
+  fn edit(req) end
+  fn update(req) end
+  fn delete(req) end
 
-    # Private helper methods (not exposed as actions)
-    fn _validate_post(req) -> Bool
-        req.params["title"] != null
-    end
+  # Private helper methods (not exposed as actions)
+  fn _validate_post(req) -> Bool
+    req.params["title"] != null
+  end
 end
 ```
 
@@ -98,25 +98,25 @@ Create an `ApplicationController` with shared configuration:
 ```soli
 # app/controllers/application_controller.sl
 class ApplicationController extends Controller
-    static {
-        this.layout = "application";
+  static {
+    this.layout = "application";
 
-        # Run for all actions
-        this.before_action = fn(req) {
-            # Authentication check
-            let user_id = req.session["user_id"];
-            if user_id == null {
-                return redirect("/login");
-            }
-            req["current_user"] = User.find(user_id);
-            req
-        }
+    # Run for all actions
+    this.before_action = fn(req) {
+      # Authentication check
+      let user_id = req.session["user_id"];
+      if user_id == null {
+        return redirect("/login");
+      }
+      req["current_user"] = User.find(user_id);
+      req
     }
+  }
 
-    # Shared helper method available to all subclasses
-    fn _current_user(req)
-        req["current_user"]
-    end
+  # Shared helper method available to all subclasses
+  fn _current_user(req)
+    req["current_user"]
+  end
 end
 ```
 
@@ -125,35 +125,35 @@ Subclasses inherit the configuration and can override it:
 ```soli
 # app/controllers/posts_controller.sl
 class PostsController extends ApplicationController
-    static {
-        # Override layout for this controller
-        this.layout = "posts";
+  static {
+    # Override layout for this controller
+    this.layout = "posts";
 
-        # Run before_action only for specific actions
-        this.before_action(:show, :edit, :update, :delete) = fn(req) {
-            let post = Post.find(req.params["id"]);
-            if post == null {
-                return halt(404, "Post not found");
-            }
-            req["post"] = post;
-            req
-        }
+    # Run before_action only for specific actions
+    this.before_action(:show, :edit, :update, :delete) = fn(req) {
+      let post = Post.find(req.params["id"]);
+      if post == null {
+        return halt(404, "Post not found");
+      }
+      req["post"] = post;
+      req
     }
+  }
 
-    fn index(req)
-        # Can use inherited _current_user helper
-        let user = this._current_user(req);
-        let posts = Post.all();
-        render("posts/index", {
-            "posts": posts,
-            "user": user
-        })
-    end
+  fn index(req)
+    # Can use inherited _current_user helper
+    let user = this._current_user(req);
+    let posts = Post.all();
+    render("posts/index", {
+      "posts": posts,
+      "user": user
+    })
+  end
 
-    fn show(req)
-        # req["post"] is set by before_action
-        render("posts/show", { "post": req["post"] })
-    end
+  fn show(req)
+    # req["post"] is set by before_action
+    render("posts/show", { "post": req["post"] })
+  end
 end
 ```
 
@@ -165,25 +165,25 @@ You can create deeper hierarchies. Each level inherits hooks and methods from it
 # app/controllers/admin_controller.sl
 # Extends ApplicationController, which extends Controller
 class AdminController extends ApplicationController
-    static {
-        this.layout = "admin";
+  static {
+    this.layout = "admin";
 
-        this.before_action = fn(req) {
-            # Parent's before_action already ran (authentication)
-            if req["current_user"]["role"] != "admin" {
-                return halt(403, "Forbidden");
-            }
-            req
-        }
+    this.before_action = fn(req) {
+      # Parent's before_action already ran (authentication)
+      if req["current_user"]["role"] != "admin" {
+        return halt(403, "Forbidden");
+      }
+      req
     }
+  }
 end
 
 # app/controllers/admin_users_controller.sl
 class AdminUsersController extends AdminController
-    fn index(req)
-        # Inherits: ApplicationController's auth + AdminController's admin check
-        render("admin/users/index", { "users": User.all() })
-    end
+  fn index(req)
+    # Inherits: ApplicationController's auth + AdminController's admin check
+    render("admin/users/index", { "users": User.all() })
+  end
 end
 ```
 
@@ -203,23 +203,23 @@ Run code before an action executes. Can filter to specific actions:
 
 ```soli
 class PostsController extends Controller
-    static {
-        # Run for all actions
-        this.before_action = fn(req) {
-            println("Before any action: " + req.path);
-            req
-        }
-
-        # Run only for specific actions
-        this.before_action(:show, :edit, :delete) = fn(req) {
-            let post = Post.find(req.params["id"]);
-            if post == null {
-                return halt(404, "Post not found");
-            }
-            req["post"] = post;
-            req
-        }
+  static {
+    # Run for all actions
+    this.before_action = fn(req) {
+      println("Before any action: " + req.path);
+      req
     }
+
+    # Run only for specific actions
+    this.before_action(:show, :edit, :delete) = fn(req) {
+      let post = Post.find(req.params["id"]);
+      if post == null {
+        return halt(404, "Post not found");
+      }
+      req["post"] = post;
+      req
+    }
+  }
 end
 ```
 
@@ -227,10 +227,10 @@ end
 
 ```soli
 this.before_action = fn(req) {
-    if req.session["user_id"] == null {
-        return redirect("/login");
-    }
-    req  # Continue to action
+  if req.session["user_id"] == null {
+    return redirect("/login");
+  }
+  req  # Continue to action
 }
 ```
 
@@ -240,13 +240,13 @@ Run code after an action executes:
 
 ```soli
 class PostsController extends Controller
-    static {
-        this.after_action = fn(req, response) {
-            # Log the action
-            println("Completed: " + req.path);
-            response  # Return modified or original response
-        }
+  static {
+    this.after_action = fn(req, response) {
+      # Log the action
+      println("Completed: " + req.path);
+      response  # Return modified or original response
     }
+  }
 end
 ```
 
@@ -254,9 +254,9 @@ Filter after actions to specific actions:
 
 ```soli
 this.after_action(:create, :update) = fn(req, response) {
-    # Log changes after create/update
-    println("Data modified");
-    response
+  # Log changes after create/update
+  println("Data modified");
+  response
 }
 ```
 
@@ -266,32 +266,32 @@ Access request data through the `req` parameter:
 
 ```soli
 fn create(req)
-    # Path parameters
-    let id = req.params["id"];
+  # Path parameters
+  let id = req.params["id"];
 
-    # Query string parameters
-    let page = req.query["page"];
+  # Query string parameters
+  let page = req.query["page"];
 
-    # Form data
-    let name = req.form["name"];
+  # Form data
+  let name = req.form["name"];
 
-    # JSON body (if Content-Type is application/json)
-    let data = req.json;
+  # JSON body (if Content-Type is application/json)
+  let data = req.json;
 
-    # HTTP headers
-    let auth = req.headers["Authorization"];
+  # HTTP headers
+  let auth = req.headers["Authorization"];
 
-    # HTTP method
-    let method = req.method;
+  # HTTP method
+  let method = req.method;
 
-    # Original path
-    let path = req.path;
+  # Original path
+  let path = req.path;
 
-    # Session data
-    let user_id = req.session["user_id"];
+  # Session data
+  let user_id = req.session["user_id"];
 
-    # Store data for after_action or views
-    req["my_data"] = some_value;
+  # Store data for after_action or views
+  req["my_data"] = some_value;
 end
 ```
 
@@ -301,15 +301,15 @@ The request object is automatically injected into your controller:
 
 ```soli
 class PostsController extends Controller
-    fn show(req)
-        # Access params directly
-        let id = req.params["id"];
+  fn show(req)
+    # Access params directly
+    let id = req.params["id"];
 
-        # Or access via this (after injection)
-        let post = this.get_controller_field(req, "post");
+    # Or access via this (after injection)
+    let post = this.get_controller_field(req, "post");
 
-        render("posts/show", { "post": post })
-    end
+    render("posts/show", { "post": post })
+  end
 end
 ```
 
@@ -319,10 +319,10 @@ end
 
 ```soli
 fn index(req)
-    render("home/index", {
-        "title": "Welcome",
-        "message": "Hello!"
-    })
+  render("home/index", {
+    "title": "Welcome",
+    "message": "Hello!"
+  })
 end
 ```
 
@@ -332,11 +332,11 @@ Any field set on the controller instance during an action — via either `this.f
 
 ```soli
 class PostsController extends Controller
-    fn show(req)
-        @post = Post.find(req.params["id"]);
-        @comments = Comment.where({"post_id": @post.id}).all;
-        render("posts/show")    # view sees `post` and `comments` with no data hash
-    end
+  fn show(req)
+    @post = Post.find(req.params["id"]);
+    @comments = Comment.where({"post_id": @post.id}).all;
+    render("posts/show")    # view sees `post` and `comments` with no data hash
+  end
 end
 ```
 
@@ -347,7 +347,7 @@ end
 
 <h2>Comments (<%= comments.length %>)</h2>
 <% for c in comments %>
-    <p><%= c.body %></p>
+  <p><%= c.body %></p>
 <% end %>
 ```
 
@@ -373,8 +373,8 @@ These helpers read the current request directly — no need to plumb `current_pa
 ```erb
 <%# app/views/layouts/_nav.html.erb %>
 <nav>
-    <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
-    <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
+  <a href="/users" class="<%= current_path?("/users") ? "active" : "" %>">Users</a>
+  <a href="/posts" class="<%= current_path?("/posts") ? "active" : "" %>">Posts</a>
 </nav>
 
 <p>You are viewing <%= current_path() %> (<%= current_method() %>).</p>
@@ -388,18 +388,18 @@ Set the layout in your controller:
 
 ```soli
 class PostsController extends Controller
-    static {
-        this.layout = "posts";  # Uses layouts/posts.html.slv
-    }
+  static {
+    this.layout = "posts";  # Uses layouts/posts.html.slv
+  }
 
-    fn show(req)
-        render("posts/show", { "post": req["post"] })
-    end
+  fn show(req)
+    render("posts/show", { "post": req["post"] })
+  end
 
-    # Skip layout for specific action
-    fn json_only(req)
-        render_json({ "data": "value" }, layout: false)
-    end
+  # Skip layout for specific action
+  fn json_only(req)
+    render_json({ "data": "value" }, layout: false)
+  end
 end
 ```
 
@@ -407,16 +407,16 @@ end
 
 ```soli
 fn create(req)
-    # Process form data...
+  # Process form data...
 
-    # Redirect to another page
-    redirect("/users")
+  # Redirect to another page
+  redirect("/users")
 end
 
 fn update(req)
-    # After update, redirect to show page
-    let user_id = req.params["id"];
-    redirect("/users/" + user_id)
+  # After update, redirect to show page
+  let user_id = req.params["id"];
+  redirect("/users/" + user_id)
 end
 ```
 
@@ -424,12 +424,12 @@ end
 
 ```soli
 fn api_users(req)
-    render_json({
-        "users": [
-            {"id": 1, "name": "Alice"},
-            {"id": 2, "name": "Bob"}
-        ]
-    })
+  render_json({
+    "users": [
+      {"id": 1, "name": "Alice"},
+      {"id": 2, "name": "Bob"}
+    ]
+  })
 end
 ```
 
@@ -437,7 +437,7 @@ end
 
 ```soli
 fn ping(req)
-    render_text("pong")
+  render_text("pong")
 end
 ```
 
@@ -447,17 +447,17 @@ For actions that need to serve multiple formats (HTML, JSON, CSV, PDF, XLSX, par
 
 ```soli
 def show(req) {
-    post = Post.find(req["params"]["id"]);
-    respond_to(req, fn(format) {
-        format.html(fn()  render("posts/show", {"post": post}));
-        format.json(fn()  render_json(post));
-        format.csv(fn()   render_csv_for(post));
-        format.pdf(fn()   render_pdf_for(post));
-        format.excel(fn() render_xlsx_for(post));
-        format.htmx(fn()  render("posts/_show_partial", {"post": post}, {"layout": false}));
-        format.xhr(fn()   render_json({"id": post.id}));
-        format.any(fn()   render("posts/show", {"post": post}));  // optional catch-all
-    })
+  post = Post.find(req["params"]["id"]);
+  respond_to(req, fn(format) {
+    format.html(fn()  render("posts/show", {"post": post}));
+    format.json(fn()  render_json(post));
+    format.csv(fn()   render_csv_for(post));
+    format.pdf(fn()   render_pdf_for(post));
+    format.excel(fn() render_xlsx_for(post));
+    format.htmx(fn()  render("posts/_show_partial", {"post": post}, {"layout": false}));
+    format.xhr(fn()   render_json({"id": post.id}));
+    format.any(fn()   render("posts/show", {"post": post}));  // optional catch-all
+  })
 }
 ```
 
@@ -465,8 +465,8 @@ A terser hash form is also supported:
 
 ```soli
 respond_to(req, {
-    "html": fn() render("posts/show", {"post": post}),
-    "json": fn() render_json(post)
+  "html": fn() render("posts/show", {"post": post}),
+  "json": fn() render_json(post)
 })
 ```
 
@@ -486,15 +486,15 @@ respond_to(req, {
 
 ```soli
 fn show(req)
-    let id = req.params["id"];
-    if id == "" {
-        return halt(400, "Missing ID");
-    }
-    let user = find_user(id);
-    if user == null {
-        return halt(404, "User not found");
-    }
-    render("users/show", {"user": user})
+  let id = req.params["id"];
+  if id == "" {
+    return halt(400, "Missing ID");
+  }
+  let user = find_user(id);
+  if user == null {
+    return halt(404, "User not found");
+  }
+  render("users/show", {"user": user})
 end
 ```
 
@@ -504,26 +504,26 @@ Controllers have access to context through `this`:
 
 ```soli
 class PostsController extends Controller
-    static {
-        this.layout = "posts";
-        this.before_action = fn(req) {
-            # Store data on request for later use
-            req["post"] = Post.find(req.params["id"]);
-            req
-        }
+  static {
+    this.layout = "posts";
+    this.before_action = fn(req) {
+      # Store data on request for later use
+      req["post"] = Post.find(req.params["id"]);
+      req
     }
+  }
 
-    fn show(req)
-        # Access the post set by before_action
-        let post = req["post"];
+  fn show(req)
+    # Access the post set by before_action
+    let post = req["post"];
 
-        render("posts/show", { "post": post })
-    end
+    render("posts/show", { "post": post })
+  end
 
-    # Access request parameters
-    fn _get_id(req) -> String
-        req.params["id"]
-    end
+  # Access request parameters
+  fn _get_id(req) -> String
+    req.params["id"]
+  end
 end
 ```
 
@@ -533,12 +533,12 @@ Validate and sanitize input:
 
 ```soli
 fn create(req)
-    let params = req.form;
-    let clean_params = {
-        "name": params["name"] ?? "",
-        "email": params["email"] ?? "",
-        "age": int(params["age"] ?? "0")
-    };
+  let params = req.form;
+  let clean_params = {
+    "name": params["name"] ?? "",
+    "email": params["email"] ?? "",
+    "age": int(params["age"] ?? "0")
+  };
 end
 ```
 

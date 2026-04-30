@@ -160,9 +160,11 @@ pub fn prepare_source(code: &str) -> String {
         return code.to_string();
     }
 
-    // `@sdql{ ... }` is an expression even though it ends in `}`, so don't
-    // treat it as passthrough — otherwise the REPL never prints its result.
-    let passthrough = (trimmed.ends_with('}') && !trimmed.starts_with("@sdql{"))
+    // `@sdbql{ ... }` (and its legacy alias `@sdql{ ... }`) is an expression even
+    // though it ends in `}`, so don't treat it as passthrough — otherwise the REPL
+    // never prints its result.
+    let is_sdbql_block = trimmed.starts_with("@sdbql{") || trimmed.starts_with("@sdql{");
+    let passthrough = (trimmed.ends_with('}') && !is_sdbql_block)
         || trimmed.ends_with(';')
         || trimmed.ends_with("end");
 
@@ -218,20 +220,29 @@ mod tests {
 
     #[test]
     fn test_prepare_source_wraps_sdql_block() {
-        // `@sdql{ ... }` is an expression and must be wrapped in println(_.inspect)
-        // even though it ends with `}`. Otherwise the REPL evaluates the query and
-        // silently discards the result.
-        let prepared = prepare_source("@sdql{ FOR o IN organisations RETURN o }");
-        assert!(
-            prepared.contains("println(_.inspect)"),
-            "expected @sdql block to be print-wrapped, got: {prepared}"
-        );
+        // `@sdbql{ ... }` (and the legacy `@sdql{ ... }` alias) is an expression and
+        // must be wrapped in println(_.inspect) even though it ends with `}`.
+        // Otherwise the REPL evaluates the query and silently discards the result.
+        for src in [
+            "@sdbql{ FOR o IN organisations RETURN o }",
+            "@sdql{ FOR o IN organisations RETURN o }",
+        ] {
+            let prepared = prepare_source(src);
+            assert!(
+                prepared.contains("println(_.inspect)"),
+                "expected block to be print-wrapped, got: {prepared}"
+            );
+        }
 
-        let multiline = "@sdql{\n    FOR o IN organisations\n    RETURN o\n}";
-        let prepared = prepare_source(multiline);
-        assert!(
-            prepared.contains("println(_.inspect)"),
-            "expected multi-line @sdql block to be print-wrapped, got: {prepared}"
-        );
+        for src in [
+            "@sdbql{\n    FOR o IN organisations\n    RETURN o\n}",
+            "@sdql{\n    FOR o IN organisations\n    RETURN o\n}",
+        ] {
+            let prepared = prepare_source(src);
+            assert!(
+                prepared.contains("println(_.inspect)"),
+                "expected multi-line block to be print-wrapped, got: {prepared}"
+            );
+        }
     }
 }

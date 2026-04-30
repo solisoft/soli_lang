@@ -172,78 +172,80 @@ let found = User.find(user["id"])
 
 ## Raw Queries
 
-For raw database queries, use the `db` object or the `@sdql{}` query block syntax.
+For raw database queries, use the `db` object or the `@sdbql{}` query block syntax.
 
 ### Using db.query()
 
 ```soli
 # SDBQL query with named parameters
 let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
-    "age": 18
+  "age": 18
 });
 
 # Insert
 db.query("INSERT { name: @name, email: @email } INTO users", {
-    "name": "Bob",
-    "email": "bob@example.com"
+  "name": "Bob",
+  "email": "bob@example.com"
 });
 ```
 
-### Using @sdql{} Query Block
+### Using @sdbql{} Query Block
 
-The `@sdql{}` syntax provides a more readable way to write database queries with interpolation:
+The `@sdbql{}` syntax provides a more readable way to write database queries with interpolation:
 
 ```soli
 # Simple query with interpolation
-let users = @sdql{
-    FOR u IN users
-    FILTER u.age >= #{age}
-    RETURN u
+let users = @sdbql{
+  FOR u IN users
+  FILTER u.age >= #{age}
+  RETURN u
 };
 
 # Query with multiple interpolations
-let results = @sdql{
-    FOR u IN users
-    FILTER u.age >= #{min_age} AND u.city == #{city}
-    SORT u.name ASC
-    LIMIT #{limit}
-    RETURN u
+let results = @sdbql{
+  FOR u IN users
+  FILTER u.age >= #{min_age} AND u.city == #{city}
+  SORT u.name ASC
+  LIMIT #{limit}
+  RETURN u
 };
 
 # Insert with interpolation
-@sdql{
-    INSERT {
-        name: #{name},
-        email: #{email},
-        created_at: NOW()
-    } INTO users
+@sdbql{
+  INSERT {
+    name: #{name},
+    email: #{email},
+    created_at: NOW()
+  } INTO users
 };
 
 # Update with interpolation
-@sdql{
-    UPDATE #{user_id} IN users
-    SET {
-        last_login: NOW()
-    }
+@sdbql{
+  UPDATE #{user_id} IN users
+  SET {
+    last_login: NOW()
+  }
 };
 
 # Delete with interpolation
-@sdql{
-    REMOVE #{user_id} IN users
+@sdbql{
+  REMOVE #{user_id} IN users
 };
 ```
 
-The `@sdql{}` block supports:
+The `@sdbql{}` block supports:
 - **String interpolation** using `#{expression}` - expressions are evaluated at runtime
 - **Multi-line queries** for better readability
 - **All SDBQL operations**: FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE
+
+> `@sdql{}` is accepted as a legacy alias for `@sdbql{}`. New code should use `@sdbql{}` to match the language name (SDBQL).
 
 #### When to Use Each Syntax
 
 | Approach | Use Case |
 |----------|----------|
 | `db.query()` with `@param` | When parameters should be passed separately (traditional parameterized queries) |
-| `@sdql{}` with `#{expr}` | When you want inline interpolation and more readable multi-line queries |
+| `@sdbql{}` with `#{expr}` | When you want inline interpolation and more readable multi-line queries |
 
 ## Connection Pooling
 

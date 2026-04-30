@@ -16,7 +16,7 @@ describe("DateTime Functions", fn() {
         assert_eq(dt.day(), 1);
     });
 
-    test("datetime instance methods work", fn() {
+    test("datetime instance accessor methods work", fn() {
         let dt = DateTime.from_unix(1704067200);
         assert(dt.year() >= 2024);
         assert(dt.month() >= 1);
@@ -120,5 +120,121 @@ describe("DateTime Instance Methods", fn() {
         let utc = DateTime.utc();
         assert_not_null(utc);
         assert(utc.year() >= 2024);
+    });
+
+    test("format() with locale parameter", fn() {
+        let dt = DateTime.from_unix(1704067200);
+        let en = dt.format("%B", "en");
+        let fr = dt.format("%B", "fr");
+        assert_eq(en, "January");
+        assert_eq(fr, "janvier");
+    });
+});
+
+describe("DateTime Individual Accessors", fn() {
+    test("year() returns correct year", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:00Z");
+        assert_eq(dt.year(), 2024);
+    });
+
+    test("month() returns correct month", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:00Z");
+        assert_eq(dt.month(), 6);
+    });
+
+    test("day() returns correct day", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:00Z");
+        assert_eq(dt.day(), 15);
+    });
+
+    test("hour() returns correct hour", fn() {
+        let dt = DateTime.parse("2024-06-15T14:30:00Z");
+        assert_eq(dt.hour(), 14);
+    });
+
+    test("minute() returns correct minute", fn() {
+        let dt = DateTime.parse("2024-06-15T10:45:00Z");
+        assert_eq(dt.minute(), 45);
+    });
+
+    test("second() returns correct second", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:25Z");
+        assert_eq(dt.second(), 25);
+    });
+
+    test("year() for epoch is 1970", fn() {
+        let dt = DateTime.epoch();
+        assert_eq(dt.year(), 1970);
+    });
+
+    test("month() for January is 1", fn() {
+        let dt = DateTime.parse("2024-01-15T10:30:00Z");
+        assert_eq(dt.month(), 1);
+    });
+
+    test("month names via format()", fn() {
+        let dt = DateTime.parse("2024-02-15T10:30:00Z");
+        let formatted = dt.format("%B");
+        assert_eq(formatted, "February");
+    });
+});
+
+describe("DateTime Edge Cases", fn() {
+    test("datetime from very old timestamp", fn() {
+        let dt = DateTime.from_unix(-86400);
+        assert_eq(dt.year(), 1969);
+    });
+
+    test("datetime from far future timestamp", fn() {
+        let dt = DateTime.from_unix(4102444800);
+        assert_eq(dt.year(), 2100);
+    });
+
+    test("add_hours() crosses midnight", fn() {
+        let dt = DateTime.parse("2024-01-15T20:00:00Z");
+        let later = dt.add_hours(8);
+        assert_eq(later.hour(), 4);
+        assert_eq(later.day(), 16);
+    });
+
+    test("subtract_days() goes to previous month", fn() {
+        let dt = DateTime.parse("2024-03-01T00:00:00Z");
+        let earlier = dt.subtract_days(1);
+        assert_eq(earlier.month(), 2);
+        assert_eq(earlier.day(), 29);
+    });
+
+    test("to_iso() contains expected format", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:00Z");
+        let iso = dt.to_iso();
+        assert_contains(iso, "2024-06-15");
+        assert_contains(iso, "10:30:00");
+    });
+
+    test("format() with time components", fn() {
+        let dt = DateTime.utc();
+        let formatted = dt.format("%H:%M:%S");
+        assert(len(formatted) > 0);
+    });
+
+    test("format() with full date", fn() {
+        let dt = DateTime.utc();
+        let formatted = dt.format("%Y-%m-%d");
+        assert(len(formatted) >= 10);
+    });
+});
+
+describe("DateTime Error Handling", fn() {
+    test("add_hours() with negative value subtracts", fn() {
+        let dt = DateTime.parse("2024-01-15T10:00:00Z");
+        let earlier = dt.add_hours(-5);
+        assert_eq(earlier.hour(), 5);
+    });
+
+    test("add_minutes() with negative value subtracts", fn() {
+        let dt = DateTime.parse("2024-01-15T10:30:00Z");
+        let earlier = dt.add_minutes(-30);
+        assert_eq(earlier.minute(), 0);
+        assert_eq(earlier.hour(), 10);
     });
 });

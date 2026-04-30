@@ -111,7 +111,7 @@ defined("x");        # true
 defined("y");        # false
 
 fn check(val) {
-    if defined("val") { "exists" } else { "not set" }
+  if defined("val") { "exists" } else { "not set" }
 }
 ```
 
@@ -656,7 +656,7 @@ Performs an HTTP GET request.
 ```soli
 let response = HTTP.get("https://api.example.com/data")
 if response["status"] == 200
-    println(response["body"])
+  println(response["body"])
 end
 ```
 
@@ -674,9 +674,9 @@ Performs an HTTP POST request.
 **Example:**
 ```soli
 let response = HTTP.post(
-    "https://api.example.com/users",
-    "name=Alice&email=alice@example.com",
-    { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
+  "https://api.example.com/users",
+  "name=Alice&email=alice@example.com",
+  { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
 )
 ```
 
@@ -694,8 +694,8 @@ Performs an HTTP POST request with JSON body.
 **Example:**
 ```soli
 let response = HTTP.post_json(
-    "https://api.example.com/users",
-    { "name": "Alice", "email": "alice@example.com" }
+  "https://api.example.com/users",
+  { "name": "Alice", "email": "alice@example.com" }
 )
 ```
 
@@ -745,7 +745,7 @@ Checks if response status is 200.
 **Example:**
 ```soli
 if http_ok(response)
-    println("Success!")
+  println("Success!")
 end
 ```
 
@@ -777,8 +777,8 @@ Performs multiple GET requests in parallel.
 **Example:**
 ```soli
 let responses = HTTP.get_all([
-    "https://api.example.com/users",
-    "https://api.example.com/posts"
+  "https://api.example.com/users",
+  "https://api.example.com/posts"
 ])
 ```
 
@@ -794,8 +794,8 @@ Performs multiple custom requests in parallel.
 **Example:**
 ```soli
 let responses = HTTP.parallel([
-    { "method": "GET", "url": "https://api.example.com/users" },
-    { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
+  { "method": "GET", "url": "https://api.example.com/users" },
+  { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])
 ```
 
@@ -882,7 +882,7 @@ S3.put_object("my-bucket", "hello.txt", "Hello World!")
 
 # With content type
 S3.put_object("my-bucket", "data.json", '{"key": "value"}', {
-    "content_type": "application/json"
+  "content_type": "application/json"
 })
 ```
 
@@ -966,7 +966,7 @@ Register a GET route handler.
 **Example:**
 ```soli
 def health(req)
-    return {"status": 200, "body": "OK"}
+  return {"status": 200, "body": "OK"}
 end
 
 http_server_get("/health", "health");
@@ -980,8 +980,8 @@ Register a POST route handler.
 **Example:**
 ```soli
 def create_user(req)
-    let name = req["json"]["name"]
-    return {"status": 201, "body": "Created: " + name}
+  let name = req["json"]["name"]
+  return {"status": 201, "body": "Created: " + name}
 end
 
 http_server_post("/users", "create_user");
@@ -1025,12 +1025,12 @@ http_server_listen(3000);
 **Handler Function Signature:**
 ```soli
 def my_handler(req)    let id = req["params"]["id"]           # Path parameters
-    let name = req["query"]["name"]         # Query string
-    let data = req["json"]["field"]         # JSON body
-    let token = req["headers"]["Authorization"]  # Headers
-    
-    return {"status": 200, "body": "Hello"}
-    # Or use helpers: render_json(), render_text(), redirect()
+  let name = req["query"]["name"]         # Query string
+  let data = req["json"]["field"]         # JSON body
+  let token = req["headers"]["Authorization"]  # Headers
+  
+  return {"status": 200, "body": "Hello"}
+  # Or use helpers: render_json(), render_text(), redirect()
 end
 ```
 
@@ -1175,7 +1175,7 @@ Verifies a password against an Argon2 hash.
 **Example:**
 ```soli
 if Crypto.argon2_verify(user_input, stored_hash)
-    println("Password correct!")
+  println("Password correct!")
 end
 ```
 
@@ -1262,9 +1262,9 @@ Creates a signed JWT token.
 **Example:**
 ```soli
 let token = jwt_sign(
-    { "sub": "user123", "role": "admin" },
-    "my-secret-key",
-    { "expires_in": 3600 }
+  { "sub": "user123", "role": "admin" },
+  "my-secret-key",
+  { "expires_in": 3600 }
 )
 ```
 
@@ -1282,9 +1282,9 @@ Verifies and decodes a JWT token.
 ```soli
 let result = jwt_verify(token, "my-secret-key")
 if has_key(result, "error")
-    println("Invalid token: " + result["message"])
+  println("Invalid token: " + result["message"])
 else
-    println("User: " + result["sub"])
+  println("User: " + result["sub"])
 end
 ```
 
@@ -1418,8 +1418,8 @@ Finds the first match with named capture groups.
 **Example:**
 ```soli
 let result = Regex.capture(
-    "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})",
-    "Date: 2024-01-15"
+  "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})",
+  "Date: 2024-01-15"
 )
 println(result["year"])   # "2024"
 println(result["month"])  # "01"
@@ -1569,8 +1569,8 @@ let envelope = SOAP.wrap("<GetWeather><City>London</City></GetWeather>")
 let result = await(SOAP.call("https://weather.example.com/service", "GetWeather", envelope))
 
 if result["status"] == 200
-    let temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
-    println("Temperature: " + temp)
+  let temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
+  println("Temperature: " + temp)
 end
 ```
 
@@ -1630,22 +1630,22 @@ let envelope = SOAP.wrap(body)
 
 # Make the SOAP call
 let result = await(SOAP.call(
-    "https://weather.example.com/service",
-    "http://example.com/weather/GetWeather",
-    envelope,
-    { "Authorization": "Bearer token123" }
+  "https://weather.example.com/service",
+  "http://example.com/weather/GetWeather",
+  envelope,
+  { "Authorization": "Bearer token123" }
 ))
 
 # Handle the response
 if result["status"] == 200
-    let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-    let temp = response["Temperature"]
-    let condition = response["Condition"]
-    
-    println("Temperature: " + temp)
-    println("Condition: " + condition)
+  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  let temp = response["Temperature"]
+  let condition = response["Condition"]
+  
+  println("Temperature: " + temp)
+  println("Condition: " + condition)
 else
-    println("Error: " + result["body"])
+  println("Error: " + result["body"])
 end
 ```
 
@@ -1704,7 +1704,7 @@ Checks if an environment variable exists.
 **Example:**
 ```soli
 if hasenv("DATABASE_URL")
-    let url = getenv("DATABASE_URL")
+  let url = getenv("DATABASE_URL")
 end
 ```
 
@@ -1778,6 +1778,45 @@ Supported formats:
 ```soli
 let dt = DateTime.parse("2024-01-15T10:30:00Z")
 let date_only = DateTime.parse("2024-01-15")
+```
+
+#### DateTime.epoch()
+
+Creates a DateTime at Unix epoch (1970-01-01 00:00:00 UTC).
+
+**Returns:** DateTime - A DateTime instance
+
+**Example:**
+```soli
+let epoch = DateTime.epoch()
+println(epoch.year())  # 1970
+```
+
+#### DateTime.from_unix(timestamp)
+
+Creates a DateTime from a Unix timestamp (seconds since epoch).
+
+**Parameters:**
+- `timestamp` (Int) - Unix timestamp in seconds
+
+**Returns:** DateTime - A DateTime instance
+
+**Example:**
+```soli
+let dt = DateTime.from_unix(1704067200)
+println(dt.to_iso())  # "2024-01-01T00:00:00Z"
+```
+
+#### DateTime.microtime()
+
+Gets the current Unix timestamp in microseconds as a Float.
+
+**Returns:** Float - Microseconds since epoch
+
+**Example:**
+```soli
+let mt = DateTime.microtime()
+println(mt)  # 1712832000000000.0
 ```
 
 ### Instance Methods - Components
@@ -2042,42 +2081,143 @@ let week = Duration.days(7)
 let trial_period = Duration.days(30)
 ```
 
+#### Duration.weeks(n)
+
+Creates a duration from a number of weeks.
+
+**Parameters:**
+- `n` (Int) - Number of weeks
+
+**Returns:** Duration
+
+**Example:**
+```soli
+let fortnight = Duration.weeks(2)
+```
+
+#### Duration.of_seconds(n)
+
+Creates a duration from a number of seconds. Alias for `Duration.seconds()`.
+
+**Parameters:**
+- `n` (Int | Float) - Number of seconds
+
+**Returns:** Duration
+
+#### Duration.of_minutes(n)
+
+Creates a duration from a number of minutes.
+
+**Parameters:**
+- `n` (Int | Float) - Number of minutes
+
+**Returns:** Duration
+
+#### Duration.of_hours(n)
+
+Creates a duration from a number of hours.
+
+**Parameters:**
+- `n` (Int | Float) - Number of hours
+
+**Returns:** Duration
+
+#### Duration.of_days(n)
+
+Creates a duration from a number of days.
+
+**Parameters:**
+- `n` (Int | Float) - Number of days
+
+**Returns:** Duration
+
+#### Duration.of_weeks(n)
+
+Creates a duration from a number of weeks.
+
+**Parameters:**
+- `n` (Int | Float) - Number of weeks
+
+**Returns:** Duration
+
+#### Duration.between(dt1, dt2)
+
+Creates a Duration representing the difference between two DateTime instances.
+
+**Parameters:**
+- `dt1` (DateTime) - Start datetime
+- `dt2` (DateTime) - End datetime
+
+**Returns:** Duration - The duration from dt1 to dt2 (dt2 - dt1)
+
+**Example:**
+```soli
+let dt1 = DateTime.parse("2024-01-15T10:00:00Z")
+let dt2 = DateTime.parse("2024-01-15T11:30:00Z")
+let dur = Duration.between(dt1, dt2)
+println(dur.total_minutes())  # 90
+```
+
 ### Instance Methods
 
-#### .to_seconds()
+#### .total_seconds()
 
 Gets the total duration in seconds.
 
-**Returns:** Int
+**Returns:** Float
 
 **Example:**
 ```soli
 let duration = Duration.hours(2)
-println(duration.to_seconds())  # 7200
+println(duration.total_seconds())  # 7200
 ```
 
-#### .to_minutes()
+#### .total_minutes()
 
 Gets the total duration in minutes.
 
-**Returns:** Int
+**Returns:** Float
 
 **Example:**
 ```soli
 let duration = Duration.hours(2)
-println(duration.to_minutes())  # 120
+println(duration.total_minutes())  # 120
 ```
 
-#### .to_hours()
+#### .total_hours()
 
 Gets the total duration in hours.
 
-**Returns:** Int
+**Returns:** Float
 
 **Example:**
 ```soli
 let duration = Duration.days(1)
-println(duration.to_hours())  # 24
+println(duration.total_hours())  # 24
+```
+
+#### .total_days()
+
+Gets the total duration in days.
+
+**Returns:** Float
+
+**Example:**
+```soli
+let duration = Duration.weeks(1)
+println(duration.total_days())  # 7
+```
+
+#### .to_string()
+
+Gets the duration as a formatted string.
+
+**Returns:** String
+
+**Example:**
+```soli
+let duration = Duration.of_seconds(3661)
+println(duration.to_string())  # "3661s"
 ```
 
 ### Complete Example
@@ -2090,10 +2230,10 @@ let work_day = Duration.hours(8)
 let trial = Duration.days(7)
 
 # Convert to different units
-println("Timeout: " + timeout.to_seconds() + " seconds")
-println("Break: " + break_time.to_minutes() + " minutes")
-println("Work day: " + work_day.to_hours() + " hours")
-println("Trial: " + trial.to_hours() + " hours")
+println("Timeout: " + timeout.total_seconds() + " seconds")
+println("Break: " + break_time.total_minutes() + " minutes")
+println("Work day: " + work_day.total_hours() + " hours")
+println("Trial: " + trial.total_days() + " days")
 
 # Practical example: session expiry
 let session_duration = Duration.hours(1)
@@ -2171,23 +2311,23 @@ Validates data against a schema.
 **Example:**
 ```soli
 let schema = {
-    "name": V.string().required().min(2),
-    "email": V.string().required().email(),
-    "age": V.int().optional().min(0).max(150)
+  "name": V.string().required().min(2),
+  "email": V.string().required().email(),
+  "age": V.int().optional().min(0).max(150)
 }
 
 let result = validate({
-    "name": "Alice",
-    "email": "alice@example.com"
+  "name": "Alice",
+  "email": "alice@example.com"
 }, schema)
 
 if result["valid"]
-    println("Data is valid!")
-    println(result["data"])
+  println("Data is valid!")
+  println(result["data"])
 else
-    for error in result["errors"]
-        println(error["field"] + ": " + error["message"])
-    end
+  for error in result["errors"]
+    println(error["field"] + ": " + error["message"])
+  end
 end
 ```
 
@@ -2384,11 +2524,11 @@ A class can declare a `static cron` field; on boot, worker 0 upserts a cron entr
 
 ```soli
 class NightlyReportJob {
-    static cron = Cron.daily_at("03:00")
+  static cron = Cron.daily_at("03:00")
 
-    static fn perform(args: Hash) {
-        Report.generate()
-    }
+  static fn perform(args: Hash) {
+    Report.generate()
+  }
 }
 ```
 
@@ -2421,7 +2561,7 @@ Defines a test case.
 **Example:**
 ```soli
 test("addition works correctly", fn()
-    assert_eq(1 + 1, 2)
+  assert_eq(1 + 1, 2)
 end)
 ```
 
@@ -2436,13 +2576,13 @@ Groups related tests.
 **Example:**
 ```soli
 describe("Calculator", fn()
-    test("adds numbers", fn()
-        assert_eq(add(1, 2), 3)
-    end)
+  test("adds numbers", fn()
+    assert_eq(add(1, 2), 3)
+  end)
 
-    test("subtracts numbers", fn()
-        assert_eq(subtract(5, 3), 2)
-    end)
+  test("subtracts numbers", fn()
+    assert_eq(subtract(5, 3), 2)
+  end)
 end)
 ```
 
@@ -2572,9 +2712,9 @@ Defines a factory template.
 **Example:**
 ```soli
 Factory.define("user", {
-    "name": "Test User",
-    "email": "test@example.com",
-    "role": "user"
+  "name": "Test User",
+  "email": "test@example.com",
+  "role": "user"
 })
 ```
 
@@ -2687,8 +2827,8 @@ Translates a key.
 **Example:**
 ```soli
 let translations = {
-    "en.greeting": "Hello",
-    "fr.greeting": "Bonjour"
+  "en.greeting": "Hello",
+  "fr.greeting": "Bonjour"
 }
 
 I18n.set_locale("fr")
@@ -2710,9 +2850,9 @@ Gets pluralized translation.
 **Example:**
 ```soli
 let translations = {
-    "en.items_zero": "No items",
-    "en.items_one": "1 item",
-    "en.items_other": "Many items"
+  "en.items_zero": "No items",
+  "en.items_one": "1 item",
+  "en.items_other": "Many items"
 }
 
 I18n.plural("items", 0, null, translations)  # "No items"
@@ -2728,18 +2868,18 @@ Load translations from external JSON files at application startup. This is typic
 
 ```json
 {
-    "app": {
-        "title": "My Application",
-        "welcome": "Welcome!"
-    },
-    "nav": {
-        "home": "Home",
-        "about": "About"
-    },
-    "common": {
-        "save": "Save",
-        "cancel": "Cancel"
-    }
+  "app": {
+    "title": "My Application",
+    "welcome": "Welcome!"
+  },
+  "nav": {
+    "home": "Home",
+    "about": "About"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel"
+  }
 }
 ```
 
@@ -2749,28 +2889,28 @@ Load translations from external JSON files at application startup. This is typic
 let i18n_translations = {}
 
 def flatten_dict(dict, prefix) -> Hash
-    let result = {}
-    for (pair in entries(dict))
-        let key = pair[0]
-        let value = pair[1]
-        let full_key = prefix + "." + key
-        if (type(value) == "Hash")
-            let nested = flatten_dict(value, full_key)
-            for (np in entries(nested))
-                result[np[0]] = np[1]
-            end
-        else
-            result[full_key] = value
-        end
+  let result = {}
+  for (pair in entries(dict))
+    let key = pair[0]
+    let value = pair[1]
+    let full_key = prefix + "." + key
+    if (type(value) == "Hash")
+      let nested = flatten_dict(value, full_key)
+      for (np in entries(nested))
+        result[np[0]] = np[1]
+      end
+    else
+      result[full_key] = value
     end
-    return result
+  end
+  return result
 end
 
 def i18n_load_translations(locale, dict)
-    let flat = flatten_dict(dict, locale)
-    for (pair in entries(flat))
-        i18n_translations[pair[0]] = pair[1]
-    end
+  let flat = flatten_dict(dict, locale)
+  for (pair in entries(flat))
+    i18n_translations[pair[0]] = pair[1]
+  end
 end
 ```
 
@@ -2798,13 +2938,13 @@ http_server_listen(3000);
 
 ```soli
 def home_index(req)
-    let welcome = I18n.translate("app.welcome", null, i18n_translations)
-    let home_link = I18n.translate("nav.home", null, i18n_translations)
-    
-    return render("home/index", {
-        "welcome": welcome,
-        "nav_home": home_link
-    })
+  let welcome = I18n.translate("app.welcome", null, i18n_translations)
+  let home_link = I18n.translate("nav.home", null, i18n_translations)
+  
+  return render("home/index", {
+    "welcome": welcome,
+    "nav_home": home_link
+  })
 end
 ```
 
@@ -2872,10 +3012,10 @@ Exits a loop early.
 **Example:**
 ```soli
 for i in range(0, 10)
-    if i == 5
-        break
-    end
-    println(i)
+  if i == 5
+    break
+  end
+  println(i)
 end
 ```
 
@@ -2886,10 +3026,10 @@ Skips to the next iteration of a loop.
 **Example:**
 ```soli
 for i in range(0, 5)
-    if i == 2
-        next
-    end
-    println(i)
+  if i == 2
+    next
+  end
+  println(i)
 end
 # prints: 0, 1, 3, 4
 ```
@@ -2984,15 +3124,31 @@ Programmatically configure the SoliKV connection.
 
 **Returns:** null
 
-### Global functions
+### Cache.fetch(key, ttl?) do...end
 
-`cache_set`, `cache_get`, `cache_delete`, `cache_has`, `cache_clear`, `cache_clear_expired`, `cache_keys`, `cache_size`, `cache_ttl`, `cache_touch` — thin wrappers around the Cache static methods.
+Cache-aside pattern: returns cached value on hit, or executes the block on miss, caches and returns the result.
 
-### cache_config(ttl)
+**Parameters:**
+- `key` (String) - Cache key
+- `ttl` (Int, optional) - Time to live in seconds (default: 3600)
+- `do...end` - Block to execute on cache miss
 
-Set the default TTL in seconds.
+**Returns:** Any - Cached value or block result
 
-**Returns:** null
+```soli
+# Basic usage
+let user = Cache.fetch("user:123") do
+    User.find(123)
+end
+
+# With TTL (5 minutes)
+let user = Cache.fetch("user:123", 300) do
+    User.find(123)
+end
+
+# Without block — acts like Cache.get()
+let user = Cache.fetch("user:123")
+```
 
 ---
 
@@ -3090,7 +3246,7 @@ Checks if a request is allowed under the rate limit.
 ```soli
 let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
 if !limiter.allowed()
-    return { "status": 429, "body": "Too Many Requests" }
+  return { "status": 429, "body": "Too Many Requests" }
 end
 ```
 
@@ -3328,7 +3484,7 @@ Parses multipart/form-data from a request.
 ```soli
 let files = parse_multipart(req)
 for file in files
-    println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
+  println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
 end
 ```
 
@@ -3352,8 +3508,8 @@ Uploads a file from multipart form data to SolidB blob storage.
 ```soli
 let result = upload_to_solidb(req, "uploads", "avatar", "localhost:5678")
 if has_key(result, "blob_id")
-    println("Uploaded: " + result["filename"])
-    println("Blob ID: " + result["blob_id"])
+  println("Uploaded: " + result["filename"])
+  println("Blob ID: " + result["blob_id"])
 end
 ```
 
@@ -3379,6 +3535,65 @@ Generates a URL for downloading a blob.
 - `expires_in` (Int, optional) - Expiration time in seconds (default: 3600)
 
 **Returns:** String - Download URL
+
+---
+
+## SolidB Standalone Functions
+
+Global functions for connecting to SolidB without creating an instance.
+
+### solidb_connect(address)
+
+Connect to a SolidB server and ping it.
+
+**Parameters:**
+- `address` (String) - SolidB server address (e.g., `localhost:5678`)
+
+**Returns:** String - Connection confirmation with ping response
+
+**Example:**
+```soli
+let result = solidb_connect("localhost:5678")
+# Returns: "Connected (ping: timestamp)"
+```
+
+### solidb_ping(address)
+
+Ping a SolidB server.
+
+**Parameters:**
+- `address` (String) - SolidB server address
+
+**Returns:** String - Timestamp from server
+
+### solidb_auth(address, database, username, password)
+
+Authenticate with a SolidB server.
+
+**Parameters:**
+- `address` (String) - SolidB server address
+- `database` (String) - Database name
+- `username` (String) - Username
+- `password` (String) - Password
+
+**Returns:** String - "Authenticated" on success
+
+### solidb_query(address, database, sdbql, bindvars?)
+
+Execute a SDBQL query against a SolidB database.
+
+**Parameters:**
+- `address` (String) - SolidB server address
+- `database` (String) - Database name
+- `sdbql` (String) - SDBQL query string
+- `bindvars` (Hash, optional) - Bind variables for the query
+
+**Returns:** Array - Query results as array of hashes
+
+**Example:**
+```soli
+let results = solidb_query("localhost:5678", "myapp", "FOR doc IN collection RETURN doc")
+```
 
 ---
 
@@ -3462,22 +3677,22 @@ Makes a SOAP request to a web service.
 **Example:**
 ```soli
 let envelope = '''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <GetUser xmlns="http://example.com/service">
-      <id>123</id>
-    </GetUser>
-  </soap:Body>
+ <soap:Body>
+  <GetUser xmlns="http://example.com/service">
+   <id>123</id>
+  </GetUser>
+ </soap:Body>
 </soap:Envelope>'''
 
 let result = SOAP.call(
-  "https://example.com/service",
-  "GetUser",
-  envelope,
-  {"Content-Type": "text/xml; charset=utf-8"}
+ "https://example.com/service",
+ "GetUser",
+ envelope,
+ {"Content-Type": "text/xml; charset=utf-8"}
 )
 
 if result["status"] == 200
-    println("Response: " + result["body"])
+  println("Response: " + result["body"])
 end
 ```
 
@@ -3544,16 +3759,16 @@ Converts a Hash (including nested hashes and arrays) to XML.
 **Example with attributes:**
 ```soli
 let data = {
-    "user" => {
-        "@id" => "123",
-        "name" => "John",
-        "email" => "john@example.com",
-        "address" => {
-            "street" => "123 Main St",
-            "city" => "Boston"
-        },
-        "tags" => ["admin", "user"]
-    }
+  "user" => {
+    "@id" => "123",
+    "name" => "John",
+    "email" => "john@example.com",
+    "address" => {
+      "street" => "123 Main St",
+      "city" => "Boston"
+    },
+    "tags" => ["admin", "user"]
+  }
 }
 
 let xml = SOAP.to_xml(data, "users")
@@ -3575,13 +3790,13 @@ let xml = SOAP.to_xml(data, "users")
 **Example with _text for element content:**
 ```soli
 let data = {
-    "product" => {
-        "name" => "Laptop",
-        "description" => {
-            "_text" => "A high-performance laptop with 16GB RAM"
-        },
-        "price" => "999.99"
-    }
+  "product" => {
+    "name" => "Laptop",
+    "description" => {
+      "_text" => "A high-performance laptop with 16GB RAM"
+    },
+    "price" => "999.99"
+  }
 }
 
 let xml = SOAP.to_xml(data, "catalog")
@@ -3655,7 +3870,7 @@ print(files.stdout)
 # Access exit code
 let status = `grep pattern file`
 if status.exit_code != 0
-    println("Pattern not found")
+  println("Pattern not found")
 end
 ```
 
@@ -3821,9 +4036,9 @@ Inverts all colors in the image.
 **Example:**
 ```soli
 let img = Image.new("photo.jpg")
-    .grayscale()
-    .flip_horizontal()
-    .rotate90()
+  .grayscale()
+  .flip_horizontal()
+  .rotate90()
 img.to_file("transformed.jpg")
 ```
 
@@ -3873,9 +4088,9 @@ Rotates the hue of all pixels.
 **Example:**
 ```soli
 let adjusted = Image.new("photo.jpg")
-    .brightness(20)
-    .contrast(1.5)
-    .hue_rotate(90)
+  .brightness(20)
+  .contrast(1.5)
+  .hue_rotate(90)
 adjusted.to_file("adjusted.jpg")
 ```
 
@@ -3903,8 +4118,8 @@ Sets the output format.
 ```soli
 # Convert PNG to JPEG at 70% quality
 let img = Image.new("photo.png")
-    .format("jpeg")
-    .quality(70)
+  .format("jpeg")
+  .quality(70)
 img.to_file("photo.jpg")
 ```
 
@@ -3937,7 +4152,7 @@ let base64_data = img.to_buffer()
 
 # Store in S3
 S3.put_object("my-bucket", "thumb.jpg", base64_data, {
-    "content_type": "image/jpeg"
+  "content_type": "image/jpeg"
 })
 ```
 
@@ -3946,29 +4161,29 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
 **Thumbnail generation in a controller:**
 ```soli
 def upload(req)
-    let file = req.files["avatar"]
-    let img = Image.from_buffer(file.data)
+  let file = req.files["avatar"]
+  let img = Image.from_buffer(file.data)
 
-    # Create multiple sizes
-    let large = img.resize(800, 800)
-    let medium = img.thumbnail(400)
-    let small = img.thumbnail(100)
+  # Create multiple sizes
+  let large = img.resize(800, 800)
+  let medium = img.thumbnail(400)
+  let small = img.thumbnail(100)
 
-    large.to_file("public/uploads/avatar_large.jpg")
-    medium.to_file("public/uploads/avatar_medium.jpg")
-    small.to_file("public/uploads/avatar_small.jpg")
+  large.to_file("public/uploads/avatar_large.jpg")
+  medium.to_file("public/uploads/avatar_medium.jpg")
+  small.to_file("public/uploads/avatar_small.jpg")
 
-    return { "status": 200, "body": "Upload complete" }
+  return { "status": 200, "body": "Upload complete" }
 end
 ```
 
 **Image processing pipeline:**
 ```soli
 let img = Image.new("raw_photo.jpg")
-    .resize(1200, 900)
-    .brightness(10)
-    .contrast(1.2)
-    .quality(85)
+  .resize(1200, 900)
+  .brightness(10)
+  .contrast(1.2)
+  .quality(85)
 
 img.to_file("processed.jpg")
 
@@ -3981,16 +4196,16 @@ img.grayscale().thumbnail(200).to_file("thumb_gray.jpg")
 # Convert all PNGs to WebP
 let files = S3.list_objects("images", "photos/")
 for file in files
-    if file.ends_with(".png")
-        let data = S3.get_object("images", file)
-        let img = Image.from_buffer(data)
-            .format("webp")
-            .quality(80)
-        let new_key = file.replace(".png", ".webp")
-        S3.put_object("images", new_key, img.to_buffer(), {
-            "content_type": "image/webp"
-        })
-    end
+  if file.ends_with(".png")
+    let data = S3.get_object("images", file)
+    let img = Image.from_buffer(data)
+      .format("webp")
+      .quality(80)
+    let new_key = file.replace(".png", ".webp")
+    S3.put_object("images", new_key, img.to_buffer(), {
+      "content_type": "image/webp"
+    })
+  end
 end
 ```
 

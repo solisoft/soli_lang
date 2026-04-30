@@ -182,9 +182,9 @@
                     <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">if Crypto.argon2_verify(user_input, stored_hash)
-    println("Password correct!")
+  println("Password correct!")
 else
-    println("Invalid password")
+  println("Invalid password")
 end</code></pre>
             </div>
         </section>
@@ -356,9 +356,9 @@ let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
 let user_code = request.body["code"]
 
 if Crypto.totp_verify(secret, user_code)
-    println("Authentication successful!")
+  println("Authentication successful!")
 else
-    println("Invalid code")
+  println("Invalid code")
 end</code></pre>
             </div>
         </section>
