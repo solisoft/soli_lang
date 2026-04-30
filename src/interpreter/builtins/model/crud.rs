@@ -336,7 +336,11 @@ pub fn exec_async_query_with_binds(
 
     // Capture inputs for the dev-mode query log before the future moves them.
     let log_enabled = super::query_log::is_enabled();
-    let log_query = if log_enabled { Some(sdbql.clone()) } else { None };
+    let log_query = if log_enabled {
+        Some(sdbql.clone())
+    } else {
+        None
+    };
     let log_binds = if log_enabled { bind_vars.clone() } else { None };
     let started = if log_enabled {
         Some(std::time::Instant::now())
@@ -409,7 +413,11 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
 
     let log_enabled = super::query_log::is_enabled();
-    let log_query = if log_enabled { Some(sdbql.clone()) } else { None };
+    let log_query = if log_enabled {
+        Some(sdbql.clone())
+    } else {
+        None
+    };
     let started = if log_enabled {
         Some(std::time::Instant::now())
     } else {

@@ -659,9 +659,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .get(&url)
-                            .header("Accept", "application/json");
+                        let req = client.get(&url).header("Accept", "application/json");
                         let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();

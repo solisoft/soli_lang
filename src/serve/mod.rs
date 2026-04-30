@@ -9,9 +9,9 @@
 pub mod dev_bar;
 mod hot_reload;
 pub mod live_reload;
-pub mod phase_log;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
+pub mod phase_log;
 pub mod prefetch;
 mod router;
 mod server_constants;
@@ -2081,35 +2081,35 @@ async fn handle_hyper_request(
             // bar contents (old timings, old query log, old req counter).
             if !dev_mode {
                 if let Some(ref client_etag) = if_none_match {
-                if let Some(server_etag) = resp_data.headers.iter().find_map(|(k, v)| {
-                    if k.eq_ignore_ascii_case("etag") {
-                        Some(v.as_str())
-                    } else {
-                        None
-                    }
-                }) {
-                    fn strip_weak(s: &str) -> &str {
-                        s.trim_start_matches("W/").trim()
-                    }
-                    if strip_weak(client_etag) == strip_weak(server_etag) {
-                        let mut b304 = Response::builder()
-                            .status(StatusCode::NOT_MODIFIED)
-                            .header("Server", "soliMVC");
-                        // RFC 7232 §4.1: 304 MUST include the ETag it validated
-                        // against and SHOULD include Cache-Control so the
-                        // browser knows the freshness semantics for the next
-                        // reuse.
-                        for (key, value) in &resp_data.headers {
-                            if key.eq_ignore_ascii_case("etag")
-                                || key.eq_ignore_ascii_case("cache-control")
-                                || key.eq_ignore_ascii_case("vary")
-                            {
-                                b304 = b304.header(key.as_str(), value.as_str());
-                            }
+                    if let Some(server_etag) = resp_data.headers.iter().find_map(|(k, v)| {
+                        if k.eq_ignore_ascii_case("etag") {
+                            Some(v.as_str())
+                        } else {
+                            None
                         }
-                        return Ok(b304.body(Full::new(Bytes::new())).unwrap());
+                    }) {
+                        fn strip_weak(s: &str) -> &str {
+                            s.trim_start_matches("W/").trim()
+                        }
+                        if strip_weak(client_etag) == strip_weak(server_etag) {
+                            let mut b304 = Response::builder()
+                                .status(StatusCode::NOT_MODIFIED)
+                                .header("Server", "soliMVC");
+                            // RFC 7232 §4.1: 304 MUST include the ETag it validated
+                            // against and SHOULD include Cache-Control so the
+                            // browser knows the freshness semantics for the next
+                            // reuse.
+                            for (key, value) in &resp_data.headers {
+                                if key.eq_ignore_ascii_case("etag")
+                                    || key.eq_ignore_ascii_case("cache-control")
+                                    || key.eq_ignore_ascii_case("vary")
+                                {
+                                    b304 = b304.header(key.as_str(), value.as_str());
+                                }
+                            }
+                            return Ok(b304.body(Full::new(Bytes::new())).unwrap());
+                        }
                     }
-                }
                 }
             }
 
@@ -3862,11 +3862,7 @@ fn handle_request(
 
     // Independent timer for the dev bar. Always on when dev_mode is on so the
     // injected bar can show server-side render time. Cheap when off.
-    let dev_started = if dev_mode {
-        Some(Instant::now())
-    } else {
-        None
-    };
+    let dev_started = if dev_mode { Some(Instant::now()) } else { None };
 
     // Resolve the session ID from the Cookie header (if any). When no cookie is
     // sent, we leave the thread-local unset — session_set / session_regenerate
@@ -4032,15 +4028,14 @@ fn handle_request(
         // a thread-local, so the snapshot must happen before we cross the
         // channel back to the hyper handler.
         if let Some(start) = dev_started {
-            let is_html = resp.headers.iter().any(|(k, v)| {
-                k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
-            });
+            let is_html = resp
+                .headers
+                .iter()
+                .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
             if is_html {
                 if let Ok(body_str) = std::str::from_utf8(&resp.body) {
-                    let queries =
-                        crate::interpreter::builtins::model::query_log::snapshot();
-                    let http_requests =
-                        crate::interpreter::builtins::http_log::snapshot();
+                    let queries = crate::interpreter::builtins::model::query_log::snapshot();
+                    let http_requests = crate::interpreter::builtins::http_log::snapshot();
                     let phases = phase_log::snapshot();
                     let ctx = dev_bar::DevBarContext {
                         method: method.as_ref(),

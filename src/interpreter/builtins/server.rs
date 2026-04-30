@@ -1372,10 +1372,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
             // Form-style: rewrite `+` to space first, then percent-decode.
-            let plus_to_space: String = s
-                .chars()
-                .map(|c| if c == '+' { ' ' } else { c })
-                .collect();
+            let plus_to_space: String = s.chars().map(|c| if c == '+' { ' ' } else { c }).collect();
             match urlencoding::decode(&plus_to_space) {
                 Ok(decoded) => Ok(Value::String(decoded.into_owned())),
                 Err(e) => Err(format!("url_decode() invalid percent-encoding: {}", e)),

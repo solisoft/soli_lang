@@ -432,7 +432,7 @@ fn embed_binds(
     };
     // Substitute longest keys first so `@ab` isn't shadowed by `@a`.
     let mut keys: Vec<&String> = map.keys().collect();
-    keys.sort_by(|a, b| b.len().cmp(&a.len()));
+    keys.sort_by_key(|b| std::cmp::Reverse(b.len()));
     let mut result = query.to_string();
     for k in keys {
         let v = &map[k];
@@ -520,7 +520,10 @@ mod tests {
     fn embed_binds_replaces_keys() {
         let mut binds = std::collections::HashMap::new();
         binds.insert("name".to_string(), serde_json::json!("Alice"));
-        let out = embed_binds("FOR u IN users FILTER u.name == @name RETURN u", Some(&binds));
+        let out = embed_binds(
+            "FOR u IN users FILTER u.name == @name RETURN u",
+            Some(&binds),
+        );
         assert!(out.contains("\"Alice\""));
         assert!(!out.contains("@name"));
     }
@@ -537,9 +540,18 @@ mod tests {
     fn detect_n_plus_one_groups_by_template() {
         let queries = vec![
             q("FOR doc IN users FILTER doc._key == @key RETURN doc", 0.5),
-            q("FOR doc IN order_items FILTER doc.order_id == @id RETURN doc", 0.1),
-            q("FOR doc IN order_items FILTER doc.order_id == @id RETURN doc", 0.1),
-            q("FOR doc IN order_items FILTER doc.order_id == @id RETURN doc", 0.1),
+            q(
+                "FOR doc IN order_items FILTER doc.order_id == @id RETURN doc",
+                0.1,
+            ),
+            q(
+                "FOR doc IN order_items FILTER doc.order_id == @id RETURN doc",
+                0.1,
+            ),
+            q(
+                "FOR doc IN order_items FILTER doc.order_id == @id RETURN doc",
+                0.1,
+            ),
         ];
         let groups = detect_n_plus_one(&queries, 3);
         assert_eq!(groups.len(), 1);

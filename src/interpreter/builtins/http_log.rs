@@ -35,13 +35,7 @@ pub fn clear() {
     LOG.with(|l| l.borrow_mut().clear());
 }
 
-pub fn record(
-    method: String,
-    url: String,
-    status: u16,
-    duration_ms: f64,
-    error: Option<String>,
-) {
+pub fn record(method: String, url: String, status: u16, duration_ms: f64, error: Option<String>) {
     LOG.with(|l| {
         l.borrow_mut().push(LoggedHttpRequest {
             method,
