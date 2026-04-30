@@ -238,7 +238,8 @@ pub fn register_router_builtins(env: &mut Environment) {
                         mw_names.clone(),
                     );
 
-                    // Update: PUT/PATCH member_path
+                    // Update: PUT/PATCH member_path, plus POST member_path/update
+                    // alias so HTML forms (which can't natively PUT/PATCH) can reach it.
                     let handler_name = format!("{}#update", controller);
                     register_route_with_middleware(
                         "PUT",
@@ -250,16 +251,31 @@ pub fn register_router_builtins(env: &mut Environment) {
                     register_route_with_middleware(
                         "PATCH",
                         &member_path,
+                        handler_name.clone(),
+                        middleware.clone(),
+                        mw_names.clone(),
+                    );
+                    register_route_with_middleware(
+                        "POST",
+                        &format!("{}/update", member_path),
                         handler_name,
                         middleware.clone(),
                         mw_names.clone(),
                     );
 
-                    // Destroy: DELETE member_path
+                    // Destroy: DELETE member_path, plus POST member_path/delete
+                    // alias for HTML form compatibility.
                     let handler_name = format!("{}#destroy", controller);
                     register_route_with_middleware(
                         "DELETE",
                         &member_path,
+                        handler_name.clone(),
+                        middleware.clone(),
+                        mw_names.clone(),
+                    );
+                    register_route_with_middleware(
+                        "POST",
+                        &format!("{}/delete", member_path),
                         handler_name,
                         middleware.clone(),
                         mw_names.clone(),

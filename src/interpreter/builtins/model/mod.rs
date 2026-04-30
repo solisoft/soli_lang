@@ -254,6 +254,7 @@ pub mod db_config;
 mod engine_context;
 pub mod habtm;
 pub mod query;
+pub mod query_log;
 mod registry;
 pub mod relations;
 pub mod uploaders;

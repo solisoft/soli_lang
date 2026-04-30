@@ -2325,6 +2325,10 @@ video {
   border-color: rgb(59 130 246 / 0.3);
 }
 
+.border-cyan-500\/20 {
+  border-color: rgb(6 182 212 / 0.2);
+}
+
 .border-cyan-500\/30 {
   border-color: rgb(6 182 212 / 0.3);
 }
@@ -3572,6 +3576,10 @@ video {
   color: rgb(96 165 250 / var(--tw-text-opacity, 1));
 }
 
+.text-cyan-200\/80 {
+  color: rgb(165 243 252 / 0.8);
+}
+
 .text-cyan-300 {
   --tw-text-opacity: 1;
   color: rgb(103 232 249 / var(--tw-text-opacity, 1));
@@ -4397,6 +4405,11 @@ video {
 .hover\:text-blue-200:hover {
   --tw-text-opacity: 1;
   color: rgb(191 219 254 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-cyan-200:hover {
+  --tw-text-opacity: 1;
+  color: rgb(165 243 252 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-cyan-300:hover {

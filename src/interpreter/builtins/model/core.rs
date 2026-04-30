@@ -2578,6 +2578,42 @@ impl Model {
 pub fn register_model_builtins(env: &mut Environment) {
     Model::register_builtins(env);
 
+    // dev_queries() - Returns the AQL queries executed during the current
+    // request (dev mode only; empty array in production). Each entry:
+    // { "query": String, "bind_vars": Hash | null, "duration_ms": Float }.
+    env.define(
+        "dev_queries".to_string(),
+        Value::NativeFunction(NativeFunction::new("dev_queries", Some(0), |_| {
+            use crate::interpreter::value::{HashKey, HashPairs};
+            let entries = super::query_log::snapshot();
+            let mut arr: Vec<Value> = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let mut hash = HashPairs::default();
+                hash.insert(
+                    HashKey::String("query".to_string()),
+                    Value::String(entry.query),
+                );
+                let binds_value = match entry.bind_vars {
+                    Some(map) => {
+                        let mut bh = HashPairs::default();
+                        for (k, v) in map {
+                            bh.insert(HashKey::String(k), super::crud::json_to_value(&v));
+                        }
+                        Value::Hash(Rc::new(RefCell::new(bh)))
+                    }
+                    None => Value::Null,
+                };
+                hash.insert(HashKey::String("bind_vars".to_string()), binds_value);
+                hash.insert(
+                    HashKey::String("duration_ms".to_string()),
+                    Value::Float(entry.duration_ms),
+                );
+                arr.push(Value::Hash(Rc::new(RefCell::new(hash))));
+            }
+            Ok(Value::Array(Rc::new(RefCell::new(arr))))
+        })),
+    );
+
     // Register global wrapper functions for class-level DSL
     // These functions expect the class as the first argument (passed by execute_class)
 

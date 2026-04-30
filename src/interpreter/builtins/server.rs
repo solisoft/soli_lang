@@ -1328,6 +1328,60 @@ pub fn register_server_builtins(env: &mut Environment) {
             Ok(Value::Hash(Rc::new(RefCell::new(marker))))
         })),
     );
+
+    // url_encode(s) -> String
+    // Strict RFC 3986 component encoding: percent-encodes every reserved char,
+    // including `/`, `?`, `&`, `=`, `#`, space. Use this for query values,
+    // path segments, or any other URL component you're splicing in by hand.
+    env.define(
+        "url_encode".to_string(),
+        Value::NativeFunction(NativeFunction::new("url_encode", Some(1), |args| {
+            let s = match &args[0] {
+                Value::String(s) => s.clone(),
+                Value::Int(n) => n.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Null => String::new(),
+                other => {
+                    return Err(format!(
+                        "url_encode() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::String(urlencoding::encode(&s).into_owned()))
+        })),
+    );
+
+    // url_decode(s) -> String
+    // Form-style decode: `+` becomes space, `%xx` becomes the byte. Invalid
+    // `%xx` sequences (e.g. `%ZZ`) pass through literally. Errors only when
+    // the percent-decoded bytes are not valid UTF-8 — caller can wrap with
+    // `rescue` for a fallback.
+    env.define(
+        "url_decode".to_string(),
+        Value::NativeFunction(NativeFunction::new("url_decode", Some(1), |args| {
+            let s = match &args[0] {
+                Value::String(s) => s.clone(),
+                Value::Null => return Ok(Value::String(String::new())),
+                other => {
+                    return Err(format!(
+                        "url_decode() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            // Form-style: rewrite `+` to space first, then percent-decode.
+            let plus_to_space: String = s
+                .chars()
+                .map(|c| if c == '+' { ' ' } else { c })
+                .collect();
+            match urlencoding::decode(&plus_to_space) {
+                Ok(decoded) => Ok(Value::String(decoded.into_owned())),
+                Err(e) => Err(format!("url_decode() invalid percent-encoding: {}", e)),
+            }
+        })),
+    );
 }
 
 /// Check if a value is a server listen marker.

@@ -352,6 +352,21 @@ fn login(req) {
 }
 ```
 
+## Dev Tools
+
+When the server runs with `--dev`, `dev_queries()` returns the AQL queries (with bindvars and duration_ms) executed during the current request. Returns `[]` in production with zero runtime overhead. Useful for building a debug bar. See [Models — Inspecting AQL Queries](www/docs/models.md#inspecting-aql-queries-dev-tool).
+
+## Documentation Policy
+
+**Every user-facing change MUST be documented in BOTH places:**
+
+1. **`www/docs/*.md`** — the markdown source-of-truth for each topic (e.g. `models.md`, `database.md`, `controllers.md`, `live-reload.md`).
+2. **`www/app/views/docs/**/*.html.slv`** — the rendered HTML pages served by `docs#*` controller actions. These are NOT auto-generated from the `.md` files — they are hand-maintained Tailwind/HTML and must be updated in parallel.
+
+When you add, change, or remove a feature visible to Soli users (a new builtin, a new DSL helper, a config option, a CLI flag, behavior change), update both surfaces in the same change. Skipping either leaves the docs site or the markdown reference stale.
+
+Use `#` for comments inside Soli code blocks in both `.md` and `.slv` (the `//` style was standardized away — see `www/app/views/docs/CLAUDE.md` recent activity).
+
 ## Imports
 ```soli
 import "./math.sl";           // Relative import

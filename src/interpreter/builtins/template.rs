@@ -1077,7 +1077,10 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Set view context for debugging (in case of error)
             set_view_debug_context(Some(data.clone()));
 
-            let result = cache.render(&template_name, &data, layout_arg);
+            let result = {
+                let _phase = crate::serve::phase_log::PhaseTimer::start("view");
+                cache.render(&template_name, &data, layout_arg)
+            };
 
             match result {
                 Ok(rendered) => {
@@ -1132,7 +1135,10 @@ pub fn register_template_builtins(env: &mut Environment) {
         // Inject template helper functions into data context (in-place)
         inject_template_helpers(&data);
 
-        let rendered = cache.render_partial(&partial_name, &data)?;
+        let rendered = {
+            let _phase = crate::serve::phase_log::PhaseTimer::start("view");
+            cache.render_partial(&partial_name, &data)?
+        };
 
         // Return just the string for partials (they're typically embedded)
         Ok(Value::String(rendered))

@@ -224,6 +224,48 @@ fn value_to_json(value: &Value) -> Result<String, String> {
     crate::interpreter::value::stringify_to_string(value)
 }
 
+/// Send a reqwest request, recording method/url/status/duration in the
+/// per-request HTTP log when dev mode is on. Returns the response on success
+/// or the original error string on failure.
+async fn send_logged(
+    method: &str,
+    url: &str,
+    builder: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let logging = crate::interpreter::builtins::http_log::is_enabled();
+    let start = logging.then(std::time::Instant::now);
+    match builder.send().await {
+        Ok(resp) => {
+            if let Some(s) = start {
+                let dur = s.elapsed().as_secs_f64() * 1000.0;
+                let status = resp.status().as_u16();
+                crate::interpreter::builtins::http_log::record(
+                    method.to_string(),
+                    url.to_string(),
+                    status,
+                    dur,
+                    None,
+                );
+            }
+            Ok(resp)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if let Some(s) = start {
+                let dur = s.elapsed().as_secs_f64() * 1000.0;
+                crate::interpreter::builtins::http_log::record(
+                    method.to_string(),
+                    url.to_string(),
+                    0,
+                    dur,
+                    Some(msg.clone()),
+                );
+            }
+            Err(msg)
+        }
+    }
+}
+
 fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
     crate::interpreter::value::json_to_value(json)
 }
@@ -250,7 +292,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+                        let resp = send_logged("GET", &url, client.get(&url)).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -317,13 +359,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .post(&url)
                             .header("Content-Type", content_type)
-                            .body(body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(body);
+                        let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -393,13 +433,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .put(&url)
                             .header("Content-Type", content_type)
-                            .body(body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(body);
+                        let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -469,13 +507,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .patch(&url)
                             .header("Content-Type", content_type)
-                            .body(body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(body);
+                        let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -528,11 +564,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
-                            .delete(&url)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                        let resp = send_logged("DELETE", &url, client.delete(&url)).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -582,7 +614,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client.head(&url).send().await.map_err(|e| e.to_string())?;
+                        let resp = send_logged("HEAD", &url, client.head(&url)).await?;
                         let status = resp.status().as_u16();
                         Ok(format!(
                             "{} {}",
@@ -627,12 +659,10 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .get(&url)
-                            .header("Accept", "application/json")
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .header("Accept", "application/json");
+                        let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -688,13 +718,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .post(&url)
                             .header("Content-Type", "application/json")
-                            .body(json_body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(json_body);
+                        let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -753,13 +781,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .put(&url)
                             .header("Content-Type", "application/json")
-                            .body(json_body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(json_body);
+                        let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -818,13 +844,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = client
+                        let req = client
                             .patch(&url)
                             .header("Content-Type", "application/json")
-                            .body(json_body)
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            .body(json_body);
+                        let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -944,7 +968,7 @@ pub fn register_http_class(env: &mut Environment) {
                             request = request.body(body);
                         }
 
-                        let resp = request.send().await.map_err(|e| e.to_string())?;
+                        let resp = send_logged(&method_clone, &url, request).await?;
 
                         let status = resp.status().as_u16();
                         let status_text =

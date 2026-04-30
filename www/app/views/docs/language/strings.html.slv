@@ -755,6 +755,60 @@ sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object
         </div>
     </section>
 
+    <!-- URL Functions -->
+    <section id="section-url" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+            </span>
+            URL Functions
+        </h2>
+
+        <div class="space-y-6">
+            <section id="def-url-encode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#def-url-encode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">url_encode(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Strict RFC 3986 component encoding. Percent-encodes every reserved character (<code>/</code>, <code>?</code>, <code>&amp;</code>, <code>=</code>, <code>#</code>, space, …) so the result is safe to splice into any URL component — query value, path segment, or fragment. Scalars (Int / Float / Bool) are stringified first; <code>null</code> becomes the empty string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">url_encode("hello world")        # "hello%20world"
+url_encode("a/b?c=d")            # "a%2Fb%3Fc%3Dd"
+url_encode("café")               # "caf%C3%A9"
+
+# Building a query string by hand
+let url = "/results?q=" + url_encode("search " + str(page))</code></pre>
+                </div>
+            </section>
+
+            <section id="def-url-decode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#def-url-decode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">url_decode(string)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Form-style decode: <code>+</code> becomes space, <code>%xx</code> becomes the corresponding byte. Invalid <code>%xx</code> sequences pass through literally; raises only when the percent-decoded bytes are not valid UTF-8. <code>req["query"]</code> and <code>req["form"]</code> are already decoded — reach for <code>url_decode</code> when you receive a URL through some other channel (a header, a webhook body, a stored URL string).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">url_decode("hello%20world")          # "hello world"
+url_decode("hello+world")            # "hello world"
+url_decode("a%2Fb%3Fc%3Dd")          # "a/b?c=d"
+url_decode("caf%C3%A9")              # "café"
+
+# Roundtrip
+url_decode(url_encode("a/b?c=d"))    # "a/b?c=d"
+
+# Fallback for input you don't trust
+let safe = url_decode(raw) rescue raw</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
     <!-- Common Patterns -->
     <section id="section-patterns" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

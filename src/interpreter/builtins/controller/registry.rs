@@ -103,6 +103,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
 
     fn walk(
         dir: &Path,
+        root: &Path,
         registry: &mut ControllerRegistry,
         superclass_map: &mut HashMap<String, String>,
     ) -> Result<(), String> {
@@ -111,7 +112,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
             let path = entry.path();
 
             if path.is_dir() {
-                walk(&path, registry, superclass_map)?;
+                walk(&path, root, registry, superclass_map)?;
                 continue;
             }
 
@@ -122,7 +123,15 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
                         continue;
                     }
 
-                    match parse_controller_file(&path, file_name) {
+                    // Build the registry key from the path relative to the
+                    // controllers root, using `/` separators — matching the
+                    // route handler key (e.g. `admin/categories`). Deriving
+                    // the key from the class name instead produced
+                    // `admin_categories`, which silently broke before_action
+                    // lookups for any controller in a subdirectory.
+                    let route_key = relative_route_key(&path, root);
+
+                    match parse_controller_file(&path, file_name, &route_key) {
                         Ok(info) => {
                             if let Ok(source) = std::fs::read_to_string(&path) {
                                 if let Some(parent) = extract_superclass_name(&source) {
@@ -148,7 +157,12 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
         Ok(())
     }
 
-    walk(controllers_dir, &mut registry, &mut superclass_map)?;
+    walk(
+        controllers_dir,
+        controllers_dir,
+        &mut registry,
+        &mut superclass_map,
+    )?;
 
     // Inherit before/after actions and layout from parent controllers
     resolve_controller_inheritance(&mut registry, &superclass_map);
@@ -215,7 +229,18 @@ fn resolve_controller_inheritance(
 }
 
 /// Parse a controller file and extract metadata.
-fn parse_controller_file(path: &Path, file_name: &str) -> Result<ControllerInfo, String> {
+///
+/// `route_key` is the routing key the framework expects on lookups (e.g.
+/// `admin/categories` for `app/controllers/admin/categories_controller.sl`).
+/// It must be derived from the file's path so it matches what the router
+/// uses — deriving from the class name produces `admin_categories`, which
+/// silently breaks `before_action`/`after_action` resolution for nested
+/// controllers.
+fn parse_controller_file(
+    path: &Path,
+    file_name: &str,
+    route_key: &str,
+) -> Result<ControllerInfo, String> {
     let source = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
 
     // Controller class name (e.g., "posts_controller" -> "PostsController")
@@ -224,10 +249,7 @@ fn parse_controller_file(path: &Path, file_name: &str) -> Result<ControllerInfo,
     // Extract class name from file (e.g., "class PostsController extends Controller")
     let actual_class_name = extract_class_name(&source).unwrap_or_else(|| class_name.clone());
 
-    // Extract the class name part (e.g., "posts" from "PostsController")
-    let controller_class_name = to_controller_name(&actual_class_name);
-
-    let mut info = ControllerInfo::new(&actual_class_name, &controller_class_name);
+    let mut info = ControllerInfo::new(&actual_class_name, route_key);
 
     // Parse static block for configuration
     parse_controller_static_block(&source, &mut info)?;
@@ -236,6 +258,27 @@ fn parse_controller_file(path: &Path, file_name: &str) -> Result<ControllerInfo,
     extract_actions(&source, &actual_class_name, &mut info);
 
     Ok(info)
+}
+
+/// Compute the registry/route key for a controller file relative to the
+/// controllers directory. Strips `_controller` from the file stem and joins
+/// any subdirectory segments with `/`.
+///
+/// - `controllers_dir/posts_controller.sl` → `posts`
+/// - `controllers_dir/admin/categories_controller.sl` → `admin/categories`
+fn relative_route_key(path: &Path, root: &Path) -> String {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let no_ext = rel.with_extension("");
+    let mut segments: Vec<String> = no_ext
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(str::to_string))
+        .collect();
+    if let Some(last) = segments.last_mut() {
+        if let Some(stripped) = last.strip_suffix("_controller") {
+            *last = stripped.to_string();
+        }
+    }
+    segments.join("/")
 }
 
 /// Convert "posts_controller" to "PostsController"
@@ -253,19 +296,6 @@ fn to_class_name(file_name: &str) -> String {
         } else {
             result.push(c);
         }
-    }
-    result
-}
-
-/// Convert "PostsController" to "posts" (strips the "Controller" suffix and snake_cases).
-fn to_controller_name(class_name: &str) -> String {
-    let base = class_name.strip_suffix("Controller").unwrap_or(class_name);
-    let mut result = String::new();
-    for (i, c) in base.chars().enumerate() {
-        if i > 0 && c.is_ascii_uppercase() {
-            result.push('_');
-        }
-        result.push(c.to_ascii_lowercase());
     }
     result
 }
@@ -907,12 +937,21 @@ mod tests {
     }
 
     #[test]
-    fn to_controller_name_strips_controller_suffix() {
-        assert_eq!(to_controller_name("UsersController"), "users");
-        assert_eq!(to_controller_name("HomeController"), "home");
-        assert_eq!(to_controller_name("BlogPostsController"), "blog_posts");
-        // Safety: classes not ending in "Controller" still snake_case.
-        assert_eq!(to_controller_name("Users"), "users");
+    fn relative_route_key_uses_slash_for_subdirs() {
+        use std::path::PathBuf;
+        let root = PathBuf::from("/app/controllers");
+        assert_eq!(
+            relative_route_key(&root.join("posts_controller.sl"), &root),
+            "posts"
+        );
+        assert_eq!(
+            relative_route_key(&root.join("admin/categories_controller.sl"), &root),
+            "admin/categories"
+        );
+        assert_eq!(
+            relative_route_key(&root.join("admin/users/sessions_controller.sl"), &root),
+            "admin/users/sessions"
+        );
     }
 
     // Regression: a before_action that does `@foo = x` must actually write to

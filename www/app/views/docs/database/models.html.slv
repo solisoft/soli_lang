@@ -817,6 +817,27 @@ end</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Inspecting AQL Queries (Dev Tool)</h2>
+    <p class="text-gray-400 mb-4">
+        When the server runs with <code class="text-cyan-400">--dev</code>, every AQL query a request executes through the Model layer is captured into a per-request stack. Read it from any controller or view with the <code class="text-cyan-400">dev_queries()</code> builtin to render a debug bar.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn index(req)
+    let users = User.where("doc.active == true").all()
+    render("users/index", { "users": users, "queries": dev_queries() })
+end
+
+# dev_queries() returns Array&lt;Hash&gt; with keys: query, bind_vars, duration_ms.
+# In production it always returns [] with zero overhead.</code></pre>
+        </div>
+    </div>
+    <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-12">
+        <p class="text-cyan-200/80 text-sm">
+            See the <a href="/docs/development-tools/debugging#aql-query-log" class="text-cyan-300 underline hover:text-cyan-200">AQL Query Log</a> section in the Debugging guide for the full schema, debug-bar partial example, and coverage notes.
+        </p>
+    </div>
+
     <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
         <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">

@@ -512,6 +512,63 @@ sanitize_html("<p onclick='evil()'>Hello</p>")
 # "<p>Hello</p>"
 ```
 
+#### url_encode(value)
+
+Percent-encodes a value for safe use as a URL component (query value, path
+segment, fragment, etc.). Strict RFC 3986 component encoding — every
+reserved character (`/`, `?`, `&`, `=`, `#`, space, …) is escaped.
+
+**Parameters:**
+- `value` (String|Int|Float|Bool|null) - Scalars are stringified first; `null`
+  becomes `""`.
+
+**Returns:** String
+
+**Example:**
+```soli
+url_encode("hello world")        # "hello%20world"
+url_encode("a/b?c=d")            # "a%2Fb%3Fc%3Dd"
+url_encode("café")               # "caf%C3%A9"
+
+# Building a query string by hand:
+let q = "search " + str(page)
+let url = "/results?q=" + url_encode(q)
+```
+
+Reach for `url_encode` whenever you splice user-controlled or framework
+data into a URL component — the strict policy means you don't have to
+think about which separator chars need escaping in your specific spot.
+
+#### url_decode(string)
+
+Decodes a URL component using form-style rules: `+` becomes a space,
+`%xx` becomes the corresponding byte. Invalid `%xx` sequences (e.g.
+`%ZZ`) pass through literally; the function only errors when the
+percent-decoded bytes are not valid UTF-8.
+
+**Parameters:**
+- `string` (String) - The encoded value. `null` decodes to `""`.
+
+**Returns:** String
+
+**Example:**
+```soli
+url_decode("hello%20world")          # "hello world"
+url_decode("hello+world")            # "hello world"
+url_decode("a%2Fb%3Fc%3Dd")          # "a/b?c=d"
+url_decode("caf%C3%A9")              # "café"
+
+# Roundtrip:
+url_decode(url_encode("a/b?c=d"))    # "a/b?c=d"
+
+# Fallback for input you don't trust:
+let safe = url_decode(raw) rescue raw
+```
+
+`req["query"]` and `req["form"]` are already decoded — use `url_decode`
+when you receive a URL through some other channel (a header, a webhook
+body, a stored URL string).
+
 ---
 
 ### File I/O Functions

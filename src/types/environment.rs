@@ -275,6 +275,24 @@ impl TypeEnvironment {
             },
         );
 
+        // url_encode(String) -> String
+        self.functions.insert(
+            "url_encode".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // url_decode(String) -> String
+        self.functions.insert(
+            "url_decode".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // HTTP status check functions
         // http_ok(Hash|Int) -> Bool
         self.functions.insert(

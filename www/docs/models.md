@@ -1137,6 +1137,71 @@ describe("User model", fn()
 end)
 ```
 
+## Inspecting AQL Queries (Dev Tool)
+
+When the server runs with `--dev`, every AQL query a request executes through the Model layer is captured into a per-request stack. Read it with the `dev_queries()` builtin and render it however you like — typically as a debug bar at the bottom of the page.
+
+### `dev_queries()`
+
+Returns an `Array<Hash>` of queries executed during the **current request**. The stack is cleared at the start of every request.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `query` | `String` | The AQL sent to SoliDB |
+| `bind_vars` | `Hash` or `null` | The bind variables, or `null` if the query had none |
+| `duration_ms` | `Float` | Wall-clock time the query took, in milliseconds |
+
+In production (without `--dev`), `dev_queries()` always returns an empty array — the executor skips logging entirely, so there's no overhead.
+
+### Example: Controller
+
+```soli
+fn index(req)
+    let users = User.where("doc.active == true").all();
+    let posts = Post.includes("author").all();
+
+    return render("users/index", {
+        "users":   users,
+        "posts":   posts,
+        "queries": dev_queries()
+    });
+end
+```
+
+### Example: Debug bar partial
+
+```erb
+<%# app/views/shared/_dev_bar.erb %>
+<% if queries.length > 0 %>
+    <div class="dev-bar">
+        <h3><%= queries.length %> AQL queries</h3>
+        <ol>
+            <% for q in queries %>
+                <li>
+                    <code><%= h(q["query"]) %></code>
+                    <% if q["bind_vars"] != null %>
+                        <small>binds: <%= h(json_stringify(q["bind_vars"])) %></small>
+                    <% end %>
+                    <span><%= q["duration_ms"] %> ms</span>
+                </li>
+            <% end %>
+        </ol>
+    </div>
+<% end %>
+```
+
+### Coverage
+
+Logged:
+- All `Model` operations (`Model.all()`, `.where()`, `.find()`, `.create()`, `.update()`, `.destroy()`, `.count()`, eager-loaded `includes`, soft-delete scopes, etc.)
+- Validation lookups (`uniqueness`)
+- HABTM join-table operations
+
+Not logged in v1:
+- Direct `Solidb(host, db).query(...)` calls
+- Mocked queries registered via `register_query_mock` (they short-circuit before the executor)
+- Internal session storage queries that go through `SoliDBClient` directly
+
 ## Best Practices
 
 1. **Keep models simple** - Just extend `Model`, no configuration needed

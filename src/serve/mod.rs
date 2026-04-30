@@ -6,8 +6,10 @@
 //! - Automatic route derivation
 //! - Middleware support for request interception
 
+pub mod dev_bar;
 mod hot_reload;
 pub mod live_reload;
+pub mod phase_log;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
 pub mod prefetch;
@@ -1150,6 +1152,16 @@ fn worker_loop(
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
 
+    // Capture every AQL query the request makes so the dev tool can show them.
+    // Off in production — the gate is a single relaxed atomic load.
+    crate::interpreter::builtins::model::query_log::set_enabled(dev_mode);
+
+    // Same for outgoing HTTP.* calls — feeds the dev bar's "http" panel.
+    crate::interpreter::builtins::http_log::set_enabled(dev_mode);
+
+    // Phase timers (middleware/view) for the render-breakdown panel.
+    phase_log::set_enabled(dev_mode);
+
     // Load middleware in this worker (needed for scoped middleware resolution by name)
     {
         let mut file_tracker = FileTracker::new();
@@ -2063,7 +2075,12 @@ async fn handle_hyper_request(
             // to deliver "instant navigation" — the body is already in the
             // prefetched-resources cache; revalidation costs one tiny round
             // trip instead of re-sending tens of KB of HTML.
-            if let Some(ref client_etag) = if_none_match {
+            //
+            // Skipped in --dev: the dev bar is injected after the ETag is
+            // computed, so a 304 would replay an HTML snapshot with stale
+            // bar contents (old timings, old query log, old req counter).
+            if !dev_mode {
+                if let Some(ref client_etag) = if_none_match {
                 if let Some(server_etag) = resp_data.headers.iter().find_map(|(k, v)| {
                     if k.eq_ignore_ascii_case("etag") {
                         Some(v.as_str())
@@ -2092,6 +2109,7 @@ async fn handle_hyper_request(
                         }
                         return Ok(b304.body(Full::new(Bytes::new())).unwrap());
                     }
+                }
                 }
             }
 
@@ -3338,6 +3356,7 @@ fn invoke_middleware_with_frame(
     handler: Value,
     request_hash: Value,
 ) -> Result<Value, RuntimeError> {
+    let _phase = phase_log::PhaseTimer::start("middleware");
     interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
     if let Some(path) = source_path {
         interpreter.set_source_path(PathBuf::from(path));
@@ -3815,6 +3834,14 @@ fn handle_request(
     data: &mut RequestData,
     dev_mode: bool,
 ) -> ResponseData {
+    // Reset the per-request AQL log so `dev_queries()` only returns this
+    // request's queries. Cheap when dev mode is off (early-out on the flag).
+    if dev_mode {
+        crate::interpreter::builtins::model::query_log::clear();
+        crate::interpreter::builtins::http_log::clear();
+        phase_log::clear();
+    }
+
     let method = &data.method;
     let path = &data.path;
 
@@ -3828,6 +3855,14 @@ fn handle_request(
 
     // Only create timer when logging is enabled (avoids clock_gettime syscall per request)
     let start_time = if log_requests {
+        Some(Instant::now())
+    } else {
+        None
+    };
+
+    // Independent timer for the dev bar. Always on when dev_mode is on so the
+    // injected bar can show server-side render time. Cheap when off.
+    let dev_started = if dev_mode {
         Some(Instant::now())
     } else {
         None
@@ -3990,6 +4025,34 @@ fn handle_request(
             let security_headers = get_security_headers();
             for (name, value) in security_headers {
                 resp.headers.push((name, value));
+            }
+        }
+        // Inject the dev bar into HTML responses when running --dev. The bar
+        // is rendered here on the worker thread because the AQL query log is
+        // a thread-local, so the snapshot must happen before we cross the
+        // channel back to the hyper handler.
+        if let Some(start) = dev_started {
+            let is_html = resp.headers.iter().any(|(k, v)| {
+                k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
+            });
+            if is_html {
+                if let Ok(body_str) = std::str::from_utf8(&resp.body) {
+                    let queries =
+                        crate::interpreter::builtins::model::query_log::snapshot();
+                    let http_requests =
+                        crate::interpreter::builtins::http_log::snapshot();
+                    let phases = phase_log::snapshot();
+                    let ctx = dev_bar::DevBarContext {
+                        method: method.as_ref(),
+                        path: path.as_str(),
+                        status: resp.status,
+                        started: start,
+                        queries,
+                        http_requests,
+                        phases,
+                    };
+                    resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into_bytes();
+                }
             }
         }
         // Log timing (skip health checks to avoid benchmark noise)

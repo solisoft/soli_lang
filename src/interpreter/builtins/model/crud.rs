@@ -334,6 +334,16 @@ pub fn exec_async_query_with_binds(
 
     let client = get_http_client().clone();
 
+    // Capture inputs for the dev-mode query log before the future moves them.
+    let log_enabled = super::query_log::is_enabled();
+    let log_query = if log_enabled { Some(sdbql.clone()) } else { None };
+    let log_binds = if log_enabled { bind_vars.clone() } else { None };
+    let started = if log_enabled {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+
     let future = async move {
         let mut payload = serde_json::json!({ "query": sdbql });
         if let Some(bv) = bind_vars {
@@ -369,7 +379,14 @@ pub fn exec_async_query_with_binds(
             .unwrap_or_default())
     };
 
-    run_db_future(future)
+    let result = run_db_future(future);
+
+    if let (Some(q), Some(t0)) = (log_query, started) {
+        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        super::query_log::record(q, log_binds, elapsed);
+    }
+
+    result
 }
 
 /// Simple async query without bind variables - convenience wrapper.
@@ -391,8 +408,16 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     let url = get_cursor_url();
     let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
 
+    let log_enabled = super::query_log::is_enabled();
+    let log_query = if log_enabled { Some(sdbql.clone()) } else { None };
+    let started = if log_enabled {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+
     let client = get_http_client().clone();
-    match run_db_future(async move {
+    let result = match run_db_future(async move {
         let request = apply_db_auth(
             client
                 .post(url)
@@ -415,7 +440,14 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     }) {
         Ok(text) => Value::String(text),
         Err(e) => Value::String(format!("Error: {}", e)),
+    };
+
+    if let (Some(q), Some(t0)) = (log_query, started) {
+        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        super::query_log::record(q, None, elapsed);
     }
+
+    result
 }
 
 /// Hardcoded query - exact same pattern as HTTP.request for comparison.
