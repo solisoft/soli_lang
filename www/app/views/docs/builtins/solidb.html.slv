@@ -1,0 +1,357 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-in Functions</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Solidb</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Solidb</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            SoliDB client for querying and managing documents. Supports authentication, CRUD operations, collection management, indexes, and blob storage.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Overview</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-400 mb-4">Solidb provides two ways to interact with SoliDB:</p>
+            <ul class="list-disc list-inside text-gray-300 space-y-2">
+                <li><strong class="text-white">Global functions</strong> — <code class="text-emerald-400">solidb_connect</code>, <code class="text-emerald-400">solidb_ping</code>, <code class="text-emerald-400">solidb_auth</code>, <code class="text-emerald-400">solidb_query</code> for quick one-off operations</li>
+                <li><strong class="text-white">Solidb class</strong> — Create an instance with <code class="text-emerald-400">Solidb(host, database)</code> for stateful, chainable operations</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Global Functions -->
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Global Functions</h2>
+        <div class="space-y-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb_connect(address)</h3>
+                <p class="text-gray-400 mb-4">Connect to a SoliDB server and ping it. Returns a status string.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg"><code>solidb_connect("localhost:8080")
+# => "Connected (ping: 1234567890)"</code></pre>
+                <p class="text-gray-500 text-xs mt-3">Parameters: <code class="text-purple-400">address</code> (String) — SoliDB server address</p>
+                <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb_ping(address)</h3>
+                <p class="text-gray-400 mb-4">Ping a SoliDB server and get its timestamp.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg"><code>solidb_ping("localhost:8080")
+# => "1234567890"</code></pre>
+                <p class="text-gray-500 text-xs mt-3">Parameters: <code class="text-purple-400">address</code> (String) — SoliDB server address</p>
+                <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code> — timestamp</p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb_auth(address, database, username, password)</h3>
+                <p class="text-gray-400 mb-4">Authenticate with a SoliDB server.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg"><code>solidb_auth("localhost:8080", "mydb", "admin", "secret")
+# => "Authenticated"</code></pre>
+                <p class="text-gray-500 text-xs mt-3">Parameters: <code class="text-purple-400">address</code> (String), <code class="text-purple-400">database</code> (String), <code class="text-purple-400">username</code> (String), <code class="text-purple-400">password</code> (String)</p>
+                <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb_query(address, database, sdbql, bindvars?)</h3>
+                <p class="text-gray-400 mb-4">Execute a SDBQL query against a database. Returns an array of documents.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg"><code>solidb_query("localhost:8080", "mydb", "FOR u IN users RETURN u")
+# => [{"_key": "123", "name": "Alice", "age": 30}, ...]
+
+solidb_query("localhost:8080", "mydb", "FOR u IN users FILTER u.age > @minAge RETURN u", {"minAge": 18})</code></pre>
+                <p class="text-gray-500 text-xs mt-3">Parameters: <code class="text-purple-400">address</code> (String), <code class="text-purple-400">database</code> (String), <code class="text-purple-400">sdbql</code> (String), <code class="text-purple-400">bindvars</code> (Hash, optional)</p>
+                <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Array</code></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solidb Class -->
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Solidb Class</h2>
+
+        <!-- Constructor -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Constructor</h3>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <code class="text-lg font-mono text-indigo-400">Solidb(host, database)</code>
+                <p class="text-gray-400 mt-3">Create a new Solidb client instance connected to the specified host and database.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-4"><code>let db = Solidb("localhost:8080", "mydb")
+db.auth("admin", "secret")</code></pre>
+            </div>
+        </div>
+
+        <!-- Connection Methods -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Connection Methods</h3>
+            <div class="space-y-4">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.auth(username, password)</code>
+                    <p class="text-gray-400 mt-3">Authenticate with username and password.</p>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">username</code> (String), <code class="text-purple-400">password</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.ping()</code>
+                    <p class="text-gray-400 mt-3">Ping the SoliDB server and get timestamp.</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.connected()</code>
+                    <p class="text-gray-400 mt-3">Check if the instance has been authenticated.</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Bool</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.close()</code>
+                    <p class="text-gray-400 mt-3">Close the connection and release resources.</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Bool</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CRUD Operations -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">CRUD Operations</h3>
+            <div class="space-y-4">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.query(sdbql, bindvars?)</code>
+                    <p class="text-gray-400 mt-3">Execute a SDBQL query.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.query("FOR u IN users FILTER u.active == true RETURN u")
+db.query("FOR u IN users FILTER u.age > @minAge RETURN u", {"minAge": 18})</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">sdbql</code> (String), <code class="text-purple-400">bindvars</code> (Hash, optional)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Array</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.get(collection, key)</code>
+                    <p class="text-gray-400 mt-3">Get a document by key from a collection.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.get("users", "123")
+# => {"_key": "123", "name": "Alice", "age": 30}</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">key</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code> or <code class="text-purple-400">null</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.insert(collection, key?, document)</code>
+                    <p class="text-gray-400 mt-3">Insert a document. Key can be null for auto-generated key.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.insert("users", "123", {"name": "Bob", "age": 25})
+db.insert("users", null, {"name": "Carol", "age": 28})</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">key</code> (String or null), <code class="text-purple-400">document</code> (Hash)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.update(collection, key, document)</code>
+                    <p class="text-gray-400 mt-3">Update a document.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.update("users", "123", {"name": "Alice Smith", "age": 31})</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">key</code> (String), <code class="text-purple-400">document</code> (Hash)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.upsert(collection, key, document)</code>
+                    <p class="text-gray-400 mt-3">Update or insert a document.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.upsert("users", "123", {"name": "Alice", "age": 30})</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">key</code> (String), <code class="text-purple-400">document</code> (Hash)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.delete(collection, key)</code>
+                    <p class="text-gray-400 mt-3">Delete a document.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.delete("users", "123")
+# => "OK"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">key</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.list(collection)</code>
+                    <p class="text-gray-400 mt-3">List documents in a collection (up to 100).</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.list("users")
+# => [{"_key": "123", "name": "Alice"}, {"_key": "124", "name": "Bob"}]</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Array</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collection Management -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Collection Management</h3>
+            <div class="space-y-4">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.create_collection(name, type?)</code>
+                    <p class="text-gray-400 mt-3">Create a new collection. Optional type can be "blob", "columnar", "timeseries", etc.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.create_collection("users")
+db.create_collection("files", "blob")
+# => "Created collection: users"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">name</code> (String), <code class="text-purple-400">type</code> (String, optional)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.drop_collection(name)</code>
+                    <p class="text-gray-400 mt-3">Drop a collection.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.drop_collection("users")
+# => "Dropped collection: users"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">name</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.list_collections()</code>
+                    <p class="text-gray-400 mt-3">List all collections.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.list_collections()
+# => [{"name": "users"}, {"name": "products"}]</code></pre>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Array</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.collection_stats(collection)</code>
+                    <p class="text-gray-400 mt-3">Get statistics for a collection.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.collection_stats("users")
+# => {"count": 150, "indexes": [...]}</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Index Management -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Index Management</h3>
+            <div class="space-y-4">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.create_index(collection, name, fields, options?)</code>
+                    <p class="text-gray-400 mt-3">Create an index. Fields can be an array or single string.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.create_index("users", "idx_email", ["email"], {"unique": true})
+db.create_index("users", "idx_age", "age")
+# => "Created index: idx_email on users"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">name</code> (String), <code class="text-purple-400">fields</code> (Array or String), <code class="text-purple-400">options</code> (Hash, optional)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.drop_index(collection, name)</code>
+                    <p class="text-gray-400 mt-3">Drop an index.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.drop_index("users", "idx_email")
+# => "Dropped index: idx_email from users"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">name</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.list_indexes(collection)</code>
+                    <p class="text-gray-400 mt-3">List indexes for a collection.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.list_indexes("users")
+# => [{"name": "primary"}, {"name": "idx_email"}]</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Array</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blob Storage -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Blob Storage</h3>
+            <div class="space-y-4">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.store_blob(collection, data_base64, filename, content_type)</code>
+                    <p class="text-gray-400 mt-3">Store a blob (base64-encoded data).</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.store_blob("files", "SGVsbG8gV29ybGQ=", "hello.txt", "text/plain")
+# => "blob-id-123"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">data_base64</code> (String), <code class="text-purple-400">filename</code> (String), <code class="text-purple-400">content_type</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code> — blob ID</p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.get_blob(collection, blob_id)</code>
+                    <p class="text-gray-400 mt-3">Get blob data as base64.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.get_blob("files", "blob-id-123")
+# => "SGVsbG8gV29ybGQ="</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">blob_id</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code> — base64 encoded data</p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.get_blob_metadata(collection, blob_id)</code>
+                    <p class="text-gray-400 mt-3">Get blob metadata.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.get_blob_metadata("files", "blob-id-123")
+# => {"filename": "hello.txt", "content_type": "text/plain", "size": 11}</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">blob_id</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+                </div>
+
+                <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                    <code class="text-lg font-mono text-indigo-400">instance.delete_blob(collection, blob_id)</code>
+                    <p class="text-gray-400 mt-3">Delete a blob.</p>
+                    <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.delete_blob("files", "blob-id-123")
+# => "OK"</code></pre>
+                    <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">collection</code> (String), <code class="text-purple-400">blob_id</code> (String)</p>
+                    <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">String</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query Analysis -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-white mb-4">Query Analysis</h3>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+                <code class="text-lg font-mono text-indigo-400">instance.explain(sdbql, bindvars?)</code>
+                <p class="text-gray-400 mt-3">Get the query execution plan without running the query.</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg mt-2"><code>db.explain("FOR u IN users FILTER u.age > @minAge RETURN u", {"minAge": 18})
+# => {"plan": {...}, "variables": [...]}</code></pre>
+                <p class="text-gray-500 text-xs mt-2">Parameters: <code class="text-purple-400">sdbql</code> (String), <code class="text-purple-400">bindvars</code> (Hash, optional)</p>
+                <p class="text-gray-500 text-xs">Returns: <code class="text-purple-400">Hash</code></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Example -->
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Example</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto bg-black/30 p-4 rounded-lg"><code># Connect and authenticate
+let db = Solidb("localhost:8080", "mydb")
+db.auth("admin", "secret")
+
+# Create a collection
+db.create_collection("users")
+
+# Create an index
+db.create_index("users", "idx_email", ["email"], {"unique": true})
+
+# Insert documents
+db.insert("users", "1", {"name": "Alice", "email": "alice@example.com", "age": 30})
+db.insert("users", "2", {"name": "Bob", "email": "bob@example.com", "age": 25})
+
+# Query documents
+let active_users = db.query("FOR u IN users FILTER u.age > 18 RETURN u")
+print(active_users)
+
+# Get a single document
+let user = db.get("users", "1")
+print(user["name"])  # "Alice"
+
+# Update a document
+db.update("users", "1", {"age": 31})
+
+# List all documents
+let all_users = db.list("users")
+print("Total users: " + str(len(all_users)))
+
+# Clean up
+db.close()</code></pre>
+        </div>
+    </section>
+</div>

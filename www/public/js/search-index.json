@@ -734,6 +734,79 @@
       ]
     },
     {
+      "title": "Solidb",
+      "type": "class",
+      "category": "Solidb",
+      "path": "/docs/builtins/solidb",
+      "signature": "Solidb(host, database)",
+      "description": "SoliDB client for document storage, CRUD operations, collection management, indexes, and blob storage",
+      "keywords": [
+        "solidb",
+        "database",
+        "db",
+        "document",
+        "collection",
+        "blob",
+        "storage"
+      ]
+    },
+    {
+      "title": "solidb_connect",
+      "type": "function",
+      "category": "Solidb",
+      "path": "/docs/builtins/solidb",
+      "signature": "solidb_connect(address)",
+      "description": "Connect to a SoliDB server and ping it",
+      "keywords": [
+        "solidb",
+        "connect",
+        "database",
+        "db"
+      ]
+    },
+    {
+      "title": "solidb_ping",
+      "type": "function",
+      "category": "Solidb",
+      "path": "/docs/builtins/solidb",
+      "signature": "solidb_ping(address)",
+      "description": "Ping a SoliDB server and get its timestamp",
+      "keywords": [
+        "solidb",
+        "ping",
+        "database"
+      ]
+    },
+    {
+      "title": "solidb_auth",
+      "type": "function",
+      "category": "Solidb",
+      "path": "/docs/builtins/solidb",
+      "signature": "solidb_auth(address, database, username, password)",
+      "description": "Authenticate with a SoliDB server",
+      "keywords": [
+        "solidb",
+        "auth",
+        "database",
+        "authenticate"
+      ]
+    },
+    {
+      "title": "solidb_query",
+      "type": "function",
+      "category": "Solidb",
+      "path": "/docs/builtins/solidb",
+      "signature": "solidb_query(address, database, sdbql, bindvars?)",
+      "description": "Execute a SDBQL query against a database",
+      "keywords": [
+        "solidb",
+        "query",
+        "sdbql",
+        "database",
+        "search"
+      ]
+    },
+    {
       "title": "JSON.parse",
       "type": "method",
       "category": "JSON",

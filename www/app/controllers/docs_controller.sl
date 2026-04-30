@@ -326,6 +326,10 @@ fn builtins_kv(req)
     render_docs("docs/builtins/kv", "KV Store", "builtins", "kv")
 end
 
+fn builtins_solidb(req)
+    render_docs("docs/builtins/solidb", "Solidb", "builtins", "solidb")
+end
+
 fn builtins_rate_limit(req)
     render_docs("docs/builtins/rate-limit", "Rate Limiting Functions", "builtins", "rate_limit")
 end
