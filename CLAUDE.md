@@ -399,6 +399,17 @@ cargo clippy -- -D warnings
 cargo fmt
 ```
 
+## Local Deploy
+
+After making changes to the Rust interpreter, deploy the new `soli` binary locally so dev projects pick it up:
+
+```bash
+cargo install --path .   # rebuild + install the `soli` binary into ~/.cargo/bin
+pdev                     # restart the local Soli dev server with the new binary
+```
+
+Run both whenever a change in `src/` needs to be exercised through a running Soli app (dev bar, builtins, server behavior, etc.).
+
 ## Releasing
 
 Use `scripts/release.sh` to create a new release. It bumps `Cargo.toml`, commits, tags, and pushes — CI handles the rest (binaries, GitHub release, Docker image).
