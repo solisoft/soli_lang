@@ -382,8 +382,8 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 
     format!(
         "<!-- {marker} -->\
-<aside id=\"__solidev_bar\" style=\"position:fixed;bottom:0;left:0;right:0;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0b0d0f;color:#c9d1d9;border-top:1px solid #30363d;\">\
-<div style=\"display:flex;align-items:center;gap:0.75rem;padding:0.375rem 0.75rem;overflow-x:auto;white-space:nowrap;\">\
+<aside id=\"__solidev_bar\" style=\"position:fixed;bottom:0;left:0;right:0;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0b0d0f;color:#c9d1d9;border-top:1px solid #30363d;max-height:100vh;overflow-y:auto;\">\
+<div style=\"display:flex;align-items:center;gap:0.75rem;padding:0.375rem 0.75rem;overflow-x:auto;white-space:nowrap;position:sticky;top:0;background:#0b0d0f;z-index:1;border-bottom:1px solid #30363d;\">\
 <span style=\"padding:0 0.375rem;border-radius:0.25rem;background:#3a2a00;color:#f0c674;\" title=\"APP_ENV\">DEV · {env}</span>\
 <span style=\"color:#30363d;\">|</span>\
 <span title=\"HTTP method · path\"><span style=\"color:#8be9fd;\">{method}</span> <span style=\"color:#e6e6e6;\">{path}</span></span>\
