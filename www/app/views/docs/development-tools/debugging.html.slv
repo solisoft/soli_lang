@@ -34,8 +34,12 @@
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">4</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">AQL Query Log</span>
             </a>
+            <a href="#dev-bar-flamegraph" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-sm font-mono">5</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Flamegraph</span>
+            </a>
             <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">5</span>
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
             </a>
         </div>
@@ -340,6 +344,68 @@ end</code></pre>
                 </div>
             </div>
         </div>
+    </section>
+
+    <!-- Section 4b: Dev Bar Flamegraph -->
+    <section id="dev-bar-flamegraph" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.24 17 7.341 18.1 9.5 18.1 11.5 17 13c-1.5 2-3 1-3-1 0-1 1-2 1-2-2 0-3 1-3 3 0 2 1 4 3 5z" />
+                </svg>
+            </span>
+            Per-request Flamegraph
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Click <code class="text-pink-400">flame</code> in the dev bar to expand a hierarchical flamegraph of every span captured during the request — middleware, before/after actions, controller dispatch, view, partials, every Soli function call, plus DB and HTTP. Hover any rectangle for an exact duration; click to zoom in; double-click to reset.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">What gets captured</h3>
+        <p class="text-gray-400 mb-4">
+            Spans are emitted at well-known framework wrap points and at every interpreter-level function call. Color encodes the kind:
+        </p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Kind</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Color</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Source</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr><td class="py-2 px-4 font-mono text-amber-300">middleware</td><td class="py-2 px-4 text-gray-400">amber</td><td class="py-2 px-4 text-gray-400">Each scoped or global middleware invocation</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-amber-200">before_action / after_action</td><td class="py-2 px-4 text-gray-400">dim amber</td><td class="py-2 px-4 text-gray-400">Per controller hook fire</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-cyan-300">action</td><td class="py-2 px-4 text-gray-400">cyan</td><td class="py-2 px-4 text-gray-400">Top-level handler dispatch (e.g. <code>posts#show</code>)</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-emerald-300">view / partial</td><td class="py-2 px-4 text-gray-400">green</td><td class="py-2 px-4 text-gray-400">Each <code>render(...)</code> / <code>render_partial(...)</code></td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-purple-300">db</td><td class="py-2 px-4 text-gray-400">purple</td><td class="py-2 px-4 text-gray-400">Each AQL query (name = first 80 chars)</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-pink-300">http</td><td class="py-2 px-4 text-gray-400">pink</td><td class="py-2 px-4 text-gray-400">Each outbound <code>HTTP.*</code> call</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-gray-400">fn</td><td class="py-2 px-4 text-gray-400">slate</td><td class="py-2 px-4 text-gray-400">Every Soli function call (interpreter path)</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Export to Perfetto / chrome://tracing</h3>
+        <p class="text-gray-400 mb-4">
+            The flame panel includes a <code class="text-cyan-400">⬇ trace.json</code> link that downloads the same data as Chrome Trace Event Format JSON. Drop the file into <a href="https://ui.perfetto.dev/" class="text-cyan-400 hover:underline">ui.perfetto.dev</a> or open <code>chrome://tracing</code> for full timeline navigation, search, and aggregation across spans.
+        </p>
+
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p class="text-amber-300 text-sm">
+                <strong>Production-safe.</strong> The flamegraph capture is gated on <code>--dev</code>: every span hook short-circuits on a thread-local enable flag, so production servers don't pay the cost. The panel is only injected into <code>text/html</code> responses, never into JSON or other content types.
+            </p>
+        </div>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Reading the chart</h3>
+        <p class="text-gray-400 mb-4">
+            The X-axis is request time in microseconds (0 = request start). Y-axis is stack depth: parents are above their children. A wide rectangle near the top is a slow phase; a wide rectangle deep in the chart is a slow function. Look for:
+        </p>
+        <ul class="list-disc pl-6 mb-6 space-y-2 text-gray-400">
+            <li>A view rectangle that spans most of the request → <code>render</code> dominates; check the partial breakdown row in the render panel.</li>
+            <li>Many narrow purple rectangles at the same depth → likely an N+1; the AQL panel will flag it.</li>
+            <li>A very wide cyan <code>action</code> with thin children → time is spent in user code outside the framework hooks; turn on the <code>fn</code> spans (always on under <code>--dev</code>) and zoom in to find the hot function.</li>
+        </ul>
     </section>
 
     <!-- Section 5: Development Mode -->

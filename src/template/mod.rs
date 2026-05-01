@@ -84,6 +84,14 @@ impl TemplateCache {
         // `flash`, and the scaffolded layout references them directly.
         let _guard = crate::interpreter::executor::enter_template_lenient_vars();
 
+        // Per-template span for the dev-bar flamegraph + flat per-template
+        // duration log. Both early-out when --dev is off.
+        let _span = crate::serve::span_log::SpanGuard::start(
+            template_name,
+            crate::serve::span_log::SpanKind::View,
+        );
+        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
 
@@ -115,7 +123,7 @@ impl TemplateCache {
         };
 
         // Apply layout if specified, reusing the same interpreter
-        match layout {
+        let result = match layout {
             Some(Some(layout_name)) => self.render_layout_with_shared_interpreter(
                 &mut interpreter,
                 &content,
@@ -142,11 +150,22 @@ impl TemplateCache {
                     )
                 }
             }
+        };
+        if let Some(start) = view_start {
+            crate::serve::view_log::record(template_name, start.elapsed().as_micros() as u64);
         }
+        result
     }
 
     /// Render a partial template (no layout).
     pub fn render_partial(&self, name: &str, data: &Value) -> Result<String, String> {
+        // Per-partial span + view-log entry, matching `render` above.
+        let _span = crate::serve::span_log::SpanGuard::start(
+            name,
+            crate::serve::span_log::SpanKind::Partial,
+        );
+        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+
         // Partials start with underscore
         let partial_name = if name.contains('/') {
             // e.g., "users/card" -> "users/_card"
@@ -175,11 +194,15 @@ impl TemplateCache {
         )?;
 
         // If the partial is a markdown file, convert to HTML
-        if is_markdown_template(&template_path) {
-            Ok(markdown_to_html(&content))
+        let result = if is_markdown_template(&template_path) {
+            markdown_to_html(&content)
         } else {
-            Ok(content)
+            content
+        };
+        if let Some(start) = view_start {
+            crate::serve::view_log::record(name, start.elapsed().as_micros() as u64);
         }
+        Ok(result)
     }
 
     /// Render content with a named layout, reusing an existing interpreter.
@@ -204,7 +227,17 @@ impl TemplateCache {
             &layout_template
         };
 
-        match self.resolve_template_path(layout_key) {
+        // Per-layout span + view-log entry, matching `render` and
+        // `render_partial`. The recorded name is the resolved layout key
+        // (e.g. "layouts/application") so it's distinguishable from the
+        // top-level template in the dev-bar sub-row list.
+        let _span = crate::serve::span_log::SpanGuard::start(
+            layout_key,
+            crate::serve::span_log::SpanKind::View,
+        );
+        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+
+        let result = match self.resolve_template_path(layout_key) {
             Ok(layout_path) => {
                 let layout_nodes = self.get_or_load_template(&layout_path)?;
                 let layout_path_str = layout_path.to_string_lossy();
@@ -221,7 +254,13 @@ impl TemplateCache {
                 // No layout file, return content as-is
                 Ok(content.to_string())
             }
+        };
+
+        if let Some(start) = view_start {
+            crate::serve::view_log::record(layout_key, start.elapsed().as_micros() as u64);
         }
+
+        result
     }
 
     /// Resolve a template name to a file path (cached).

@@ -353,15 +353,29 @@ impl Interpreter {
         });
         self.call_stack.push(StackFrame {
             function_name: function_name.to_string(),
-            file_path,
+            file_path: file_path.clone(),
             line: span.line,
             column: span.column,
         });
+        // Deep-mode flamegraph hook: every Soli function call gets a span.
+        // No-op when --dev is off (gated inside push_fn). The source
+        // location goes into `meta` so anonymous lambdas (which carry an
+        // empty `function_name`) still show *where* in the source they
+        // came from in the flamegraph tooltip.
+        let meta = file_path.as_ref().map(|p| {
+            if span.line > 0 {
+                format!("{}:{}", p, span.line)
+            } else {
+                p.clone()
+            }
+        });
+        crate::serve::span_log::push_fn(function_name, meta);
     }
 
     /// Pop a frame from the call stack.
     pub(crate) fn pop_frame(&mut self) {
         self.call_stack.pop();
+        crate::serve::span_log::pop_fn();
     }
 
     /// Get the current file path from the call stack (top frame) or fallback to current_source_path.

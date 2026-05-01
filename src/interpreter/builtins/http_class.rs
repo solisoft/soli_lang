@@ -232,13 +232,24 @@ async fn send_logged(
     url: &str,
     builder: reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, String> {
-    let logging = crate::interpreter::builtins::http_log::is_enabled();
+    // Either log enables timing capture — http_log for the queries panel,
+    // span_log for the flamegraph. They share the same `start` instant.
+    let logging = crate::interpreter::builtins::http_log::is_enabled()
+        || crate::serve::span_log::is_enabled();
     let start = logging.then(std::time::Instant::now);
     match builder.send().await {
         Ok(resp) => {
             if let Some(s) = start {
                 let dur = s.elapsed().as_secs_f64() * 1000.0;
                 let status = resp.status().as_u16();
+                let span_name = format!("{} {}", method, url);
+                crate::serve::span_log::record(
+                    &span_name,
+                    crate::serve::span_log::SpanKind::Http,
+                    s,
+                    s.elapsed().as_micros() as u64,
+                    None,
+                );
                 crate::interpreter::builtins::http_log::record(
                     method.to_string(),
                     url.to_string(),
@@ -253,6 +264,14 @@ async fn send_logged(
             let msg = e.to_string();
             if let Some(s) = start {
                 let dur = s.elapsed().as_secs_f64() * 1000.0;
+                let span_name = format!("{} {}", method, url);
+                crate::serve::span_log::record(
+                    &span_name,
+                    crate::serve::span_log::SpanKind::Http,
+                    s,
+                    s.elapsed().as_micros() as u64,
+                    Some(msg.clone()),
+                );
                 crate::interpreter::builtins::http_log::record(
                     method.to_string(),
                     url.to_string(),

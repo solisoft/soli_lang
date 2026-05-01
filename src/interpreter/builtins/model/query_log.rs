@@ -40,6 +40,11 @@ pub fn record(
     bind_vars: Option<HashMap<String, serde_json::Value>>,
     duration_ms: f64,
 ) {
+    // Note: the matching `span_log::record(SpanKind::Db, …)` is emitted
+    // at the actual call site in `crud.rs::exec_async_query_*`, where
+    // the original `Instant` is in scope. Recording it here too would
+    // produce two db spans per query (one accurate, one back-dated).
+
     LOG.with(|l| {
         l.borrow_mut().push(LoggedQuery {
             query,

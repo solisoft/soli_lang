@@ -387,6 +387,15 @@ pub fn exec_async_query_with_binds(
 
     if let (Some(q), Some(t0)) = (log_query, started) {
         let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        let dur_us = (elapsed * 1000.0).max(0.0) as u64;
+        let span_name: String = q.chars().take(80).collect();
+        crate::serve::span_log::record(
+            &span_name,
+            crate::serve::span_log::SpanKind::Db,
+            t0,
+            dur_us,
+            None,
+        );
         super::query_log::record(q, log_binds, elapsed);
     }
 
@@ -452,6 +461,15 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 
     if let (Some(q), Some(t0)) = (log_query, started) {
         let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        let dur_us = (elapsed * 1000.0).max(0.0) as u64;
+        let span_name: String = q.chars().take(80).collect();
+        crate::serve::span_log::record(
+            &span_name,
+            crate::serve::span_log::SpanKind::Db,
+            t0,
+            dur_us,
+            None,
+        );
         super::query_log::record(q, None, elapsed);
     }
 

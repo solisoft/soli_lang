@@ -16,7 +16,9 @@ pub mod phase_log;
 pub mod prefetch;
 mod router;
 mod server_constants;
+pub mod span_log;
 mod uploads_prelude;
+pub mod view_log;
 pub mod websocket;
 
 // Modularized subcomponents
@@ -1163,6 +1165,8 @@ fn worker_loop(
     // Phase timers (middleware/view) for the render-breakdown panel.
     phase_log::set_enabled(dev_mode);
     middleware_log::set_enabled(dev_mode);
+    view_log::set_enabled(dev_mode);
+    span_log::set_enabled(dev_mode);
 
     // Load middleware in this worker (needed for scoped middleware resolution by name)
     {
@@ -2900,6 +2904,10 @@ fn call_handler(
     dev_mode: bool,
     request_data: &RequestData,
 ) -> ResponseData {
+    // One span per dispatched handler — covers before_action + method body
+    // + after_action so they nest as children. Cheap when --dev is off.
+    let _action_span = span_log::SpanGuard::start(handler_name, span_log::SpanKind::Action);
+
     // Expose req["all"] as global `params` so handlers/views can reference it directly.
     // Default to an empty hash (not Null) so callers can safely index into it.
     let params_value = get_hash_field(&request_hash, "all")
@@ -3359,6 +3367,7 @@ fn invoke_middleware_with_frame(
     request_hash: Value,
 ) -> Result<Value, RuntimeError> {
     let _phase = phase_log::PhaseTimer::start("middleware");
+    let _span = span_log::SpanGuard::start(name, span_log::SpanKind::Middleware);
     let per_mw_start = middleware_log::is_enabled().then(std::time::Instant::now);
     interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
     if let Some(path) = source_path {
@@ -3512,6 +3521,11 @@ fn execute_before_actions(
             continue;
         }
 
+        let _ba_span = span_log::SpanGuard::start_with_meta(
+            "before_action",
+            span_log::SpanKind::BeforeAction,
+            Some(action_name.to_string()),
+        );
         // Execute the before_action handler
         match crate::interpreter::builtins::controller::registry::execute_handler_source(
             &before_action.handler_source,
@@ -3580,6 +3594,11 @@ fn execute_after_actions(
             continue;
         }
 
+        let _aa_span = span_log::SpanGuard::start_with_meta(
+            "after_action",
+            span_log::SpanKind::AfterAction,
+            Some(action_name.to_string()),
+        );
         // Execute the after_action handler
         match crate::interpreter::builtins::controller::registry::execute_after_handler_source(
             &after_action.handler_source,
@@ -3847,6 +3866,8 @@ fn handle_request(
         crate::interpreter::builtins::http_log::clear();
         phase_log::clear();
         middleware_log::clear();
+        view_log::clear();
+        span_log::clear();
     }
 
     let method = &data.method;
@@ -3870,6 +3891,12 @@ fn handle_request(
     // Independent timer for the dev bar. Always on when dev_mode is on so the
     // injected bar can show server-side render time. Cheap when off.
     let dev_started = if dev_mode { Some(Instant::now()) } else { None };
+
+    // Anchor the span log to this request's start so every span's
+    // `start_us` / `end_us` is encoded as microseconds-since-request-start.
+    if let Some(t) = dev_started {
+        span_log::begin_request(t);
+    }
 
     // Resolve the session ID from the Cookie header (if any). When no cookie is
     // sent, we leave the thread-local unset — session_set / session_regenerate
@@ -4045,6 +4072,8 @@ fn handle_request(
                     let http_requests = crate::interpreter::builtins::http_log::snapshot();
                     let phases = phase_log::snapshot();
                     let middlewares = middleware_log::snapshot();
+                    let views = view_log::snapshot();
+                    let spans = span_log::snapshot();
                     let ctx = dev_bar::DevBarContext {
                         method: method.as_ref(),
                         path: path.as_str(),
@@ -4054,6 +4083,8 @@ fn handle_request(
                         http_requests,
                         phases,
                         middlewares,
+                        views,
+                        spans,
                     };
                     resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into_bytes();
                 }

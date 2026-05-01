@@ -36,6 +36,25 @@ pub fn clear() {
 }
 
 pub fn record(method: String, url: String, status: u16, duration_ms: f64, error: Option<String>) {
+    // Mirror this call as a span so it shows up in the dev-bar flamegraph
+    // nested under whatever action / view fired it. Span_log is its own
+    // gate, so this is a no-op when --dev is off.
+    if crate::serve::span_log::is_enabled() {
+        let dur_us = (duration_ms * 1000.0).max(0.0) as u64;
+        // Anchor the span "end" to now and back-date the start by the
+        // measured duration — close enough for visualisation, since the
+        // call site doesn't expose the original start instant here.
+        let start = std::time::Instant::now() - std::time::Duration::from_micros(dur_us);
+        let name = format!("{} {}", method, url);
+        crate::serve::span_log::record(
+            &name,
+            crate::serve::span_log::SpanKind::Http,
+            start,
+            dur_us,
+            error.clone(),
+        );
+    }
+
     LOG.with(|l| {
         l.borrow_mut().push(LoggedHttpRequest {
             method,
