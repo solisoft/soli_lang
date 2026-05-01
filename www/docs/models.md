@@ -164,6 +164,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.includes(rel, ...)` | Eager load relations (returns QueryBuilder) |
 | `Model.includes(rel, filter, binds)` | Eager load with filter condition (returns QueryBuilder) |
 | `Model.includes({ rel: [fields] })` | Eager load with field selection (returns QueryBuilder) |
+| `Model.includes_count(rel, ...)` | Eager load `<rel>_count` field per parent (HasMany/HABTM only) |
 | `Model.select(field, ...)` | Select specific fields (returns QueryBuilder) |
 | `Model.fields(field, ...)` | Alias for `select()` (returns QueryBuilder) |
 | `Model.join(rel, filter?, binds?)` | Filter by related existence (returns QueryBuilder) |
@@ -190,6 +191,7 @@ let count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.includes(rel, ...)` | Eager load relations via subqueries |
 | `.includes(rel, filter, binds)` | Eager load with filter and optional `"fields"` key |
 | `.includes({ rel: [fields] })` | Eager load with field projection |
+| `.includes_count(rel, ...)` | Eager load count as `<rel>_count` (HasMany/HABTM only) |
 | `.select(field, ...)` | Select specific fields on the main collection |
 | `.fields(field, ...)` | Alias for `.select()` |
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |
@@ -419,6 +421,8 @@ print(User.includes("posts").to_query)
 - `has_many` includes return an array of related documents
 - `has_one` and `belongs_to` includes return a single document (via `FIRST()`)
 
+After `.all()`, the preloaded data is cached on each instance: subsequent `instance.<rel>` reads return the cached value without issuing another query. This applies to `has_and_belongs_to_many`, `belongs_to`, `has_one`, and polymorphic relations. (`has_many` accessors still return a chainable `QueryBuilder`, so they are not served from the preload cache — use `.where(...).all()` if you want a materialised array.)
+
 ### Join Filtering
 
 Filter records by the existence of related records. Unlike `includes`, `join` does **not** preload the related data — it only filters:
@@ -480,6 +484,27 @@ let users = User.includes("posts", "published = @p", { "p": true })
   .includes("profile")
   .all()
 ```
+
+### Counting Relations (includes_count)
+
+When you only need the *count* of a relation (not the rows), `.includes_count()` adds a single `LET _rel_<name>_count = LENGTH(...)` subquery to the parent and exposes the result as a `<name>_count` field on each instance. Cheaper than `.includes()` when you only render counts:
+
+```soli
+# Each Category gets a `products_count` integer field, in one round-trip
+let cats = Category.includes_count("products").all()
+print(cats[0].products_count)
+# => 3
+
+# Combine with .includes() and other chain steps
+let q = Author.where("active = @a", { "a": true })
+  .includes("profile")
+  .includes_count("posts")
+  .order("name", "asc")
+  .all()
+```
+
+- Only valid for `has_many` and `has_and_belongs_to_many` relations. Calling it on `belongs_to`, `has_one`, or polymorphic relations raises an error at registration time (the count is always 0 or 1, so the API doesn't earn its keep there).
+- The exposed field is always `<relation_name>_count`. Reads are O(1) — it's just an integer field on the instance, no extra query.
 
 ### Field Selection (select / fields)
 

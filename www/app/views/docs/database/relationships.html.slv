@@ -217,6 +217,12 @@ print(User.includes("posts").to_query)</code></pre>
         </p>
     </div>
 
+    <div class="my-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-12">
+        <p class="text-emerald-300 text-sm">
+            After <code>.all()</code>, the preloaded data is cached on each instance: subsequent <code>instance.&lt;rel&gt;</code> reads return the cached value without issuing another query. This applies to <code>has_and_belongs_to_many</code>, <code>belongs_to</code>, <code>has_one</code>, and polymorphic relations. (<code>has_many</code> accessors still return a chainable <code>QueryBuilder</code>, so they aren't served from the preload cache — use <code>.where(...).all()</code> if you want a materialised array.)
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Join Filtering</h2>
     <p class="text-gray-400 mb-4">
         Filter records by the existence of related records. Unlike <code>includes</code>, <code>join</code> does <strong class="text-white">not</strong> preload the related data &mdash; it only filters the parent records:
@@ -271,6 +277,33 @@ let users = User.includes("posts", "published = @p", { "p": true })
   .includes("profile")
   .all</code></pre>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Counting Relations (includes_count)</h2>
+    <p class="text-gray-400 mb-4">
+        When you only need the count of a relation (not the rows), <code>.includes_count()</code> adds a single <code>LET _rel_&lt;name&gt;_count = LENGTH(...)</code> subquery to the parent and exposes the result as a <code>&lt;name&gt;_count</code> field on each instance. Cheaper than <code>.includes()</code> when you only render counts:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Each Category gets a `products_count` integer field, in one round-trip
+let cats = Category.includes_count("products").all
+print(cats[0].products_count)
+# => 3
+
+# Combine with .includes() and other chain steps
+let q = Author.where("active = @a", { "a": true })
+  .includes("profile")
+  .includes_count("posts")
+  .order("name", "asc")
+  .all</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-300 text-sm">
+            Only valid for <code>has_many</code> and <code>has_and_belongs_to_many</code> relations. Calling it on <code>belongs_to</code>, <code>has_one</code>, or polymorphic relations raises an error at registration time (the count is always 0 or 1, so the API doesn't earn its keep there). The exposed field is always <code>&lt;relation_name&gt;_count</code> — reads are O(1) since it's just an integer field on the instance.
+        </p>
     </div>
 
     <section id="habtm" class="scroll-mt-20 mb-6">

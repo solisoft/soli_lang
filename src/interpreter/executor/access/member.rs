@@ -676,6 +676,88 @@ impl Interpreter {
         if inst_ref.class.is_model_subclass() {
             let class_name = &inst_ref.class.name;
             if let Some(relation) = get_relation(class_name, name) {
+                // Preload-cache fast path: when .includes(:rel) merged the
+                // relation rows into instance.fields[name], serve them from
+                // there instead of issuing another query. HasMany is left
+                // alone — it always returns a chainable QueryBuilder so
+                // callers can do user.posts.where(...).count etc. The
+                // labeled block lets us bail out (`break 'fast`) into the
+                // existing live-query path on shapes we don't recognise.
+                'fast: {
+                    if matches!(relation.relation_type, RelationType::HasMany) {
+                        break 'fast;
+                    }
+                    let preloaded = match inst_ref.get(name) {
+                        Some(v) => v,
+                        None => break 'fast,
+                    };
+                    // Already converted on a previous access — return as-is.
+                    if matches!(&preloaded, Value::Instance(_)) {
+                        return Ok(preloaded);
+                    }
+                    match relation.relation_type {
+                        RelationType::BelongsTo
+                        | RelationType::HasOne
+                        | RelationType::Polymorphic => {
+                            // FIRST([]) → null; no row, no query.
+                            if matches!(&preloaded, Value::Null) {
+                                return Ok(Value::Null);
+                            }
+                            if matches!(&preloaded, Value::Hash(_)) {
+                                let json = match value_to_json(&preloaded) {
+                                    Ok(j) => j,
+                                    Err(_) => break 'fast,
+                                };
+                                let target_class =
+                                    crate::interpreter::builtins::model::get_model_class(
+                                        &relation.class_name,
+                                    )
+                                    .unwrap_or_else(|| inst_ref.class.clone());
+                                drop(inst_ref);
+                                let converted = json_doc_to_instance(&target_class, &json);
+                                inst.borrow_mut().set(name.to_string(), converted.clone());
+                                return Ok(converted);
+                            }
+                        }
+                        RelationType::HasAndBelongsToMany => {
+                            if let Value::Array(arr) = &preloaded {
+                                let needs_conversion = arr
+                                    .borrow()
+                                    .iter()
+                                    .any(|v| matches!(v, Value::Hash(_)));
+                                if !needs_conversion {
+                                    return Ok(preloaded);
+                                }
+                                let target_class =
+                                    crate::interpreter::builtins::model::get_model_class(
+                                        &relation.class_name,
+                                    )
+                                    .unwrap_or_else(|| inst_ref.class.clone());
+                                let converted: Vec<Value> = arr
+                                    .borrow()
+                                    .iter()
+                                    .map(|v| {
+                                        if matches!(v, Value::Hash(_)) {
+                                            if let Ok(json) = value_to_json(v) {
+                                                return json_doc_to_instance(
+                                                    &target_class,
+                                                    &json,
+                                                );
+                                            }
+                                        }
+                                        v.clone()
+                                    })
+                                    .collect();
+                                drop(inst_ref);
+                                let result = Value::Array(Rc::new(RefCell::new(converted)));
+                                inst.borrow_mut().set(name.to_string(), result.clone());
+                                return Ok(result);
+                            }
+                        }
+                        RelationType::HasMany => break 'fast,
+                    }
+                    // Unrecognised preloaded shape — let the live path run.
+                }
                 drop(inst_ref);
 
                 // Get the foreign key value based on relation type
@@ -1501,7 +1583,7 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "includes" | "join" | "select" | "fields"
+            "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"
             | "all" | "first" | "count" | "delete_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by"
             // Enumerable-style array passthrough — materializes on call.

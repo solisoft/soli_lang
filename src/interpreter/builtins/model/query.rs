@@ -24,6 +24,16 @@ pub struct IncludeClause {
     pub fields: Option<Vec<String>>,
 }
 
+/// A count-only eager-load clause. Emits `LET _rel_<alias> = LENGTH(...)`
+/// and merges the count under `<alias>` on the parent doc. Only valid for
+/// HasMany and HABTM; singular relations are rejected at registration time.
+#[derive(Debug, Clone)]
+pub struct IncludeCountClause {
+    pub relation_name: String,
+    pub relation: RelationDef,
+    pub alias: String,
+}
+
 /// A join-filter clause for a relation (existence check).
 #[derive(Debug, Clone)]
 pub struct JoinClause {
@@ -58,6 +68,7 @@ pub struct QueryBuilder {
     pub limit_val: Option<usize>,
     pub offset_val: Option<usize>,
     pub includes: Vec<IncludeClause>,
+    pub includes_counts: Vec<IncludeCountClause>,
     pub joins: Vec<JoinClause>,
     pub select_fields: Option<Vec<String>>,
     pub pluck_fields: Option<Vec<String>>,
@@ -85,6 +96,7 @@ impl QueryBuilder {
             limit_val: None,
             offset_val: None,
             includes: Vec::new(),
+            includes_counts: Vec::new(),
             joins: Vec::new(),
             select_fields: None,
             pluck_fields: None,
@@ -110,6 +122,7 @@ impl QueryBuilder {
             limit_val: None,
             offset_val: None,
             includes: Vec::new(),
+            includes_counts: Vec::new(),
             joins: Vec::new(),
             select_fields: None,
             pluck_fields: None,
@@ -145,6 +158,32 @@ impl QueryBuilder {
 
     pub fn set_offset(&mut self, offset: usize) {
         self.offset_val = Some(offset);
+    }
+
+    /// Register a count-only eager load. Returns Err for singular relations
+    /// (BelongsTo, HasOne, Polymorphic) where a count is always 0 or 1 and
+    /// the API would just add noise.
+    pub fn add_include_count(
+        &mut self,
+        relation_name: String,
+        relation: RelationDef,
+    ) -> Result<(), String> {
+        match relation.relation_type {
+            RelationType::HasMany | RelationType::HasAndBelongsToMany => {}
+            _ => {
+                return Err(format!(
+                    "includes_count('{}') is only supported for has_many and has_and_belongs_to_many relations",
+                    relation_name
+                ));
+            }
+        }
+        let alias = format!("{}_count", relation_name);
+        self.includes_counts.push(IncludeCountClause {
+            relation_name,
+            relation,
+            alias,
+        });
+        Ok(())
     }
 
     pub fn add_include(
@@ -233,6 +272,9 @@ impl QueryBuilder {
         for inc in &self.includes {
             query.push_str(&Self::build_include_subquery(inc));
         }
+        for inc in &self.includes_counts {
+            query.push_str(&Self::build_include_count_subquery(inc));
+        }
 
         if let Some((field, direction)) = &self.order_by {
             let field_str = crate::interpreter::symbol_string(*field).unwrap_or("unknown");
@@ -274,10 +316,10 @@ impl QueryBuilder {
             "doc".to_string()
         };
 
-        if self.includes.is_empty() {
+        if self.includes.is_empty() && self.includes_counts.is_empty() {
             query.push_str(&format!(" RETURN {}", doc_return));
         } else {
-            let merge_fields: Vec<String> = self
+            let mut merge_fields: Vec<String> = self
                 .includes
                 .iter()
                 .map(|inc| {
@@ -294,6 +336,10 @@ impl QueryBuilder {
                     }
                 })
                 .collect();
+            for inc in &self.includes_counts {
+                let var_name = format!("_rel_{}", inc.alias);
+                merge_fields.push(format!("{}: {}", inc.alias, var_name));
+            }
             query.push_str(&format!(
                 " RETURN MERGE({}, {{{}}})",
                 doc_return,
@@ -460,6 +506,32 @@ impl QueryBuilder {
         format!(
             " FILTER LENGTH(FOR rel IN {} FILTER {} LIMIT 1 RETURN 1) > 0",
             rel.collection, subquery_filter
+        )
+    }
+
+    /// Build a ` LET _rel_<alias> = LENGTH(...)` clause for a count-only
+    /// include. Only HasMany and HABTM are reachable here (rejected at
+    /// registration otherwise).
+    pub(crate) fn build_include_count_subquery(inc: &IncludeCountClause) -> String {
+        let rel = &inc.relation;
+        let var_name = format!("_rel_{}", inc.alias);
+
+        if rel.relation_type == RelationType::HasAndBelongsToMany {
+            let join_table = rel.join_table.as_deref().unwrap_or("");
+            return format!(
+                " LET {var} = LENGTH(FOR jt IN {jt} FILTER jt.{owner_fk} == doc._key RETURN 1)",
+                var = var_name,
+                jt = join_table,
+                owner_fk = rel.foreign_key,
+            );
+        }
+
+        // HasMany
+        format!(
+            " LET {var} = LENGTH(FOR rel IN {coll} FILTER rel.{fk} == doc._key RETURN 1)",
+            var = var_name,
+            coll = rel.collection,
+            fk = rel.foreign_key,
         )
     }
 
