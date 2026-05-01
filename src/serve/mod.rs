@@ -11,6 +11,7 @@ mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
+pub mod middleware_log;
 pub mod phase_log;
 pub mod prefetch;
 mod router;
@@ -1161,6 +1162,7 @@ fn worker_loop(
 
     // Phase timers (middleware/view) for the render-breakdown panel.
     phase_log::set_enabled(dev_mode);
+    middleware_log::set_enabled(dev_mode);
 
     // Load middleware in this worker (needed for scoped middleware resolution by name)
     {
@@ -3357,12 +3359,16 @@ fn invoke_middleware_with_frame(
     request_hash: Value,
 ) -> Result<Value, RuntimeError> {
     let _phase = phase_log::PhaseTimer::start("middleware");
+    let per_mw_start = middleware_log::is_enabled().then(std::time::Instant::now);
     interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
     if let Some(path) = source_path {
         interpreter.set_source_path(PathBuf::from(path));
     }
     let result = interpreter.call_value(handler, vec![request_hash], span);
     interpreter.pop_frame();
+    if let Some(start) = per_mw_start {
+        middleware_log::record(name, start.elapsed().as_micros() as u64);
+    }
     result
 }
 
@@ -3840,6 +3846,7 @@ fn handle_request(
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
         phase_log::clear();
+        middleware_log::clear();
     }
 
     let method = &data.method;
@@ -4037,6 +4044,7 @@ fn handle_request(
                     let queries = crate::interpreter::builtins::model::query_log::snapshot();
                     let http_requests = crate::interpreter::builtins::http_log::snapshot();
                     let phases = phase_log::snapshot();
+                    let middlewares = middleware_log::snapshot();
                     let ctx = dev_bar::DevBarContext {
                         method: method.as_ref(),
                         path: path.as_str(),
@@ -4045,6 +4053,7 @@ fn handle_request(
                         queries,
                         http_requests,
                         phases,
+                        middlewares,
                     };
                     resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into_bytes();
                 }

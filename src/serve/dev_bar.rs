@@ -29,6 +29,11 @@ pub struct DevBarContext<'a> {
     /// Per-phase wall-clock microseconds, e.g. `("middleware", 1234)`,
     /// `("view", 9876)`. "controller" is computed from the rest.
     pub phases: Vec<(String, u64)>,
+    /// One entry per middleware call in the order they fired
+    /// (`(name, dur_us)`). When more than one middleware ran on this
+    /// request, the render-breakdown expands the aggregate "middleware"
+    /// row into per-middleware sub-rows.
+    pub middlewares: Vec<(String, u64)>,
 }
 
 /// Inject the dev bar into an HTML body. Idempotent: returns input unchanged
@@ -106,11 +111,26 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         .saturating_add(q_total_us)
         .saturating_add(h_us_total);
     let controller_us = elapsed_us.saturating_sub(measured_us);
+    let mw_label = if ctx.middlewares.len() > 1 {
+        format!("middleware ({})", ctx.middlewares.len())
+    } else {
+        "middleware".to_string()
+    };
+    let mw_sub_rows = if ctx.middlewares.len() > 1 {
+        let mut s = String::new();
+        for (name, us) in &ctx.middlewares {
+            s.push_str(&middleware_sub_row(name, *us, elapsed_us));
+        }
+        s
+    } else {
+        String::new()
+    };
     let breakdown_panel = format!(
         "<div id=\"__solidev_phases\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">RENDER · {total}</div>\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.25rem;font-size:11px;\">\
 {mw_row}\
+{mw_sub_rows}\
 {ctrl_row}\
 {view_row}\
 {db_row}\
@@ -118,7 +138,8 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 </ol>\
 </div>",
         total = html_escape(&render_str),
-        mw_row = phase_row("middleware", mw_us, elapsed_us, "#f0c674"),
+        mw_row = phase_row(&mw_label, mw_us, elapsed_us, "#f0c674"),
+        mw_sub_rows = mw_sub_rows,
         ctrl_row = phase_row("controller", controller_us, elapsed_us, "#8be9fd"),
         view_row = phase_row("view", view_us, elapsed_us, "#b8e986"),
         db_row = phase_row("db", q_total_us, elapsed_us, "#bd93f9"),
@@ -343,6 +364,31 @@ fn phase_row(name: &str, us: u64, total_us: u64, color: &str) -> String {
     )
 }
 
+/// Indented sub-row for a single middleware. Visually nested under the
+/// aggregate "middleware" row in the render breakdown.
+fn middleware_sub_row(name: &str, us: u64, total_us: u64) -> String {
+    let pct = if total_us == 0 {
+        0
+    } else {
+        ((us as f64 / total_us as f64) * 100.0).round() as u32
+    };
+    let bar_width_pct = pct.min(100);
+    format!(
+        "<li style=\"display:flex;align-items:center;gap:0.75rem;padding-left:1rem;\">\
+<span style=\"flex:0 0 4.5rem;color:#8b949e;font-size:10px;\">└─</span>\
+<span style=\"flex:0 0 9rem;color:#e6e6e6;overflow:hidden;text-overflow:ellipsis;\" title=\"{title}\">{name}</span>\
+<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+<span style=\"flex:1;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:#f0c674;opacity:0.7;\"></span></span>\
+</li>",
+        name = html_escape(name),
+        title = html_escape(name),
+        dur = html_escape(&fmt_duration_us(us)),
+        pct = pct,
+        bar = bar_width_pct,
+    )
+}
+
 /// Group queries by their raw template (the AQL string before bind-substitution).
 /// Returns groups with count >= `threshold`, sorted by count desc.
 ///
@@ -470,6 +516,7 @@ mod tests {
             queries: vec![],
             http_requests: vec![],
             phases: vec![],
+            middlewares: vec![],
         }
     }
 
@@ -611,6 +658,37 @@ mod tests {
         assert!(out.contains(">controller<"));
         assert!(out.contains(">db<"));
         assert!(out.contains(">http<"));
+    }
+
+    #[test]
+    fn renders_per_middleware_subrows_when_multiple() {
+        let html = "<html><body></body></html>";
+        let mut c = ctx("GET", "/");
+        c.phases.push(("middleware".into(), 5_000));
+        c.middlewares.push(("auth".into(), 1_500));
+        c.middlewares.push(("rate_limit".into(), 2_500));
+        c.middlewares.push(("request_id".into(), 1_000));
+        let out = inject_dev_bar(html, &c);
+        // Aggregate row gets a count badge.
+        assert!(out.contains(">middleware (3)<"));
+        // Each middleware name renders as a sub-row with the └─ glyph nearby.
+        assert!(out.contains(">auth<"));
+        assert!(out.contains(">rate_limit<"));
+        assert!(out.contains(">request_id<"));
+        assert!(out.contains("└─"));
+    }
+
+    #[test]
+    fn no_subrows_when_single_middleware() {
+        let html = "<html><body></body></html>";
+        let mut c = ctx("GET", "/");
+        c.phases.push(("middleware".into(), 1_000));
+        c.middlewares.push(("auth".into(), 1_000));
+        let out = inject_dev_bar(html, &c);
+        // Plain "middleware" label, no count.
+        assert!(out.contains(">middleware<"));
+        assert!(!out.contains("middleware (1)"));
+        assert!(!out.contains("└─"));
     }
 
     #[test]
