@@ -721,10 +721,8 @@ impl Interpreter {
                         }
                         RelationType::HasAndBelongsToMany => {
                             if let Value::Array(arr) = &preloaded {
-                                let needs_conversion = arr
-                                    .borrow()
-                                    .iter()
-                                    .any(|v| matches!(v, Value::Hash(_)));
+                                let needs_conversion =
+                                    arr.borrow().iter().any(|v| matches!(v, Value::Hash(_)));
                                 if !needs_conversion {
                                     return Ok(preloaded);
                                 }
@@ -739,10 +737,7 @@ impl Interpreter {
                                     .map(|v| {
                                         if matches!(v, Value::Hash(_)) {
                                             if let Ok(json) = value_to_json(v) {
-                                                return json_doc_to_instance(
-                                                    &target_class,
-                                                    &json,
-                                                );
+                                                return json_doc_to_instance(&target_class, &json);
                                             }
                                         }
                                         v.clone()

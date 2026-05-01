@@ -1034,43 +1034,36 @@ impl Model {
         // and HABTM relations.
         native_static_methods.insert(
             "includes_count".to_string(),
-            Rc::new(NativeFunction::new(
-                "Model.includes_count",
-                None,
-                |args| {
-                    let class = get_class_rc_from_args(&args)?;
-                    let class_name = class.name.clone();
-                    let collection = class_name_to_collection(&class_name);
+            Rc::new(NativeFunction::new("Model.includes_count", None, |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
 
-                    let mut qb =
-                        QueryBuilder::new_with_class(class_name.clone(), collection, class);
-                    let arguments = &args[1..];
+                let mut qb = QueryBuilder::new_with_class(class_name.clone(), collection, class);
+                let arguments = &args[1..];
 
-                    if arguments.is_empty() {
-                        return Err(
-                            "includes_count() requires at least one relation name".to_string()
-                        );
-                    }
+                if arguments.is_empty() {
+                    return Err("includes_count() requires at least one relation name".to_string());
+                }
 
-                    for arg in arguments {
-                        let rel_name = match arg {
-                            Value::String(s) => s.clone(),
-                            other => {
-                                return Err(format!(
-                                    "includes_count() expects string relation names, got {}",
-                                    other.type_name()
-                                ))
-                            }
-                        };
-                        let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
-                            format!("No relation '{}' defined on {}", rel_name, class_name)
-                        })?;
-                        qb.add_include_count(rel_name, rel)?;
-                    }
+                for arg in arguments {
+                    let rel_name = match arg {
+                        Value::String(s) => s.clone(),
+                        other => {
+                            return Err(format!(
+                                "includes_count() expects string relation names, got {}",
+                                other.type_name()
+                            ))
+                        }
+                    };
+                    let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
+                        format!("No relation '{}' defined on {}", rel_name, class_name)
+                    })?;
+                    qb.add_include_count(rel_name, rel)?;
+                }
 
-                    Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
-                },
-            )),
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            })),
         );
 
         // Model.select("name", "email") / Model.fields("name", "email") - field selection
