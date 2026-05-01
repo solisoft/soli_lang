@@ -291,778 +291,797 @@ fn register_solidb_class(env: &mut Environment) {
             format!("solidb_{}", method_name),
             registered_arity,
             move |args| {
-                    if args.len() < arity {
+                if args.len() < arity {
+                    return Err(format!(
+                        "solidb_{}() requires at least {} argument(s)",
+                        method, arity
+                    ));
+                }
+
+                let instance_rc = match &args[0] {
+                    Value::Instance(inst) => inst.clone(),
+                    other => {
                         return Err(format!(
-                            "solidb_{}() requires at least {} argument(s)",
-                            method, arity
-                        ));
+                            "solidb_{}() must be called on a Solidb instance, got {}",
+                            method,
+                            other.type_name()
+                        ))
                     }
+                };
 
-                    let instance_rc = match &args[0] {
-                        Value::Instance(inst) => inst.clone(),
-                        other => {
-                            return Err(format!(
-                                "solidb_{}() must be called on a Solidb instance, got {}",
-                                method,
-                                other.type_name()
-                            ))
-                        }
-                    };
+                let instance_id = {
+                    let inst_guard = instance_rc.borrow();
+                    match inst_guard.get("_id") {
+                        Some(Value::Int(id)) => id as usize,
+                        _ => return Err("Solidb instance missing _id".to_string()),
+                    }
+                };
 
-                    let instance_id = {
-                        let inst_guard = instance_rc.borrow();
-                        match inst_guard.get("_id") {
-                            Some(Value::Int(id)) => id as usize,
-                            _ => return Err("Solidb instance missing _id".to_string()),
-                        }
-                    };
+                let states = SOLIDB_STATES.read().map_err(|e| e.to_string())?;
+                let state = states
+                    .get(&instance_id)
+                    .ok_or_else(|| "Solidb instance not found".to_string())?;
 
-                    let states = SOLIDB_STATES.read().map_err(|e| e.to_string())?;
-                    let state = states
-                        .get(&instance_id)
-                        .ok_or_else(|| "Solidb instance not found".to_string())?;
+                let host = state.host.clone();
+                let database = state.database.clone();
+                let auth_username = state.auth_username.clone();
+                let auth_password = state.auth_password.clone();
+                let state_connected = state.connected;
+                drop(states);
 
-                    let host = state.host.clone();
-                    let database = state.database.clone();
-                    let auth_username = state.auth_username.clone();
-                    let auth_password = state.auth_password.clone();
-                    let state_connected = state.connected;
-                    drop(states);
+                match method.as_str() {
+                    "auth" => {
+                        let username = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "auth() expects string username, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let password = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "auth() expects string password, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
 
-                    match method.as_str() {
-                        "auth" => {
-                            let username = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "auth() expects string username, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let password = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "auth() expects string password, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
+                        let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
+                        let state = states
+                            .get_mut(&instance_id)
+                            .ok_or_else(|| "Solidb instance not found".to_string())?;
+                        state.auth_username = Some(username.clone());
+                        state.auth_password = Some(password.clone());
+                        state.connected = true;
+                        drop(states);
 
-                            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
-                            let state = states
-                                .get_mut(&instance_id)
-                                .ok_or_else(|| "Solidb instance not found".to_string())?;
-                            state.auth_username = Some(username.clone());
-                            state.auth_password = Some(password.clone());
-                            state.connected = true;
-                            drop(states);
-
-                            Ok(exec_db_sync(move || {
-                                let _client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?
-                                    .with_basic_auth(&username, &password);
-                                Ok("Authenticated".to_string())
-                            }))
-                        }
-                        "query" => {
-                            let sdbql = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "query() expects string SDBQL, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let bind_vars = if args.len() > 2 {
-                                match &args[2] {
-                                    Value::Hash(hash) => {
-                                        let mut map = std::collections::HashMap::new();
-                                        for (k, v) in hash.borrow().iter() {
-                                            if let HashKey::String(key) = k {
-                                                map.insert(key.clone(), value_to_json(v)?);
-                                            }
+                        Ok(exec_db_sync(move || {
+                            let _client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?
+                                .with_basic_auth(&username, &password);
+                            Ok("Authenticated".to_string())
+                        }))
+                    }
+                    "query" => {
+                        let sdbql = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "query() expects string SDBQL, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let bind_vars = if args.len() > 2 {
+                            match &args[2] {
+                                Value::Hash(hash) => {
+                                    let mut map = std::collections::HashMap::new();
+                                    for (k, v) in hash.borrow().iter() {
+                                        if let HashKey::String(key) = k {
+                                            map.insert(key.clone(), value_to_json(v)?);
                                         }
-                                        Some(map)
                                     }
-                                    _ => None,
+                                    Some(map)
                                 }
-                            } else {
-                                None
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let results = client
+                                .query(&sdbql, bind_vars)
+                                .map_err(|e| format!("Query failed: {}", e))?;
+                            // Return directly as JSON array - skip string serialization
+                            Ok(serde_json::Value::Array(results))
+                        }))
+                    }
+                    "get" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let key = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get() expects string key, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let doc = client
+                                .get(&collection, &key)
+                                .map_err(|e| format!("Get failed: {}", e))?;
+                            // Return doc or null if not found
+                            Ok(doc.unwrap_or(serde_json::Value::Null))
+                        }))
+                    }
+                    "insert" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "insert() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let key = match &args[2] {
+                            Value::String(s) => Some(s.clone()),
+                            Value::Null => None,
+                            other => {
+                                return Err(format!(
+                                    "insert() expects string or null key, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let document = value_to_json(&args[3])?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let result = client
+                                .insert(&collection, key.as_deref(), document)
+                                .map_err(|e| format!("Insert failed: {}", e))?;
+                            Ok(result)
+                        }))
+                    }
+                    "update" | "upsert" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "{}() expects string collection, got {}",
+                                    method,
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let key = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "{}() expects string key, got {}",
+                                    method,
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let document = value_to_json(&args[3])?;
+                        let merge = method == "upsert";
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let result = client
+                                .update(&collection, &key, document, merge)
+                                .map_err(|e| format!("Update failed: {}", e))?;
+                            Ok(result)
+                        }))
+                    }
+                    "delete" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "delete() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let key = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "delete() expects string key, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .delete(&collection, &key)
+                                .map_err(|e| format!("Delete failed: {}", e))?;
+                            Ok("OK".to_string())
+                        }))
+                    }
+                    "list" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "list() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let docs = client
+                                .list(&collection, 100, 0)
+                                .map_err(|e| format!("List failed: {}", e))?;
+                            // Return directly as JSON array - skip string serialization
+                            Ok(serde_json::Value::Array(docs))
+                        }))
+                    }
+                    "explain" => {
+                        let sdbql = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "explain() expects string SDBQL, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let bind_vars = if args.len() > 2 {
+                            match &args[2] {
+                                Value::Hash(hash) => {
+                                    let mut map = std::collections::HashMap::new();
+                                    for (k, v) in hash.borrow().iter() {
+                                        if let HashKey::String(key) = k {
+                                            map.insert(key.clone(), value_to_json(v)?);
+                                        }
+                                    }
+                                    Some(map)
                                 }
-                                let results = client.query(&sdbql, bind_vars)
-                                    .map_err(|e| format!("Query failed: {}", e))?;
-                                // Return directly as JSON array - skip string serialization
-                                Ok(serde_json::Value::Array(results))
-                            }))
-                        }
-                        "get" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let key = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get() expects string key, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let doc = client.get(&collection, &key)
-                                    .map_err(|e| format!("Get failed: {}", e))?;
-                                // Return doc or null if not found
-                                Ok(doc.unwrap_or(serde_json::Value::Null))
-                            }))
-                        }
-                        "insert" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "insert() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let key = match &args[2] {
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let explanation = client
+                                .explain(&sdbql, bind_vars)
+                                .map_err(|e| format!("Explain failed: {}", e))?;
+                            Ok(explanation)
+                        }))
+                    }
+                    "ping" => {
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let timestamp =
+                                client.ping().map_err(|e| format!("Ping failed: {}", e))?;
+                            Ok(timestamp.to_string())
+                        }))
+                    }
+                    "connected" => Ok(Value::Bool(state_connected)),
+                    "close" => {
+                        // Remove state from global HashMap to free memory
+                        let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
+                        states.remove(&instance_id);
+                        Ok(Value::Bool(true))
+                    }
+                    "create_collection" => {
+                        let name = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "create_collection() expects string name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let collection_type = if args.len() > 2 {
+                            match &args[2] {
+                                Value::String(s) if s.is_empty() => None,
                                 Value::String(s) => Some(s.clone()),
                                 Value::Null => None,
                                 other => {
                                     return Err(format!(
-                                        "insert() expects string or null key, got {}",
+                                        "create_collection() expects string or null type, got {}",
                                         other.type_name()
                                     ))
                                 }
-                            };
-                            let document = value_to_json(&args[3])?;
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let result = client.insert(&collection, key.as_deref(), document)
-                                    .map_err(|e| format!("Insert failed: {}", e))?;
-                                Ok(result)
-                            }))
-                        }
-                        "update" | "upsert" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "{}() expects string collection, got {}",
-                                        method,
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let key = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "{}() expects string key, got {}",
-                                        method,
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let document = value_to_json(&args[3])?;
-                            let merge = method == "upsert";
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let result = client.update(&collection, &key, document, merge)
-                                    .map_err(|e| format!("Update failed: {}", e))?;
-                                Ok(result)
-                            }))
-                        }
-                        "delete" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "delete() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let key = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "delete() expects string key, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.delete(&collection, &key)
-                                    .map_err(|e| format!("Delete failed: {}", e))?;
-                                Ok("OK".to_string())
-                            }))
-                        }
-                        "list" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "list() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let docs = client.list(&collection, 100, 0)
-                                    .map_err(|e| format!("List failed: {}", e))?;
-                                // Return directly as JSON array - skip string serialization
-                                Ok(serde_json::Value::Array(docs))
-                            }))
-                        }
-                        "explain" => {
-                            let sdbql = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "explain() expects string SDBQL, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let bind_vars = if args.len() > 2 {
-                                match &args[2] {
-                                    Value::Hash(hash) => {
-                                        let mut map = std::collections::HashMap::new();
-                                        for (k, v) in hash.borrow().iter() {
-                                            if let HashKey::String(key) = k {
-                                                map.insert(key.clone(), value_to_json(v)?);
-                                            }
+                            }
+                        } else {
+                            None
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .create_collection(&name, collection_type.as_deref())
+                                .map_err(|e| format!("Create collection failed: {}", e))?;
+                            Ok(format!("Created collection: {}", name))
+                        }))
+                    }
+                    "drop_collection" => {
+                        let name = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "drop_collection() expects string name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .drop_collection(&name)
+                                .map_err(|e| format!("Drop collection failed: {}", e))?;
+                            Ok(format!("Dropped collection: {}", name))
+                        }))
+                    }
+                    "list_collections" => {
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let collections = client
+                                .list_collections()
+                                .map_err(|e| format!("List collections failed: {}", e))?;
+                            // Return directly as JSON array - skip string serialization
+                            Ok(serde_json::Value::Array(collections))
+                        }))
+                    }
+                    "collection_stats" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "collection_stats() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let stats = client
+                                .collection_stats(&collection)
+                                .map_err(|e| format!("Collection stats failed: {}", e))?;
+                            Ok(stats)
+                        }))
+                    }
+                    "create_index" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "create_index() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let name = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "create_index() expects string index name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let fields: Vec<String> = match &args[3] {
+                            Value::Array(arr) => {
+                                let borrowed = arr.borrow();
+                                borrowed
+                                    .iter()
+                                    .filter_map(|v| {
+                                        if let Value::String(s) = v {
+                                            Some(s.clone())
+                                        } else {
+                                            None
                                         }
-                                        Some(map)
-                                    }
-                                    _ => None,
-                                }
-                            } else {
-                                None
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let explanation = client.explain(&sdbql, bind_vars)
-                                    .map_err(|e| format!("Explain failed: {}", e))?;
-                                Ok(explanation)
-                            }))
-                        }
-                        "ping" => {
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let timestamp = client.ping()
-                                    .map_err(|e| format!("Ping failed: {}", e))?;
-                                Ok(timestamp.to_string())
-                            }))
-                        }
-                        "connected" => Ok(Value::Bool(state_connected)),
-                        "close" => {
-                            // Remove state from global HashMap to free memory
-                            let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
-                            states.remove(&instance_id);
-                            Ok(Value::Bool(true))
-                        }
-                        "create_collection" => {
-                            let name = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "create_collection() expects string name, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let collection_type = if args.len() > 2 {
-                                match &args[2] {
-                                    Value::String(s) if s.is_empty() => None,
-                                    Value::String(s) => Some(s.clone()),
-                                    Value::Null => None,
-                                    other => {
-                                        return Err(format!(
-                                            "create_collection() expects string or null type, got {}",
-                                            other.type_name()
-                                        ))
-                                    }
-                                }
-                            } else {
-                                None
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.create_collection(&name, collection_type.as_deref())
-                                    .map_err(|e| format!("Create collection failed: {}", e))?;
-                                Ok(format!("Created collection: {}", name))
-                            }))
-                        }
-                        "drop_collection" => {
-                            let name = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "drop_collection() expects string name, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.drop_collection(&name)
-                                    .map_err(|e| format!("Drop collection failed: {}", e))?;
-                                Ok(format!("Dropped collection: {}", name))
-                            }))
-                        }
-                        "list_collections" => {
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let collections = client.list_collections()
-                                    .map_err(|e| format!("List collections failed: {}", e))?;
-                                // Return directly as JSON array - skip string serialization
-                                Ok(serde_json::Value::Array(collections))
-                            }))
-                        }
-                        "collection_stats" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "collection_stats() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let stats = client.collection_stats(&collection)
-                                    .map_err(|e| format!("Collection stats failed: {}", e))?;
-                                Ok(stats)
-                            }))
-                        }
-                        "create_index" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "create_index() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let name = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "create_index() expects string index name, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let fields: Vec<String> = match &args[3] {
-                                Value::Array(arr) => {
-                                    let borrowed = arr.borrow();
-                                    borrowed
-                                        .iter()
-                                        .filter_map(|v| {
-                                            if let Value::String(s) = v {
-                                                Some(s.clone())
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect()
-                                }
-                                Value::String(s) => vec![s.clone()],
-                                other => {
-                                    return Err(format!(
-                                        "create_index() expects array or string fields, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let (unique, sparse) = if args.len() > 4 {
-                                match &args[4] {
-                                    Value::Bool(b) => (*b, false),
-                                    Value::Hash(hash) => {
-                                        let borrowed = hash.borrow();
-                                        let unique = borrowed
+                                    })
+                                    .collect()
+                            }
+                            Value::String(s) => vec![s.clone()],
+                            other => {
+                                return Err(format!(
+                                    "create_index() expects array or string fields, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let (unique, sparse) = if args.len() > 4 {
+                            match &args[4] {
+                                Value::Bool(b) => (*b, false),
+                                Value::Hash(hash) => {
+                                    let borrowed = hash.borrow();
+                                    let unique = borrowed
                                             .iter()
                                             .find(|(k, _)| matches!(k, HashKey::String(s) if s == "unique"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
-                                        let sparse = borrowed
+                                    let sparse = borrowed
                                             .iter()
                                             .find(|(k, _)| matches!(k, HashKey::String(s) if s == "sparse"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
-                                        (unique, sparse)
-                                    }
-                                    _ => (false, false),
+                                    (unique, sparse)
                                 }
-                            } else {
-                                (false, false)
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.create_index(&collection, &name, fields, unique, sparse)
-                                    .map_err(|e| format!("Create index failed: {}", e))?;
-                                Ok(format!("Created index: {} on {}", name, collection))
-                            }))
-                        }
-                        "drop_index" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "drop_index() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let name = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "drop_index() expects string index name, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.drop_index(&collection, &name)
-                                    .map_err(|e| format!("Drop index failed: {}", e))?;
-                                Ok(format!("Dropped index: {} from {}", name, collection))
-                            }))
-                        }
-                        "list_indexes" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "list_indexes() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let indexes = client.list_indexes(&collection)
-                                    .map_err(|e| format!("List indexes failed: {}", e))?;
-                                Ok(serde_json::Value::Array(indexes))
-                            }))
-                        }
-                        "store_blob" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "store_blob() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let data_base64 = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "store_blob() expects base64 string data, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let filename = match &args[3] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "store_blob() expects string filename, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let content_type = match &args[4] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "store_blob() expects string content_type, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let data = STANDARD.decode(&data_base64)
-                                .map_err(|e| format!("Failed to decode base64: {}", e))?;
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let blob_id = client.store_blob(&collection, &data, &filename, &content_type)
-                                    .map_err(|e| format!("Store blob failed: {}", e))?;
-                                Ok(blob_id)
-                            }))
-                        }
-                        "get_blob" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get_blob() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let blob_id = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get_blob() expects string blob_id, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let data = client.get_blob(&collection, &blob_id)
-                                    .map_err(|e| format!("Get blob failed: {}", e))?;
-                                Ok(STANDARD.encode(&data))
-                            }))
-                        }
-                        "get_blob_metadata" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get_blob_metadata() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let blob_id = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "get_blob_metadata() expects string blob_id, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_json(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                let metadata = client.get_blob_metadata(&collection, &blob_id)
-                                    .map_err(|e| format!("Get blob metadata failed: {}", e))?;
-                                Ok(metadata)
-                            }))
-                        }
-                        "delete_blob" => {
-                            let collection = match &args[1] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "delete_blob() expects string collection, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let blob_id = match &args[2] {
-                                Value::String(s) => s.clone(),
-                                other => {
-                                    return Err(format!(
-                                        "delete_blob() expects string blob_id, got {}",
-                                        other.type_name()
-                                    ))
-                                }
-                            };
-                            let auth_username = auth_username.clone();
-                            let auth_password = auth_password.clone();
-                            Ok(exec_db_sync(move || {
-                                let mut client = SoliDBClient::connect(&host)
-                                    .map_err(|e| format!("Failed to connect: {}", e))?;
-                                client.set_database(&database);
-                                if let (Some(u), Some(p)) =
-                                    (auth_username.as_deref(), auth_password.as_deref())
-                                {
-                                    client = client.with_basic_auth(u, p);
-                                }
-                                client.delete_blob(&collection, &blob_id)
-                                    .map_err(|e| format!("Delete blob failed: {}", e))?;
-                                Ok("OK".to_string())
-                            }))
-                        }
-                        _ => Err(format!("Unknown method: {}", method)),
+                                _ => (false, false),
+                            }
+                        } else {
+                            (false, false)
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .create_index(&collection, &name, fields, unique, sparse)
+                                .map_err(|e| format!("Create index failed: {}", e))?;
+                            Ok(format!("Created index: {} on {}", name, collection))
+                        }))
                     }
-                },
+                    "drop_index" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "drop_index() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let name = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "drop_index() expects string index name, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .drop_index(&collection, &name)
+                                .map_err(|e| format!("Drop index failed: {}", e))?;
+                            Ok(format!("Dropped index: {} from {}", name, collection))
+                        }))
+                    }
+                    "list_indexes" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "list_indexes() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let indexes = client
+                                .list_indexes(&collection)
+                                .map_err(|e| format!("List indexes failed: {}", e))?;
+                            Ok(serde_json::Value::Array(indexes))
+                        }))
+                    }
+                    "store_blob" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "store_blob() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let data_base64 = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "store_blob() expects base64 string data, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let filename = match &args[3] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "store_blob() expects string filename, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let content_type = match &args[4] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "store_blob() expects string content_type, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let data = STANDARD
+                            .decode(&data_base64)
+                            .map_err(|e| format!("Failed to decode base64: {}", e))?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let blob_id = client
+                                .store_blob(&collection, &data, &filename, &content_type)
+                                .map_err(|e| format!("Store blob failed: {}", e))?;
+                            Ok(blob_id)
+                        }))
+                    }
+                    "get_blob" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get_blob() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let blob_id = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get_blob() expects string blob_id, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let data = client
+                                .get_blob(&collection, &blob_id)
+                                .map_err(|e| format!("Get blob failed: {}", e))?;
+                            Ok(STANDARD.encode(&data))
+                        }))
+                    }
+                    "get_blob_metadata" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get_blob_metadata() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let blob_id = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "get_blob_metadata() expects string blob_id, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_json(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            let metadata = client
+                                .get_blob_metadata(&collection, &blob_id)
+                                .map_err(|e| format!("Get blob metadata failed: {}", e))?;
+                            Ok(metadata)
+                        }))
+                    }
+                    "delete_blob" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "delete_blob() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let blob_id = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => {
+                                return Err(format!(
+                                    "delete_blob() expects string blob_id, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        Ok(exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .delete_blob(&collection, &blob_id)
+                                .map_err(|e| format!("Delete blob failed: {}", e))?;
+                            Ok("OK".to_string())
+                        }))
+                    }
+                    _ => Err(format!("Unknown method: {}", method)),
+                }
+            },
         ));
 
         // Legacy / explicit form: solidb_<name>(instance, ...args)
@@ -1078,11 +1097,9 @@ fn register_solidb_class(env: &mut Environment) {
         let display_name = format!("Solidb.{}", method_name);
         native_methods.insert(
             method_name.to_string(),
-            Rc::new(NativeFunction::new(
-                display_name,
-                user_arity,
-                move |args| (inner_for_method.func)(args),
-            )),
+            Rc::new(NativeFunction::new(display_name, user_arity, move |args| {
+                (inner_for_method.func)(args)
+            })),
         );
     }
 
