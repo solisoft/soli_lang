@@ -62,8 +62,10 @@
 <pre><code class="language-soli text-sm">describe("HomeController", fn() {
   test("GET /up returns UP status", fn() {
     let response = get("/up")
-assert_eq(res_status(response), 200)
-assert_eq(res_body(response), "UP")    })});</code></pre>
+    assert_eq(res_status(response), 200)
+    assert_eq(res_body(response), "UP")
+  })
+})</code></pre>
             </div>
         </div>
 
@@ -113,12 +115,16 @@ soli test tests/builtins</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Example</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let response = get("/posts")assert_eq(res_status(response), 200)
-let posts = res_json(response)assert_gt(len(posts), 0)
+<pre><code class="language-soli text-sm">let response = get("/posts")
+assert_eq(res_status(response), 200)
+let posts = res_json(response)
+assert_gt(len(posts), 0)
+
 let response = post("/posts", {
   "title": "New Post",
   "content": "Hello World"
-})assert_eq(res_status(response), 201);</code></pre>
+})
+assert_eq(res_status(response), 201)</code></pre>
             </div>
         </div>
 
@@ -194,9 +200,12 @@ clear_cookies()</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Response Helpers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let body = res_body(response)assert_contains(body, "expected text")
+<pre><code class="language-soli text-sm">let body = res_body(response)
+assert_contains(body, "expected text")
+
 let response = post("/users", {"name": "John"})
-let user = res_json(response)assert_eq(user["name"], "John");</code></pre>
+let user = res_json(response)
+assert_eq(user["name"], "John")</code></pre>
             </div>
         </div>
 
@@ -205,8 +214,11 @@ let user = res_json(response)assert_eq(user["name"], "John");</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type")assert_contains(content_type, "application/json")
-let headers = res_headers(response)assert_hash_has_key(headers, "Content-Type");</code></pre>
+<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type")
+assert_contains(content_type, "application/json")
+
+let headers = res_headers(response)
+assert_hash_has_key(headers, "Content-Type")</code></pre>
             </div>
         </div>
 
@@ -216,37 +228,113 @@ let headers = res_headers(response)assert_hash_has_key(headers, "Content-Type");
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Redirects</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">assert(res_redirect(response))
-let location = res_location(response)assert_eq(location, "/expected/path");</code></pre>
+
+let location = res_location(response)
+assert_eq(location, "/expected/path")</code></pre>
             </div>
         </div>
 
         <h2 class="text-2xl font-bold text-white mb-6">Session Helpers</h2>
-        <p class="text-gray-400 mb-4">Session helpers manage authentication state and session data during tests.</p>
+        <p class="text-gray-400 mb-4">Session helpers manage authentication state and session data during tests. These functions simulate user login/logout and authentication checks.</p>
 
-        <h3 class="text-xl font-semibold text-white mb-4">Authentication State</h3>
+        <h3 class="text-xl font-semibold text-white mb-4">Authentication State Management</h3>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">as_guest()</code>
                 <p class="text-sm text-gray-400 mt-1">Clears all authentication state</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">as_user(user_id)</code>
-                <p class="text-sm text-gray-400 mt-1">Simulates logged-in user</p>
+                <p class="text-sm text-gray-400 mt-1">Simulates logged-in user with given id</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">as_admin()</code>
                 <p class="text-sm text-gray-400 mt-1">Simulates authenticated admin</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">login(email, password)</code>
-                <p class="text-sm text-gray-400 mt-1">Performs login request</p>
+                <code class="text-emerald-300 font-bold">with_token(token)</code>
+                <p class="text-sm text-gray-400 mt-1">Sets a Bearer authorization header</p>
             </div>
         </div>
 
+        <section id="def-as-guest" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-as-guest" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">as_guest()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Clears all authentication state, simulating an unauthenticated user.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">before_each(fn()
+  as_guest()
+end)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-as-user" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-as-user" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">as_user(user_id)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Simulates a logged-in regular user with the specified ID.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_user(42)
+let response = get("/profile")
+assert_eq(res_status(response), 200)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-as-admin" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-as-admin" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">as_admin()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Simulates an authenticated administrator.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_admin()
+let response = get("/admin/dashboard")
+assert_eq(res_status(response), 200)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-with-token" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-with-token" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">with_token(token)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Sets a Bearer authorization header for subsequent requests.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">with_token("your-jwt-token-here")
+let response = get("/api/protected")</code></pre>
+            </div>
+        </section>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Login and Logout</h3>
+
+        <section id="def-login" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-login" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">login(email, password)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Performs a login request and maintains session state via cookies.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">login("user@example.com", "secretpassword")
+let response = get("/dashboard")
+assert_eq(res_status(response), 200)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-logout" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-logout" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">logout()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Destroys the current session.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">login("user@example.com", "password")
+logout()
+let response = get("/dashboard")
+assert_eq(res_status(response), 302)  # Redirect to login</code></pre>
+            </div>
+        </section>
+
         <h3 class="text-xl font-semibold text-white mb-4">Session Inspection</h3>
 
-        <div class="grid-cols-1 md:grid-cols-2 gap-4 mb-12" style="display: grid;">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">signed_in()</code>
                 <p class="text-sm text-gray-400 mt-1">Returns true if authenticated</p>
@@ -260,10 +348,89 @@ let location = res_location(response)assert_eq(location, "/expected/path");</cod
                 <p class="text-sm text-gray-400 mt-1">Returns authenticated user data</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">logout()</code>
-                <p class="text-sm text-gray-400 mt-1">Destroys current session</p>
+                <code class="text-emerald-300 font-bold">signed_in?() / signed_out?()</code>
+                <p class="text-sm text-gray-400 mt-1">Predicate aliases (Ruby-style)</p>
             </div>
         </div>
+
+        <section id="def-signed-in" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-signed-in" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">signed_in()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Returns <code>true</code> when an authenticated user is present (test marker or a non-empty <code>session_id</code> cookie). Also available as <code>signed_in?()</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_guest()
+assert_not(signed_in())
+
+as_user(1)
+assert(signed_in())</code></pre>
+            </div>
+        </section>
+
+        <section id="def-signed-out" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-signed-out" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">signed_out()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Returns <code>true</code> when no authentication is in effect. Also available as <code>signed_out?()</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_guest()
+assert(signed_out())</code></pre>
+            </div>
+        </section>
+
+        <section id="def-current-user" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-current-user" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">current_user()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Returns the currently authenticated user as a hash, or <code>null</code> if no user is signed in.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_user(42)
+let user = current_user()
+assert_eq(user["id"], 42)</code></pre>
+            </div>
+        </section>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Session Creation and Destruction</h3>
+
+        <section id="def-create-session" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-create-session" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">create_session(user_id)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Creates a session cookie for the specified user and returns the new session id.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">let session_id = create_session(42)
+assert_not_null(session_id)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-destroy-session" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-destroy-session" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">destroy_session()</code>
+                </a>
+                <p class="text-gray-400 mb-2">Clears the current session and any test-user marker.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">create_session(42)
+destroy_session()
+assert(signed_out())</code></pre>
+            </div>
+        </section>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Custom Session Data</h3>
+
+        <section id="def-with-session" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-with-session" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">with_session(data)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Writes arbitrary key/value pairs into the server-side session and sets a matching <code>session_id</code> cookie. Subsequent requests in the same test see the data via <code>session_get(...)</code> on the server.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">with_session({
+  "user_id": 42,
+  "role": "editor"
+})
+let response = get("/dashboard")
+assert_eq(res_status(response), 200)</code></pre>
+            </div>
+        </section>
 
         <h2 class="text-2xl font-bold text-white mb-6">Assigns Helpers</h2>
         <p class="text-gray-400 mb-4">Assigns helpers inspect data passed to views during template rendering.</p>
@@ -294,24 +461,32 @@ let location = res_location(response)assert_eq(location, "/expected/path");</cod
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">describe("PostsController", fn() {
   before_each(fn() {
-    as_guest()    })
+    as_guest()
+  })
+
   test("creates post with valid data", fn() {
-    login("author@example.com", "password123")        
+    login("author@example.com", "password123")
     let response = post("/posts", {
       "title": "New Post Title",
       "body": "Post content here"
-    })        
+    })
     assert_eq(res_status(response), 201)
-let result = res_json(response)
-assert_not_null(result["id"])    })
+    let result = res_json(response)
+    assert_not_null(result["id"])
+  })
+
   test("rejects unauthenticated request", fn() {
     let response = post("/posts", {"title": "Test"})
-assert_eq(res_status(response), 302)    })
+    assert_eq(res_status(response), 302)
+  })
+
   test("shows single post", fn() {
     let response = get("/posts/1")
-assert_eq(res_status(response), 200)
-let post = res_json(response)
-assert_eq(post["title"], "First Post")    })});</code></pre>
+    assert_eq(res_status(response), 200)
+    let post = res_json(response)
+    assert_eq(post["title"], "First Post")
+  })
+})</code></pre>
             </div>
         </div>
 
@@ -370,7 +545,8 @@ to set up and clean up test state. Always reset authentication state between tes
                     <code class="font-mono text-indigo-400">assert_equal(expected, actual, message)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Asserts that two values are equal.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")assert_equal("hello", str, "string should match");</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">assert_equal(42, result, "should return 42")
+assert_equal("hello", str, "string should match")</code></pre>
             </div>
         </section>
 
@@ -436,7 +612,12 @@ to set up and clean up test state. Always reset authentication state between tes
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Expect Syntax (Alternative)</h3>
-        <pre data-filename="Expectations"><code class="language-soli text-sm">expect(value).to_equal(expected)expect(value).to_be(expected)expect(value).to_not_equal(other)expect(value).to_be_null()expect(value).to_not_be_null()expect(value).to_contain("substring");</code></pre>
+        <pre data-filename="Expectations"><code class="language-soli text-sm">expect(value).to_equal(expected)
+expect(value).to_be(expected)
+expect(value).to_not_equal(other)
+expect(value).to_be_null()
+expect(value).to_not_be_null()
+expect(value).to_contain("substring")</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-factories">Factory Functions</h2>
 
@@ -497,8 +678,11 @@ to set up and clean up test state. Always reset authentication state between tes
   test("creates user", fn() {
     with_transaction(fn() {
       let user = Factory.create("user", hash("name": "Test"))
-expect(User.count).to_equal(1)
-expect(user.name).to_equal("Test")        })    })});</code></pre>
+      expect(User.count).to_equal(1)
+      expect(user.name).to_equal("Test")
+    })
+  })
+})</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4">Factory Pattern</h3>
 

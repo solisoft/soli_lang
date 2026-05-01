@@ -51,6 +51,48 @@ pub fn register_session_helpers(env: &mut Environment) {
     );
 
     env.define(
+        "with_session".to_string(),
+        Value::NativeFunction(NativeFunction::new("with_session", Some(1), |args| {
+            let hash = match &args[0] {
+                Value::Hash(h) => h.clone(),
+                other => {
+                    return Err(format!(
+                        "with_session(data) expects a hash, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            // Reuse the session_id already in the cookie jar if any; otherwise
+            // create a fresh server-side session so the test server reads back
+            // exactly what we write here.
+            let store = &*super::session::SESSION_STORE;
+            let session_id = match session_id_from_cookies() {
+                Some(id) if !id.is_empty() => store.get_or_create(&id),
+                _ => store.create_session(),
+            };
+
+            for (key, value) in hash.borrow().iter() {
+                let key_str = match key {
+                    HashKey::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "with_session keys must be strings, got {:?}",
+                            other
+                        ))
+                    }
+                };
+                let json = crate::interpreter::value::value_to_json(value)
+                    .map_err(|e| format!("with_session: cannot serialize {}: {}", key_str, e))?;
+                store.set(&session_id, &key_str, json);
+            }
+
+            set_cookie_inner("session_id".to_string(), session_id);
+            Ok(Value::Null)
+        })),
+    );
+
+    env.define(
         "login".to_string(),
         Value::NativeFunction(NativeFunction::new("login", Some(2), |args| {
             let email = extract_string(&args[0], "login(email, password)")?;
@@ -241,6 +283,19 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
 }
 
+fn session_id_from_cookies() -> Option<String> {
+    let jar = super::request_helpers::current_cookies();
+    for pair in jar.split(';') {
+        let pair = pair.trim();
+        if let Some((k, v)) = pair.split_once('=') {
+            if k.trim().eq_ignore_ascii_case("session_id") {
+                return Some(v.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
 fn is_signed_in() -> bool {
     // Rails-style test helper: consider the session authenticated when the
     // cookie jar contains a session_id value that we haven't cleared.
@@ -269,4 +324,95 @@ fn create_test_session(user_id: i64) -> Result<Value, String> {
 
 fn destroy_test_session() {
     clear_auth();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::HashKey;
+    use serde_json::json;
+
+    fn call_fn(env: &Environment, name: &str, args: Vec<Value>) -> Result<Value, String> {
+        match env.get(name) {
+            Some(Value::NativeFunction(f)) => (f.func)(args),
+            other => panic!("expected NativeFunction for {name}, got {other:?}"),
+        }
+    }
+
+    fn fresh_env() -> Environment {
+        clear_cookies_inner();
+        clear_test_user();
+        let mut env = Environment::new();
+        register_session_helpers(&mut env);
+        env
+    }
+
+    fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut h: HashPairs = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(HashKey::String(k.to_string()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    /// with_session writes the data into the global session store, sets a
+    /// session_id cookie pointing at the new server-side session, and a
+    /// follow-up server request reading the cookie sees the data.
+    #[test]
+    fn with_session_writes_to_store_and_cookie() {
+        let env = fresh_env();
+
+        let data = make_hash(vec![
+            ("user_id", Value::Int(42)),
+            ("role", Value::String("editor".into())),
+        ]);
+        call_fn(&env, "with_session", vec![data]).unwrap();
+
+        let session_id =
+            session_id_from_cookies().expect("with_session must set the session_id cookie");
+        assert!(
+            !session_id.is_empty(),
+            "session_id cookie must be non-empty"
+        );
+
+        let store = &*super::super::session::SESSION_STORE;
+        assert_eq!(store.get(&session_id, "user_id"), Some(json!(42)));
+        assert_eq!(store.get(&session_id, "role"), Some(json!("editor")));
+    }
+
+    /// Calling with_session twice in the same test reuses the cookie's
+    /// session_id and merges new keys into the same session — no leak of a
+    /// fresh session per call.
+    #[test]
+    fn with_session_reuses_existing_session_cookie() {
+        let env = fresh_env();
+
+        call_fn(
+            &env,
+            "with_session",
+            vec![make_hash(vec![("a", Value::Int(1))])],
+        )
+        .unwrap();
+        let first_id = session_id_from_cookies().unwrap();
+
+        call_fn(
+            &env,
+            "with_session",
+            vec![make_hash(vec![("b", Value::Int(2))])],
+        )
+        .unwrap();
+        let second_id = session_id_from_cookies().unwrap();
+
+        assert_eq!(first_id, second_id, "cookie session id must be reused");
+        let store = &*super::super::session::SESSION_STORE;
+        assert_eq!(store.get(&first_id, "a"), Some(json!(1)));
+        assert_eq!(store.get(&first_id, "b"), Some(json!(2)));
+    }
+
+    #[test]
+    fn with_session_rejects_non_hash_argument() {
+        let env = fresh_env();
+        let err = call_fn(&env, "with_session", vec![Value::Int(7)]).unwrap_err();
+        assert!(err.contains("expects a hash"), "got: {err}");
+    }
 }

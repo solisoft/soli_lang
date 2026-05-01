@@ -95,6 +95,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "as_guest",
     "as_user",
     "with_token",
+    "with_session",
     "set_header",
     "set_authorization",
     "clear_authorization",

@@ -344,13 +344,15 @@ assert(signed_out());
 
 ### Custom Session Data
 
-**with_session(data)** sets arbitrary session values:
+**with_session(data)** writes arbitrary key/value pairs into the server-side session and sets a matching `session_id` cookie. Subsequent requests in the same test see the data via `session_get(...)` on the server.
 
 ```soli
-let session = hash();
-session["user_id"] = 42;
-session["role"] = "editor";
-with_session(session);
+with_session({
+  "user_id": 42,
+  "role": "editor"
+})
+let response = get("/dashboard")
+assert_eq(res_status(response), 200)
 ```
 
 ### Token Authentication
