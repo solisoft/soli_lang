@@ -1,3 +1,9 @@
 /target
 node_modules
 .dmux/
+
+# Per-app secrets — never commit (e.g. SOLI_DEPLOY_API_KEY).
+.env
+.env.*
+!.env.sample
+!.env.example
