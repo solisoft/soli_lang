@@ -71,6 +71,11 @@ pub struct SpanRecord {
     /// Optional one-line detail (AQL template, URL, …). Shown in tooltip
     /// and exported as a `args.meta` field in the trace JSON.
     pub meta: Option<String>,
+    /// For View/Partial spans, the matching `view_log::next_id()` value.
+    /// The dev bar emits this as `data-solidev-view-idx` on the flame row
+    /// so the hover-overlay JS pairs the row with the
+    /// `<!--solidev:KIND:start id=…-->` markers around the rendered region.
+    pub render_id: Option<u32>,
 }
 
 // Worker-thread-local enable flag. Each worker calls `set_enabled` once
@@ -82,6 +87,18 @@ thread_local! {
     static STACK: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     static REQ_START: Cell<Option<Instant>> = const { Cell::new(None) };
     static NEXT_ID: Cell<u32> = const { Cell::new(0) };
+    static ROOT: RefCell<Option<RootRequest>> = const { RefCell::new(None) };
+}
+
+/// State for the synthetic root span that wraps the entire request.
+/// Stored separately from `STACK` so we can close it explicitly in
+/// `finalize_response` (right before snapshotting) without relying on
+/// SpanGuard drop ordering — the dev-bar injection happens *inside* the
+/// `handle_request` stack frame, so a normal RAII guard would still be
+/// alive at snapshot time and the root would be missing from the trace.
+struct RootRequest {
+    id: u32,
+    name: String,
 }
 
 pub fn set_enabled(enabled: bool) {
@@ -102,6 +119,7 @@ pub fn begin_request(start: Instant) {
     FN_STACK.with(|f| f.borrow_mut().clear());
     NEXT_ID.with(|n| n.set(0));
     REQ_START.with(|t| t.set(Some(start)));
+    ROOT.with(|r| r.borrow_mut().take());
 }
 
 pub fn clear() {
@@ -110,6 +128,61 @@ pub fn clear() {
     FN_STACK.with(|f| f.borrow_mut().clear());
     NEXT_ID.with(|n| n.set(0));
     REQ_START.with(|t| t.set(None));
+    ROOT.with(|r| r.borrow_mut().take());
+}
+
+/// Open the synthetic root span for the current request. Pushes its id
+/// onto the open-span stack so every other span captured during the
+/// request becomes a (transitive) child of this root, giving the
+/// flamegraph a single top-level rectangle (e.g. `GET /docs/getting_started`)
+/// instead of a forest of disconnected action / middleware spans.
+///
+/// No-op when dev mode is off, or if a root has already been opened for
+/// this request (defensive against double-open paths).
+pub fn open_request_root(name: String) {
+    if !is_enabled() {
+        return;
+    }
+    if ROOT.with(|r| r.borrow().is_some()) {
+        return;
+    }
+    let id = next_id();
+    STACK.with(|s| s.borrow_mut().push(id));
+    ROOT.with(|r| *r.borrow_mut() = Some(RootRequest { id, name }));
+}
+
+/// Close the synthetic root span. Must be called right before
+/// `snapshot()` so the root entry actually ends up in the recorded log.
+/// Idempotent — safe to call when no root is open.
+pub fn close_request_root() {
+    if !is_enabled() {
+        return;
+    }
+    let Some(root) = ROOT.with(|r| r.borrow_mut().take()) else {
+        return;
+    };
+    STACK.with(|s| {
+        let mut stack = s.borrow_mut();
+        if stack.last().copied() == Some(root.id) {
+            stack.pop();
+        }
+    });
+    let end_us = REQ_START.with(|r| match r.get() {
+        Some(start) => start.elapsed().as_micros() as u64,
+        None => 0,
+    });
+    LOG.with(|l| {
+        l.borrow_mut().push(SpanRecord {
+            id: root.id,
+            parent: None,
+            name: root.name,
+            kind: SpanKind::Request,
+            start_us: 0,
+            end_us,
+            meta: None,
+            render_id: None,
+        })
+    });
 }
 
 pub fn snapshot() -> Vec<SpanRecord> {
@@ -157,6 +230,7 @@ pub fn record(name: &str, kind: SpanKind, start: Instant, dur_us: u64, meta: Opt
             start_us,
             end_us,
             meta,
+            render_id: None,
         })
     });
 }
@@ -229,6 +303,7 @@ pub fn pop_fn() {
             start_us,
             end_us,
             meta: open.meta,
+            render_id: None,
         })
     });
 }
@@ -243,6 +318,7 @@ pub struct SpanGuard {
     name: String,
     kind: SpanKind,
     meta: Option<String>,
+    render_id: Option<u32>,
     start: Option<Instant>,
 }
 
@@ -259,6 +335,7 @@ impl SpanGuard {
                 name: String::new(),
                 kind,
                 meta: None,
+                render_id: None,
                 start: None,
             };
         }
@@ -271,8 +348,16 @@ impl SpanGuard {
             name: name.to_string(),
             kind,
             meta,
+            render_id: None,
             start: Some(Instant::now()),
         }
+    }
+
+    /// Stamp the render id assigned by `view_log::next_id()` onto this
+    /// span so the dev bar can pair the flame row with the marker
+    /// comments wrapped around the rendered template's region.
+    pub fn set_render_id(&mut self, id: u32) {
+        self.render_id = Some(id);
     }
 }
 
@@ -290,6 +375,7 @@ impl Drop for SpanGuard {
                 stack.pop();
             }
         });
+        let render_id = self.render_id;
         LOG.with(|l| {
             l.borrow_mut().push(SpanRecord {
                 id: self.id,
@@ -299,6 +385,7 @@ impl Drop for SpanGuard {
                 start_us,
                 end_us,
                 meta: std::mem::take(&mut self.meta),
+                render_id,
             })
         });
     }
@@ -392,6 +479,78 @@ mod tests {
         assert_eq!(h2.parent, Some(h1.id));
         assert_eq!(h1.kind, SpanKind::Fn);
         assert_eq!(h2.kind, SpanKind::Fn);
+    }
+
+    #[test]
+    fn root_request_wraps_other_spans() {
+        fresh();
+        open_request_root("GET /docs/getting_started".to_string());
+        let action = SpanGuard::start("docs#getting_started", SpanKind::Action);
+        {
+            let _view = SpanGuard::start("docs/getting_started", SpanKind::View);
+        }
+        drop(action);
+        close_request_root();
+
+        let snap = snapshot();
+        assert_eq!(snap.len(), 3, "view + action + root request");
+
+        let root = snap
+            .iter()
+            .find(|s| s.kind == SpanKind::Request)
+            .expect("root request span missing");
+        assert_eq!(root.name, "GET /docs/getting_started");
+        assert!(root.parent.is_none());
+        assert_eq!(root.start_us, 0);
+
+        let action = snap
+            .iter()
+            .find(|s| s.kind == SpanKind::Action)
+            .unwrap();
+        assert_eq!(
+            action.parent,
+            Some(root.id),
+            "action should nest under the root request"
+        );
+        let view = snap.iter().find(|s| s.kind == SpanKind::View).unwrap();
+        assert_eq!(view.parent, Some(action.id));
+    }
+
+    #[test]
+    fn close_request_root_is_idempotent_when_no_root_open() {
+        fresh();
+        // Should not panic / not push a phantom record.
+        close_request_root();
+        assert!(snapshot().is_empty());
+    }
+
+    #[test]
+    fn open_request_root_no_op_when_disabled() {
+        clear();
+        set_enabled(false);
+        begin_request(Instant::now());
+        open_request_root("GET /".to_string());
+        close_request_root();
+        assert!(snapshot().is_empty());
+    }
+
+    #[test]
+    fn begin_request_clears_root_state() {
+        fresh();
+        open_request_root("GET /one".to_string());
+        // Don't close — start a fresh request.
+        begin_request(Instant::now());
+        // New root should be allowed (previous one was discarded by begin_request).
+        open_request_root("GET /two".to_string());
+        close_request_root();
+
+        let snap = snapshot();
+        let roots: Vec<_> = snap
+            .iter()
+            .filter(|s| s.kind == SpanKind::Request)
+            .collect();
+        assert_eq!(roots.len(), 1, "only the second root should be recorded");
+        assert_eq!(roots[0].name, "GET /two");
     }
 
     #[test]

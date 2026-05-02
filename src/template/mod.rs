@@ -86,11 +86,15 @@ impl TemplateCache {
 
         // Per-template span for the dev-bar flamegraph + flat per-template
         // duration log. Both early-out when --dev is off.
-        let _span = crate::serve::span_log::SpanGuard::start(
+        let mut _span = crate::serve::span_log::SpanGuard::start(
             template_name,
             crate::serve::span_log::SpanKind::View,
         );
         let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_id = view_start.map(|_| crate::serve::view_log::next_id());
+        if let Some(id) = view_id {
+            _span.set_render_id(id);
+        }
 
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
@@ -118,6 +122,15 @@ impl TemplateCache {
         // If the template is a markdown file, convert to HTML
         let content = if is_markdown_template(&template_path) {
             markdown_to_html(&content)
+        } else {
+            content
+        };
+
+        // Wrap the view's own content in dev-bar marker comments so the
+        // hover overlay can find this template's region in the page. Only
+        // wraps the inner view (not the layout that wraps it later).
+        let content = if let Some(id) = view_id {
+            wrap_dev_marker("view", id, template_name, &content)
         } else {
             content
         };
@@ -151,8 +164,8 @@ impl TemplateCache {
                 }
             }
         };
-        if let Some(start) = view_start {
-            crate::serve::view_log::record(template_name, start.elapsed().as_micros() as u64);
+        if let (Some(start), Some(id)) = (view_start, view_id) {
+            crate::serve::view_log::record(id, template_name, start.elapsed().as_micros() as u64);
         }
         result
     }
@@ -160,11 +173,15 @@ impl TemplateCache {
     /// Render a partial template (no layout).
     pub fn render_partial(&self, name: &str, data: &Value) -> Result<String, String> {
         // Per-partial span + view-log entry, matching `render` above.
-        let _span = crate::serve::span_log::SpanGuard::start(
+        let mut _span = crate::serve::span_log::SpanGuard::start(
             name,
             crate::serve::span_log::SpanKind::Partial,
         );
         let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_id = view_start.map(|_| crate::serve::view_log::next_id());
+        if let Some(id) = view_id {
+            _span.set_render_id(id);
+        }
 
         // Partials start with underscore
         let partial_name = if name.contains('/') {
@@ -199,8 +216,13 @@ impl TemplateCache {
         } else {
             content
         };
-        if let Some(start) = view_start {
-            crate::serve::view_log::record(name, start.elapsed().as_micros() as u64);
+        let result = if let Some(id) = view_id {
+            wrap_dev_marker("partial", id, name, &result)
+        } else {
+            result
+        };
+        if let (Some(start), Some(id)) = (view_start, view_id) {
+            crate::serve::view_log::record(id, name, start.elapsed().as_micros() as u64);
         }
         Ok(result)
     }
@@ -231,11 +253,15 @@ impl TemplateCache {
         // `render_partial`. The recorded name is the resolved layout key
         // (e.g. "layouts/application") so it's distinguishable from the
         // top-level template in the dev-bar sub-row list.
-        let _span = crate::serve::span_log::SpanGuard::start(
+        let mut _span = crate::serve::span_log::SpanGuard::start(
             layout_key,
             crate::serve::span_log::SpanKind::View,
         );
         let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_id = view_start.map(|_| crate::serve::view_log::next_id());
+        if let Some(id) = view_id {
+            _span.set_render_id(id);
+        }
 
         let result = match self.resolve_template_path(layout_key) {
             Ok(layout_path) => {
@@ -256,8 +282,13 @@ impl TemplateCache {
             }
         };
 
-        if let Some(start) = view_start {
-            crate::serve::view_log::record(layout_key, start.elapsed().as_micros() as u64);
+        let result = match (result, view_id) {
+            (Ok(html), Some(id)) => Ok(wrap_dev_marker("layout", id, layout_key, &html)),
+            (other, _) => other,
+        };
+
+        if let (Some(start), Some(id)) = (view_start, view_id) {
+            crate::serve::view_log::record(id, layout_key, start.elapsed().as_micros() as u64);
         }
 
         result
@@ -505,6 +536,39 @@ fn is_markdown_template(path: &Path) -> bool {
     s.ends_with(".md")
 }
 
+/// Wrap rendered template output in HTML comment markers used by the dev
+/// bar's hover overlay. Only emitted when `view_log` is enabled (i.e.
+/// dev mode); production HTML is unchanged.
+///
+/// `kind` is `"view"`, `"partial"`, or `"layout"`. `id` matches the
+/// id stored alongside the entry in `view_log`, which the dev bar emits
+/// as `data-solidev-view-idx` on the matching sub-row.
+fn wrap_dev_marker(kind: &str, id: u32, name: &str, body: &str) -> String {
+    // Sanitize the template name for inclusion inside an HTML comment:
+    // strip `--` (which would terminate the comment early) and any
+    // angle brackets (defensive, names shouldn't contain them).
+    let safe_name: String = name
+        .chars()
+        .filter(|c| *c != '<' && *c != '>')
+        .collect::<String>()
+        .replace("--", "__");
+    let mut out = String::with_capacity(body.len() + safe_name.len() + 80);
+    out.push_str("<!--solidev:");
+    out.push_str(kind);
+    out.push_str(":start id=");
+    out.push_str(&id.to_string());
+    out.push_str(" name=");
+    out.push_str(&safe_name);
+    out.push_str("-->");
+    out.push_str(body);
+    out.push_str("<!--solidev:");
+    out.push_str(kind);
+    out.push_str(":end id=");
+    out.push_str(&id.to_string());
+    out.push_str("-->");
+    out
+}
+
 /// Convert markdown text to HTML using pulldown-cmark.
 pub fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
@@ -655,6 +719,59 @@ mod tests {
         let cache = TemplateCache::new(&views);
         let result = cache.render("greeting", &data, Some(None)).unwrap();
         assert!(result.contains("<h1>Hello World</h1>"));
+    }
+
+    #[test]
+    fn dev_markers_wrap_view_and_partial_when_enabled() {
+        // `view_log` gating is thread-local, so flipping it here only
+        // affects this test's thread.
+        crate::serve::view_log::set_enabled(true);
+        crate::serve::view_log::clear();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("things")).unwrap();
+        fs::write(
+            views.join("things").join("show.html.slv"),
+            "BEFORE <%= render 'things/card' %> AFTER",
+        )
+        .unwrap();
+        fs::write(views.join("things").join("_card.html.slv"), "[CARD]").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache
+            .render("things/show", &Value::Null, Some(None))
+            .unwrap();
+
+        // The partial's body is wrapped in start/end markers carrying its id.
+        assert!(out.contains("<!--solidev:partial:start id="));
+        assert!(out.contains(" name=things/card-->[CARD]<!--solidev:partial:end id="));
+        // The top-level view is wrapped in view markers, with the partial
+        // markers nested inside.
+        assert!(out.contains("<!--solidev:view:start id="));
+        assert!(out.contains(" name=things/show-->BEFORE "));
+        assert!(out.contains(" AFTER<!--solidev:view:end id="));
+
+        crate::serve::view_log::set_enabled(false);
+        crate::serve::view_log::clear();
+    }
+
+    #[test]
+    fn dev_markers_absent_when_disabled() {
+        crate::serve::view_log::set_enabled(false);
+        crate::serve::view_log::clear();
+
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+        fs::write(views.join("home.html.slv"), "<h1>Hi</h1>").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let out = cache.render("home", &Value::Null, Some(None)).unwrap();
+
+        // Production HTML must stay clean.
+        assert!(!out.contains("solidev:"));
+        assert_eq!(out, "<h1>Hi</h1>");
     }
 
     /// Helper to register a fake mounted engine for template resolution tests.

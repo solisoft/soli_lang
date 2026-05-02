@@ -36,11 +36,20 @@ pub struct DevBarContext<'a> {
     /// row into per-middleware sub-rows.
     pub middlewares: Vec<(String, u64)>,
     /// One entry per template render (top-level view, layout, partial)
-    /// in the order they fired (`(name, dur_us)`). The render-breakdown
+    /// in the order they fired (`(id, name, dur_us)`). The render-breakdown
     /// expands the aggregate "view" row into per-template sub-rows so
     /// the user can see exactly which templates ran. Durations include
     /// nested children, so they overlap and don't sum to the aggregate.
-    pub views: Vec<(String, u64)>,
+    /// `id` is a stable per-request render id assigned at render *start*;
+    /// the template engine wraps the rendered output in
+    /// `<!--solidev:KIND:start id=ID …-->` markers using the same id, and
+    /// the dev bar emits it as `data-solidev-view-idx` on the sub-row so
+    /// the hover-overlay JS can pair them.
+    /// `parent` is the id of the lexically-enclosing render (e.g. a
+    /// partial's parent is the view that included it; the view's parent
+    /// is its layout if any). The dev bar uses this to indent each
+    /// sub-row by depth so the breakdown reads as a tree.
+    pub views: Vec<(u32, Option<u32>, String, u64)>,
     /// Hierarchical spans for the flamegraph panel. Empty in non-dev
     /// mode. Each span carries (id, parent, name, kind, start_us,
     /// end_us, meta).
@@ -95,8 +104,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         400..=499 => "#ffb86c",
         _ => "#ff6b6b",
     };
-
-    let clock_str = current_clock_str();
 
     // Phase breakdown. middleware/view come from phase_log; db/http reuse the
     // existing per-call totals; controller is whatever is left over.
@@ -178,9 +185,55 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
     let view_sub_rows = if ctx.views.is_empty() {
         String::new()
     } else {
+        // Render the view list as a tree: walk parent → children, depth
+        // controls indentation. `views` is in close-order (children
+        // before parents), so we build a child-list map then emit a
+        // pre-order DFS starting at every root (entries whose parent is
+        // None or whose parent isn't in this snapshot).
+        let id_set: std::collections::HashSet<u32> =
+            ctx.views.iter().map(|(id, _, _, _)| *id).collect();
+        let mut children_of: std::collections::HashMap<Option<u32>, Vec<u32>> =
+            std::collections::HashMap::new();
+        let mut entry_by_id: std::collections::HashMap<u32, &(u32, Option<u32>, String, u64)> =
+            std::collections::HashMap::new();
+        let mut roots: Vec<u32> = Vec::new();
+        for entry in &ctx.views {
+            let (id, parent, _, _) = entry;
+            entry_by_id.insert(*id, entry);
+            let parent_in_snapshot = parent.filter(|p| id_set.contains(p));
+            if parent_in_snapshot.is_none() {
+                roots.push(*id);
+            }
+            children_of.entry(parent_in_snapshot).or_default().push(*id);
+        }
+        // Siblings render sequentially (one partial finishes before the
+        // next starts), so close-order *within* a sibling group already
+        // matches start-order — no reversal needed. Children appear
+        // before their parent in `ctx.views` because the parent closes
+        // last, but `children_of` only collects siblings under the same
+        // parent, so each list is naturally start-ordered.
+
+        fn emit(
+            id: u32,
+            depth: u32,
+            elapsed_us: u64,
+            entry_by_id: &std::collections::HashMap<u32, &(u32, Option<u32>, String, u64)>,
+            children_of: &std::collections::HashMap<Option<u32>, Vec<u32>>,
+            out: &mut String,
+        ) {
+            if let Some((rid, _, name, us)) = entry_by_id.get(&id).copied() {
+                out.push_str(&view_sub_row(*rid, depth, name, *us, elapsed_us, "#b8e986"));
+            }
+            if let Some(kids) = children_of.get(&Some(id)) {
+                for &child in kids {
+                    emit(child, depth + 1, elapsed_us, entry_by_id, children_of, out);
+                }
+            }
+        }
+
         let mut s = String::new();
-        for (name, us) in &ctx.views {
-            s.push_str(&sub_row(name, *us, elapsed_us, "#b8e986"));
+        for &root in &roots {
+            emit(root, 0, elapsed_us, &entry_by_id, &children_of, &mut s);
         }
         format!(
             "<li id=\"__solidev_view_subrows\" style=\"display:none;list-style:none;padding:0;margin:0;\">\
@@ -192,7 +245,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         )
     };
     let breakdown_panel = format!(
-        "<div id=\"__solidev_phases\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;\">\
+        "<div id=\"__solidev_phases\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;max-height:33vh;overflow-y:auto;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">RENDER · {total}</div>\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.25rem;font-size:11px;\">\
 {mw_row}\
@@ -371,14 +424,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
     // 404 with no controller dispatch).
     let flame_count = ctx.spans.len();
     let flame_panel = render_flame_panel(&ctx.spans, elapsed_us);
-    let flame_btn_extra = if flame_count > 0 {
-        format!(
-            "<span style=\"color:#8b949e;\"> · </span><span style=\"color:#b8e986;\">{}</span>",
-            flame_count
-        )
-    } else {
-        String::new()
-    };
 
     format!(
         "<!-- {marker} -->\
@@ -386,9 +431,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 <div style=\"display:flex;align-items:center;gap:0.75rem;padding:0.375rem 0.75rem;overflow-x:auto;white-space:nowrap;position:sticky;top:0;background:#0b0d0f;z-index:1;border-bottom:1px solid #30363d;\">\
 <span style=\"padding:0 0.375rem;border-radius:0.25rem;background:#3a2a00;color:#f0c674;\" title=\"APP_ENV\">DEV · {env}</span>\
 <span style=\"color:#30363d;\">|</span>\
-<span title=\"HTTP method · path\"><span style=\"color:#8be9fd;\">{method}</span> <span style=\"color:#e6e6e6;\">{path}</span></span>\
-<span style=\"color:#30363d;\">|</span>\
-<span title=\"response status\">status <span style=\"color:{status_color};\">{status}</span></span>\
+<span title=\"HTTP method · path · status\"><span style=\"color:#8be9fd;\">{method}</span> <span style=\"color:#e6e6e6;\">{path}</span> <span style=\"color:#8b949e;\">[</span><span style=\"color:{status_color};\">{status}</span><span style=\"color:#8b949e;\">]</span></span>\
 <span style=\"color:#30363d;\">|</span>\
 <button type=\"button\" id=\"__solidev_rb\" title=\"click to expand render breakdown (middleware / controller / view / db / http)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">render <span style=\"color:#b8e986;\">{render}</span></button>\
 <span style=\"color:#30363d;\">|</span>\
@@ -398,13 +441,11 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 <span style=\"color:#30363d;\">|</span>\
 <button type=\"button\" id=\"__solidev_hb\" title=\"click to expand outgoing HTTP requests for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">http <span style=\"color:#b8e986;\">{h_count}r</span>{h_btn_extra}</button>\
 <span style=\"color:#30363d;\">|</span>\
-<button type=\"button\" id=\"__solidev_fb\" title=\"click to expand the flamegraph (hierarchical timing per phase + per Soli function)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">flame <span style=\"color:#b8e986;\">{flame_count}s</span>{flame_btn_extra}</button>\
-<span style=\"color:#30363d;\">|</span>\
-<span style=\"color:#8b949e;\" title=\"server clock\">{clock}</span>\
+<button type=\"button\" id=\"__solidev_fb\" title=\"click to expand the flamegraph (hierarchical timing per phase + per Soli function)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">flame <span style=\"color:#b8e986;\">{flame_count}s</span></button>\
 <button type=\"button\" id=\"__solidev_close\" aria-label=\"Hide dev bar (Alt+D)\" title=\"hide (Alt+D)\" style=\"margin-left:auto;padding:0 0.5rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">×</button>\
 </div>{breakdown_panel}{queries_panel}{http_panel}{flame_panel}</aside>\
 <button type=\"button\" id=\"__solidev_show\" aria-label=\"Show dev bar\" style=\"display:none;position:fixed;bottom:0.5rem;right:0.5rem;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;padding:0.25rem 0.5rem;border-radius:0.25rem;background:#0b0d0f;color:#f0c674;border:1px solid #30363d;letter-spacing:0.05em;cursor:pointer;\">DEV</button>\
-<script>(function(){{var bar=document.getElementById('__solidev_bar');var open=document.getElementById('__solidev_show');if(!bar||!open)return;function setHidden(h){{if(h){{bar.style.display='none';open.style.display='inline-flex';try{{sessionStorage.setItem('__solidev_hidden','1');}}catch(e){{}}}}else{{bar.style.display='';open.style.display='none';try{{sessionStorage.removeItem('__solidev_hidden');}}catch(e){{}}}}}}var hidden=false;try{{hidden=sessionStorage.getItem('__solidev_hidden')==='1';}}catch(e){{}}setHidden(hidden);var c=document.getElementById('__solidev_close');if(c)c.addEventListener('click',function(){{setHidden(true);}});open.addEventListener('click',function(){{setHidden(false);}});var db=document.getElementById('__solidev_db');var qp=document.getElementById('__solidev_queries');if(db&&qp){{db.addEventListener('click',function(){{qp.style.display=qp.style.display==='none'?'block':'none';}});}}var hb=document.getElementById('__solidev_hb');var hp=document.getElementById('__solidev_http');if(hb&&hp){{hb.addEventListener('click',function(){{hp.style.display=hp.style.display==='none'?'block':'none';}});}}var rb=document.getElementById('__solidev_rb');var rp=document.getElementById('__solidev_phases');if(rb&&rp){{rb.addEventListener('click',function(){{rp.style.display=rp.style.display==='none'?'block':'none';}});}}var mwt=document.getElementById('__solidev_mw_toggle');var mws=document.getElementById('__solidev_mw_subrows');var mwc=document.getElementById('__solidev_mw_chev');if(mwt&&mws){{mwt.addEventListener('click',function(){{var hidden=mws.style.display==='none';mws.style.display=hidden?'':'none';if(mwc)mwc.textContent=hidden?'▼':'▶';}});}}var vwt=document.getElementById('__solidev_view_toggle');var vws=document.getElementById('__solidev_view_subrows');var vwc=document.getElementById('__solidev_view_chev');if(vwt&&vws){{vwt.addEventListener('click',function(){{var hidden=vws.style.display==='none';vws.style.display=hidden?'':'none';if(vwc)vwc.textContent=hidden?'▼':'▶';}});}}var fb=document.getElementById('__solidev_fb');var fp=document.getElementById('__solidev_flame');if(fb&&fp){{fb.addEventListener('click',function(){{fp.style.display=fp.style.display==='none'?'block':'none';}});}}var fchart=document.getElementById('__solidev_flame_chart');var flist=document.getElementById('__solidev_flame_list');if(fchart){{var totalUs=parseFloat(fchart.getAttribute('data-total'))||1;var rects=fchart.querySelectorAll('.__solidev_rect');function applyZoom(viewStart,viewW){{rects.forEach(function(r){{var s=parseFloat(r.getAttribute('data-start'));var w=parseFloat(r.getAttribute('data-w'));var rs=s-viewStart;var re=rs+w;if(re<=0||rs>=viewW){{r.style.display='none';return;}}r.style.display='';var cs=Math.max(0,rs);var ce=Math.min(viewW,re);r.style.left=(cs/viewW*100)+'%';r.style.width=Math.max(0.001,(ce-cs)/viewW*100)+'%';}});}}function highlightRect(rect,on){{if(!rect)return;rect.style.outline=on?'2px solid #ffffff':'';rect.style.outlineOffset=on?'-2px':'';}}function highlightRow(li,on){{if(!li)return;li.style.background=on?'#1c1f23':'';if(on)li.scrollIntoView({{block:'nearest',behavior:'smooth'}});}}rects.forEach(function(r){{r.addEventListener('click',function(ev){{ev.stopPropagation();applyZoom(parseFloat(r.getAttribute('data-start')),parseFloat(r.getAttribute('data-w')));}});r.addEventListener('mouseenter',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,true);highlightRect(r,true);}});r.addEventListener('mouseleave',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,false);highlightRect(r,false);}});}});fchart.addEventListener('dblclick',function(){{applyZoom(0,totalUs);}});if(flist){{flist.querySelectorAll('li[data-idx]').forEach(function(li){{li.addEventListener('mouseenter',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,true);highlightRect(rect,true);}});li.addEventListener('mouseleave',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,false);highlightRect(rect,false);}});li.addEventListener('click',function(){{applyZoom(parseFloat(li.getAttribute('data-start')),parseFloat(li.getAttribute('data-w')));}});}});}}}}document.addEventListener('keydown',function(e){{if(e.altKey&&(e.key==='d'||e.key==='D')){{e.preventDefault();setHidden(bar.style.display!=='none');}}}});}})();</script>",
+<script>(function(){{var bar=document.getElementById('__solidev_bar');var open=document.getElementById('__solidev_show');if(!bar||!open)return;var origPad=document.body.style.paddingBottom;function syncPad(){{if(bar.style.display==='none'){{document.body.style.paddingBottom=origPad;return;}}document.body.style.paddingBottom=bar.offsetHeight+'px';}}function setHidden(h){{if(h){{bar.style.display='none';open.style.display='inline-flex';try{{sessionStorage.setItem('__solidev_hidden','1');}}catch(e){{}}}}else{{bar.style.display='';open.style.display='none';try{{sessionStorage.removeItem('__solidev_hidden');}}catch(e){{}}}}syncPad();}}var hidden=false;try{{hidden=sessionStorage.getItem('__solidev_hidden')==='1';}}catch(e){{}}setHidden(hidden);if(typeof ResizeObserver!=='undefined'){{try{{new ResizeObserver(syncPad).observe(bar);}}catch(e){{}}}}window.addEventListener('resize',syncPad);var c=document.getElementById('__solidev_close');if(c)c.addEventListener('click',function(){{setHidden(true);}});open.addEventListener('click',function(){{setHidden(false);}});var db=document.getElementById('__solidev_db');var qp=document.getElementById('__solidev_queries');if(db&&qp){{db.addEventListener('click',function(){{qp.style.display=qp.style.display==='none'?'block':'none';}});}}var hb=document.getElementById('__solidev_hb');var hp=document.getElementById('__solidev_http');if(hb&&hp){{hb.addEventListener('click',function(){{hp.style.display=hp.style.display==='none'?'block':'none';}});}}var rb=document.getElementById('__solidev_rb');var rp=document.getElementById('__solidev_phases');if(rb&&rp){{rb.addEventListener('click',function(){{rp.style.display=rp.style.display==='none'?'block':'none';}});}}var mwt=document.getElementById('__solidev_mw_toggle');var mws=document.getElementById('__solidev_mw_subrows');var mwc=document.getElementById('__solidev_mw_chev');if(mwt&&mws){{mwt.addEventListener('click',function(){{var hidden=mws.style.display==='none';mws.style.display=hidden?'':'none';if(mwc)mwc.textContent=hidden?'▼':'▶';}});}}var vwt=document.getElementById('__solidev_view_toggle');var vws=document.getElementById('__solidev_view_subrows');var vwc=document.getElementById('__solidev_view_chev');if(vwt&&vws){{vwt.addEventListener('click',function(){{var hidden=vws.style.display==='none';vws.style.display=hidden?'':'none';if(vwc)vwc.textContent=hidden?'▼':'▶';}});}}var fb=document.getElementById('__solidev_fb');var fp=document.getElementById('__solidev_flame');if(fb&&fp){{fb.addEventListener('click',function(){{fp.style.display=fp.style.display==='none'?'block':'none';}});}}var fchart=document.getElementById('__solidev_flame_chart');var flist=document.getElementById('__solidev_flame_list');if(fchart){{var totalUs=parseFloat(fchart.getAttribute('data-total'))||1;var rects=fchart.querySelectorAll('.__solidev_rect');function applyZoom(viewStart,viewW){{rects.forEach(function(r){{var s=parseFloat(r.getAttribute('data-start'));var w=parseFloat(r.getAttribute('data-w'));var rs=s-viewStart;var re=rs+w;if(re<=0||rs>=viewW){{r.style.display='none';return;}}r.style.display='';var cs=Math.max(0,rs);var ce=Math.min(viewW,re);r.style.left=(cs/viewW*100)+'%';r.style.width=Math.max(0.001,(ce-cs)/viewW*100)+'%';}});}}function highlightRect(rect,on){{if(!rect)return;rect.style.outline=on?'2px solid #ffffff':'';rect.style.outlineOffset=on?'-2px':'';}}function highlightRow(li,on){{if(!li)return;li.style.background=on?'#1c1f23':'';if(on)li.scrollIntoView({{block:'nearest',behavior:'smooth'}});}}rects.forEach(function(r){{r.addEventListener('click',function(ev){{ev.stopPropagation();applyZoom(parseFloat(r.getAttribute('data-start')),parseFloat(r.getAttribute('data-w')));}});r.addEventListener('mouseenter',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,true);highlightRect(r,true);}});r.addEventListener('mouseleave',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,false);highlightRect(r,false);}});}});fchart.addEventListener('dblclick',function(){{applyZoom(0,totalUs);}});if(flist){{flist.querySelectorAll('li[data-idx]').forEach(function(li){{li.addEventListener('mouseenter',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,true);highlightRect(rect,true);}});li.addEventListener('mouseleave',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,false);highlightRect(rect,false);}});li.addEventListener('click',function(){{applyZoom(parseFloat(li.getAttribute('data-start')),parseFloat(li.getAttribute('data-w')));}});}});}}}}var vrows=document.querySelectorAll('#__solidev_bar [data-solidev-view-idx]');if(vrows.length){{var ov=null,lbl=null,markerCache=null,autoScroll=false;function ensureOverlay(){{if(ov)return;ov=document.createElement('div');ov.id='__solidev_view_outline';ov.style.cssText='position:absolute;pointer-events:none;outline:2px solid #b8e986;outline-offset:-2px;background:rgba(184,233,134,0.12);z-index:2147483645;display:none;border-radius:2px;';document.body.appendChild(ov);lbl=document.createElement('div');lbl.style.cssText='position:absolute;pointer-events:none;font-family:JetBrains Mono,ui-monospace,monospace;font-size:10px;background:#0b0d0f;color:#b8e986;border:1px solid #b8e986;padding:1px 6px;border-radius:3px;z-index:2147483645;display:none;white-space:nowrap;';document.body.appendChild(lbl);}}function buildCache(){{if(markerCache)return markerCache;markerCache={{}};var w=document.createTreeWalker(document.body,NodeFilter.SHOW_COMMENT,null);var n;while(n=w.nextNode()){{var v=n.nodeValue||'';var m=v.match(/^solidev:(view|partial|layout):(start|end) id=(\\d+)/);if(!m)continue;var id=m[3];if(!markerCache[id])markerCache[id]={{}};markerCache[id][m[2]]=n;}}return markerCache;}}function ensureVisible(rect){{var barH=(bar&&bar.style.display!=='none')?bar.offsetHeight:0;var vh=window.innerHeight||document.documentElement.clientHeight;var visBottom=vh-barH;var pad=24;var needsUp=rect.top<pad;var needsDown=rect.top>visBottom-pad||(rect.bottom>visBottom&&rect.height<visBottom-2*pad);if(!needsUp&&!needsDown)return false;autoScroll=true;var sy=window.scrollY||window.pageYOffset||0;var targetY=sy+rect.top-Math.max(80,(visBottom-rect.height)/2);if(targetY<0)targetY=0;window.scrollTo({{top:targetY,left:window.scrollX||0,behavior:'auto'}});setTimeout(function(){{autoScroll=false;}},0);return true;}}function showFor(id,name){{var pair=buildCache()[id];if(!pair||!pair.start||!pair.end)return;var range=document.createRange();try{{range.setStartAfter(pair.start);range.setEndBefore(pair.end);}}catch(e){{return;}}var rect=range.getBoundingClientRect();if(rect.width===0&&rect.height===0)return;if(ensureVisible(rect)){{rect=range.getBoundingClientRect();}}ensureOverlay();var sx=window.scrollX||window.pageXOffset||0;var sy=window.scrollY||window.pageYOffset||0;ov.style.display='block';ov.style.left=(rect.left+sx)+'px';ov.style.top=(rect.top+sy)+'px';ov.style.width=rect.width+'px';ov.style.height=rect.height+'px';lbl.textContent=name;lbl.style.display='block';lbl.style.left=(rect.left+sx)+'px';lbl.style.top=Math.max(0,rect.top+sy-18)+'px';}}function hideOv(){{if(autoScroll)return;if(ov)ov.style.display='none';if(lbl)lbl.style.display='none';}}vrows.forEach(function(li){{li.addEventListener('mouseenter',function(){{var id=li.getAttribute('data-solidev-view-idx');var n=li.getAttribute('data-solidev-view-name');if(!n){{var nameEl=li.querySelector('span[title]');n=nameEl?nameEl.textContent:'';}}showFor(id,n);}});li.addEventListener('mouseleave',hideOv);}});}}document.addEventListener('keydown',function(e){{if(e.altKey&&(e.key==='d'||e.key==='D')){{e.preventDefault();setHidden(bar.style.display!=='none');}}}});}})();</script>",
         marker = MARKER,
         env = html_escape(&env_str),
         method = html_escape(ctx.method),
@@ -419,8 +460,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         h_count = h_count,
         h_btn_extra = h_btn_extra,
         flame_count = flame_count,
-        flame_btn_extra = flame_btn_extra,
-        clock = html_escape(&clock_str),
         queries_panel = queries_panel,
         http_panel = http_panel,
         breakdown_panel = breakdown_panel,
@@ -515,6 +554,18 @@ fn build_trace_json(spans: &[SpanRecord]) -> String {
     out
 }
 
+/// Strip the current working directory prefix from a span `meta` string so
+/// the flamegraph displays `app/controllers/users.sl:42` instead of the
+/// absolute path. Non-path metas (AQL templates, HTTP error messages) don't
+/// start with the CWD and pass through unchanged.
+fn relativize_meta(meta: &str, cwd_prefix: &str) -> String {
+    if !cwd_prefix.is_empty() && meta.starts_with(cwd_prefix) {
+        meta[cwd_prefix.len()..].trim_start_matches('/').to_string()
+    } else {
+        meta.to_string()
+    }
+}
+
 /// Render the inline-SVG flamegraph panel + trace JSON download link.
 /// Returns the empty string when `spans` is empty so the closing `</aside>`
 /// stays valid.
@@ -533,9 +584,12 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
     // re-percenting at runtime via JS — see `__solidev_flame_chart`'s
     // click handler.
     let total = total_us.max(1) as f64;
+    let cwd_prefix = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
     let mut rects = String::new();
-    let mut list_rows = String::new();
+    let mut row_html: Vec<String> = Vec::with_capacity(spans.len());
     for (i, s) in spans.iter().enumerate() {
         let dur = s.end_us.saturating_sub(s.start_us).max(1);
         let depth = depths[i];
@@ -543,7 +597,8 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
         let color = flame_color(s.kind);
         let pct = (dur as f64 / total) * 100.0;
         let left_pct = (s.start_us as f64 / total) * 100.0;
-        let title = match &s.meta {
+        let display_meta = s.meta.as_ref().map(|m| relativize_meta(m, &cwd_prefix));
+        let title = match &display_meta {
             Some(m) => format!(
                 "{} · {} · {:.1}% · {}",
                 s.name,
@@ -558,11 +613,23 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
         // when the rect is narrow and reveal more text as the user zooms
         // in. Native `title` attribute provides the hover tooltip with
         // the full name + duration + meta.
+        // Same view-pairing attrs as the companion list row, so the
+        // overlay-on-hover JS can also light up rendered regions when the
+        // user mouses over a rect in the chart.
+        let rect_view_attrs = match s.render_id {
+            Some(rid) => format!(
+                " data-solidev-view-idx=\"{}\" data-solidev-view-name=\"{}\"",
+                rid,
+                html_escape(&s.name)
+            ),
+            None => String::new(),
+        };
         rects.push_str(&format!(
-            "<div class=\"__solidev_rect\" data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\" title=\"{title}\" style=\"position:absolute;left:{left:.4}%;top:{y}px;width:{w:.4}%;height:{h}px;background:{c};box-sizing:border-box;border-right:1px solid #0b0d0f;font-size:10px;line-height:{h}px;color:#0b0d0f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;cursor:zoom-in;font-family:'JetBrains Mono',ui-monospace,monospace;\">{name}</div>",
+            "<div class=\"__solidev_rect\" data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\"{view_attrs} title=\"{title}\" style=\"position:absolute;left:{left:.4}%;top:{y}px;width:{w:.4}%;height:{h}px;background:{c};box-sizing:border-box;border-right:1px solid #0b0d0f;font-size:10px;line-height:{h}px;color:#0b0d0f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;cursor:zoom-in;font-family:'JetBrains Mono',ui-monospace,monospace;\">{name}</div>",
             idx = i,
             ds = s.start_us,
             dw = dur,
+            view_attrs = rect_view_attrs,
             title = html_escape(&title),
             left = left_pct,
             y = y,
@@ -576,15 +643,27 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
         // + %. Hover highlights the matching chart rect (data-idx pairing
         // wired in the inline JS), click zooms.
         let indent_px = depth * 14;
-        let meta_html = match &s.meta {
+        let meta_html = match &display_meta {
             Some(m) => format!(
                 "<span style=\"color:#6c7280;margin-left:0.5rem;\">· {}</span>",
                 html_escape(m)
             ),
             None => String::new(),
         };
-        list_rows.push_str(&format!(
-            "<li data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\" style=\"display:flex;align-items:center;gap:0.5rem;padding:0.125rem 0.25rem;border-radius:0.125rem;cursor:zoom-in;\">\
+        // For View/Partial spans, expose the matching `view_log` render id
+        // (and template name) so the hover-overlay JS can outline the
+        // template's region in the page — same wiring as the view sub-rows
+        // in the render-breakdown panel.
+        let view_attrs = match s.render_id {
+            Some(rid) => format!(
+                " data-solidev-view-idx=\"{}\" data-solidev-view-name=\"{}\"",
+                rid,
+                html_escape(&s.name)
+            ),
+            None => String::new(),
+        };
+        row_html.push(format!(
+            "<li data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\"{view_attrs} style=\"display:flex;align-items:center;gap:0.5rem;padding:0.125rem 0.25rem;border-radius:0.125rem;cursor:zoom-in;\">\
 <span style=\"flex:0 0 auto;width:0.5rem;height:0.5rem;background:{color};border-radius:0.125rem;display:inline-block;\"></span>\
 <span style=\"flex:0 0 auto;width:5.5rem;font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:0.05em;\">{kind}</span>\
 <span style=\"flex:1;color:#e6e6e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:{indent}px;\">{name}{meta}</span>\
@@ -594,6 +673,7 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
             idx = i,
             ds = s.start_us,
             dw = dur,
+            view_attrs = view_attrs,
             color = color,
             kind = s.kind.as_str(),
             indent = indent_px,
@@ -602,6 +682,21 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
             dur_str = html_escape(&fmt_duration_us(dur)),
             pct = pct,
         ));
+    }
+
+    // Spans are captured in close-order (children before parents). Reorder
+    // the list to pre-order DFS — parents before their children, siblings
+    // in start-time order — so the tree reads top-down.
+    let mut order: Vec<usize> = (0..spans.len()).collect();
+    order.sort_by(|&a, &b| {
+        spans[a]
+            .start_us
+            .cmp(&spans[b].start_us)
+            .then_with(|| spans[b].end_us.cmp(&spans[a].end_us))
+    });
+    let mut list_rows = String::new();
+    for i in order {
+        list_rows.push_str(&row_html[i]);
     }
 
     let trace_json = build_trace_json(spans);
@@ -720,6 +815,42 @@ fn sub_row(name: &str, us: u64, total_us: u64, color: &str) -> String {
     )
 }
 
+/// Sub-row for a rendered view/partial/layout. Differs from `sub_row` by
+/// carrying `data-solidev-view-idx`, which the inline hover-overlay
+/// script pairs with `<!--solidev:KIND:start id=…-->` markers in the
+/// page body. Cursor is set to `pointer` so the row signals interactivity.
+/// `depth` (0 = root) controls indentation so the list reads as a tree.
+fn view_sub_row(id: u32, depth: u32, name: &str, us: u64, total_us: u64, color: &str) -> String {
+    let pct = if total_us == 0 {
+        0
+    } else {
+        ((us as f64 / total_us as f64) * 100.0).round() as u32
+    };
+    let bar_width_pct = pct.min(100);
+    // 1rem base indent + 0.75rem per depth level. Tree branch glyph
+    // ('└─') sits in a fixed-width column so siblings stay aligned even
+    // when names differ in length.
+    let base_indent_rem = 1.0_f32 + 0.75 * depth as f32;
+    format!(
+        "<li data-solidev-view-idx=\"{id}\" style=\"display:flex;align-items:center;gap:0.75rem;padding-left:{indent}rem;cursor:pointer;\" title=\"hover to outline this template's region in the page\">\
+<span style=\"flex:0 0 1.25rem;color:#8b949e;font-size:10px;\">{glyph}</span>\
+<span style=\"flex:1 1 auto;color:#e6e6e6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\" title=\"{title}\">{name}</span>\
+<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+<span style=\"flex:0 0 8rem;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};opacity:0.7;\"></span></span>\
+</li>",
+        id = id,
+        indent = format!("{:.2}", base_indent_rem),
+        glyph = if depth == 0 { "▾" } else { "└─" },
+        name = html_escape(name),
+        title = html_escape(name),
+        dur = html_escape(&fmt_duration_us(us)),
+        pct = pct,
+        bar = bar_width_pct,
+        color = color,
+    )
+}
+
 /// Group queries by their raw template (the AQL string before bind-substitution).
 /// Returns groups with count >= `threshold`, sorted by count desc.
 ///
@@ -777,19 +908,6 @@ fn read_rss_str() -> String {
         let mb_tenth = ((kb - mb_whole * 1024) * 10) / 1024;
         format!("{}.{}MB", mb_whole, mb_tenth)
     }
-}
-
-fn current_clock_str() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let day_secs = secs % 86_400;
-    let h = day_secs / 3600;
-    let m = (day_secs % 3600) / 60;
-    let s = day_secs % 60;
-    format!("{:02}:{:02}:{:02} UTC", h, m, s)
 }
 
 fn embed_binds(
@@ -1058,9 +1176,12 @@ mod tests {
         let html = "<html><body></body></html>";
         let mut c = ctx("GET", "/users/42");
         c.phases.push(("view".into(), 5_000));
-        c.views.push(("users/show".into(), 3_500));
-        c.views.push(("users/_card".into(), 800));
-        c.views.push(("layouts/application".into(), 4_500));
+        // Close-order: child first (card), then parent (show), then layout
+        // wrapping the whole thing. Layout has no parent (root), show's
+        // parent is the layout, card's parent is show.
+        c.views.push((1, Some(0), "users/_card".into(), 800));
+        c.views.push((0, Some(2), "users/show".into(), 3_500));
+        c.views.push((2, None, "layouts/application".into(), 4_500));
         let out = inject_dev_bar(html, &c);
         // Aggregate row gets a count badge for >1 entries + toggle wiring.
         assert!(out.contains(">view (3)<"));
@@ -1071,6 +1192,11 @@ mod tests {
         assert!(out.contains(">users/show<"));
         assert!(out.contains(">users/_card<"));
         assert!(out.contains(">layouts/application<"));
+        // Each view sub-row carries its render id so the hover-overlay
+        // JS can pair it with the matching marker comments in the page.
+        assert!(out.contains("data-solidev-view-idx=\"0\""));
+        assert!(out.contains("data-solidev-view-idx=\"1\""));
+        assert!(out.contains("data-solidev-view-idx=\"2\""));
     }
 
     #[test]
@@ -1090,13 +1216,14 @@ mod tests {
         let html = "<html><body></body></html>";
         let mut c = ctx("GET", "/");
         c.phases.push(("view".into(), 1_000));
-        c.views.push(("home/index".into(), 1_000));
+        c.views.push((0, None, "home/index".into(), 1_000));
         let out = inject_dev_bar(html, &c);
         // Single view → no count badge, but row is still clickable.
         assert!(out.contains(">view<"));
         assert!(!out.contains("view (1)"));
         assert!(out.contains("id=\"__solidev_view_toggle\""));
         assert!(out.contains(">home/index<"));
+        assert!(out.contains("data-solidev-view-idx=\"0\""));
     }
 
     #[test]
@@ -1122,6 +1249,7 @@ mod tests {
             start_us: start,
             end_us: end,
             meta: None,
+            render_id: None,
         }
     }
 
@@ -1204,6 +1332,31 @@ mod tests {
         assert!(json.contains("\"cat\":\"db\""));
         assert!(json.contains("\"ts\":100"));
         assert!(json.contains("\"dur\":150"));
+    }
+
+    #[test]
+    fn relativize_meta_strips_cwd_prefix() {
+        assert_eq!(
+            relativize_meta("/home/me/proj/app/foo.sl:42", "/home/me/proj"),
+            "app/foo.sl:42"
+        );
+        // Trailing slash on prefix still works.
+        assert_eq!(
+            relativize_meta("/home/me/proj/app/foo.sl:42", "/home/me/proj/"),
+            "app/foo.sl:42"
+        );
+        // Path outside cwd passes through unchanged.
+        assert_eq!(
+            relativize_meta("/usr/lib/something.sl:10", "/home/me/proj"),
+            "/usr/lib/something.sl:10"
+        );
+        // Non-path metas (AQL, URLs) pass through unchanged.
+        assert_eq!(
+            relativize_meta("FOR doc IN users RETURN doc", "/home/me/proj"),
+            "FOR doc IN users RETURN doc"
+        );
+        // Empty cwd prefix is a no-op.
+        assert_eq!(relativize_meta("anything", ""), "anything");
     }
 
     #[test]

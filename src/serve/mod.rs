@@ -3979,8 +3979,15 @@ fn handle_request(
 
     // Anchor the span log to this request's start so every span's
     // `start_us` / `end_us` is encoded as microseconds-since-request-start.
+    // Also open the synthetic root request span so the flamegraph has a
+    // single top-level rectangle (e.g. `GET /docs/getting_started`) and
+    // every other span — middleware, action, view, db — nests beneath it
+    // instead of appearing as detached sibling roots. The root is closed
+    // explicitly inside `finalize_response` right before the snapshot, so
+    // it actually ends up in the recorded log.
     if let Some(t) = dev_started {
         span_log::begin_request(t);
+        span_log::open_request_root(format!("{} {}", method, path));
     }
 
     // Resolve the session ID from the Cookie header (if any). When no cookie is
@@ -4158,6 +4165,11 @@ fn handle_request(
                     let phases = phase_log::snapshot();
                     let middlewares = middleware_log::snapshot();
                     let views = view_log::snapshot();
+                    // Close the root request span *before* snapshotting —
+                    // span_log only records a span on close, so without this
+                    // the top-level request rectangle would be missing from
+                    // the flamegraph.
+                    span_log::close_request_root();
                     let spans = span_log::snapshot();
                     let ctx = dev_bar::DevBarContext {
                         method: method.as_ref(),
