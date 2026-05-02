@@ -6,6 +6,7 @@
 //! - Automatic route derivation
 //! - Middleware support for request interception
 
+mod asset_cache;
 pub mod dev_bar;
 mod hot_reload;
 pub mod live_reload;
@@ -540,6 +541,10 @@ fn run_hyper_server_worker_pool(
 
     // Wrap public_dir in Arc for cheap cloning across connections
     let public_dir_arc = Arc::new(public_dir.clone());
+    // Build prod-mode in-memory snapshot of CSS/JS assets so a mid-deploy file
+    // swap on disk doesn't desync against still-cached HTML in browsers.
+    let asset_cache = asset_cache::build(&public_dir, dev_mode);
+    let asset_cache_for_tokio = asset_cache.clone();
     let ws_registry_for_tokio = ws_registry.clone();
     let dev_mode_for_tokio = dev_mode;
 
@@ -594,6 +599,7 @@ fn run_hyper_server_worker_pool(
                 let request_tx = worker_queues_for_tokio.get_sender();
                 let reload_tx = reload_tx_for_tokio.clone();
                 let public_dir = public_dir_arc.clone(); // Arc clone is cheap
+                let asset_cache = asset_cache_for_tokio.clone(); // Arc clone is cheap
                 let _ws_registry = ws_registry_for_tokio.clone();
                 let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
                 let lv_event_tx = lv_event_tx.clone(); // LiveView event sender
@@ -605,6 +611,7 @@ fn run_hyper_server_worker_pool(
                         let request_tx = request_tx.clone();
                         let reload_tx = reload_tx.clone();
                         let public_dir = public_dir.clone(); // Arc clone is cheap
+                        let asset_cache = asset_cache.clone(); // Arc clone is cheap
                         let ws_event_tx = ws_event_tx.clone();
                         let lv_event_tx = lv_event_tx.clone();
                         let shutdown_flag = shutdown_flag.clone();
@@ -622,6 +629,7 @@ fn run_hyper_server_worker_pool(
                                 request_tx,
                                 reload_tx,
                                 public_dir,
+                                asset_cache,
                                 ws_event_tx,
                                 lv_event_tx,
                                 dev_mode,
@@ -1541,11 +1549,13 @@ pub struct LiveViewEventData {
 use file_upload::parse_multipart_body;
 
 /// Handle a hyper request
+#[allow(clippy::too_many_arguments)]
 async fn handle_hyper_request(
     mut req: Request<Incoming>,
     request_tx: WorkerSender,
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: Arc<PathBuf>,
+    asset_cache: asset_cache::AssetCache,
     ws_event_tx: channel::Sender<WebSocketEventData>,
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
@@ -1775,6 +1785,81 @@ async fn handle_hyper_request(
             }
             Ok(Some(file_path)) => {
                 let mime_type = server_constants::get_mime_type(&file_path);
+
+                // Production fast path: serve cached CSS/JS bytes loaded at startup.
+                // The cache is populated only in prod (`!dev_mode`); a miss here
+                // (e.g. images, fonts, files added post-startup) falls through to
+                // the disk-read path below.
+                if !dev_mode {
+                    let canonical =
+                        std::fs::canonicalize(&file_path).unwrap_or_else(|_| file_path.clone());
+                    if let Some(asset) = asset_cache.get(&canonical) {
+                        // Conditional GET: 304 short-circuit on matching ETag.
+                        if let Some(if_none_match) = req.headers().get("if-none-match") {
+                            if let Ok(client_etag) = if_none_match.to_str() {
+                                if client_etag == asset.etag
+                                    || client_etag == format!("W/{}", asset.etag)
+                                {
+                                    return Ok(Response::builder()
+                                        .status(StatusCode::NOT_MODIFIED)
+                                        .header("ETag", &asset.etag)
+                                        .header(
+                                            "Cache-Control",
+                                            server_constants::STATIC_CACHE_MAX_AGE,
+                                        )
+                                        .body(Full::new(Bytes::new()))
+                                        .unwrap());
+                                }
+                            }
+                        }
+
+                        let total_size = asset.bytes.len() as u64;
+
+                        // Range support: slice cheaply from refcounted Bytes.
+                        if let Some(range_header) = req.headers().get("range") {
+                            if let Ok(range_str) = range_header.to_str() {
+                                if let Some((start, end)) =
+                                    server_constants::parse_range_header(range_str, total_size)
+                                {
+                                    let length = end - start + 1;
+                                    let slice = asset.bytes.slice(start as usize..=(end as usize));
+                                    return Ok(Response::builder()
+                                        .status(StatusCode::PARTIAL_CONTENT)
+                                        .header("Content-Type", asset.content_type)
+                                        .header(
+                                            "Content-Range",
+                                            format!("bytes {}-{}/{}", start, end, total_size),
+                                        )
+                                        .header("Content-Length", length.to_string())
+                                        .header("Accept-Ranges", "bytes")
+                                        .header("ETag", &asset.etag)
+                                        .header(
+                                            "Cache-Control",
+                                            server_constants::STATIC_CACHE_MAX_AGE,
+                                        )
+                                        .body(Full::new(slice))
+                                        .unwrap());
+                                } else {
+                                    return Ok(Response::builder()
+                                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                                        .header("Content-Range", format!("bytes */{}", total_size))
+                                        .body(Full::new(Bytes::new()))
+                                        .unwrap());
+                                }
+                            }
+                        }
+
+                        return Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", asset.content_type)
+                            .header("Content-Length", asset.bytes.len().to_string())
+                            .header("Accept-Ranges", "bytes")
+                            .header("ETag", &asset.etag)
+                            .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
+                            .body(Full::new(asset.bytes.clone()))
+                            .unwrap());
+                    }
+                }
 
                 // In production mode, check for conditional request (If-None-Match)
                 if !dev_mode {
