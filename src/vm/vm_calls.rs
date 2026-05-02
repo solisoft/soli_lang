@@ -99,8 +99,13 @@ impl Vm {
         // Pop the callee
         self.pop();
 
-        // Call the native function
+        // Call the native function. Wrap in a flamegraph `Fn` span when
+        // the native is on the request-path whitelist (see
+        // `span_log::is_request_path_native`); cheap builtins are
+        // skipped to keep the chart readable.
+        let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
         let result = (native.func)(args).map_err(|e| RuntimeError::new(e, span))?;
+        drop(_native_span);
         self.push(result);
         Ok(())
     }

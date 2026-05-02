@@ -131,6 +131,43 @@ pub fn clear() {
     ROOT.with(|r| r.borrow_mut().take());
 }
 
+/// Returns true for the small whitelist of request-path native
+/// builtins worth instrumenting in the flamegraph. Anything that turns
+/// a controller action into a response goes here — `render`, `redirect`,
+/// `halt`, `render_json`, `render_text`, `render_partial`. Other
+/// builtins (`len`, `str`, `print`, `t`, `h`, …) are deliberately left
+/// out: instrumenting them would generate one Fn span per call inside
+/// hot iteration loops and drown out signal in the chart.
+///
+/// Kept as a `match` so the compiler optimizes it down to a jump table
+/// and so the whitelist is trivially auditable in one place.
+fn is_request_path_native(name: &str) -> bool {
+    matches!(
+        name,
+        "render" | "render_partial" | "render_json" | "render_text" | "redirect" | "halt"
+    )
+}
+
+/// Open a `Fn` span for a native builtin call when (a) dev mode is on
+/// AND (b) the native is on the request-path whitelist. Returns `None`
+/// otherwise, so the caller pays only a thread-local read + a `match`
+/// in the cold path. The returned guard closes the span on drop, just
+/// like `SpanGuard::start`.
+///
+/// This is the bridge that fills the "where did the time go between the
+/// controller `Fn` span and the `View` span?" gap — `render(...)` is a
+/// `NativeFunction`, not a Soli function, so it doesn't go through
+/// `push_frame` / `push_fn` and would otherwise produce no span at all.
+pub fn maybe_instrument_native(name: &str) -> Option<SpanGuard> {
+    if !is_enabled() {
+        return None;
+    }
+    if !is_request_path_native(name) {
+        return None;
+    }
+    Some(SpanGuard::start(name, SpanKind::Fn))
+}
+
 /// Open the synthetic root span for the current request. Pushes its id
 /// onto the open-span stack so every other span captured during the
 /// request becomes a (transitive) child of this root, giving the
@@ -482,6 +519,77 @@ mod tests {
     }
 
     #[test]
+    fn maybe_instrument_native_whitelisted_emits_span() {
+        fresh();
+        let outer = SpanGuard::start("controller_action", SpanKind::Action);
+        {
+            let _native = maybe_instrument_native("render");
+            assert!(_native.is_some(), "render should be instrumented");
+            // Inside the render span, an inner View span nests under it.
+            let _view = SpanGuard::start("docs/getting_started", SpanKind::View);
+        }
+        drop(outer);
+
+        let snap = snapshot();
+        let render = snap
+            .iter()
+            .find(|s| s.name == "render")
+            .expect("render span missing");
+        assert_eq!(render.kind, SpanKind::Fn);
+        let view = snap.iter().find(|s| s.kind == SpanKind::View).unwrap();
+        assert_eq!(
+            view.parent,
+            Some(render.id),
+            "view should nest under the render native"
+        );
+        let action = snap.iter().find(|s| s.kind == SpanKind::Action).unwrap();
+        assert_eq!(render.parent, Some(action.id));
+    }
+
+    #[test]
+    fn maybe_instrument_native_skips_non_whitelisted() {
+        fresh();
+        let _outer = SpanGuard::start("a", SpanKind::Action);
+        assert!(maybe_instrument_native("len").is_none());
+        assert!(maybe_instrument_native("str").is_none());
+        assert!(maybe_instrument_native("print").is_none());
+        assert!(maybe_instrument_native("h").is_none());
+        // No extra spans emitted from the cold native checks.
+        drop(_outer);
+        let snap = snapshot();
+        assert_eq!(snap.len(), 1, "only the action span should be recorded");
+    }
+
+    #[test]
+    fn maybe_instrument_native_no_op_when_disabled() {
+        clear();
+        set_enabled(false);
+        begin_request(Instant::now());
+        assert!(maybe_instrument_native("render").is_none());
+        assert!(snapshot().is_empty());
+    }
+
+    #[test]
+    fn maybe_instrument_native_covers_response_primitives() {
+        // Lock in the whitelist so accidentally narrowing it triggers
+        // a test failure instead of silently dropping spans.
+        for name in [
+            "render",
+            "render_partial",
+            "render_json",
+            "render_text",
+            "redirect",
+            "halt",
+        ] {
+            fresh();
+            assert!(
+                maybe_instrument_native(name).is_some(),
+                "{name} should be instrumented"
+            );
+        }
+    }
+
+    #[test]
     fn root_request_wraps_other_spans() {
         fresh();
         open_request_root("GET /docs/getting_started".to_string());
@@ -503,10 +611,7 @@ mod tests {
         assert!(root.parent.is_none());
         assert_eq!(root.start_us, 0);
 
-        let action = snap
-            .iter()
-            .find(|s| s.kind == SpanKind::Action)
-            .unwrap();
+        let action = snap.iter().find(|s| s.kind == SpanKind::Action).unwrap();
         assert_eq!(
             action.parent,
             Some(root.id),

@@ -884,8 +884,14 @@ impl Interpreter {
 
                 // Set current env so `defined()` can inspect the scope chain
                 crate::interpreter::executor::variables::set_current_env(self.environment.clone());
+                // Wrap the call in a flamegraph `Fn` span when the native
+                // is on the request-path whitelist (render, redirect, …).
+                // Otherwise no-op so cheap builtins (`len`, `str`, …) don't
+                // flood the chart from inside iteration loops.
+                let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
                 let result = (native.func)(all_args)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
+                drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();
 
                 // Check if this is the http_server_listen marker
@@ -1167,8 +1173,11 @@ impl Interpreter {
                     }
                 }
                 crate::interpreter::executor::variables::set_current_env(self.environment.clone());
+                // See call_value_with_named above — same whitelist gating.
+                let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
                 let result = (native.func)(arguments)
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
+                drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();
 
                 if let Some(port) = is_server_listen_marker(&result) {
