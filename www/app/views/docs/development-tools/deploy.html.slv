@@ -114,6 +114,13 @@ proxy_url = "https://proxy.example.com"</code></pre>
         </ul>
     </div>
 
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-300 mb-2">Asset cache during deploys</h4>
+        <p class="text-indigo-200/80 text-sm">
+            In production mode the server snapshots every <code class="text-indigo-300">.css</code> and <code class="text-indigo-300">.js</code> file under <code class="text-indigo-300">public/</code> into memory at boot. If new asset bytes land on disk before the binary restarts, the running process keeps serving its frozen snapshot — preventing the classic mismatch where in-flight HTML references one asset version while the disk has another. The next binary start reloads from disk. See <a href="/docs/development-tools/live-reload" class="text-indigo-400 underline">Production Mode</a> for details.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
     <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
         <ul class="list-disc list-inside text-gray-400 space-y-2">

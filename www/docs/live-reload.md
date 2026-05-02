@@ -76,3 +76,18 @@ pkill -f "soli run"
 ### Multiple Browser Tabs
 
 Live reload works across multiple browser tabs. When a file changes, all connected tabs will reload.
+
+## Production Mode
+
+When you start the server **without** `--dev`, behaviour flips for static assets:
+
+- **Live reload is disabled.** No WebSocket, no file watcher, no auto-refresh.
+- **CSS and JS files are snapshotted into memory at startup.** The server walks `public/` once and serves the bytes it loaded, with content-hash `ETag` and `Cache-Control: public, max-age=31536000, immutable`.
+
+The in-memory snapshot exists to prevent a deploy-time race: if you overwrite `public/css/app.css` on disk before restarting the binary, the running process keeps serving the **old** bytes. Browsers that already loaded HTML referencing a specific asset version don't suddenly fetch mismatched new bytes against the cached page. The next binary restart reloads from disk.
+
+```
+Cached 12 CSS/JS assets (438213 bytes) for prod-mode serving
+```
+
+You'll see a line like the above on prod startup confirming the snapshot. Files larger than 10 MB are skipped (and read from disk on demand). Other extensions (images, fonts) continue to be read fresh from disk per request — only `.css` and `.js` are cached.
