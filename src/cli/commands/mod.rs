@@ -316,7 +316,13 @@ pub fn run_deploy(folder: Option<&str>) {
     println!();
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-    let results = rt.block_on(solilang::module::deploy::deploy(config));
+    let results = match rt.block_on(solilang::module::deploy::deploy(config)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     solilang::module::deploy::print_summary(&results);
 

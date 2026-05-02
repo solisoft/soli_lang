@@ -1,13 +1,24 @@
+# Deployment mode: "git" (default) or "local" (rsync from this machine)
+mode = "git"
+
 git_url = "https://github.com/your-org/your-project.git"
 git_branch = "main"
 git_folder = "www/"
+
+# When mode = "local", these excludes are appended to built-in defaults
+# (.git/, target/, node_modules/, .env, .env.*, sessions/, *.log, .DS_Store)
+# local_excludes = ["tmp/", "*.bak"]
+
+# NOTE: This file is committed to source control. The proxy API key MUST be
+# supplied via the SOLI_DEPLOY_API_KEY environment variable, NOT in this file.
+#   export SOLI_DEPLOY_API_KEY=...
+#   soli deploy
 
 [[servers]]
 name = "prod-1"
 username = "deploy"
 ip = "192.168.1.100"
 folder = "/var/www/myapp"
-api_key = "your-api-key"
 proxy_url = "https://proxy.example.com"
 
 [[servers]]
@@ -15,5 +26,4 @@ name = "prod-2"
 username = "deploy"
 ip = "192.168.1.101"
 folder = "/var/www/myapp"
-api_key = "your-api-key"
 proxy_url = "https://proxy.example.com"

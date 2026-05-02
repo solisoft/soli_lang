@@ -1,7 +1,13 @@
 use ssh2::Session;
 use std::io::Read;
 use std::net::TcpStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DeployMode {
+    Git,
+    Local,
+}
 
 #[derive(Clone)]
 pub struct ServerConfig {
@@ -9,14 +15,16 @@ pub struct ServerConfig {
     pub username: String,
     pub ip: String,
     pub folder: String,
-    pub api_key: String,
     pub proxy_url: String,
 }
 
 pub struct DeployConfig {
+    pub mode: DeployMode,
+    pub source_path: PathBuf,
     pub git_url: String,
     pub git_branch: String,
     pub git_folder: String,
+    pub local_excludes: Vec<String>,
     pub servers: Vec<ServerConfig>,
 }
 
@@ -37,14 +45,35 @@ pub fn load_deploy_config(folder: &Path) -> Result<DeployConfig, String> {
     let content = std::fs::read_to_string(&deploy_path)
         .map_err(|e| format!("Failed to read deploy.toml: {}", e))?;
 
-    parse_deploy_toml(&content)
+    let mut config = parse_deploy_toml(&content)?;
+    config.source_path = folder.to_path_buf();
+    Ok(config)
+}
+
+fn parse_array_line(value: &str) -> Vec<String> {
+    let inner = value
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim();
+    if inner.is_empty() {
+        return Vec::new();
+    }
+    inner
+        .split(',')
+        .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
-    let mut git_url = None;
+    let mut mode = DeployMode::Git;
+    let mut git_url: Option<String> = None;
     let mut git_branch = "main".to_string();
     let mut git_folder = "/".to_string();
+    let mut local_excludes: Vec<String> = Vec::new();
     let mut servers: Vec<ServerConfig> = Vec::new();
+    let mut warned_about_api_key = false;
 
     let mut in_servers = false;
 
@@ -63,7 +92,6 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
                     username: String::new(),
                     ip: String::new(),
                     folder: String::new(),
-                    api_key: String::new(),
                     proxy_url: String::new(),
                 });
             } else {
@@ -74,45 +102,84 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
 
         if let Some((key, value)) = line.split_once('=') {
             let key = key.trim();
-            let value = value.trim().trim_matches('"').trim_matches('\'');
+            let raw_value = value.trim();
 
             if in_servers {
                 if let Some(server) = servers.last_mut() {
+                    let value = raw_value.trim_matches('"').trim_matches('\'');
                     match key {
                         "name" => server.name = value.to_string(),
                         "username" => server.username = value.to_string(),
                         "ip" => server.ip = value.to_string(),
                         "folder" => server.folder = value.to_string(),
-                        "api_key" => server.api_key = value.to_string(),
                         "proxy_url" => server.proxy_url = value.to_string(),
+                        "api_key" => {
+                            if !warned_about_api_key {
+                                eprintln!(
+                                    "warning: deploy.toml `api_key` is ignored — set the SOLI_DEPLOY_API_KEY env var instead and remove this line (deploy.toml is committed)."
+                                );
+                                warned_about_api_key = true;
+                            }
+                        }
                         _ => {}
                     }
                 }
             } else {
                 match key {
-                    "git_url" => git_url = Some(value.to_string()),
-                    "git_branch" => git_branch = value.to_string(),
-                    "git_folder" => git_folder = value.to_string(),
+                    "mode" => {
+                        let value = raw_value.trim_matches('"').trim_matches('\'');
+                        mode = match value {
+                            "git" => DeployMode::Git,
+                            "local" => DeployMode::Local,
+                            other => {
+                                return Err(format!(
+                                    "invalid mode `{}` in deploy.toml (expected \"git\" or \"local\")",
+                                    other
+                                ));
+                            }
+                        };
+                    }
+                    "git_url" => {
+                        git_url = Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
+                    }
+                    "git_branch" => {
+                        git_branch = raw_value.trim_matches('"').trim_matches('\'').to_string();
+                    }
+                    "git_folder" => {
+                        git_folder = raw_value.trim_matches('"').trim_matches('\'').to_string();
+                    }
+                    "local_excludes" => {
+                        local_excludes = parse_array_line(raw_value);
+                    }
                     _ => {}
                 }
             }
         }
     }
 
-    let git_url = git_url.ok_or("git_url is required in deploy.toml")?;
+    if mode == DeployMode::Git && git_url.is_none() {
+        return Err("git_url is required in deploy.toml when mode is \"git\"".to_string());
+    }
 
     Ok(DeployConfig {
-        git_url,
+        mode,
+        source_path: PathBuf::new(),
+        git_url: git_url.unwrap_or_default(),
         git_branch,
         git_folder,
+        local_excludes,
         servers,
     })
 }
 
-pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
+pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
     if config.servers.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
+
+    let api_key = std::env::var("SOLI_DEPLOY_API_KEY").map_err(|_| {
+        "SOLI_DEPLOY_API_KEY env var is required for the proxy deploy step. Set it before running `soli deploy`.".to_string()
+    })?;
 
     let first_server = config.servers[0].clone();
 
@@ -120,16 +187,25 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
     let mut handles = Vec::new();
 
     for server in config.servers.clone() {
-        let git_url = config.git_url.clone();
-        let git_branch = config.git_branch.clone();
-        let git_folder = config.git_folder.clone();
-
-        let handle =
-            tokio::spawn(
-                async move { sync_code(&server, &git_url, &git_branch, &git_folder).await },
-            );
-
-        handles.push(handle);
+        match config.mode {
+            DeployMode::Git => {
+                let git_url = config.git_url.clone();
+                let git_branch = config.git_branch.clone();
+                let git_folder = config.git_folder.clone();
+                handles.push(tokio::spawn(async move {
+                    sync_code_git(&server, &git_url, &git_branch, &git_folder).await
+                }));
+            }
+            DeployMode::Local => {
+                let source = config.source_path.clone();
+                let mut excludes: Vec<String> =
+                    DEFAULT_EXCLUDES.iter().map(|s| s.to_string()).collect();
+                excludes.extend(config.local_excludes.iter().cloned());
+                handles.push(tokio::spawn(async move {
+                    sync_code_rsync(&server, &source, &excludes).await
+                }));
+            }
+        }
     }
 
     for handle in handles {
@@ -138,7 +214,7 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
         }
     }
 
-    if let Err(e) = run_migrations(&first_server, &config.git_folder).await {
+    if let Err(e) = run_migrations(&first_server, &config.git_folder, config.mode).await {
         eprintln!("[{}] Migration warning: {}", first_server.name, e);
     }
 
@@ -148,7 +224,8 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
     let mut deploy_handles = Vec::new();
 
     for server in config.servers.clone() {
-        let handle = tokio::spawn(async move { trigger_deploy(&server).await });
+        let key = api_key.clone();
+        let handle = tokio::spawn(async move { trigger_deploy(&server, &key).await });
         deploy_handles.push(handle);
     }
 
@@ -165,10 +242,10 @@ pub async fn deploy(config: DeployConfig) -> Vec<DeployResult> {
         }
     }
 
-    results
+    Ok(results)
 }
 
-async fn sync_code(
+async fn sync_code_git(
     server: &ServerConfig,
     git_url: &str,
     git_branch: &str,
@@ -196,15 +273,107 @@ async fn sync_code(
     Ok(())
 }
 
-async fn run_migrations(server: &ServerConfig, git_folder: &str) -> Result<(), String> {
+const DEFAULT_EXCLUDES: &[&str] = &[
+    ".git/",
+    "target/",
+    "node_modules/",
+    ".env",
+    ".env.*",
+    "sessions/",
+    "*.log",
+    ".DS_Store",
+];
+
+async fn sync_code_rsync(
+    server: &ServerConfig,
+    source: &Path,
+    excludes: &[String],
+) -> Result<(), String> {
+    println!(
+        "[{}] Rsyncing local files to {}@{}:{}...",
+        server.name, server.username, server.ip, server.folder
+    );
+
+    ensure_remote_folder(server).await?;
+
+    let source_arg = format!("{}/", source.display());
+    let dest_arg = format!(
+        "{}@{}:{}/",
+        server.username,
+        server.ip,
+        server.folder.trim_end_matches('/')
+    );
+
+    let mut cmd = tokio::process::Command::new("rsync");
+    cmd.arg("-avz").arg("--delete");
+    for ex in excludes {
+        cmd.arg(format!("--exclude={}", ex));
+    }
+    cmd.arg("-e").arg("ssh -o StrictHostKeyChecking=accept-new");
+    cmd.arg(&source_arg);
+    cmd.arg(&dest_arg);
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("rsync spawn failed: {} (is rsync installed?)", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "rsync failed: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        ));
+    }
+
+    println!("[{}] Code synced ✓", server.name);
+    Ok(())
+}
+
+async fn ensure_remote_folder(server: &ServerConfig) -> Result<(), String> {
+    let session = ssh_connect(server).await?;
+    let mut channel = session
+        .channel_session()
+        .map_err(|e| format!("Failed to open channel: {}", e))?;
+
+    channel
+        .exec(&format!("mkdir -p {}", server.folder))
+        .map_err(|e| format!("Failed to mkdir on remote: {}", e))?;
+
+    let mut stderr = String::new();
+    channel.stderr().read_to_string(&mut stderr).ok();
+    let mut stdout = String::new();
+    channel.read_to_string(&mut stdout).ok();
+    channel.wait_close().ok();
+
+    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
+        return Err(format!(
+            "mkdir -p {} failed: {} {}",
+            server.folder, stdout, stderr
+        ));
+    }
+
+    Ok(())
+}
+
+async fn run_migrations(
+    server: &ServerConfig,
+    git_folder: &str,
+    mode: DeployMode,
+) -> Result<(), String> {
     println!("[{}] Running database migrations...", server.name);
 
     let session = ssh_connect(server).await?;
 
-    let target = if git_folder == "/" || git_folder.is_empty() {
-        server.folder.clone()
-    } else {
-        format!("{}/{}", server.folder, git_folder.trim_end_matches('/'))
+    let target = match mode {
+        DeployMode::Local => server.folder.clone(),
+        DeployMode::Git => {
+            if git_folder == "/" || git_folder.is_empty() {
+                server.folder.clone()
+            } else {
+                format!("{}/{}", server.folder, git_folder.trim_end_matches('/'))
+            }
+        }
     };
 
     let migration_cmd = format!("cd {} && soli db:migrate up", target);
@@ -239,12 +408,12 @@ async fn run_migrations(server: &ServerConfig, git_folder: &str) -> Result<(), S
     Ok(())
 }
 
-async fn trigger_deploy(server: &ServerConfig) -> DeployResult {
+async fn trigger_deploy(server: &ServerConfig, api_key: &str) -> DeployResult {
     println!("[{}] Triggering blue-green deploy...", server.name);
 
     let app_name = extract_app_name(&server.folder);
 
-    match trigger_proxy_deploy(&server.proxy_url, &server.api_key, &app_name) {
+    match trigger_proxy_deploy(&server.proxy_url, api_key, &app_name) {
         Ok(slot) => {
             println!("[{}] Deploy started on slot {} ✓", server.name, slot);
             DeployResult {

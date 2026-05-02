@@ -47,7 +47,7 @@ ryu = "1"
 hyper = { version = "1.4", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
 http-body-util = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "process"] }
 tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
