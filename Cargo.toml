@@ -123,7 +123,9 @@ tar = "0.4"
 tempfile = "3"
 
 # Image processing (pure Rust, no system deps)
-image = "0.25"
+# Default features pull in AVIF (rav1e+ravif ~1.7MB) and EXR/HDR which Soli does not use.
+# Enable only the formats referenced in src/interpreter/builtins/image.rs.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "ico", "tiff", "webp", "rayon"] }
 
 # Spreadsheet support (CSV and Excel)
 calamine = "0.26"
@@ -157,6 +159,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+strip = "symbols"
 
 [profile.bench]
 opt-level = 3
