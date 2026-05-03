@@ -176,7 +176,7 @@ impl TokenKind {
             "true" => Some(TokenKind::BoolLiteral(true)),
             "false" => Some(TokenKind::BoolLiteral(false)),
             "null" | "nil" => Some(TokenKind::Null),
-            "try" => Some(TokenKind::Try),
+            "try" | "begin" => Some(TokenKind::Try),
             "catch" => Some(TokenKind::Catch),
             "finally" => Some(TokenKind::Finally),
             "throw" => Some(TokenKind::Throw),
@@ -346,5 +346,320 @@ impl Token {
             kind: TokenKind::Eof,
             span: Span::new(position, position, line, column),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------- TokenKind::keyword ----------
+
+    #[test]
+    fn keyword_recognises_basic_keywords() {
+        assert_eq!(TokenKind::keyword("let"), Some(TokenKind::Let));
+        assert_eq!(TokenKind::keyword("const"), Some(TokenKind::Const));
+        assert_eq!(TokenKind::keyword("return"), Some(TokenKind::Return));
+        assert_eq!(TokenKind::keyword("if"), Some(TokenKind::If));
+        assert_eq!(TokenKind::keyword("else"), Some(TokenKind::Else));
+        assert_eq!(TokenKind::keyword("class"), Some(TokenKind::Class));
+        assert_eq!(TokenKind::keyword("new"), Some(TokenKind::New));
+    }
+
+    #[test]
+    fn keyword_aliases_fn_and_def() {
+        // Both `fn` and `def` should map to the same Fn token so users
+        // coming from Ruby can write `def foo() {}`.
+        assert_eq!(TokenKind::keyword("fn"), Some(TokenKind::Fn));
+        assert_eq!(TokenKind::keyword("def"), Some(TokenKind::Fn));
+    }
+
+    #[test]
+    fn keyword_aliases_null_and_nil() {
+        assert_eq!(TokenKind::keyword("null"), Some(TokenKind::Null));
+        assert_eq!(TokenKind::keyword("nil"), Some(TokenKind::Null));
+    }
+
+    #[test]
+    fn keyword_aliases_try_and_begin() {
+        assert_eq!(TokenKind::keyword("try"), Some(TokenKind::Try));
+        assert_eq!(TokenKind::keyword("begin"), Some(TokenKind::Try));
+    }
+
+    #[test]
+    fn keyword_bool_literals() {
+        assert_eq!(
+            TokenKind::keyword("true"),
+            Some(TokenKind::BoolLiteral(true))
+        );
+        assert_eq!(
+            TokenKind::keyword("false"),
+            Some(TokenKind::BoolLiteral(false))
+        );
+    }
+
+    #[test]
+    fn keyword_word_operators() {
+        assert_eq!(TokenKind::keyword("and"), Some(TokenKind::And));
+        assert_eq!(TokenKind::keyword("or"), Some(TokenKind::Or));
+        assert_eq!(TokenKind::keyword("not"), Some(TokenKind::Not));
+    }
+
+    #[test]
+    fn keyword_match_machinery() {
+        assert_eq!(TokenKind::keyword("match"), Some(TokenKind::Match));
+        assert_eq!(TokenKind::keyword("case"), Some(TokenKind::Case));
+        assert_eq!(TokenKind::keyword("when"), Some(TokenKind::When));
+    }
+
+    #[test]
+    fn keyword_class_visibility_modifiers() {
+        assert_eq!(TokenKind::keyword("public"), Some(TokenKind::Public));
+        assert_eq!(TokenKind::keyword("private"), Some(TokenKind::Private));
+        assert_eq!(TokenKind::keyword("protected"), Some(TokenKind::Protected));
+        assert_eq!(TokenKind::keyword("static"), Some(TokenKind::Static));
+    }
+
+    #[test]
+    fn keyword_module_keywords() {
+        assert_eq!(TokenKind::keyword("import"), Some(TokenKind::Import));
+        assert_eq!(TokenKind::keyword("export"), Some(TokenKind::Export));
+        assert_eq!(TokenKind::keyword("from"), Some(TokenKind::From));
+        assert_eq!(TokenKind::keyword("as"), Some(TokenKind::As));
+    }
+
+    #[test]
+    fn keyword_type_names() {
+        assert_eq!(TokenKind::keyword("Int"), Some(TokenKind::Int));
+        assert_eq!(TokenKind::keyword("Float"), Some(TokenKind::Float));
+        assert_eq!(TokenKind::keyword("Decimal"), Some(TokenKind::Decimal));
+        assert_eq!(TokenKind::keyword("Bool"), Some(TokenKind::Bool));
+        assert_eq!(TokenKind::keyword("String"), Some(TokenKind::String));
+        assert_eq!(TokenKind::keyword("Void"), Some(TokenKind::Void));
+    }
+
+    #[test]
+    fn keyword_returns_none_for_identifiers_and_typos() {
+        assert_eq!(TokenKind::keyword("foo"), None);
+        // Case-sensitive — keywords are lowercase, type names are PascalCase.
+        assert_eq!(TokenKind::keyword("Let"), None);
+        assert_eq!(TokenKind::keyword("INT"), None);
+        // Empty string is not a keyword.
+        assert_eq!(TokenKind::keyword(""), None);
+        // Trailing whitespace is not stripped — caller must trim.
+        assert_eq!(TokenKind::keyword("let "), None);
+    }
+
+    // ---------- Display ----------
+
+    #[test]
+    fn display_literals_use_their_natural_form() {
+        assert_eq!(TokenKind::IntLiteral(42).to_string(), "42");
+        assert_eq!(TokenKind::FloatLiteral(3.5).to_string(), "3.5");
+        assert_eq!(
+            TokenKind::DecimalLiteral("19.99".into()).to_string(),
+            "19.99"
+        );
+        assert_eq!(TokenKind::StringLiteral("hi".into()).to_string(), "\"hi\"");
+        assert_eq!(TokenKind::BoolLiteral(true).to_string(), "true");
+        assert_eq!(TokenKind::SymbolLiteral("name".into()).to_string(), ":name");
+    }
+
+    #[test]
+    fn display_percent_array_literals() {
+        assert_eq!(
+            TokenKind::StringArrayLiteral(vec!["a".into(), "b".into()]).to_string(),
+            "%w[a b]"
+        );
+        assert_eq!(
+            TokenKind::SymbolArrayLiteral(vec!["x".into()]).to_string(),
+            "%i[x]"
+        );
+        assert_eq!(
+            TokenKind::NumberArrayLiteral(vec!["1".into(), "2".into()]).to_string(),
+            "%n[1 2]"
+        );
+        assert_eq!(
+            TokenKind::DecimalArrayLiteral(vec!["1.5D".into()]).to_string(),
+            "%d[1.5D]"
+        );
+    }
+
+    #[test]
+    fn display_keywords_round_trip_via_keyword() {
+        // For every keyword Display gives, feeding that back into
+        // TokenKind::keyword should yield the original kind. This is a
+        // structural invariant and lets us catch missing branches in
+        // either direction with a single check.
+        //
+        // Exception: `And`/`Or` have a dual surface form — the lexer
+        // accepts both `&&`/`||` (the operator form, which is also what
+        // Display emits) AND the words `and`/`or` via `keyword`. So they
+        // don't round-trip via Display and are exercised separately in
+        // `and_or_have_dual_surface_forms`.
+        for kind in [
+            TokenKind::Let,
+            TokenKind::Const,
+            TokenKind::Fn,
+            TokenKind::Return,
+            TokenKind::If,
+            TokenKind::Else,
+            TokenKind::Elsif,
+            TokenKind::While,
+            TokenKind::For,
+            TokenKind::In,
+            TokenKind::Class,
+            TokenKind::Extends,
+            TokenKind::Implements,
+            TokenKind::Interface,
+            TokenKind::New,
+            TokenKind::This,
+            TokenKind::SelfKeyword,
+            TokenKind::Super,
+            TokenKind::Public,
+            TokenKind::Private,
+            TokenKind::Protected,
+            TokenKind::Static,
+            TokenKind::Null,
+            TokenKind::Try,
+            TokenKind::Catch,
+            TokenKind::Finally,
+            TokenKind::Throw,
+            TokenKind::Rescue,
+            TokenKind::Not,
+            TokenKind::Async,
+            TokenKind::Await,
+            TokenKind::Match,
+            TokenKind::Case,
+            TokenKind::When,
+            TokenKind::Do,
+            TokenKind::End,
+            TokenKind::Then,
+            TokenKind::Unless,
+            TokenKind::Import,
+            TokenKind::Export,
+            TokenKind::From,
+            TokenKind::As,
+            TokenKind::Int,
+            TokenKind::Float,
+            TokenKind::Decimal,
+            TokenKind::Bool,
+            TokenKind::String,
+            TokenKind::Void,
+        ] {
+            let displayed = kind.to_string();
+            assert_eq!(
+                TokenKind::keyword(&displayed),
+                Some(kind.clone()),
+                "Display→keyword round trip broke for {kind:?} (displayed as {displayed:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn and_or_have_dual_surface_forms() {
+        // `and`/`or` (word form) and `&&`/`||` (operator form) both
+        // produce the same logical token, but Display only emits the
+        // operator form. Pin both directions explicitly.
+        assert_eq!(TokenKind::And.to_string(), "&&");
+        assert_eq!(TokenKind::Or.to_string(), "||");
+        assert_eq!(TokenKind::keyword("and"), Some(TokenKind::And));
+        assert_eq!(TokenKind::keyword("or"), Some(TokenKind::Or));
+        // Symbol form is not a keyword — it's lexed as an operator.
+        assert_eq!(TokenKind::keyword("&&"), None);
+        assert_eq!(TokenKind::keyword("||"), None);
+    }
+
+    #[test]
+    fn display_operators() {
+        assert_eq!(TokenKind::Plus.to_string(), "+");
+        assert_eq!(TokenKind::EqualEqual.to_string(), "==");
+        assert_eq!(TokenKind::BangEqual.to_string(), "!=");
+        assert_eq!(TokenKind::Pipeline.to_string(), "|>");
+        assert_eq!(TokenKind::Pipe.to_string(), "|");
+        assert_eq!(TokenKind::PlusPlus.to_string(), "++");
+        assert_eq!(TokenKind::MinusMinus.to_string(), "--");
+        assert_eq!(TokenKind::NullishCoalescing.to_string(), "??");
+        assert_eq!(TokenKind::NullishEqual.to_string(), "??=");
+        assert_eq!(TokenKind::SafeNavigation.to_string(), "&.");
+        assert_eq!(TokenKind::DoubleColon.to_string(), "::");
+    }
+
+    #[test]
+    fn display_delimiters_braces_are_doubled_in_format_string() {
+        // Specifically pin that `{{` produces a single `{`.
+        assert_eq!(TokenKind::LeftBrace.to_string(), "{");
+        assert_eq!(TokenKind::RightBrace.to_string(), "}");
+    }
+
+    #[test]
+    fn display_delimiters_misc() {
+        assert_eq!(TokenKind::LeftParen.to_string(), "(");
+        assert_eq!(TokenKind::Arrow.to_string(), "->");
+        assert_eq!(TokenKind::FatArrow.to_string(), "=>");
+        assert_eq!(TokenKind::Spread.to_string(), "...");
+        assert_eq!(TokenKind::Range.to_string(), "..");
+        assert_eq!(TokenKind::Eof.to_string(), "EOF");
+    }
+
+    #[test]
+    fn display_interpolated_string_joins_parts() {
+        let kind = TokenKind::InterpolatedString(vec!["a=".into(), "x".into(), " b".into()]);
+        // Concrete format is implementation detail — pin the salient bits.
+        let s = kind.to_string();
+        assert!(s.starts_with("interp\""));
+        assert!(s.contains("a=...(x...( b"));
+    }
+
+    #[test]
+    fn display_sdql_block_truncates_long_queries() {
+        let q = "FOR x IN coll RETURN x WITH SOME PADDING TO EXCEED THIRTY".to_string();
+        let kind = TokenKind::SdqlBlock {
+            query: q.clone(),
+            interpolations: vec![],
+        };
+        let s = kind.to_string();
+        assert!(s.starts_with("@sdbql{"));
+        // Display caps at 30 chars then appends "}..."
+        assert!(s.contains(&q[..30]), "got {s}");
+    }
+
+    #[test]
+    fn display_sdql_block_keeps_short_query_intact() {
+        let q = "FOR x IN c".to_string();
+        let kind = TokenKind::SdqlBlock {
+            query: q.clone(),
+            interpolations: vec![],
+        };
+        let s = kind.to_string();
+        assert!(s.contains(&q));
+    }
+
+    #[test]
+    fn display_backtick_string_wraps_in_backticks() {
+        assert_eq!(
+            TokenKind::BacktickString("ls -la".into()).to_string(),
+            "`ls -la`"
+        );
+    }
+
+    // ---------- Token / SdqlInterpolation ----------
+
+    #[test]
+    fn token_new_stores_kind_and_span() {
+        let span = Span::new(0, 3, 1, 1);
+        let t = Token::new(TokenKind::Let, span);
+        assert_eq!(t.kind, TokenKind::Let);
+        assert_eq!(t.span, span);
+    }
+
+    #[test]
+    fn token_eof_makes_zero_width_span_at_position() {
+        let t = Token::eof(42, 5, 8);
+        assert_eq!(t.kind, TokenKind::Eof);
+        assert_eq!(t.span.start, 42);
+        assert_eq!(t.span.end, 42);
+        assert_eq!(t.span.line, 5);
+        assert_eq!(t.span.column, 8);
     }
 }

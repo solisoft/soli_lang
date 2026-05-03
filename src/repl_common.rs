@@ -30,6 +30,7 @@ pub fn calculate_indent(line: &str) -> usize {
         || trimmed.ends_with("catch")
         || trimmed.ends_with("finally")
         || trimmed.ends_with("try")
+        || trimmed.ends_with("begin")
     {
         4
     } else if trimmed.ends_with("else") || trimmed.ends_with("elsif") {
@@ -59,6 +60,7 @@ pub fn is_keyword_block_opener(trimmed: &str) -> bool {
         || trimmed == "do"
         || trimmed.starts_with("do ")
         || trimmed.starts_with("try")
+        || trimmed.starts_with("begin")
 }
 
 /// Count the block balance of a line: +1 for openers, -1 for closers.
@@ -123,6 +125,7 @@ pub fn should_print_result(source: &str) -> bool {
         && !trimmed.starts_with('#')
         && !trimmed.starts_with("//")
         && !trimmed.starts_with("try")
+        && !trimmed.starts_with("begin")
         && !trimmed.starts_with("import ")
 }
 

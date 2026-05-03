@@ -287,7 +287,7 @@ impl Parser {
             let try_block = Box::new(self.block_statement()?);
 
             let mut catch_clauses = Vec::new();
-            while self.match_token(&TokenKind::Catch) {
+            while self.match_token(&TokenKind::Catch) || self.match_token(&TokenKind::Rescue) {
                 let (type_name, var_name) = self.parse_catch_clause_header()?;
                 let body = Box::new(self.block_statement()?);
                 catch_clauses.push(CatchClause {
@@ -318,6 +318,7 @@ impl Parser {
             let body_start = self.current_span();
             let mut try_stmts = Vec::new();
             while !self.check(&TokenKind::Catch)
+                && !self.check(&TokenKind::Rescue)
                 && !self.check(&TokenKind::Finally)
                 && !self.check(&TokenKind::End)
                 && !self.is_at_end()
@@ -331,11 +332,12 @@ impl Parser {
             ));
 
             let mut catch_clauses = Vec::new();
-            while self.match_token(&TokenKind::Catch) {
+            while self.match_token(&TokenKind::Catch) || self.match_token(&TokenKind::Rescue) {
                 let (type_name, var_name) = self.parse_catch_clause_header()?;
                 let catch_start = self.current_span();
                 let mut catch_stmts = Vec::new();
                 while !self.check(&TokenKind::Catch)
+                    && !self.check(&TokenKind::Rescue)
                     && !self.check(&TokenKind::Finally)
                     && !self.check(&TokenKind::End)
                     && !self.is_at_end()

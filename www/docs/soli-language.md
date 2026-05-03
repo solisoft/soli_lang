@@ -709,7 +709,7 @@ end
 
 ### Try / Catch / Finally
 
-Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`).
+Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`). Ruby-style aliases are supported: `begin` for `try`, and `rescue` for `catch`.
 
 ```soli
 # Basic try/catch
@@ -734,6 +734,13 @@ try
   process_data();
 finally
   close_connection();
+end
+
+# Ruby-style aliases: `begin` for `try`, `rescue` for `catch`
+begin
+  risky_operation();
+rescue e
+  print("Error: " + str(e));
 end
 ```
 

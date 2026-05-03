@@ -1502,6 +1502,7 @@ impl TuiRepl {
             "as",
             "async",
             "await",
+            "begin",
             "break",
             "case",
             "catch",
