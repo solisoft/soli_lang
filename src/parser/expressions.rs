@@ -1211,10 +1211,18 @@ impl Parser {
         ))
     }
 
-    /// Parse a trailing brace block: `{ body }` as a lambda expression.
+    /// Parse a trailing brace block: `{ body }` or `{ |params| body }` as a lambda expression.
     fn parse_trailing_brace_block(&mut self) -> ParseResult<Expr> {
         let start_span = self.current_span();
         self.expect(&TokenKind::LeftBrace)?;
+
+        let params = if self.match_token(&TokenKind::Pipe) {
+            let p = self.parse_lambda_params_list(&TokenKind::Pipe)?;
+            self.expect(&TokenKind::Pipe)?;
+            p
+        } else {
+            Vec::new()
+        };
 
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
@@ -1224,10 +1232,9 @@ impl Parser {
 
         let span = start_span.merge(&self.previous_span());
 
-        // Create a lambda expression with the block as body
         Ok(Expr::new(
             ExprKind::Lambda {
-                params: vec![],
+                params,
                 return_type: None,
                 body: statements,
             },

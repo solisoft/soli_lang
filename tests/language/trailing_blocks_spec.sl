@@ -203,3 +203,54 @@ describe("Trailing Block - Ruby `do |params| ... end`", fn() {
         assert_eq(result[2], 3);
     });
 });
+
+describe("Trailing Block - Brace `{ |params| ... }`", fn() {
+    test("map with `{ |x| ... }` after empty parens", fn() {
+        let result = [1, 2].map() { |l| l + 1 };
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 3);
+    });
+
+    test("map with `{ |x| ... }` without parens", fn() {
+        let result = [1, 2, 3].map { |x| x * x };
+        assert_eq(result[0], 1);
+        assert_eq(result[1], 4);
+        assert_eq(result[2], 9);
+    });
+
+    test("filter with `{ |x| ... }`", fn() {
+        let result = [1, 2, 3, 4].filter { |x| x % 2 == 0 };
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 4);
+    });
+
+    test("hash map with `{ |k, v| ... }`", fn() {
+        let h = {"a": 1, "b": 2};
+        let result = h.map { |k, v| [k, v * 10] };
+        assert_eq(result["a"], 10);
+        assert_eq(result["b"], 20);
+    });
+
+    test("zero-param `{ ... }` still works", fn() {
+        let count = 0;
+        3.times { count = count + 1 };
+        assert_eq(count, 3);
+    });
+
+    test("brace block equals do/end equals parenthesized lambda", fn() {
+        let a = [1, 2, 3].map() { |x| x + 10 };
+        let b = [1, 2, 3].map do |x| x + 10 end;
+        let c = [1, 2, 3].map(|x| x + 10);
+        assert_eq(a[0], b[0]);
+        assert_eq(b[0], c[0]);
+        assert_eq(a[2], 13);
+    });
+
+    test("`{ |params| ... }` after parenthesized args", fn() {
+        let result = [];
+        1.upto(3) { |i| result.push(i) };
+        assert_eq(result[0], 1);
+        assert_eq(result[2], 3);
+    });
+});

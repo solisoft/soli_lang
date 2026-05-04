@@ -1219,6 +1219,48 @@ mod parser_tests {
     }
 
     #[test]
+    fn test_trailing_brace_block_with_pipe_params() {
+        // items.map() { |l| l + 1 } — pipe params on a trailing brace block
+        let expr = parse_expr("items.map() { |l| l + 1 }");
+        match &expr.kind {
+            ExprKind::Call { arguments, .. } => {
+                assert_eq!(arguments.len(), 1, "block should be the only arg");
+                match &arguments[0] {
+                    Argument::Block(b) => match &b.kind {
+                        ExprKind::Lambda { params, body, .. } => {
+                            assert_eq!(params.len(), 1);
+                            assert_eq!(params[0].name, "l");
+                            assert_eq!(body.len(), 1);
+                        }
+                        other => panic!("Expected lambda block, got {:?}", other),
+                    },
+                    other => panic!("Expected Block argument, got {:?}", other),
+                }
+            }
+            other => panic!("Expected call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_trailing_brace_block_without_parens_with_pipe_params() {
+        // items.map { |x| x * x } — no parens, pipe params on brace block
+        let expr = parse_expr("items.map { |x| x * x }");
+        match &expr.kind {
+            ExprKind::Call { arguments, .. } => match &arguments[0] {
+                Argument::Block(b) => match &b.kind {
+                    ExprKind::Lambda { params, .. } => {
+                        assert_eq!(params.len(), 1);
+                        assert_eq!(params[0].name, "x");
+                    }
+                    other => panic!("Expected lambda block, got {:?}", other),
+                },
+                other => panic!("Expected Block argument, got {:?}", other),
+            },
+            other => panic!("Expected call, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_empty_pipe_lambda_end_body_in_call() {
         // run(||\n  42\nend)
         let expr = parse_expr("run(||\n  42\nend)");
