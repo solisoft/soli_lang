@@ -2,6 +2,9 @@
 node_modules
 .dmux/
 
+# LLVM coverage profile artifacts from `cargo test` runs.
+*.profraw
+
 # Per-app secrets — never commit (e.g. SOLI_DEPLOY_API_KEY).
 .env
 .env.*
