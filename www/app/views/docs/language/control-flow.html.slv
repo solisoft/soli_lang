@@ -39,13 +39,13 @@
                 <pre data-filename="Example"><code class="language-soli text-sm">age = 18
 
 # Simple if
-if (age >= 18)
+if age >= 18
   print("Adult")
 end
 
 # If-else
 score = 75
-if (score >= 60)
+if score >= 60
   print("Pass")
 else
   print("Fail")
@@ -53,14 +53,13 @@ end
 
 # Else-if chain
 grade = 85
-let letter
-if (grade >= 90)
+if grade >= 90
   letter = "A"
-elsif (grade >= 80)
+elsif grade >= 80
   letter = "B"
-elsif (grade >= 70)
+elsif grade >= 70
   letter = "C"
-elsif (grade >= 60)
+elsif grade >= 60
   letter = "D"
 else
   letter = "F"
@@ -142,7 +141,7 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Repeats while a condition is true.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">i = 0
-while (i < 5)
+while i < 5
   print("Count: " + str(i))
   i = i + 1
 end
@@ -166,25 +165,25 @@ end
                 <p class="text-gray-400 mb-3">Iterates over collections or ranges.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Iterate over array
 fruits = ["apple", "banana", "cherry"]
-for (fruit in fruits)
+for fruit in fruits
   print(fruit)
 end
 
 # Iterate with range
-for (i in range(0, 5))
+for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
 end
 
 # Range with step
-for (i in range(0, 10, 2))
+for i in range(0, 10, 2)
   print(i);  # 0, 2, 4, 6, 8
 end
 
 # Nested loops
-for (i in range(1, 4))
-  for (j in range(1, 4))
+for i in range(1, 4)
+  for j in range(1, 4)
     print(str(i) + " x " + str(j) + " = " + str(i * j))
-end
+  end
 end</code></pre>
             </div>
         </section>
@@ -204,14 +203,14 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Ruby-style postfix conditionals for concise one-liners.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">x = 10
-print("big") if (x > 5)
+print("big") if x > 5
 
 y = 3
-print("small") unless (y > 5)
+print("small") unless y > 5
 
 status = "active"
-print("Welcome!") if (status == "active")
-print("Account locked") unless (status != "banned")</code></pre>
+print("Welcome!") if status == "active"
+print("Account locked") unless status != "banned"</code></pre>
             </div>
         </section>
     </section>
@@ -246,45 +245,29 @@ print(letter);  # "B"</code></pre>
     </section>
 
     <!-- Break and Continue -->
-    <section id="section-break-continue" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Break and Continue</h2>
-
-        <section id="kw-break" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#kw-break" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">break</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Exits the current loop immediately.</p>
-            </div>
-        </section>
+    <section id="section-next" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Skipping Iterations</h2>
 
         <section id="kw-continue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-continue" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">next()</code>
+                    <code class="text-lg font-mono text-indigo-400">next</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Skips to the next iteration of the loop (alias: <code>next()</code>).</p>
-            </div>
-        </section>
-
+                <p class="text-gray-400 mb-3">Skips to the next iteration of the loop.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 sum = 0
-for (n in numbers)
-  if (n % 2 == 0)
+for n in numbers
+  if n % 2 == 0
     next
-  end
-  if (n > 7)
-    break
   end
   sum = sum + n
 end
-print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5+7 = 16</code></pre>
+print("Sum of odd numbers: " + str(sum));  # 1+3+5+7+9 = 25</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Navigation -->

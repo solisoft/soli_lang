@@ -94,25 +94,17 @@ router_live("metrics", "live#metrics");</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Counter component handler
 fn counter(event_data: Any) -> Any {
-  event = event_data["event"];   # Event name (e.g., "increment")
-  params = event_data["params"]; # Event parameters
-  state = event_data["state"];   # Current component state
-  count = state["count"];
+  event = event_data["event"]   # Event name (e.g., "increment")
+  state = event_data["state"]   # Current component state
+  count = state["count"] || 0
 
-  if count == null {
-    count = 0;
-  }
-
-  if event == "increment" {
-    return { "count": count + 1 };
-  }
-
-  if event == "decrement" {
-    return { "count": count - 1 };
-  }
-
-  # Return unchanged state for unknown events
-  state
+  if event == "increment"
+    { "count": count + 1 }
+  elsif event == "decrement"
+    { "count": count - 1 }
+  else
+    state                       # Unchanged for unknown events
+  end
 }</code></pre>
         </div>
     </div>
@@ -234,30 +226,28 @@ router_live("counter", "live#counter");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn metrics_dashboard(event_data: Any) -> Any {
-  event = event_data["event"];
+  event = event_data["event"]
 
-  if event == "connect" {
+  if event == "connect"
     # Set tick interval in milliseconds (50ms = 20 updates/sec)
-    return {
+    {
       "state": { "cpu": 0, "memory": 0, "requests": 0 },
       "tick_interval": 50
-    };
-  }
-
-  if event == "tick" {
+    }
+  elsif event == "tick"
     # Server pushes fresh data on each tick
-    return {
+    {
       "state": {
         "time": datetime_now(),
         "cpu": system_cpu_usage(),
         "memory": system_memory_mb(),
         "requests": request_counter
       }
-    };
-  }
-
-  # Unknown event — leave state and tick interval unchanged
-  event_data["state"]
+    }
+  else
+    # Unknown event — leave state and tick interval unchanged
+    event_data["state"]
+  end
 }</code></pre>
         </div>
     </div>

@@ -43,25 +43,17 @@ A Live View handler takes one argument — an event hash with `event`, `params`,
 ```soli
 # app/controllers/live_controller.sl
 fn counter(event_data: Any) -> Any {
-  event = event_data["event"];   # e.g. "increment", "connect", "tick"
-  params = event_data["params"]; # client-supplied event params
-  state = event_data["state"];   # current component state
-  count = state["count"];
+  event = event_data["event"]   # e.g. "increment", "connect", "tick"
+  state = event_data["state"]   # current component state
+  count = state["count"] || 0
 
-  if count == null {
-    count = 0;
-  }
-
-  if event == "increment" {
-    return { "count": count + 1 };
-  }
-
-  if event == "decrement" {
-    return { "count": count - 1 };
-  }
-
-  # Return unchanged state for unknown events
-  state
+  if event == "increment"
+    { "count": count + 1 }
+  elsif event == "decrement"
+    { "count": count - 1 }
+  else
+    state                       # unchanged for unknown events
+  end
 }
 ```
 
@@ -130,30 +122,28 @@ For real-time dashboards, monitoring, and live data feeds, a handler can opt int
 ```soli
 # app/controllers/live_controller.sl
 fn metrics_dashboard(event_data: Any) -> Any {
-  event = event_data["event"];
+  event = event_data["event"]
 
-  if event == "connect" {
+  if event == "connect"
     # Start ticking at 50ms (20 updates/sec)
-    return {
+    {
       "state": { "cpu": 0, "memory": 0, "requests": 0 },
       "tick_interval": 50
-    };
-  }
-
-  if event == "tick" {
+    }
+  elsif event == "tick"
     # Server pushes fresh data on each tick
-    return {
+    {
       "state": {
         "time": datetime_now(),
         "cpu": system_cpu_usage(),
         "memory": system_memory_mb(),
         "requests": request_counter
       }
-    };
-  }
-
-  # Unknown event — leave state and tick interval unchanged
-  event_data["state"]
+    }
+  else
+    # Unknown event — leave state and tick interval unchanged
+    event_data["state"]
+  end
 }
 ```
 
