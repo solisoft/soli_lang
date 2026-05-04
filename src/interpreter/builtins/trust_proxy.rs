@@ -9,11 +9,13 @@
 //! and rewrites these headers at a trusted proxy hop.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
 static TRUST_PROXY_ENABLED: AtomicBool = AtomicBool::new(false);
+static ENV_INIT: Once = Once::new();
 
 /// Whether the server should honor `X-Forwarded-Proto` / `X-Forwarded-Host`
 /// from incoming requests.
@@ -21,7 +23,32 @@ pub fn is_trust_proxy_enabled() -> bool {
     TRUST_PROXY_ENABLED.load(Ordering::Relaxed)
 }
 
+/// Parse a `SOLI_TRUST_PROXY` value. Truthy values (`1`, `true`, `yes`,
+/// case-insensitive) flip the gate on. Anything else (including missing or
+/// empty) leaves it off. Factored out so tests can exercise the parser
+/// without racing on `std::env::var` or the `Once`-protected init.
+fn parse_trust_proxy_env(raw: Option<&str>) -> bool {
+    match raw {
+        Some(s) => matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"),
+        None => false,
+    }
+}
+
+/// Read `SOLI_TRUST_PROXY` once and seed the flag from it. `enable_trust_proxy()`
+/// / `disable_trust_proxy()` still override at runtime — env just sets the
+/// startup default so deployments can flip the flag without editing app code.
+fn init_from_env() {
+    ENV_INIT.call_once(|| {
+        let raw = std::env::var("SOLI_TRUST_PROXY").ok();
+        if parse_trust_proxy_env(raw.as_deref()) {
+            TRUST_PROXY_ENABLED.store(true, Ordering::Relaxed);
+        }
+    });
+}
+
 pub fn register_trust_proxy_builtins(env: &mut Environment) {
+    init_from_env();
+
     env.define(
         "enable_trust_proxy".to_string(),
         Value::NativeFunction(NativeFunction::new(
@@ -75,5 +102,24 @@ mod tests {
 
         TRUST_PROXY_ENABLED.store(false, Ordering::Relaxed);
         assert!(!is_trust_proxy_enabled());
+    }
+
+    #[test]
+    fn env_parser_recognizes_truthy_and_rejects_other() {
+        for truthy in ["1", "true", "True", "TRUE", "yes", "YES", " yes ", "True\n"] {
+            assert!(
+                parse_trust_proxy_env(Some(truthy)),
+                "expected truthy for {:?}",
+                truthy
+            );
+        }
+        for falsy in ["", " ", "0", "false", "no", "off", "maybe", "1; rm -rf /"] {
+            assert!(
+                !parse_trust_proxy_env(Some(falsy)),
+                "expected falsy for {:?}",
+                falsy
+            );
+        }
+        assert!(!parse_trust_proxy_env(None));
     }
 }

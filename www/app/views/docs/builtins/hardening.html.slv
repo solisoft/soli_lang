@@ -44,6 +44,16 @@ if trust_proxy_enabled
   println("X-Forwarded-* headers are honored")
 end</code></pre>
         </div>
+        <p class="text-gray-400 mt-4">
+            You can also set the startup default from the environment — useful when the same image runs in different deployments:
+        </p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6 mt-2">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># .env.production
+SOLI_TRUST_PROXY=1</code></pre>
+        </div>
+        <p class="text-gray-400 mt-2 text-sm">
+            Truthy values: <code class="text-purple-400">1</code>, <code class="text-purple-400">true</code>, <code class="text-purple-400">yes</code> (case-insensitive). The function calls still override the env-driven default at runtime.
+        </p>
     </section>
 
     <!-- Body Limit overview -->
@@ -81,6 +91,16 @@ set_max_body_size(32 * 1024 * 1024)  # 32 MiB cap for file uploads
 
 # Returns Int — the value just set.</code></pre>
         </div>
+        <p class="text-gray-400 mt-4">
+            The startup default can also come from the environment:
+        </p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6 mt-2">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># .env.production
+SOLI_MAX_BODY_SIZE=33554432   # 32 MiB, in bytes</code></pre>
+        </div>
+        <p class="text-gray-400 mt-2 text-sm">
+            Non-numeric or negative values are ignored and the 8 MiB default stands. The function call still overrides at runtime.
+        </p>
     </section>
 
     <!-- max_body_size -->

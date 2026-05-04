@@ -27,6 +27,16 @@ SOLIDB_DATABASE=myapp_development
 | `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. | `false` |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
 
+## Hardening
+
+These knobs control how the request edge handles untrusted input. See the
+[Server Hardening](/docs/builtins/hardening) page for the full story.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_TRUST_PROXY` | Honors `X-Forwarded-Proto` / `X-Forwarded-Host` when set to `1`, `true`, or `yes`. Only enable when the deployment terminates these headers at a trusted proxy hop. | `false` |
+| `SOLI_MAX_BODY_SIZE` | Maximum buffered request body, in bytes. Requests over the cap return `413 Payload Too Large`. | `8388608` (8 MiB) |
+
 ## Database
 
 | Variable | Purpose | Default |
@@ -93,9 +103,12 @@ These are normally set by Soli tooling rather than by applications.
 |----------|---------|---------|
 | `SOLI_COVERAGE_ENABLED` | Enables the server-side coverage dump endpoint for test aggregation. | unset |
 
-## Related Runtime Configuration
+## Runtime Overrides
 
-Some important settings are configured with Soli functions instead of environment variables:
+The hardening knobs above also have function equivalents that override the
+env-driven default at runtime. Useful when a single action needs a different
+limit, or when test setup needs to flip the gate without re-reading the
+environment:
 
 ```soli
 # Trust X-Forwarded-* only behind a trusted proxy.

@@ -3456,6 +3456,17 @@ Returns whether trust-proxy is currently on.
 
 **Returns:** Bool
 
+### `SOLI_TRUST_PROXY` environment variable
+
+The startup default can also come from the environment. Truthy values
+(`1`, `true`, `yes`, case-insensitive) flip the gate on; the function calls
+still override at runtime.
+
+```bash
+# .env.production
+SOLI_TRUST_PROXY=1
+```
+
 ---
 
 ## Request Body Limit
@@ -3491,6 +3502,17 @@ set_max_body_size(32 * 1024 * 1024)  # 32 MiB cap for file uploads
 Returns the current limit in bytes.
 
 **Returns:** Int
+
+### `SOLI_MAX_BODY_SIZE` environment variable
+
+The startup default can also come from the environment. Value is the limit
+in bytes; non-numeric or negative values are ignored and the 8 MiB default
+stands.
+
+```bash
+# .env.production
+SOLI_MAX_BODY_SIZE=33554432   # 32 MiB
+```
 
 ---
 
