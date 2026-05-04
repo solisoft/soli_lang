@@ -113,13 +113,11 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
                         "ip" => server.ip = value.to_string(),
                         "folder" => server.folder = value.to_string(),
                         "proxy_url" => server.proxy_url = value.to_string(),
-                        "api_key" => {
-                            if !warned_about_api_key {
-                                eprintln!(
-                                    "warning: deploy.toml `api_key` is ignored — set the SOLI_DEPLOY_API_KEY env var instead and remove this line (deploy.toml is committed)."
-                                );
-                                warned_about_api_key = true;
-                            }
+                        "api_key" if !warned_about_api_key => {
+                            eprintln!(
+                                "warning: deploy.toml `api_key` is ignored — set the SOLI_DEPLOY_API_KEY env var instead and remove this line (deploy.toml is committed)."
+                            );
+                            warned_about_api_key = true;
                         }
                         _ => {}
                     }

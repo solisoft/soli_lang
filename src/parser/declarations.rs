@@ -490,6 +490,20 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::Fn)?;
 
+        // Ruby-style `def self.foo(...)`: the `self.` prefix marks the method
+        // static. Combines harmlessly with a leading `static` modifier.
+        let mut is_static = is_static;
+        if self.check(&TokenKind::SelfKeyword)
+            && matches!(
+                self.tokens.get(self.current + 1).map(|t| &t.kind),
+                Some(TokenKind::Dot)
+            )
+        {
+            self.advance();
+            self.advance();
+            is_static = true;
+        }
+
         let name = self.expect_identifier()?;
         let params = self.parse_parameters()?;
 

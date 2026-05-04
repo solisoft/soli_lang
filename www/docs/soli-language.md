@@ -2175,6 +2175,27 @@ print(result);  # 100
 print(MathUtils.calculation_count);  # 3
 ```
 
+#### Ruby-style `def self.method_name`
+
+As an alternative to the `static` modifier, prefix the method name with `self.` — the `self.` prefix marks the method as static. This reads naturally for users coming from Ruby and skips the surrounding `class << self ... end` block when you only have a method or two.
+
+```soli
+class MathUtils
+  def self.square(x: Float) -> Float
+    x * x
+  end
+
+  def self.cube(x: Float) -> Float
+    x * x * x
+  end
+end
+
+print(MathUtils.square(4.0));  # 16.0
+print(MathUtils.cube(3.0));    # 27.0
+```
+
+`fn self.foo` works the same way (`def` and `fn` are interchangeable). Combining both — `static def self.foo` — is allowed and stays static.
+
 #### Grouping static methods with `class << self`
 
 When a class has several class methods, repeating the `static` modifier on each one is noisy. Soli supports the Ruby-style singleton-class form: declare a `class << self ... end` block inside the class body and every method inside is treated as static. `def` and `fn` are interchangeable.
@@ -2201,7 +2222,7 @@ print(MathUtils.cube(3.0));    # 27.0
 print(MathUtils.max(2.0, 7.0)); # 7.0
 ```
 
-The block can sit anywhere in the class body and coexists with regular instance methods, top-level `static fn` declarations, and `static` fields. Only method declarations are allowed inside the block — fields and constants stay at the class top level (`static foo: Type = ...`).
+The block can sit anywhere in the class body and coexists with regular instance methods, top-level `static fn` declarations, and `static` fields. Only method declarations are allowed inside the block — fields and constants stay at the class top level (`static foo: Type = ...`). For just a single class method, the lighter `def self.foo` form (above) is usually clearer than wrapping a one-method block.
 
 ### Complete Class Example: A Product Inventory System
 

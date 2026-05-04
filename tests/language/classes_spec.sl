@@ -175,6 +175,68 @@ describe("Static Methods", fn() {
         assert_eq(unit.x, 1.0);
         assert_eq(unit.y, 1.0);
     });
+
+    test("def self.foo declares a static method", fn() {
+        class MathUtils {
+            def self.random() {
+                return 42;
+            }
+        }
+        assert_eq(MathUtils.random(), 42);
+    });
+
+    test("def self.foo with parameters and return type", fn() {
+        class MathUtils {
+            def self.add(a: Int, b: Int) -> Int {
+                return a + b;
+            }
+        }
+        assert_eq(MathUtils.add(5, 3), 8);
+    });
+
+    test("fn self.foo also works as a static method", fn() {
+        class Calculator {
+            fn self.multiply(a: Float, b: Float) -> Float {
+                return a * b;
+            }
+        }
+        assert_eq(Calculator.multiply(3.0, 4.0), 12.0);
+    });
+
+    test("static def self.foo combines harmlessly (still static)", fn() {
+        class MathUtils {
+            static def self.cube(x: Int) -> Int {
+                return x * x * x;
+            }
+        }
+        assert_eq(MathUtils.cube(3), 27);
+    });
+
+    test("class can mix def self.foo, static def, and instance methods", fn() {
+        class Box {
+            value: Int;
+
+            new(value: Int) {
+                this.value = value;
+            }
+
+            def self.zero() -> Box {
+                return new Box(0);
+            }
+
+            static fn one() -> Box {
+                return new Box(1);
+            }
+
+            fn get() -> Int {
+                return this.value;
+            }
+        }
+
+        assert_eq(Box.zero().get(), 0);
+        assert_eq(Box.one().get(), 1);
+        assert_eq(new Box(7).get(), 7);
+    });
 });
 
 describe("class << self block", fn() {
