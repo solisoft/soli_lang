@@ -268,24 +268,24 @@ String.alias_method("shout", "yell")</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            <code class="text-pink-400">scope</code> is a class-body DSL — same shape as <code class="text-pink-400">validates</code>, <code class="text-pink-400">has_many</code>, <code class="text-pink-400">before_save</code>. The class is auto-prepended to the call, so your code reads naturally.
+            <code class="text-pink-400">scope</code> is a class-body DSL — same shape as <code class="text-pink-400">validates</code>, <code class="text-pink-400">has_many</code>, <code class="text-pink-400">before_save</code>. The class is auto-prepended to the call, and <code class="text-pink-400">this</code> inside the closure is bound to a fresh <code class="text-pink-400">QueryBuilder</code> for the model.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Post &lt; Model
-  scope("published", fn(qb) { qb.where({ "status": "published" }) })
-  scope("recent",    fn(qb) { qb.order("created_at", "desc").limit(10) })
+  scope("published", fn() { this.where("status = @s", { "s": "published" }) })
+  scope("recent",    fn() { this.order("created_at", "desc").limit(10) })
 end
 
-# Accessing the scope name returns a QueryBuilder:
-let posts = Post.published.where({ "author_id": 42 }).all</code></pre>
+# Accessing the scope name invokes the closure and returns a QueryBuilder:
+let posts = Post.published.where("author_id = @id", { "id": 42 }).all</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm">
-                The closure receives a fresh <code class="text-pink-400">QueryBuilder</code> for the model and returns a (possibly refined) <code class="text-pink-400">QueryBuilder</code>. Scope storage is per-thread (<code class="text-pink-400">Rc&lt;Function&gt;</code> is <code class="text-pink-400">!Send</code> and can't go in the process-global <code class="text-pink-400">MODEL_REGISTRY</code>); each worker registers scopes when it loads model files. See <code class="text-pink-400">src/interpreter/builtins/model/scopes.rs</code>.
+                The closure returns the (possibly refined) <code class="text-pink-400">QueryBuilder</code>. Scope storage is per-thread (<code class="text-pink-400">Rc&lt;Function&gt;</code> is <code class="text-pink-400">!Send</code> and can't go in the process-global <code class="text-pink-400">MODEL_REGISTRY</code>); each worker registers scopes when it loads model files. See <code class="text-pink-400">src/interpreter/builtins/model/scopes.rs</code>.
             </p>
         </div>
     </section>

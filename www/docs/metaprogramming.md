@@ -78,19 +78,19 @@ The user-method overlay is `thread_local!` — each worker thread (in `soli serv
 
 ## Named scopes
 
-`scope` is a class-body DSL — same shape as `validates`, `has_many`, `before_save`. The class is auto-prepended to the call, so user code reads naturally:
+`scope` is a class-body DSL — same shape as `validates`, `has_many`, `before_save`. The class is auto-prepended to the call, and `this` inside the closure is bound to a fresh `QueryBuilder` for the model:
 
 ```soli
 class Post < Model
-  scope("published", fn(qb) { qb.where({ "status": "published" }) })
-  scope("recent",    fn(qb) { qb.order("created_at", "desc").limit(10) })
+  scope("published", fn() { this.where("status = @s", { "s": "published" }) })
+  scope("recent",    fn() { this.order("created_at", "desc").limit(10) })
 end
 
-# Accessing the scope name returns a QueryBuilder:
-let posts = Post.published.where({ "author_id": 42 }).all
+# Accessing the scope name invokes the closure and returns a QueryBuilder:
+let posts = Post.published.where("author_id = @id", { "id": 42 }).all
 ```
 
-The closure receives a fresh `QueryBuilder` for the model and returns a (possibly refined) `QueryBuilder`. Scopes compose with the rest of the query DSL — `Post.published.recent` chains them.
+The closure returns the (possibly refined) `QueryBuilder`. Scopes compose with the rest of the query DSL — `Post.published.recent` chains them.
 
 Scope storage is per-thread (`Rc<Function>` is `!Send` and can't go in the process-global `MODEL_REGISTRY`); each worker registers scopes when it loads its model files.
 

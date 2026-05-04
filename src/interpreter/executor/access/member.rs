@@ -1753,6 +1753,22 @@ impl Interpreter {
             "present?" => return Ok(Value::Bool(true)),
             _ => {}
         }
+
+        // Scope chaining: `Post.published.recent` → after `.published` returns
+        // a QB, `.recent` looks up the scope on the QB's underlying model class
+        // and invokes the closure with `this` bound to the *current* (already
+        // filtered) QB so further refinements compose. Without this, scopes
+        // can only be applied as the first step in a chain.
+        if let Value::QueryBuilder(ref qb) = obj_val {
+            let class_name_id = qb.borrow().class_name;
+            if let Some(class_name) = crate::interpreter::symbol::symbol_string(class_name_id) {
+                if let Some(scope_fn) =
+                    crate::interpreter::builtins::model::scopes::lookup_scope(class_name, name)
+                {
+                    return Ok(bind_user_method_to_receiver(obj_val.clone(), scope_fn));
+                }
+            }
+        }
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"

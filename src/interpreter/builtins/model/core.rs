@@ -1875,11 +1875,12 @@ impl Model {
         // naturally as Ruby:
         //
         //   class User < Model
-        //     scope :published, fn(qb) { qb.where({ "status": "published" }) }
+        //     scope("published", fn() { this.where("status = @s", { "s": "published" }) })
         //   end
         //
-        // The closure receives a fresh QueryBuilder for the model and should
-        // return a (possibly refined) QueryBuilder. Accessing `User.published`
+        // Inside the closure `this` is bound to a fresh QueryBuilder for the
+        // model; the closure returns a (possibly refined) QueryBuilder.
+        // Accessing `User.published`
         // invokes the closure (see scope dispatch in
         // `executor/access/member.rs`).
         native_static_methods.insert(
@@ -2848,10 +2849,11 @@ pub fn register_model_builtins(env: &mut Environment) {
     // code reads naturally:
     //
     //   class User < Model
-    //     scope :published, fn(qb) { qb.where({ "status": "published" }) }
+    //     scope("published", fn() { this.where("status = @s", { "s": "published" }) })
     //   end
     //
-    // Calling `User.published` invokes the closure with a fresh QueryBuilder.
+    // Inside the closure `this` is bound to a fresh QueryBuilder for the
+    // model; calling `User.published` invokes it.
     env.define(
         "scope".to_string(),
         Value::NativeFunction(NativeFunction::new("scope", Some(3), |args| {

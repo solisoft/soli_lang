@@ -761,18 +761,18 @@ write path.
 
 ## Scopes
 
-Define reusable query scopes. The closure receives a fresh `QueryBuilder` for the model and returns a (possibly refined) `QueryBuilder`. Accessing the scope name on the class invokes the closure:
+Define reusable query scopes. Inside the closure `this` is bound to a fresh `QueryBuilder` for the model; the closure returns a (possibly refined) `QueryBuilder`. Accessing the scope name on the class invokes the closure:
 
 ```soli
 class User < Model
-  scope("active", fn(qb) { qb.where({ "active": true }) })
-  scope("recent", fn(qb) { qb.order("created_at", "desc").limit(10) })
+  scope("active", fn() { this.where("active = @a", { "a": true }) })
+  scope("recent", fn() { this.order("created_at", "desc").limit(10) })
 end
 
 # Use scopes — `User.active` invokes the closure and returns a QueryBuilder
 # you can chain further:
 let active_users = User.active.all
-let top_ten     = User.recent.where({ "verified": true }).all
+let top_ten     = User.recent.where("verified = @v", { "v": true }).all
 ```
 
 Scopes compose: `User.active.recent` chains both closures' refinements. See [Metaprogramming](metaprogramming.md#named-scopes) for the underlying mechanism.
