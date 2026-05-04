@@ -28,6 +28,10 @@ impl Interpreter {
     }
 
     fn float_round(&self, n: f64, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
+        use rust_decimal::prelude::ToPrimitive;
+        use rust_decimal::{Decimal, RoundingStrategy};
+        use std::str::FromStr;
+
         if arguments.is_empty() {
             return Ok(Value::Int(n.round() as i64));
         }
@@ -43,8 +47,50 @@ impl Interpreter {
                 ))
             }
         };
-        let factor = 10_f64.powi(digits as i32);
-        Ok(Value::Float((n * factor).round() / factor))
+
+        if !n.is_finite() {
+            return Ok(Value::Float(n));
+        }
+
+        // Round through the shortest round-trip decimal representation so
+        // `38.995.round(2) == 39.0` (matching Ruby) instead of `38.99` — a
+        // binary-float artifact, since `38.995 * 100 == 3899.4999...` in
+        // IEEE 754. `format!("{}", n)` uses Grisu, giving the shortest
+        // decimal that round-trips back to `n`.
+        let naive_fallback = || {
+            let factor = 10_f64.powi(digits as i32);
+            Value::Float((n * factor).round() / factor)
+        };
+        let d = match Decimal::from_str(&format!("{}", n)) {
+            Ok(d) => d,
+            Err(_) => return Ok(naive_fallback()),
+        };
+
+        let rounded = if digits >= 0 {
+            let dp = (digits as u32).min(28);
+            d.round_dp_with_strategy(dp, RoundingStrategy::MidpointAwayFromZero)
+        } else {
+            let abs = (-digits) as u32;
+            if abs > 28 {
+                return Ok(Value::Float(0.0));
+            }
+            let scale = match Decimal::try_from_i128_with_scale(10_i128.pow(abs), 0) {
+                Ok(s) => s,
+                Err(_) => return Ok(naive_fallback()),
+            };
+            let scaled = d / scale;
+            let rounded_scaled =
+                scaled.round_dp_with_strategy(0, RoundingStrategy::MidpointAwayFromZero);
+            rounded_scaled * scale
+        };
+
+        Ok(Value::Float(rounded.to_f64().unwrap_or_else(|| {
+            if let Value::Float(f) = naive_fallback() {
+                f
+            } else {
+                n
+            }
+        })))
     }
 
     fn float_between(&self, n: f64, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {

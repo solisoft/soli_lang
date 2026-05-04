@@ -57,10 +57,15 @@ let typed: Float = 1.5</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Round to the nearest integer (0 args) or to a specific number of decimal places.</p>
+                    <p class="text-gray-400 mb-3">Round to the nearest integer (0 args) or to a specific number of decimal places. Half-values are rounded away from zero (Ruby semantics).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">3.7.round        # 4 (returns int)
 3.14159.round(2) # 3.14 (returns float)
-2.5.round        # 3</code></pre>
+2.5.round        # 3
+38.995.round(2)  # 39.0  — rounded via the shortest decimal
+                 #          representation, so binary-float artifacts
+                 #          like 38.995 == 38.99499999... don't bite
+12345.0.round(-2) # 12300.0  — negative digits round to powers of 10</code></pre>
+                    <p class="text-gray-400 mt-3 text-sm">For exact decimal arithmetic (currency, etc.), prefer the <a href="/docs/language/decimal" class="text-indigo-400 hover:underline">Decimal</a> type.</p>
                 </div>
             </section>
 

@@ -3128,6 +3128,7 @@ print(Math.tan(0.785398));  # ~1.0 (45 degrees in radians)
 print(3.7.floor);      # 3
 print(3.2.ceil);       # 4
 print(3.5.round);      # 4
+print(38.995.round(2)); # 39.0 — rounds the decimal value, not the binary float
 
 # Random
 random_num = Math.random();   # 0.0 to 1.0

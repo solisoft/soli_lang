@@ -259,6 +259,24 @@ describe("Float method dispatch", fn() {
         assert_eq((1.5).round(0), 2.0);
     });
 
+    test("round honors decimal value, not binary representation", fn() {
+        # 38.995 stored as f64 is ~38.99499999999999744, so naive
+        # `(n * 100).round() / 100` would yield 38.99. Soli rounds via
+        # the shortest round-trip decimal so the answer is 39.0 — matching
+        # Ruby 2.4+ and user intent.
+        assert_eq((38.995).round(2), 39.0);
+        assert_eq((2.675).round(2), 2.68);
+        assert_eq((1.235).round(2), 1.24);
+        assert_eq((38.985).round(2), 38.99);
+        assert_eq((-38.995).round(2), -39.0);
+    });
+
+    test("round with negative digits rounds to nearest power of 10", fn() {
+        assert_eq((12345.0).round(-2), 12300.0);
+        assert_eq((12345.0).round(-3), 12000.0);
+        assert_eq((1234.0).round(-4), 0.0);
+    });
+
     test("round with non-int arg throws", fn() {
         let caught = false;
         try {
