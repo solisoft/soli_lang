@@ -65,11 +65,11 @@ to update the DOM.
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/counter.sliv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;div class="counter-component"&gt
-  &lt;h2&gt;Count: @count&lt;/h2&gt
+<pre><code class="language-html text-sm">&lt;div class="counter-component"&gt;
+  &lt;h2&gt;Count: @count&lt;/h2&gt;
 
-  &lt;button soli-click="decrement"&gt;-&lt;/button&gt
-  &lt;button soli-click="increment"&gt;+&lt;/button&gt
+  &lt;button soli-click="decrement"&gt;-&lt;/button&gt;
+  &lt;button soli-click="increment"&gt;+&lt;/button&gt;
 &lt;/div&gt;</code></pre>
         </div>
     </div>
@@ -81,7 +81,8 @@ to update the DOM.
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Register LiveView components
-router_live("counter", "live#counter")router_live("metrics", "live#metrics");</code></pre>
+router_live("counter", "live#counter");
+router_live("metrics", "live#metrics");</code></pre>
         </div>
     </div>
 
@@ -92,27 +93,27 @@ router_live("counter", "live#counter")router_live("metrics", "live#metrics");</c
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Counter component handler
-def counter(event_data: Any)
-let event = event_data["event"];   # Event name (e.g., "increment")
+fn counter(event_data: Any) -> Any {
+  let event = event_data["event"];   # Event name (e.g., "increment")
   let params = event_data["params"]; # Event parameters
   let state = event_data["state"];   # Current component state
-  let count = state["count"]
+  let count = state["count"];
 
-  if (count == null)
-    count = 0
-  end
+  if count == null {
+    count = 0;
+  }
 
-  if (event == "increment")
-    return { "count": count + 1 }
-  end
+  if event == "increment" {
+    return { "count": count + 1 };
+  }
 
-  if (event == "decrement")
-    return { "count": count - 1 }
-  end
+  if event == "decrement" {
+    return { "count": count - 1 };
+  }
 
   # Return unchanged state for unknown events
   state
-end</code></pre></code></pre>
+}</code></pre>
         </div>
     </div>
 
@@ -166,19 +167,19 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Template Variables</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;!-- Simple variable --&gt
-&lt;span&gt;Hello, @username&lt;/span&gt
+<pre><code class="language-html text-sm">&lt;!-- Simple variable --&gt;
+&lt;span&gt;Hello, @username&lt;/span&gt;
 
-&lt;!-- Conditional rendering --&gt
-&lt;% if @logged_in %&gt
-  &lt;a href="/logout"&gt;Sign Out&lt;/a&gt
-&lt;% else %&gt
-  &lt;a href="/login"&gt;Sign In&lt;/a&gt
-&lt;% end %&gt
+&lt;!-- Conditional rendering --&gt;
+&lt;% if @logged_in %&gt;
+  &lt;a href="/logout"&gt;Sign Out&lt;/a&gt;
+&lt;% else %&gt;
+  &lt;a href="/login"&gt;Sign In&lt;/a&gt;
+&lt;% end %&gt;
 
-&lt;!-- Iteration --&gt
-&lt;% for item in @items %&gt
-  &lt;li&gt;&lt;%= item["name"] %&gt;&lt;/li&gt
+&lt;!-- Iteration --&gt;
+&lt;% for item in @items %&gt;
+  &lt;li&gt;&lt;%= item["name"] %&gt;&lt;/li&gt;
 &lt;% end %&gt;</code></pre>
         </div>
     </div>
@@ -189,15 +190,16 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~2KB gzipped) --&gt
-&lt;script src="/js/live.js"&gt;&lt;/script&gt
+<pre><code class="language-html text-sm">&lt;!-- Include the Live View client (~2KB gzipped) --&gt;
+&lt;script src="/js/live.js"&gt;&lt;/script&gt;
 
-&lt;!-- Mount a Live View component --&gt
-&lt;div id="counter" data-live-view="counter"&gt;&lt;/div&gt
+&lt;!-- Mount a Live View component --&gt;
+&lt;div id="counter" data-live-view="counter"&gt;&lt;/div&gt;
 
-&lt;script&gt
-  # Initialize Live View
-  SoliLive.connect()&lt;/script&gt;</code></pre>
+&lt;script&gt;
+  // Initialize Live View
+  SoliLive.connect();
+&lt;/script&gt;</code></pre>
         </div>
     </div>
 
@@ -207,32 +209,42 @@ end</code></pre></code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Live View WebSocket endpoint
-router_live("/live/counter", "live#counter");</code></pre>
+<pre><code class="language-soli text-sm"># Live View component endpoint
+router_live("counter", "live#counter");</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">High-Rate Updates</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Lifecycle Events</h2>
     <p class="text-gray-400 mb-6">
-        Live View supports server-pushed updates for real-time dashboards, monitoring, and live data feeds.
-        Use the <code>tick</code> event type to push updates at high frequencies (up to 60 updates/second).
+        Two synthetic events are dispatched by the server in addition to user-driven directives:
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 mb-12 space-y-2">
+        <li><code class="text-purple-300">connect</code> — fired once, immediately after the WebSocket is established and before any client events. Use it to seed initial state and (optionally) start a tick timer.</li>
+        <li><code class="text-purple-300">tick</code> — fired on a recurring interval requested by the handler (see below). Use it for server-pushed updates like dashboards or live charts.</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">High-Rate Updates with Ticks</h2>
+    <p class="text-gray-400 mb-6">
+        For real-time dashboards, monitoring, and live data feeds, a handler can opt into a per-instance recurring tick.
+        Return the wrapped form <code>{ "state": {...}, "tick_interval": &lt;ms&gt; }</code> from any handler invocation —
+        typically from <code>connect</code> — and the server will fire <code>tick</code> events on that interval.
     </p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/live_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def metrics_dashboard(event: Any)
-let type = event["type"]
+<pre><code class="language-soli text-sm">fn metrics_dashboard(event_data: Any) -> Any {
+  let event = event_data["event"];
 
-  if (type == "connect")
+  if event == "connect" {
     # Set tick interval in milliseconds (50ms = 20 updates/sec)
     return {
       "state": { "cpu": 0, "memory": 0, "requests": 0 },
       "tick_interval": 50
-    }
-  end
+    };
+  }
 
-  if (type == "tick")
+  if event == "tick" {
     # Server pushes fresh data on each tick
     return {
       "state": {
@@ -241,44 +253,73 @@ let type = event["type"]
         "memory": system_memory_mb(),
         "requests": request_counter
       }
-    }
-  end
+    };
+  }
 
-  {}
-end</code></pre></code></pre>
+  # Unknown event — leave state and tick interval unchanged
+  event_data["state"]
+}</code></pre>
         </div>
     </div>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/live/metrics.sliv</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-html text-sm">&lt;div class="dashboard"&gt
-  &lt;div class="metric"&gt
-    &lt;span class="label"&gt;Server Time&lt;/span&gt
-    &lt;span class="value"&gt;@time&lt;/span&gt
-  &lt;/div&gt
-  &lt;div class="metric"&gt
-    &lt;span class="label"&gt;CPU&lt;/span&gt
-    &lt;span class="value"&gt;@cpu%&lt;/span&gt
-  &lt;/div&gt
-  &lt;div class="metric"&gt
-    &lt;span class="label"&gt;Memory&lt;/span&gt
-    &lt;span class="value"&gt;@memory MB&lt;/span&gt
-  &lt;/div&gt
-  &lt;div class="metric"&gt
-    &lt;span class="label"&gt;Requests/sec&lt;/span&gt
-    &lt;span class="value"&gt;@requests&lt;/span&gt
-  &lt;/div&gt
+<pre><code class="language-html text-sm">&lt;div class="dashboard"&gt;
+  &lt;div class="metric"&gt;
+    &lt;span class="label"&gt;Server Time&lt;/span&gt;
+    &lt;span class="value"&gt;@time&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="metric"&gt;
+    &lt;span class="label"&gt;CPU&lt;/span&gt;
+    &lt;span class="value"&gt;@cpu%&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="metric"&gt;
+    &lt;span class="label"&gt;Memory&lt;/span&gt;
+    &lt;span class="value"&gt;@memory MB&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;div class="metric"&gt;
+    &lt;span class="label"&gt;Requests/sec&lt;/span&gt;
+    &lt;span class="value"&gt;@requests&lt;/span&gt;
+  &lt;/div&gt;
 &lt;/div&gt;</code></pre>
         </div>
     </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>tick_interval</code> Semantics</h3>
+    <p class="text-gray-400 mb-4">
+        The handler may return either shape on any invocation:
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 mb-4 space-y-2">
+        <li><strong>Bare</strong>: <code>{ ...state }</code> — the whole hash is the new state. Equivalent to <code>tick_interval</code> absent.</li>
+        <li><strong>Wrapped</strong>: <code>{ "state": {...}, "tick_interval": N }</code> — <code>state</code> is the new state; <code>tick_interval</code> controls the timer.</li>
+    </ul>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm border border-white/10 rounded-lg">
+            <thead class="bg-white/5 text-gray-300">
+                <tr>
+                    <th class="text-left p-3 border-b border-white/10">Returned value</th>
+                    <th class="text-left p-3 border-b border-white/10">Effect</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr><td class="p-3 border-b border-white/10"><code>tick_interval</code> absent</td><td class="p-3 border-b border-white/10">Leave the running tick alone</td></tr>
+                <tr><td class="p-3 border-b border-white/10"><code>0</code></td><td class="p-3 border-b border-white/10">Stop the tick</td></tr>
+                <tr><td class="p-3"><code>&gt; 0</code></td><td class="p-3">Start (or replace) the tick at this interval, in milliseconds</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">
+        If a tick fires while the previous handler call is still running, the tick is dropped (rather than queued)
+        so a slow handler doesn't snowball. Ticks stop automatically when the WebSocket closes.
+    </p>
 
     <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
         <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
-            Tick Intervals
+            Recommended Intervals
         </h4>
         <ul class="text-yellow-200/80 text-sm space-y-1">
             <li><strong>1000ms</strong> - Good for dashboards, status pages</li>

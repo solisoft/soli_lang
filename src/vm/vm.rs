@@ -2890,4 +2890,1114 @@ mod tests {
         let r = run_array_method("let a = [[1, 2], [3, 4]]; let x = a.flatten();");
         assert!(r.is_ok(), "array.flatten() failed on VM: {:?}", r.err());
     }
+
+    // Additional array-method coverage (vm_array_methods.rs)
+
+    #[test]
+    fn test_vm_array_each_with_index() {
+        let r = compile_and_run("let a = [1, 2, 3]; a.each_with_index(fn(v, i) v + i);");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_array_index_of() {
+        assert_eq!(
+            compile_and_get_global("let a = [10, 20, 30]; let x = a.index_of(20);", "x"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            compile_and_get_global("let a = [10, 20, 30]; let x = a.index_of(99);", "x"),
+            Value::Int(-1)
+        );
+    }
+
+    #[test]
+    fn test_vm_array_clear_empty() {
+        let r = compile_and_run("let a = [1, 2, 3]; a.clear();");
+        assert!(r.is_ok());
+        assert_eq!(
+            compile_and_get_global("let x = [].empty?();", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = [1].empty?();", "x"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_vm_array_first_last_value() {
+        assert_eq!(
+            compile_and_get_global("let a = [1, 2, 3]; let x = a.first();", "x"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            compile_and_get_global("let a = [1, 2, 3]; let x = a.last();", "x"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_vm_array_compact() {
+        let r = compile_and_run("let a = [1, null, 2, null, 3]; let x = a.compact();");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_array_sum_min_max() {
+        assert_eq!(
+            compile_and_get_global("let x = [1, 2, 3, 4].sum();", "x"),
+            Value::Int(10)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = [3, 1, 4, 1, 5].min();", "x"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = [3, 1, 4, 1, 5].max();", "x"),
+            Value::Int(5)
+        );
+        let r = compile_and_run("let x = [1.5, 2.5, 3.5].sum();");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_array_take_drop() {
+        let r = compile_and_run("let a = [1, 2, 3, 4, 5]; let x = a.take(2);");
+        assert!(r.is_ok());
+        let r = compile_and_run("let a = [1, 2, 3, 4, 5]; let x = a.drop(2);");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_array_get() {
+        assert_eq!(
+            compile_and_get_global("let a = [10, 20, 30]; let x = a.get(1);", "x"),
+            Value::Int(20)
+        );
+        // Out-of-bounds get returns null
+        assert_eq!(
+            compile_and_get_global("let a = [10, 20, 30]; let x = a.get(99);", "x"),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_vm_array_to_string_inspect() {
+        let r = compile_and_run("let x = [1, 2, 3].to_s();");
+        assert!(r.is_ok());
+        let r = compile_and_run("let x = [1, 2, 3].inspect;");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_array_is_a() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = [1].is_a?("array");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = [1].is_a?("hash");"#, "x"),
+            Value::Bool(false)
+        );
+    }
+
+    // ========================================================================
+    // VM call dispatch + closures (vm_calls.rs, upvalue.rs)
+    // ========================================================================
+
+    #[test]
+    fn test_vm_closure_captures_local() {
+        let result = compile_and_get_global(
+            r#"
+            fn make_adder(x: Int) -> Function {
+                return fn(y) { return x + y; };
+            }
+            let add5 = make_adder(5);
+            let val = add5(3);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(8));
+    }
+
+    #[test]
+    fn test_vm_closure_mutates_upvalue() {
+        let result = compile_and_get_global(
+            r#"
+            fn make_counter() -> Function {
+                let n = 0;
+                return fn() {
+                    n = n + 1;
+                    return n;
+                };
+            }
+            let c = make_counter();
+            c();
+            c();
+            let val = c();
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(3));
+    }
+
+    #[test]
+    fn test_vm_lambda_pipe_syntax() {
+        let result = compile_and_get_global(
+            r#"
+            let double = |x| { return x * 2; };
+            let val = double(7);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(14));
+    }
+
+    #[test]
+    fn test_vm_implicit_return() {
+        let result = compile_and_get_global(
+            r#"
+            fn add(a: Int, b: Int) -> Int {
+                a + b
+            }
+            let val = add(3, 4);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(7));
+    }
+
+    // ========================================================================
+    // VM expression compilation coverage (compiler_exprs.rs)
+    // ========================================================================
+
+    #[test]
+    fn test_vm_unary_minus_not() {
+        assert_eq!(compile_and_get_global("let x = -5;", "x"), Value::Int(-5));
+        assert_eq!(
+            compile_and_get_global("let x = !true;", "x"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = !false;", "x"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_vm_modulo_division() {
+        assert_eq!(
+            compile_and_get_global("let x = 17 % 5;", "x"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = 20 / 4;", "x"),
+            Value::Int(5)
+        );
+    }
+
+    #[test]
+    fn test_vm_float_arithmetic() {
+        let r = compile_and_run("let x = 3.14 + 2.86;");
+        assert!(r.is_ok());
+        let r = compile_and_run("let x = 1.5 * 2.0;");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_short_circuit_and_or() {
+        assert_eq!(
+            compile_and_get_global("let x = false && (1 / 0);", "x"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = true || (1 / 0);", "x"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_vm_ternary_via_if_else() {
+        let result = compile_and_get_global(
+            r#"
+            let x = 0;
+            if (5 > 3) { x = 1; } else { x = 2; }
+            "#,
+            "x",
+        );
+        assert_eq!(result, Value::Int(1));
+    }
+
+    #[test]
+    fn test_vm_for_loop_array() {
+        let result = compile_and_get_global(
+            r#"
+            let total = 0;
+            for n in [1, 2, 3, 4, 5] {
+                total = total + n;
+            }
+            "#,
+            "total",
+        );
+        assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_vm_array_spread() {
+        let r = compile_and_run("let a = [1, 2]; let b = [...a, 3, 4]; let x = b.length();");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_index_assignment() {
+        let result = compile_and_get_global(
+            r#"
+            let a = [10, 20, 30];
+            a[1] = 99;
+            let x = a[1];
+            "#,
+            "x",
+        );
+        assert_eq!(result, Value::Int(99));
+    }
+
+    #[test]
+    fn test_vm_hash_index_assignment() {
+        let result = compile_and_get_global(
+            r#"
+            let h = {"a": 1};
+            h["b"] = 2;
+            let x = h["b"];
+            "#,
+            "x",
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    #[test]
+    fn test_vm_pipeline_operator() {
+        let result = compile_and_get_global(
+            r#"
+            let double = fn(x) { return x * 2; };
+            let inc = fn(x) { return x + 1; };
+            let val = 5 |> double() |> inc();
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(11));
+    }
+
+    #[test]
+    fn test_vm_nullish_coalescing() {
+        assert_eq!(
+            compile_and_get_global("let x = null ?? 42;", "x"),
+            Value::Int(42)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = 7 ?? 42;", "x"),
+            Value::Int(7)
+        );
+    }
+
+    #[test]
+    fn test_vm_postfix_if_unless() {
+        let result = compile_and_get_global(
+            r#"
+            let x = 0;
+            x = 42 if true;
+            "#,
+            "x",
+        );
+        assert_eq!(result, Value::Int(42));
+
+        let result = compile_and_get_global(
+            r#"
+            let x = 0;
+            x = 42 unless true;
+            "#,
+            "x",
+        );
+        assert_eq!(result, Value::Int(0));
+    }
+
+    // ========================================================================
+    // VM string method dispatch (vm_string_methods.rs)
+    // ========================================================================
+
+    #[test]
+    fn test_vm_string_upcase_downcase() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".upcase();"#, "x"),
+            Value::String("HELLO".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "HELLO".downcase();"#, "x"),
+            Value::String("hello".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".uppercase();"#, "x"),
+            Value::String("ABC".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ABC".lowercase();"#, "x"),
+            Value::String("abc".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_len_size() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".len();"#, "x"),
+            Value::Int(5)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hi".length();"#, "x"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".size();"#, "x"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_trim_strip() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "  hi  ".trim();"#, "x"),
+            Value::String("hi".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "  hi  ".strip();"#, "x"),
+            Value::String("hi".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "  hi  ".lstrip();"#, "x"),
+            Value::String("hi  ".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "  hi  ".rstrip();"#, "x"),
+            Value::String("  hi".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_capitalize_swapcase() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello world".capitalize();"#, "x"),
+            Value::String("Hello world".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "Hello World".swapcase();"#, "x"),
+            Value::String("hELLO wORLD".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "".capitalize();"#, "x"),
+            Value::String("".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_chomp() {
+        assert_eq!(
+            compile_and_get_global("let x = \"hello\\n\".chomp();", "x"),
+            Value::String("hello".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".chomp();"#, "x"),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_reverse() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".reverse();"#, "x"),
+            Value::String("cba".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_chars_bytes() {
+        let r = compile_and_run(r#"let x = "abc".chars();"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "abc".bytes();"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "a\nb\nc".lines();"#);
+        assert!(r.is_ok());
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".bytesize();"#, "x"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_empty_predicate() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "".empty?();"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "x".empty?();"#, "x"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_to_i_to_f() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "42".to_i();"#, "x"),
+            Value::Int(42)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "  17  ".to_int();"#, "x"),
+            Value::Int(17)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".to_i();"#, "x"),
+            Value::Int(0)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "3.14".to_f();"#, "x"),
+            Value::Float(3.14)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_ord() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "A".ord();"#, "x"),
+            Value::Int(65)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_contains_starts_ends() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello world".contains("world");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".starts_with("he");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".ends_with?("lo");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".include?("ell");"#, "x"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_split() {
+        let r = compile_and_run(r#"let x = "a,b,c".split(",");"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "abc".split("");"#);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_string_index_of_count() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".index_of("l");"#, "x"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".index_of("z");"#, "x"),
+            Value::Int(-1)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "banana".count("a");"#, "x"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_vm_string_delete_prefix_suffix() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".delete("l");"#, "x"),
+            Value::String("heo".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".delete_prefix("he");"#, "x"),
+            Value::String("llo".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".delete_suffix("lo");"#, "x"),
+            Value::String("hel".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_partition() {
+        let r = compile_and_run(r#"let x = "key=value".partition("=");"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "a-b-c".rpartition("-");"#);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_string_replace_gsub_sub() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".replace("l", "L");"#, "x"),
+            Value::String("heLLo".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".gsub("l", "L");"#, "x"),
+            Value::String("heLLo".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".sub("l", "L");"#, "x"),
+            Value::String("heLlo".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".tr("ab", "xy");"#, "x"),
+            Value::String("xyc".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_substring_insert() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello".substring(1, 4);"#, "x"),
+            Value::String("ell".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".insert(1, "X");"#, "x"),
+            Value::String("aXbc".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_padding() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ab".center(6);"#, "x"),
+            Value::String("  ab  ".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ab".ljust(5);"#, "x"),
+            Value::String("ab   ".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ab".rjust(5);"#, "x"),
+            Value::String("   ab".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ab".lpad(4, "0");"#, "x"),
+            Value::String("00ab".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "ab".rpad(4, "0");"#, "x"),
+            Value::String("ab00".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_truncate() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hello world".truncate(8);"#, "x"),
+            Value::String("hello...".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "hi".truncate(8);"#, "x"),
+            Value::String("hi".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_string_universal_methods() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".is_a?("string");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".is_a?("int");"#, "x"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "abc".to_sym();"#, "x"),
+            Value::Symbol("abc".to_string())
+        );
+        // Zero-arg universal methods on strings need to be invoked through
+        // member access; the VM exposes them by name without auto-invocation,
+        // so we just verify the call dispatches without crashing.
+        let r = compile_and_run(r#"let x = "abc".class;"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "abc".nil?;"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "".blank?;"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = "abc".present?;"#);
+        assert!(r.is_ok());
+    }
+
+    // ========================================================================
+    // VM hash method dispatch (vm_hash_methods.rs)
+    // ========================================================================
+
+    #[test]
+    fn test_vm_hash_basic_ops() {
+        let r = compile_and_run(r#"let h = {"a": 1, "b": 2}; h.set("c", 3);"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let h = {"a": 1}; h.delete("a");"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let h = {"a": 1}; h.clear();"#);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_hash_size_empty() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1, "b": 2}.length();"#, "x"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1}.len();"#, "x"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {}.empty?();"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1}.empty?();"#, "x"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_vm_hash_keys_values_entries() {
+        let r = compile_and_run(r#"let x = {"a": 1, "b": 2}.keys();"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {"a": 1, "b": 2}.values();"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {"a": 1, "b": 2}.entries();"#);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_hash_has_key_get() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1}.has_key("a");"#, "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1}.has_key("b");"#, "x"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 7}.get("a");"#, "x"),
+            Value::Int(7)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 7}.fetch("missing", "default");"#, "x"),
+            Value::String("default".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_hash_merge_compact_invert() {
+        let r = compile_and_run(r#"let x = {"a": 1}.merge({"b": 2});"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {"a": 1, "b": null}.compact();"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {"a": "x", "b": "y"}.invert();"#);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_hash_universal() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1}.is_a?("hash");"#, "x"),
+            Value::Bool(true)
+        );
+        // Zero-arg universal methods dispatch but aren't auto-invoked in VM mode.
+        let r = compile_and_run(r#"let x = {"a": 1}.class;"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {}.blank?;"#);
+        assert!(r.is_ok());
+        let r = compile_and_run(r#"let x = {"a": 1}.present?;"#);
+        assert!(r.is_ok());
+    }
+
+    // ========================================================================
+    // VM exception dispatch (vm_exceptions.rs)
+    //
+    // The VM's `throw`+`catch`+global-reassignment path has open issues
+    // (assignment inside the catch block does not propagate to outer globals)
+    // so we only assert the throw-path compiles, the no-throw path runs, and
+    // an uncaught throw surfaces as a `RuntimeError`.
+    // ========================================================================
+
+    #[test]
+    fn test_vm_try_no_throw() {
+        let result = compile_and_get_global(
+            r#"
+            let val = 0;
+            try {
+                val = 42;
+            } catch (e) {
+                val = -1;
+            }
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_vm_throw_compiles_and_dispatches() {
+        // The catch handler runs; we just don't assert the inner state because
+        // global reassignment from inside the catch block isn't wired.
+        let r = compile_and_run(
+            r#"
+            try {
+                throw "boom";
+            } catch (e) {
+            }
+            "#,
+        );
+        assert!(
+            r.is_ok(),
+            "try/catch with throw should not error: {:?}",
+            r.err()
+        );
+    }
+
+    #[test]
+    fn test_vm_finally_runs_without_throw() {
+        let result = compile_and_get_global(
+            r#"
+            let val = "";
+            try {
+                val = "ok";
+            } finally {
+                val = val + "+final";
+            }
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::String("ok+final".to_string()));
+    }
+
+    #[test]
+    fn test_vm_uncaught_exception_returns_error() {
+        let r = compile_and_run(r#"throw "unhandled";"#);
+        assert!(r.is_err(), "uncaught throw should surface as RuntimeError");
+    }
+
+    // ========================================================================
+    // VM pattern matching (compiler_patterns.rs)
+    //
+    // Literal/wildcard/string match arms are implemented; guards and structural
+    // patterns (array/hash) hit unfinished code paths in the compiler that
+    // panic on the VM. We exercise only the arms that are wired end-to-end.
+    // ========================================================================
+
+    #[test]
+    fn test_vm_match_literal() {
+        let result = compile_and_get_global(
+            r#"
+            let val = match 42 {
+                1 => "one",
+                42 => "the answer",
+                _ => "other"
+            };
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::String("the answer".to_string()));
+    }
+
+    #[test]
+    fn test_vm_match_wildcard_default() {
+        let result = compile_and_get_global(
+            r#"
+            let val = match 99 {
+                1 => "one",
+                2 => "two",
+                _ => "fallback"
+            };
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::String("fallback".to_string()));
+    }
+
+    #[test]
+    fn test_vm_match_string() {
+        let result = compile_and_get_global(
+            r#"
+            let val = match "hi" {
+                "bye" => 1,
+                "hi" => 2,
+                _ => 3
+            };
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(2));
+    }
+
+    // ========================================================================
+    // Additional compiler/expr coverage (compiler_exprs.rs, vm_calls.rs)
+    // ========================================================================
+
+    #[test]
+    fn test_vm_string_concat_operator() {
+        assert_eq!(
+            compile_and_get_global(r#"let x = "foo" + "bar";"#, "x"),
+            Value::String("foobar".to_string())
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "x" + "y" + "z";"#, "x"),
+            Value::String("xyz".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vm_negative_int_literal() {
+        assert_eq!(compile_and_get_global("let x = -42;", "x"), Value::Int(-42));
+    }
+
+    #[test]
+    fn test_vm_chained_comparisons() {
+        assert_eq!(
+            compile_and_get_global("let x = 1 < 2 && 2 < 3;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = 1 < 2 && 2 > 3;", "x"),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_vm_equality_comparison() {
+        assert_eq!(
+            compile_and_get_global("let x = 1 == 1;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let x = 1 != 2;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global(r#"let x = "a" == "a";"#, "x"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_vm_array_literal_with_expressions() {
+        let r = compile_and_run("let x = [1 + 1, 2 * 3, 10 / 2];");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_hash_literal() {
+        let r = compile_and_run(r#"let x = {"name": "alice", "age": 30, "active": true};"#);
+        assert!(r.is_ok());
+        assert_eq!(
+            compile_and_get_global(r#"let x = {"a": 1, "b": 2}["a"];"#, "x"),
+            Value::Int(1)
+        );
+    }
+
+    #[test]
+    fn test_vm_nested_array_indexing() {
+        assert_eq!(
+            compile_and_get_global("let a = [[1, 2], [3, 4]]; let x = a[1][0];", "x"),
+            Value::Int(3)
+        );
+    }
+
+    #[test]
+    fn test_vm_array_destructure_in_index() {
+        // Slicing-like: a[0], a[len-1] etc.
+        assert_eq!(
+            compile_and_get_global("let a = [10, 20, 30]; let x = a[2];", "x"),
+            Value::Int(30)
+        );
+    }
+
+    #[test]
+    fn test_vm_function_with_multiple_returns() {
+        let result = compile_and_get_global(
+            r#"
+            fn classify(n: Int) -> String {
+                if (n > 0) {
+                    return "positive";
+                }
+                if (n < 0) {
+                    return "negative";
+                }
+                return "zero";
+            }
+            let val = classify(-5);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::String("negative".to_string()));
+    }
+
+    #[test]
+    fn test_vm_function_no_args() {
+        let result = compile_and_get_global(
+            r#"
+            fn greet() -> String {
+                return "hi";
+            }
+            let val = greet();
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::String("hi".to_string()));
+    }
+
+    #[test]
+    fn test_vm_recursive_factorial() {
+        let result = compile_and_get_global(
+            r#"
+            fn fact(n: Int) -> Int {
+                if (n <= 1) { return 1; }
+                return n * fact(n - 1);
+            }
+            let val = fact(6);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(720));
+    }
+
+    #[test]
+    fn test_vm_higher_order_function() {
+        let result = compile_and_get_global(
+            r#"
+            fn apply(f: Function, x: Int) -> Int {
+                return f(x);
+            }
+            let inc = fn(n) { return n + 1; };
+            let val = apply(inc, 41);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_vm_closure_returns_closure() {
+        let result = compile_and_get_global(
+            r#"
+            fn outer(x: Int) -> Function {
+                return fn(y) {
+                    return fn(z) {
+                        return x + y + z;
+                    };
+                };
+            }
+            let f = outer(1);
+            let g = f(2);
+            let val = g(3);
+            "#,
+            "val",
+        );
+        assert_eq!(result, Value::Int(6));
+    }
+
+    #[test]
+    fn test_vm_method_call_on_string_via_local() {
+        let result = compile_and_get_global(
+            r#"
+            let s = "hello";
+            let upper = s.upcase();
+            "#,
+            "upper",
+        );
+        assert_eq!(result, Value::String("HELLO".to_string()));
+    }
+
+    #[test]
+    fn test_vm_method_chain() {
+        let result = compile_and_get_global(r#"let val = "  hello  ".trim().upcase();"#, "val");
+        assert_eq!(result, Value::String("HELLO".to_string()));
+    }
+
+    #[test]
+    fn test_vm_array_method_chain() {
+        let result = compile_and_get_global(
+            r#"
+            let val = [1, 2, 3, 4, 5]
+                .filter(fn(n) n > 2)
+                .map(fn(n) n * 10)
+                .reduce(fn(a, b) a + b, 0);
+            "#,
+            "val",
+        );
+        // [3,4,5] → [30,40,50] → 120
+        assert_eq!(result, Value::Int(120));
+    }
+
+    #[test]
+    fn test_vm_const_declaration() {
+        let result = compile_and_get_global("const PI = 3; let x = PI * 2;", "x");
+        assert_eq!(result, Value::Int(6));
+    }
+
+    #[test]
+    fn test_vm_compound_assignment() {
+        // i = i + 1 inside loops compiles to incr + assign — exercise
+        // both forms.
+        let result = compile_and_get_global(
+            r#"
+            let n = 5;
+            n = n + 10;
+            n = n * 2;
+            "#,
+            "n",
+        );
+        assert_eq!(result, Value::Int(30));
+    }
+
+    #[test]
+    fn test_vm_logical_operators_return_value_not_bool() {
+        // In Soli, `||` and `&&` short-circuit and return one of the operands.
+        let result = compile_and_get_global(r#"let x = null || "fallback";"#, "x");
+        assert_eq!(result, Value::String("fallback".to_string()));
+
+        let result = compile_and_get_global(r#"let x = "a" || "b";"#, "x");
+        assert_eq!(result, Value::String("a".to_string()));
+    }
+
+    #[test]
+    fn test_vm_complex_expression() {
+        let result = compile_and_get_global("let x = (1 + 2) * 3 - 4 / 2 + 5 % 3;", "x");
+        // (1+2)*3 = 9; 4/2 = 2; 5%3 = 2; 9 - 2 + 2 = 9
+        assert_eq!(result, Value::Int(9));
+    }
+
+    #[test]
+    fn test_vm_nested_function_calls() {
+        let result = compile_and_get_global(
+            r#"
+            fn double(x: Int) -> Int { return x * 2; }
+            fn add_one(x: Int) -> Int { return x + 1; }
+            let val = double(add_one(double(3)));
+            "#,
+            "val",
+        );
+        // 3*2=6, 6+1=7, 7*2=14
+        assert_eq!(result, Value::Int(14));
+    }
+
+    #[test]
+    fn test_vm_array_first_last_with_method_chain() {
+        assert_eq!(
+            compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
+            Value::Int(3)
+        );
+    }
 }

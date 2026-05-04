@@ -226,6 +226,42 @@ describe("Model.all returns instances", fn() {
         r1.delete();
         r2.delete();
     });
+
+    test("Model.all auto-invokes without parentheses", fn() {
+        let r1 = Product.create({ "name": "AutoInvokeTest1", "price": 1.00 });
+        let r2 = Product.create({ "name": "AutoInvokeTest2", "price": 2.00 });
+
+        let with_parens = Product.all();
+        let without_parens = Product.all;
+        assert_eq(len(with_parens), len(without_parens));
+        assert_eq(type(without_parens), "array");
+
+        r1.delete();
+        r2.delete();
+    });
+
+    test("chaining after auto-invoke works", fn() {
+        let count = Product.all.length;
+        assert(count >= 0);
+    });
+});
+
+describe("Model.count auto-invoke", fn() {
+    test("Model.count auto-invokes without parentheses", fn() {
+        let with_parens = Product.count();
+        let without_parens = Product.count;
+        assert_eq(with_parens, without_parens);
+        assert(type(without_parens), "int");
+    });
+});
+
+describe("Model.all_json auto-invoke", fn() {
+    test("Model.all_json auto-invokes without parentheses", fn() {
+        let with_parens = Product.all_json();
+        let without_parens = Product.all_json;
+        assert_eq(with_parens, without_parens);
+        assert(type(without_parens), "string");
+    });
 });
 
 describe("Instance .update()", fn() {

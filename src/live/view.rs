@@ -35,6 +35,9 @@ pub struct LiveViewInstance {
     pub channels: HashSet<String>,
     pub created_at: Instant,
     pub last_active: Instant,
+    /// Current tick interval in milliseconds, if a periodic tick is scheduled.
+    /// `None` means no tick task is running.
+    pub tick_interval_ms: Option<u64>,
 }
 
 impl LiveViewInstance {
@@ -59,6 +62,7 @@ impl LiveViewInstance {
             channels: HashSet::new(),
             created_at: now,
             last_active: now,
+            tick_interval_ms: None,
         }
     }
 

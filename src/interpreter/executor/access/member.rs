@@ -1166,16 +1166,18 @@ impl Interpreter {
                 let class_val = class_val.clone();
                 let method_name = name.to_string();
                 let original_func = native_method.func.clone();
+                let is_auto_invocable = native_method.is_auto_invocable;
 
-                let bound_func = NativeFunction::new(
-                    Box::leak(format!("bound_{}", method_name).into_boxed_str()),
-                    None, // Variadic - don't check arity at VM level
-                    move |args| {
+                let bound_func = NativeFunction {
+                    name: format!("bound_{}", method_name),
+                    arity: None, // Variadic - don't check arity at VM level
+                    func: Rc::new(move |args| {
                         let mut full_args = vec![class_val.clone()];
                         full_args.extend(args);
                         original_func(full_args)
-                    },
-                );
+                    }),
+                    is_auto_invocable,
+                };
                 return Ok(Value::NativeFunction(bound_func));
             }
             return Ok(Value::NativeFunction((*native_method).clone()));

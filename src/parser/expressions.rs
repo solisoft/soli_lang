@@ -1179,10 +1179,19 @@ impl Parser {
         self.finish_parsing_lambda(params, start_span)
     }
 
-    /// Parse a trailing do block: `do body end` as a 0-param lambda expression.
+    /// Parse a trailing do block: `do body end` or `do |params| body end`
+    /// (Ruby-style) as a lambda expression.
     fn parse_trailing_do_block(&mut self) -> ParseResult<Expr> {
         let start_span = self.current_span();
         self.expect(&TokenKind::Do)?;
+
+        let params = if self.match_token(&TokenKind::Pipe) {
+            let p = self.parse_lambda_params_list(&TokenKind::Pipe)?;
+            self.expect(&TokenKind::Pipe)?;
+            p
+        } else {
+            Vec::new()
+        };
 
         let mut statements = Vec::new();
         while !self.check(&TokenKind::End) && !self.is_at_end() {
@@ -1194,7 +1203,7 @@ impl Parser {
 
         Ok(Expr::new(
             ExprKind::Lambda {
-                params: vec![],
+                params,
                 return_type: None,
                 body: statements,
             },

@@ -22,6 +22,27 @@ pub struct LiveViewRoute {
 // Global registry of LiveView routes
 lazy_static::lazy_static! {
     pub static ref LIVEVIEW_ROUTES: std::sync::Mutex<HashMap<String, LiveViewRoute>> = std::sync::Mutex::new(HashMap::new());
+    /// Per-instance tick task abort handles, keyed by liveview_id.
+    /// Lets us cancel/replace a running tick when the handler asks for a new
+    /// interval, when the WS connection closes, or when the instance expires.
+    pub static ref LIVEVIEW_TICK_TASKS: std::sync::Mutex<HashMap<String, tokio::task::AbortHandle>> = std::sync::Mutex::new(HashMap::new());
+}
+
+/// Install (or replace) the tick task for a LiveView instance. Aborts any
+/// previously-installed task for the same `liveview_id`.
+pub fn set_tick_task(liveview_id: &str, handle: tokio::task::AbortHandle) {
+    let mut tasks = LIVEVIEW_TICK_TASKS.lock().unwrap();
+    if let Some(old) = tasks.insert(liveview_id.to_string(), handle) {
+        old.abort();
+    }
+}
+
+/// Cancel and remove the tick task for a LiveView instance, if any.
+pub fn cancel_tick_task(liveview_id: &str) {
+    let mut tasks = LIVEVIEW_TICK_TASKS.lock().unwrap();
+    if let Some(old) = tasks.remove(liveview_id) {
+        old.abort();
+    }
 }
 
 /// Register a LiveView route.

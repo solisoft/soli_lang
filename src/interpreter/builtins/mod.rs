@@ -39,6 +39,7 @@ pub mod markdown;
 pub mod math;
 pub mod mock_http;
 pub mod model;
+pub mod named_routes;
 pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;

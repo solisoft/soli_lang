@@ -1,8 +1,32 @@
-use crate::interpreter::builtins::server::register_route_with_middleware;
+use crate::interpreter::builtins::server::{
+    register_route_with_middleware, register_route_with_name,
+};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+/// Naive singularization: drop a trailing `s` if present. Mirrors the
+/// existing logic in `router_resource_enter` for the `:<singular>_id`
+/// param name on nested resources, so naming is consistent.
+fn singularize(name: &str) -> String {
+    if let Some(stripped) = name.strip_suffix('s') {
+        stripped.to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// Compose a Rails-style route name from the ancestor chain plus the
+/// current segment. `prefix` is the underscore-joined chain of singular
+/// ancestor names (empty at the top level).
+fn compose_name(prefix: &str, segment: &str) -> String {
+    if prefix.is_empty() {
+        segment.to_string()
+    } else {
+        format!("{}_{}", prefix, segment)
+    }
+}
 
 /// Extract middleware values from a value (array of middleware names).
 /// Looks up each middleware name in the global middleware registry.
@@ -99,6 +123,10 @@ struct RouterScope {
     is_collection: bool,           // Are we inside a collection block?
     middleware: Vec<Value>,        // Active middleware
     middleware_names: Vec<String>, // Middleware names for worker thread transfer
+    /// Underscore-joined chain of singular ancestor resource names — used to
+    /// build Rails-style route names for nested resources (e.g. `post_comment`
+    /// from `resources("posts") do resources("comments") end`).
+    name_prefix: String,
 }
 
 impl Default for RouterScope {
@@ -110,6 +138,7 @@ impl Default for RouterScope {
             is_collection: false,
             middleware: Vec::new(),
             middleware_names: Vec::new(),
+            name_prefix: String::new(),
         }
     }
 }
@@ -194,18 +223,34 @@ pub fn register_router_builtins(env: &mut Environment) {
                     let middleware = current.middleware.clone();
                     let mw_names = current.middleware_names.clone();
 
+                    // Rails-style names. `name` is the plural collection segment
+                    // (e.g. "posts"); `singular` is the member segment ("post").
+                    // Names compose with any ancestor name_prefix so nested
+                    // resources get `post_comment_path` etc. Only the routes
+                    // that have a Rails-style helper get a name — the POST/PUT/
+                    // PATCH/DELETE variants share the GET name's path so we
+                    // intentionally leave them unnamed (calling `post_path(p)`
+                    // returns the same string regardless of HTTP verb intent).
+                    let singular = singularize(&name);
+                    let collection_name = compose_name(&current.name_prefix, &name);
+                    let member_name = compose_name(&current.name_prefix, &singular);
+                    let new_name = compose_name(&current.name_prefix, &format!("new_{}", singular));
+                    let edit_name =
+                        compose_name(&current.name_prefix, &format!("edit_{}", singular));
+
                     // Register standard routes immediately
-                    // Index: GET base_path
+                    // Index: GET base_path → `<plural>_path`
                     let handler_name = format!("{}#index", controller);
-                    register_route_with_middleware(
+                    register_route_with_name(
                         "GET",
                         &base_path,
                         handler_name,
+                        Some(collection_name),
                         middleware.clone(),
                         mw_names.clone(),
                     );
 
-                    // Create: POST base_path
+                    // Create: POST base_path (unnamed — same path as index)
                     let handler_name = format!("{}#create", controller);
                     register_route_with_middleware(
                         "POST",
@@ -215,12 +260,13 @@ pub fn register_router_builtins(env: &mut Environment) {
                         mw_names.clone(),
                     );
 
-                    // New: GET base_path/new
+                    // New: GET base_path/new → `new_<singular>_path`
                     let handler_name = format!("{}#new", controller);
-                    register_route_with_middleware(
+                    register_route_with_name(
                         "GET",
                         &format!("{}/new", base_path),
                         handler_name,
+                        Some(new_name),
                         middleware.clone(),
                         mw_names.clone(),
                     );
@@ -228,12 +274,13 @@ pub fn register_router_builtins(env: &mut Environment) {
                     // Member routes base path
                     let member_path = format!("{}/:id", base_path);
 
-                    // Show: GET member_path
+                    // Show: GET member_path → `<singular>_path`
                     let handler_name = format!("{}#show", controller);
-                    register_route_with_middleware(
+                    register_route_with_name(
                         "GET",
                         &member_path,
                         handler_name,
+                        Some(member_name),
                         middleware.clone(),
                         mw_names.clone(),
                     );
@@ -281,12 +328,13 @@ pub fn register_router_builtins(env: &mut Environment) {
                         mw_names.clone(),
                     );
 
-                    // Edit: GET member_path/edit
+                    // Edit: GET member_path/edit → `edit_<singular>_path`
                     let handler_name = format!("{}#edit", controller);
-                    register_route_with_middleware(
+                    register_route_with_name(
                         "GET",
                         &format!("{}/edit", member_path),
                         handler_name,
+                        Some(edit_name),
                         middleware.clone(),
                         mw_names.clone(),
                     );
@@ -294,13 +342,10 @@ pub fn register_router_builtins(env: &mut Environment) {
                     // Push new scope for nested resources
                     // Child base: /users/:user_id
                     // Simple singularization: remove trailing 's' or append '_id' to full name
-                    let param_name = if name.ends_with('s') {
-                        format!("{}_id", &name[..name.len() - 1])
-                    } else {
-                        format!("{}_id", name)
-                    };
+                    let param_name = format!("{}_id", singular);
 
                     let child_path = format!("{}/:{}", base_path, param_name);
+                    let child_name_prefix = compose_name(&current.name_prefix, &singular);
 
                     stack.push(RouterScope {
                         path_prefix: child_path,
@@ -309,6 +354,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_collection: false,
                         middleware: current.middleware.clone(),
                         middleware_names: current.middleware_names.clone(),
+                        name_prefix: child_name_prefix,
                     });
                 });
 
@@ -328,13 +374,25 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
-    // router_match(method, path, action)
+    // router_match(method, path, action, name?)
+    // Variadic so the DSL can pass a 4th `name` arg for `*_path` / `*_url`
+    // helper generation while older callers continue to pass 3.
     env.define(
         "router_match".to_string(),
-        Value::NativeFunction(NativeFunction::new("router_match", Some(3), |args| {
+        Value::NativeFunction(NativeFunction::new("router_match", None, |args| {
+            if args.len() < 3 || args.len() > 4 {
+                return Err(format!(
+                    "router_match expects 3 or 4 arguments, got {}",
+                    args.len()
+                ));
+            }
             let method = args[0].to_string().to_uppercase();
             let path = args[1].to_string();
             let action = args[2].to_string();
+            let name = match args.get(3) {
+                Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            };
 
             ROUTER_CONTEXT.with(|ctx| {
                 let stack = ctx.borrow();
@@ -361,7 +419,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                 // Pass scoped middleware from current context
                 let middleware = current.middleware.clone();
                 let mw_names = current.middleware_names.clone();
-                register_route_with_middleware(&method, &full_path, handler, middleware, mw_names);
+                register_route_with_name(&method, &full_path, handler, name, middleware, mw_names);
                 Ok(Value::Null)
             })
         })),
@@ -390,6 +448,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                     is_collection: false,
                     middleware: current.middleware,
                     middleware_names: current.middleware_names,
+                    name_prefix: current.name_prefix,
                 });
             });
             Ok(Value::Null)
@@ -433,6 +492,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_collection: true,
                         middleware: current.middleware,
                         middleware_names: current.middleware_names,
+                        name_prefix: current.name_prefix,
                     });
                 });
                 Ok(Value::Null)
@@ -480,6 +540,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_collection: false,
                         middleware: current.middleware,
                         middleware_names: current.middleware_names,
+                        name_prefix: current.name_prefix,
                     });
                 });
                 Ok(Value::Null)
@@ -516,6 +577,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         is_collection: current.is_collection,
                         middleware: new_middleware,
                         middleware_names: new_names,
+                        name_prefix: current.name_prefix,
                     });
                 });
 

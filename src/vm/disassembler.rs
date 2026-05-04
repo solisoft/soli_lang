@@ -359,3 +359,286 @@ fn format_constant(val: Option<&Constant>) -> String {
         None => "???".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn proto(name: &str) -> FunctionProto {
+        FunctionProto::new(name.to_string())
+    }
+
+    /// Build a single-instruction chunk and return only the body (no header).
+    /// Each instruction is on line 1.
+    fn body_for(ops: Vec<(Op, usize)>) -> String {
+        let mut p = proto("test");
+        for (op, line) in ops {
+            p.chunk.emit(op, line);
+        }
+        let full = disassemble(&p);
+        // Strip the header line ("== test (...) ==\n").
+        full.lines().skip(1).collect::<Vec<_>>().join("\n")
+    }
+
+    // ---------- header ----------
+
+    #[test]
+    fn header_uses_script_label_when_name_empty() {
+        let p = proto("");
+        let out = disassemble(&p);
+        assert!(out.starts_with("== <script> "), "got: {out}");
+        assert!(out.contains("arity=0"));
+        assert!(out.contains("upvalues=0"));
+    }
+
+    #[test]
+    fn header_includes_real_name_arity_and_upvalue_count() {
+        let mut p = proto("greet");
+        p.arity = 2;
+        p.upvalue_descriptors
+            .push(super::super::upvalue::UpvalueDescriptor {
+                is_local: true,
+                index: 0,
+            });
+        let out = disassemble(&p);
+        assert!(out.starts_with("== greet "));
+        assert!(out.contains("arity=2"));
+        assert!(out.contains("upvalues=1"));
+    }
+
+    // ---------- offset & line gutter ----------
+
+    #[test]
+    fn lines_are_zero_padded_offsets() {
+        let body = body_for(vec![(Op::Null, 1), (Op::Pop, 1)]);
+        // Each line begins with a 4-digit offset.
+        assert!(body.starts_with("0000 "), "got: {body}");
+        let second = body.lines().nth(1).unwrap();
+        assert!(second.starts_with("0001 "), "got: {second}");
+    }
+
+    #[test]
+    fn repeated_line_numbers_use_pipe_marker() {
+        // First instruction shows the line number, subsequent ones on
+        // the same source line show "   |" instead.
+        let body = body_for(vec![(Op::Null, 5), (Op::Pop, 5), (Op::True, 6)]);
+        let lines: Vec<&str> = body.lines().collect();
+        // First on line 5 → shows "   5".
+        assert!(lines[0].contains("   5"), "got: {}", lines[0]);
+        // Second on line 5 → shows the "   |" marker.
+        assert!(lines[1].contains("   |"), "got: {}", lines[1]);
+        // Third on line 6 → shows "   6".
+        assert!(lines[2].contains("   6"), "got: {}", lines[2]);
+    }
+
+    // ---------- simple ops ----------
+
+    #[test]
+    fn nullary_ops_render_their_name_in_caps() {
+        for (op, expected) in [
+            (Op::Null, "NULL"),
+            (Op::True, "TRUE"),
+            (Op::False, "FALSE"),
+            (Op::Pop, "POP"),
+            (Op::Dup, "DUP"),
+            (Op::Add, "ADD"),
+            (Op::Subtract, "SUBTRACT"),
+            (Op::Multiply, "MULTIPLY"),
+            (Op::Divide, "DIVIDE"),
+            (Op::Negate, "NEGATE"),
+            (Op::Equal, "EQUAL"),
+            (Op::NotEqual, "NOT_EQUAL"),
+            (Op::Not, "NOT"),
+            (Op::IsNull, "IS_NULL"),
+            (Op::NotNull, "NOT_NULL"),
+            (Op::Return, "RETURN"),
+            (Op::CloseUpvalue, "CLOSE_UPVALUE"),
+            (Op::PopNull, "POP_NULL"),
+        ] {
+            let body = body_for(vec![(op, 1)]);
+            assert!(body.contains(expected), "for {op:?}: got body {body:?}");
+        }
+    }
+
+    // ---------- ops referencing constants ----------
+
+    #[test]
+    fn constant_op_renders_int_literal() {
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::Int(42));
+        p.chunk.emit(Op::Constant(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("CONSTANT"));
+        assert!(out.contains("(42)"));
+    }
+
+    #[test]
+    fn constant_op_renders_string_quoted() {
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::String("hi".to_string()));
+        p.chunk.emit(Op::Constant(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains(r#"("hi")"#), "got: {out}");
+    }
+
+    #[test]
+    fn constant_op_renders_bool_null_decimal() {
+        let mut p = proto("test");
+        let i_b = p.chunk.add_constant(Constant::Bool(true));
+        let i_n = p.chunk.add_constant(Constant::Null);
+        let i_d = p.chunk.add_constant(Constant::Decimal("19.99".into()));
+        p.chunk.emit(Op::Constant(i_b), 1);
+        p.chunk.emit(Op::Constant(i_n), 1);
+        p.chunk.emit(Op::Constant(i_d), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("(true)"));
+        assert!(out.contains("(null)"));
+        // Decimal renders with a trailing 'D' suffix.
+        assert!(out.contains("(19.99D)"), "got: {out}");
+    }
+
+    #[test]
+    fn symbol_op_uses_colon_prefix_when_constant_is_string() {
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::String("name".to_string()));
+        p.chunk.emit(Op::Symbol(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("SYMBOL"));
+        assert!(out.contains("(:name)"), "got: {out}");
+    }
+
+    #[test]
+    fn get_global_renders_name_from_constant_pool() {
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::String("my_var".to_string()));
+        p.chunk.emit(Op::GetGlobal(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("GET_GLOBAL"));
+        assert!(out.contains("(my_var)"));
+    }
+
+    #[test]
+    fn get_global_with_non_string_constant_falls_back_to_question_mark_idx() {
+        // constant_string returns "?<idx>" when the slot isn't a String.
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::Int(7));
+        p.chunk.emit(Op::GetGlobal(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains(&format!("(?{})", idx)), "got: {out}");
+    }
+
+    #[test]
+    fn slot_ops_render_index() {
+        let body = body_for(vec![
+            (Op::GetLocal(3), 1),
+            (Op::SetLocal(7), 1),
+            (Op::GetUpvalue(2), 1),
+            (Op::SetUpvalue(4), 1),
+        ]);
+        assert!(body.contains("GET_LOCAL"));
+        assert!(body.contains("SET_LOCAL"));
+        assert!(body.contains("GET_UPVALUE"));
+        assert!(body.contains("SET_UPVALUE"));
+        // The slot indices appear in the output (right-aligned in a
+        // 5-wide column, but we check substring-ish).
+        assert!(body.contains("3"));
+        assert!(body.contains("7"));
+    }
+
+    #[test]
+    fn jump_ops_render_offset() {
+        let body = body_for(vec![
+            (Op::Jump(10), 1),
+            (Op::JumpIfFalse(20), 1),
+            (Op::Loop(5), 1),
+            (Op::JumpIfFalseNoPop(2), 1),
+            (Op::JumpIfTrueNoPop(3), 1),
+            (Op::NullishJump(4), 1),
+        ]);
+        assert!(body.contains("JUMP "));
+        assert!(body.contains("JUMP_IF_FALSE"));
+        assert!(body.contains("LOOP"));
+        assert!(body.contains("JUMP_FALSE_NP"));
+        assert!(body.contains("JUMP_TRUE_NP"));
+        assert!(body.contains("NULLISH_JUMP"));
+    }
+
+    // ---------- super-instructions ----------
+
+    #[test]
+    fn super_ops_render_in_short_form() {
+        let body = body_for(vec![
+            (Op::IncrLocalFast(3), 1),
+            (Op::EqualLocalLocal(1, 2), 1),
+            (Op::NotEqualLocalLocal(1, 2), 1),
+            (Op::IsTruthyLocal(0), 1),
+            (Op::IsFalsyLocal(0), 1),
+        ]);
+        assert!(body.contains("INCR_LOCAL_FAST"));
+        assert!(body.contains("EQ_LL"));
+        assert!(body.contains("NE_LL"));
+        assert!(body.contains("IS_TRUTHY_LOCAL"));
+        assert!(body.contains("IS_FALSY_LOCAL"));
+    }
+
+    #[test]
+    fn get_local_property_includes_property_name() {
+        let mut p = proto("test");
+        let idx = p.chunk.add_constant(Constant::String("foo".to_string()));
+        p.chunk.emit(Op::GetLocalProperty(2, idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("GET_LOCAL_PROP"));
+        assert!(out.contains("(foo)"));
+    }
+
+    // ---------- nested function recursion ----------
+
+    #[test]
+    fn nested_function_appears_after_outer_with_blank_line() {
+        let mut outer = proto("outer");
+        outer.chunk.emit(Op::Null, 1);
+        let mut inner = FunctionProto::new("inner".to_string());
+        inner.chunk.emit(Op::Return, 1);
+        outer
+            .chunk
+            .add_constant(Constant::Function(Arc::new(inner)));
+
+        let out = disassemble(&outer);
+        // Both function headers must appear.
+        assert!(out.contains("== outer "));
+        assert!(out.contains("== inner "));
+        // The inner header appears AFTER the outer header.
+        let outer_pos = out.find("== outer ").unwrap();
+        let inner_pos = out.find("== inner ").unwrap();
+        assert!(outer_pos < inner_pos, "outer should come first");
+    }
+
+    #[test]
+    fn function_constant_in_pool_renders_as_fn_name() {
+        // A Function constant that is NOT emitted as code still needs to
+        // appear in `format_constant` output if referenced via `Op::Constant`.
+        let mut p = proto("outer");
+        let inner = FunctionProto::new("nested".to_string());
+        let idx = p.chunk.add_constant(Constant::Function(Arc::new(inner)));
+        p.chunk.emit(Op::Constant(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("(<fn nested>)"), "got: {out}");
+    }
+
+    // ---------- HashKeys constant ----------
+
+    #[test]
+    fn hash_keys_constant_renders_with_count() {
+        use crate::interpreter::value::HashKey;
+        let mut p = proto("test");
+        let keys = Arc::new(vec![
+            HashKey::String("a".to_string()),
+            HashKey::String("b".to_string()),
+        ]);
+        let idx = p.chunk.add_constant(Constant::HashKeys(keys));
+        p.chunk.emit(Op::Constant(idx), 1);
+        let out = disassemble(&p);
+        assert!(out.contains("(HashKeys[2])"), "got: {out}");
+    }
+}

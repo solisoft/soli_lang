@@ -1531,3 +1531,272 @@ impl Default for TypeEnvironment {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::type_repr::{ClassType, InterfaceType, MethodSignature};
+
+    fn fresh() -> TypeEnvironment {
+        TypeEnvironment::new()
+    }
+
+    // ---------- builtin pre-registration ----------
+
+    #[test]
+    fn new_registers_request_global_params() {
+        let env = fresh();
+        assert!(matches!(env.get("params"), Some(Type::Any)));
+    }
+
+    #[test]
+    fn new_registers_print_as_function_to_void() {
+        let env = fresh();
+        let ty = env.get("print").expect("print should be registered");
+        match ty {
+            Type::Function { return_type, .. } => assert_eq!(*return_type, Type::Void),
+            other => panic!("expected Function, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn new_registers_str_int_float_conversions() {
+        let env = fresh();
+        for (name, expected_ret) in &[
+            ("str", Type::String),
+            ("int", Type::Int),
+            ("float", Type::Float),
+        ] {
+            let ty = env
+                .get(name)
+                .unwrap_or_else(|| panic!("{name} should be registered"));
+            match ty {
+                Type::Function { return_type, .. } => assert_eq!(&*return_type, expected_ret),
+                other => panic!("{name}: expected Function, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn default_equals_new_for_builtin_visibility() {
+        // Default::default() must surface the same builtins as ::new().
+        let env = TypeEnvironment::default();
+        assert!(env.get("print").is_some());
+        assert!(env.get("params").is_some());
+    }
+
+    // ---------- scopes / define / get ----------
+
+    #[test]
+    fn define_in_top_scope_is_visible_to_get() {
+        let mut env = fresh();
+        env.define("x".to_string(), Type::Int);
+        assert_eq!(env.get("x"), Some(Type::Int));
+    }
+
+    #[test]
+    fn get_returns_none_for_unknown_name() {
+        let env = fresh();
+        assert!(env.get("definitely_does_not_exist_xyz").is_none());
+    }
+
+    #[test]
+    fn inner_scope_shadows_outer() {
+        let mut env = fresh();
+        env.define("x".to_string(), Type::Int);
+        env.push_scope();
+        env.define("x".to_string(), Type::String);
+        assert_eq!(env.get("x"), Some(Type::String));
+    }
+
+    #[test]
+    fn pop_scope_restores_outer_binding() {
+        let mut env = fresh();
+        env.define("x".to_string(), Type::Int);
+        env.push_scope();
+        env.define("x".to_string(), Type::String);
+        env.pop_scope();
+        assert_eq!(env.get("x"), Some(Type::Int));
+    }
+
+    #[test]
+    fn lookup_walks_outward_for_inner_scope_misses() {
+        let mut env = fresh();
+        env.define("outer".to_string(), Type::Bool);
+        env.push_scope();
+        // No "outer" defined here — the walk falls back to the outer scope.
+        assert_eq!(env.get("outer"), Some(Type::Bool));
+        env.pop_scope();
+    }
+
+    #[test]
+    fn pop_scope_is_silent_when_only_root_scope_left() {
+        // Defensive: pop_scope shouldn't panic if called more times than
+        // push_scope. It empties the scope stack — and a subsequent
+        // define() then silently no-ops (per the docs on define).
+        let mut env = fresh();
+        env.pop_scope();
+        // No panic. After this, define silently no-ops; get still finds
+        // builtins and classes via the function/class fallbacks.
+        env.define("x".to_string(), Type::Int);
+        assert!(env.get("x").is_none());
+        // builtins still resolve via the functions map.
+        assert!(env.get("print").is_some());
+    }
+
+    #[test]
+    fn function_lookup_falls_through_when_no_local_binding() {
+        let mut env = fresh();
+        env.define_function(
+            "my_fn".to_string(),
+            Type::Function {
+                params: vec![Type::Int],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+        match env.get("my_fn") {
+            Some(Type::Function { return_type, .. }) => assert_eq!(*return_type, Type::Bool),
+            other => panic!("expected Function, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_variable_shadows_builtin_function() {
+        // If a user defines `let print = 1`, the local should shadow the
+        // builtin `print` function on lookup.
+        let mut env = fresh();
+        env.define("print".to_string(), Type::Int);
+        assert_eq!(env.get("print"), Some(Type::Int));
+    }
+
+    // ---------- classes ----------
+
+    #[test]
+    fn define_and_get_class_round_trip() {
+        let mut env = fresh();
+        env.define_class(ClassType::new("Foo".to_string()));
+        let c = env.get_class("Foo").expect("class should be registered");
+        assert_eq!(c.name, "Foo");
+    }
+
+    #[test]
+    fn get_class_returns_none_for_unknown_name() {
+        let env = fresh();
+        assert!(env.get_class("Nope").is_none());
+    }
+
+    #[test]
+    fn class_is_also_resolvable_via_get_as_type() {
+        let mut env = fresh();
+        env.define_class(ClassType::new("User".to_string()));
+        match env.get("User") {
+            Some(Type::Class(c)) => assert_eq!(c.name, "User"),
+            other => panic!("expected Class type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn redefining_class_overwrites_previous_entry() {
+        let mut env = fresh();
+        let mut a = ClassType::new("X".to_string());
+        a.interfaces.push("OldIface".to_string());
+        env.define_class(a);
+
+        let mut b = ClassType::new("X".to_string());
+        b.interfaces.push("NewIface".to_string());
+        env.define_class(b);
+
+        let c = env.get_class("X").unwrap();
+        assert_eq!(c.interfaces, vec!["NewIface".to_string()]);
+    }
+
+    // ---------- interfaces ----------
+
+    #[test]
+    fn define_and_get_interface_round_trip() {
+        let mut env = fresh();
+        let mut iface = InterfaceType::new("Greeter".to_string());
+        iface.methods.insert(
+            "greet".to_string(),
+            MethodSignature {
+                name: "greet".to_string(),
+                params: vec![],
+                return_type: Type::String,
+            },
+        );
+        env.define_interface(iface);
+
+        let i = env
+            .get_interface("Greeter")
+            .expect("interface should be registered");
+        assert_eq!(i.name, "Greeter");
+        assert!(i.methods.contains_key("greet"));
+    }
+
+    #[test]
+    fn get_interface_returns_none_for_unknown_name() {
+        assert!(fresh().get_interface("Nope").is_none());
+    }
+
+    #[test]
+    fn interface_does_not_resolve_via_get_as_type() {
+        // get() falls back to functions and classes — but NOT interfaces.
+        // (The TypeChecker resolves interfaces directly via get_interface.)
+        let mut env = fresh();
+        env.define_interface(InterfaceType::new("OnlyIface".to_string()));
+        assert!(env.get("OnlyIface").is_none());
+    }
+
+    // ---------- current class context ----------
+
+    #[test]
+    fn current_class_starts_none() {
+        let env = fresh();
+        assert!(env.current_class().is_none());
+        assert!(env.current_class_type().is_none());
+    }
+
+    #[test]
+    fn set_and_read_current_class() {
+        let mut env = fresh();
+        env.define_class(ClassType::new("Cat".to_string()));
+        env.set_current_class(Some("Cat".to_string()));
+        assert_eq!(env.current_class(), Some("Cat"));
+        assert_eq!(
+            env.current_class_type().map(|c| c.name.clone()),
+            Some("Cat".to_string())
+        );
+    }
+
+    #[test]
+    fn current_class_type_is_none_when_class_not_registered() {
+        // current_class points at a name; current_class_type only resolves
+        // it if the class was actually defined. Pin that this is silent.
+        let mut env = fresh();
+        env.set_current_class(Some("MissingClass".to_string()));
+        assert_eq!(env.current_class(), Some("MissingClass"));
+        assert!(env.current_class_type().is_none());
+    }
+
+    #[test]
+    fn clearing_current_class_returns_none() {
+        let mut env = fresh();
+        env.define_class(ClassType::new("X".to_string()));
+        env.set_current_class(Some("X".to_string()));
+        env.set_current_class(None);
+        assert!(env.current_class().is_none());
+        assert!(env.current_class_type().is_none());
+    }
+
+    // ---------- return type tracking ----------
+
+    #[test]
+    fn return_type_round_trip() {
+        let mut env = fresh();
+        assert!(env.return_type().is_none());
+        env.set_return_type(Some(Type::Int));
+        assert_eq!(env.return_type(), Some(&Type::Int));
+        env.set_return_type(None);
+        assert!(env.return_type().is_none());
+    }
+}

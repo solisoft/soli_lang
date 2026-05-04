@@ -290,6 +290,91 @@ end</code></pre>
         </table>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6" id="named-routes">Named Routes</h2>
+    <p class="text-gray-400 mb-6">
+        Every route registered via <code>resources()</code> automatically gets a pair of Rails-style helpers &mdash; <code>&lt;name&gt;_path</code> for the relative path and <code>&lt;name&gt;_url</code> for the absolute URL &mdash; defined as global functions in every worker. Use them anywhere you'd otherwise concatenate a URL by hand:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># In a controller
+return redirect(post_path(post))
+
+# In an ERB view
+&lt;a href="&lt;%= edit_post_path(post) %&gt;"&gt;Edit&lt;/a&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">For <code>resources("posts")</code> you get:</p>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-8">
+        <table class="w-full bg-white/5 text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 bg-white/5">
+                    <th class="px-6 py-4 font-semibold text-white">Helper</th>
+                    <th class="px-6 py-4 font-semibold text-white">Returns</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="px-6 py-4 font-mono text-indigo-300">posts_path()</td><td class="px-6 py-4 font-mono text-gray-400">/posts</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-indigo-300">new_post_path()</td><td class="px-6 py-4 font-mono text-gray-400">/posts/new</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-indigo-300">post_path(post)</td><td class="px-6 py-4 font-mono text-gray-400">/posts/42</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-indigo-300">edit_post_path(post)</td><td class="px-6 py-4 font-mono text-gray-400">/posts/42/edit</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        Each one has a matching <code>*_url</code> variant (<code>posts_url()</code>, <code>post_url(post)</code>, &hellip;) that returns the absolute form (<code>https://example.com/posts/42</code>).
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">How the argument is interpreted</h3>
+    <p class="text-gray-400 mb-4"><code>post_path</code> accepts the id in three shapes:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">post_path(post)         # reads post.id off the model instance
+post_path(42)           # raw int / string
+post_path({"id": 42})   # explicit hash</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">For multi-param routes, pass either a hash or positional primitives in declaration order:</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># pattern: /posts/:post_id/comments/:id
+post_comment_path({"post_id": 5, "id": 9})
+post_comment_path(5, 9)</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-8">
+        Calling a helper without the params it needs raises a clear runtime error (<code>post_path: missing param :id</code>).
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4"><code>*_url</code> and host resolution</h3>
+    <p class="text-gray-400 mb-8">
+        Inside a request handler <code>&lt;name&gt;_url</code> reads the scheme and host from the current request (honouring <code>X-Forwarded-Proto</code> / <code>X-Forwarded-Host</code> for apps behind a proxy). Outside a request &mdash; e.g. from a background job, a CLI script, or a test &mdash; set <code>SOLI_DEFAULT_URL_HOST</code> (and optionally <code>SOLI_DEFAULT_URL_SCHEME</code>, defaults to <code>http</code>) and the helpers will use that. With neither in scope the helper raises <code>&lt;name&gt;_url: cannot resolve host (no active request and SOLI_DEFAULT_URL_HOST not set)</code>.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Naming a custom route with <code>name:</code></h3>
+    <p class="text-gray-400 mb-4">
+        For one-off routes registered via <code>get</code>/<code>post</code>/<code>put</code>/<code>delete</code>/<code>patch</code>, attach a name with the <code>name:</code> keyword argument and the matching <code>*_path</code> / <code>*_url</code> helpers are generated for it too:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">get("/about", "pages#about", name: "about")
+# &rarr; about_path()  &rarr;  "/about"
+# &rarr; about_url()   &rarr;  "https://example.com/about"</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        (<code>name:</code> rather than Rails' <code>as:</code> because <code>as</code> is a reserved keyword in Soli.)
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Namespaces</h2>
     <p class="text-gray-400 mb-6">Group routes under a common prefix, like <code>/admin</code>:</p>
 
@@ -297,8 +382,8 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">namespace("admin", ->
   get("/dashboard", "admin#dashboard")
-get("/users", "admin#users")
-post("/users", "admin#create_user"))</code></pre>
+  get("/users", "admin#users")
+  post("/users", "admin#create_user"))</code></pre>
         </div>
     </div>
 
@@ -310,10 +395,11 @@ post("/users", "admin#create_user"))</code></pre>
 <pre><code class="language-soli text-sm"># Only /admin/* routes require authentication
 middleware("authenticate", ->
   get("/admin", "admin#index")
-get("/admin/users", "admin#users"))
+  get("/admin/users", "admin#users"))
 
 # Public routes - no auth needed
-get("/", "home#index")get("/about", "home#about");</code></pre>
+get("/", "home#index")
+get("/about", "home#about")</code></pre>
         </div>
     </div>
 

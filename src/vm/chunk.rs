@@ -144,3 +144,155 @@ impl Default for Chunk {
 pub struct CompiledModule {
     pub main: Arc<FunctionProto>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------- Chunk basics ----------
+
+    #[test]
+    fn chunk_new_is_empty() {
+        let c = Chunk::new();
+        assert!(c.is_empty());
+        assert_eq!(c.len(), 0);
+        assert!(c.code.is_empty());
+        assert!(c.lines.is_empty());
+        assert!(c.constants.is_empty());
+    }
+
+    #[test]
+    fn chunk_default_matches_new() {
+        assert!(Chunk::default().is_empty());
+    }
+
+    #[test]
+    fn emit_returns_offset_and_records_line() {
+        let mut c = Chunk::new();
+        let off0 = c.emit(Op::Null, 5);
+        let off1 = c.emit(Op::Pop, 6);
+        assert_eq!(off0, 0);
+        assert_eq!(off1, 1);
+        assert_eq!(c.code, vec![Op::Null, Op::Pop]);
+        assert_eq!(c.lines, vec![5, 6]);
+        assert_eq!(c.len(), 2);
+        assert!(!c.is_empty());
+    }
+
+    // ---------- add_constant ----------
+
+    #[test]
+    fn add_constant_returns_index_and_pushes() {
+        let mut c = Chunk::new();
+        let idx = c.add_constant(Constant::Int(42));
+        assert_eq!(idx, 0);
+        assert_eq!(c.constants.len(), 1);
+        let idx2 = c.add_constant(Constant::Int(7));
+        assert_eq!(idx2, 1);
+        assert_eq!(c.constants.len(), 2);
+    }
+
+    #[test]
+    fn add_constant_dedupes_strings() {
+        // Identical String constants share a slot — saves space and
+        // makes `Op::GetGlobal` lookup hit the same index.
+        let mut c = Chunk::new();
+        let a = c.add_constant(Constant::String("name".to_string()));
+        let b = c.add_constant(Constant::String("name".to_string()));
+        assert_eq!(a, b);
+        assert_eq!(c.constants.len(), 1);
+    }
+
+    #[test]
+    fn add_constant_does_not_dedupe_non_string_kinds() {
+        // Pin: only String dedup is implemented. Two equal Int constants
+        // each get their own slot. (Changing this is a deliberate perf
+        // trade-off, so the test will flag it if/when the policy changes.)
+        let mut c = Chunk::new();
+        let a = c.add_constant(Constant::Int(42));
+        let b = c.add_constant(Constant::Int(42));
+        assert_ne!(a, b);
+        assert_eq!(c.constants.len(), 2);
+    }
+
+    #[test]
+    fn add_constant_distinct_strings_get_distinct_slots() {
+        let mut c = Chunk::new();
+        let a = c.add_constant(Constant::String("foo".to_string()));
+        let b = c.add_constant(Constant::String("bar".to_string()));
+        assert_ne!(a, b);
+        assert_eq!(c.constants.len(), 2);
+    }
+
+    // ---------- patch_jump ----------
+
+    #[test]
+    fn patch_jump_writes_distance_to_jump_target() {
+        // emit Jump at offset 0, then 3 more ops, then patch.
+        // distance = code.len() (4) - offset (0) - 1 = 3.
+        let mut c = Chunk::new();
+        let off = c.emit(Op::Jump(0xFFFF), 1);
+        c.emit(Op::Null, 1);
+        c.emit(Op::Null, 1);
+        c.emit(Op::Null, 1);
+        c.patch_jump(off);
+        assert_eq!(c.code[off], Op::Jump(3));
+    }
+
+    #[test]
+    fn patch_jump_works_for_each_jump_variant() {
+        let variants = [
+            Op::Jump(0),
+            Op::JumpIfFalse(0),
+            Op::JumpIfFalseNoPop(0),
+            Op::JumpIfTrueNoPop(0),
+            Op::NullishJump(0),
+            Op::ForIter(0),
+            Op::ForIterRange(0),
+        ];
+        for variant in variants {
+            let mut c = Chunk::new();
+            let off = c.emit(variant, 1);
+            c.emit(Op::Null, 1);
+            c.emit(Op::Null, 1);
+            // distance = 3 - 0 - 1 = 2
+            c.patch_jump(off);
+            // Re-extract the inner u16 — every variant carries a target.
+            let target = match c.code[off] {
+                Op::Jump(t)
+                | Op::JumpIfFalse(t)
+                | Op::JumpIfFalseNoPop(t)
+                | Op::JumpIfTrueNoPop(t)
+                | Op::NullishJump(t)
+                | Op::ForIter(t)
+                | Op::ForIterRange(t) => t,
+                other => panic!("unexpected variant after patch: {other:?}"),
+            };
+            assert_eq!(target, 2, "wrong target for {variant:?}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Tried to patch non-jump instruction")]
+    fn patch_jump_panics_on_non_jump_op() {
+        let mut c = Chunk::new();
+        let off = c.emit(Op::Null, 1);
+        c.emit(Op::Pop, 1);
+        c.patch_jump(off);
+    }
+
+    // ---------- FunctionProto ----------
+
+    #[test]
+    fn function_proto_new_initialises_empty() {
+        let p = FunctionProto::new("hello".to_string());
+        assert_eq!(p.name, "hello");
+        assert_eq!(p.arity, 0);
+        assert_eq!(p.defaults, 0);
+        assert!(p.param_names.is_empty());
+        assert!(p.default_ops.is_empty());
+        assert!(p.upvalue_descriptors.is_empty());
+        assert!(p.chunk.is_empty());
+        assert!(!p.is_method);
+    }
+}

@@ -122,6 +122,12 @@ pub fn get_tokio_handle() -> Option<tokio::runtime::Handle> {
 pub fn set_tokio_handle(handle: tokio::runtime::Handle) {
     TOKIO_HANDLE.with(|h| *h.borrow_mut() = Some(handle));
 }
+
+/// Process-wide LiveView event sender. Set once during server startup and
+/// read by `handle_liveview_event` when it needs to spawn a per-instance
+/// tick task that posts back into the worker queue.
+static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
+    std::sync::OnceLock::new();
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
@@ -527,6 +533,9 @@ fn run_hyper_server_worker_pool(
         channel::Sender<LiveViewEventData>,
         channel::Receiver<LiveViewEventData>,
     ) = channel::bounded(num_workers * capacity_per_worker);
+    // Make the sender available to `handle_liveview_event` so it can spawn
+    // per-instance tick tasks that re-enter the worker queue.
+    let _ = LV_EVENT_TX.set(lv_event_tx.clone());
     // crossbeam Sender is cheap to clone - no need for Arc<Mutex<Option<>>>
     // Use AtomicBool for shutdown signaling (lock-free check)
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -1228,6 +1237,15 @@ fn worker_loop(
 
     let _worker_routes = get_routes();
 
+    // Define `<name>_path` / `<name>_url` helpers in this worker's env from
+    // the route table we just received. Must run BEFORE the VM globals copy
+    // below so prod mode picks them up. Re-runs on hot reload via the same
+    // call inside `reload_routes_in_worker`.
+    {
+        let mut env = interpreter.environment.borrow_mut();
+        crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+    }
+
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {
         let mut vm = crate::vm::Vm::new();
@@ -1641,7 +1659,23 @@ async fn handle_hyper_request(
                 let tx_arc = Arc::new(tx);
 
                 // Initialize the LiveView connection
+                let liveview_id = format!("{}:{}", session_id, component);
                 handle_live_connection(component.clone(), session_id, tx_arc.clone());
+
+                // Fire a synthetic `connect` event so user handlers can seed
+                // initial state and request a tick interval. We fire-and-forget
+                // here — the worker still posts a response, but no one needs to
+                // await it (the receiver gets dropped).
+                if crate::live::socket::get_liveview_handler(&component).is_some() {
+                    let (response_tx, _response_rx) = oneshot::channel();
+                    let _ = lv_event_tx.try_send(LiveViewEventData {
+                        liveview_id: liveview_id.clone(),
+                        component: component.clone(),
+                        event: "connect".to_string(),
+                        params: serde_json::json!({}),
+                        response_tx,
+                    });
+                }
 
                 // Split the WebSocket stream
                 let (mut ws_write, mut ws_read) = stream.split();
@@ -1752,6 +1786,7 @@ async fn handle_hyper_request(
                 }
 
                 write_task.abort();
+                crate::live::socket::cancel_tick_task(&liveview_id);
             });
 
             return Ok(response);
@@ -2858,18 +2893,21 @@ fn handle_liveview_event(
         // Call the handler function
         match interpreter.call_value(handler, vec![event_value], Span::default()) {
             Ok(result) => {
-                // Handler should return new state as a hash
-                // If it returns null, fall back to built-in handler
+                // The handler may return either of two shapes:
+                //   1. `{ ...state }`        — used directly as the new state
+                //   2. `{ "state": {...},
+                //        "tick_interval": N }` — wrapped form; `state` is the
+                //      new state, `tick_interval` (ms) controls the tick timer
                 match &result {
                     Value::Null => {
                         return handle_liveview_event_fallback(data, &mut instance);
                     }
                     Value::Hash(_) => {
-                        // Convert Value hash to JSON state
-                        let new_state = value_to_json(&result);
+                        let json = value_to_json(&result);
+                        let (new_state_json, tick_interval) = unwrap_handler_return(json);
 
-                        // Preserve the id
-                        let mut state = new_state.clone();
+                        // Preserve the id across state replacement
+                        let mut state = new_state_json;
                         if let (
                             serde_json::Value::Object(old),
                             serde_json::Value::Object(new_obj),
@@ -2879,8 +2917,10 @@ fn handle_liveview_event(
                                 new_obj.insert("id".to_string(), id.clone());
                             }
                         }
-
                         instance.state = state;
+
+                        // Apply tick scheduling change (if any)
+                        apply_tick_interval(&mut instance, tick_interval);
                     }
                     _ => {
                         // Unexpected return type, fall back
@@ -2899,8 +2939,103 @@ fn handle_liveview_event(
         return handle_liveview_event_fallback(data, &mut instance);
     }
 
-    // Render new HTML and send patch
+    // For `connect`, the initial render has already been sent by
+    // `handle_live_connection`. Subsequent events render a diff patch.
+    if data.event == "connect" {
+        // Persist the (possibly tick-scheduled) instance and re-render so the
+        // initial DOM reflects the connect-time state the handler returned.
+        return render_and_send_patch(&component, &mut instance);
+    }
+
     render_and_send_patch(&component, &mut instance)
+}
+
+/// Unwrap the handler return value. If it has the wrapped form
+/// `{ "state": {...}, "tick_interval": N }`, returns the inner state object
+/// and the tick interval. Otherwise returns the value as-is and no interval.
+///
+/// `tick_interval` interpretation:
+///   * key absent → `None`     (don't touch the running timer)
+///   * value 0    → `Some(0)`  (stop the timer)
+///   * value > 0  → `Some(ms)` (start or replace the timer)
+fn unwrap_handler_return(json: serde_json::Value) -> (serde_json::Value, Option<u64>) {
+    // Caller only invokes this with a hash result, but be defensive.
+    let mut map = match json {
+        serde_json::Value::Object(m) => m,
+        other => return (other, None),
+    };
+
+    // The wrapped shape requires `state` to be an object. Anything else is
+    // treated as the bare-state shape (current behavior): the whole hash
+    // is the new state, no tick change.
+    if !map.get("state").is_some_and(|v| v.is_object()) {
+        return (serde_json::Value::Object(map), None);
+    }
+
+    let state = map.remove("state").unwrap_or(serde_json::json!({}));
+    let tick_interval = map.get("tick_interval").and_then(|v| v.as_u64());
+    (state, tick_interval)
+}
+
+/// Reconcile the requested tick interval with the instance's currently
+/// running tick task. Spawns a new tokio task when the interval changes,
+/// cancels it when set to 0, leaves it alone when unspecified.
+fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, requested: Option<u64>) {
+    let Some(requested) = requested else { return };
+
+    // Stop any existing timer.
+    if requested == 0 {
+        if instance.tick_interval_ms.is_some() {
+            crate::live::socket::cancel_tick_task(&instance.id);
+            instance.tick_interval_ms = None;
+        }
+        return;
+    }
+
+    // No-op if the interval hasn't changed.
+    if instance.tick_interval_ms == Some(requested) {
+        return;
+    }
+
+    let Some(tx) = LV_EVENT_TX.get().cloned() else {
+        eprintln!("[LiveView] tick scheduling unavailable: lv_event_tx not initialized");
+        return;
+    };
+    let Some(handle) = get_tokio_handle() else {
+        eprintln!("[LiveView] tick scheduling unavailable: no tokio runtime handle");
+        return;
+    };
+
+    let liveview_id = instance.id.clone();
+    let component = instance.component.clone();
+    let interval_ms = requested;
+
+    let join = handle.spawn(async move {
+        // The first `tick()` fires immediately; skip it so the user's tick
+        // cadence starts after `interval_ms`, not at t=0.
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(interval_ms));
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let (response_tx, _response_rx) = oneshot::channel();
+            // try_send: if the worker is backed up, drop this tick rather
+            // than queue indefinitely. The next tick will catch up.
+            let send_result = tx.try_send(LiveViewEventData {
+                liveview_id: liveview_id.clone(),
+                component: component.clone(),
+                event: "tick".to_string(),
+                params: serde_json::json!({}),
+                response_tx,
+            });
+            // If the channel is permanently disconnected, stop the task.
+            if let Err(channel::TrySendError::Disconnected(_)) = send_result {
+                break;
+            }
+        }
+    });
+
+    crate::live::socket::set_tick_task(&instance.id, join.abort_handle());
+    instance.tick_interval_ms = Some(requested);
 }
 
 /// Fallback handler for LiveView events (for backwards compatibility)
@@ -4110,6 +4245,24 @@ fn handle_request(
         )
     };
 
+    // Read scheme + host out of the headers BEFORE `std::mem::take` strips
+    // them. `is_https` is also used further down (session cookie Secure
+    // flag) — keep it computed here rather than re-reading the now-empty
+    // headers map. The host falls back to the `Host` header per RFC 7230
+    // when no proxy header is present; empty string is fine — `*_url` will
+    // reject it with a clear error.
+    let is_https = data
+        .headers
+        .get("x-forwarded-proto")
+        .map(|v| v == "https")
+        .unwrap_or(false);
+    let req_host = data
+        .headers
+        .get("x-forwarded-host")
+        .or_else(|| data.headers.get("host"))
+        .cloned()
+        .unwrap_or_default();
+
     // Take ownership of headers and query to avoid cloning individual keys/values
     let headers = std::mem::take(&mut data.headers);
     let query = std::mem::take(&mut data.query);
@@ -4125,15 +4278,18 @@ fn handle_request(
         parsed_body,
     );
 
-    // Detect HTTPS from X-Forwarded-Proto header
-    let is_https = data
-        .headers
-        .get("x-forwarded-proto")
-        .map(|v| v == "https")
-        .unwrap_or(false);
+    // Publish scheme + host to the per-request thread-local so `<name>_url`
+    // helpers can build absolute URLs without threading the request through
+    // every callsite. Cleared in `finalize_response` below.
+    let req_scheme = if is_https { "https" } else { "http" }.to_string();
+    crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
 
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
+        // Drop the per-request scheme/host so a `<name>_url` call between
+        // requests (e.g. from a background timer) errors clearly instead of
+        // building a URL with a stale host.
+        crate::interpreter::builtins::named_routes::clear_current_request_host();
         if let Some(cookie_value) = session_cookie_if_changed(
             get_current_session_id().as_deref(),
             cookie_session_id.as_deref(),
@@ -4928,6 +5084,53 @@ fn coverage_dump_json() -> String {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn unwrap_bare_state_shape_returns_whole_hash() {
+        let json = serde_json::json!({ "count": 7, "name": "alice" });
+        let (state, tick) = unwrap_handler_return(json.clone());
+        assert_eq!(state, json);
+        assert_eq!(tick, None);
+    }
+
+    #[test]
+    fn unwrap_wrapped_shape_extracts_state_and_tick() {
+        let json = serde_json::json!({
+            "state": { "count": 3 },
+            "tick_interval": 50,
+        });
+        let (state, tick) = unwrap_handler_return(json);
+        assert_eq!(state, serde_json::json!({ "count": 3 }));
+        assert_eq!(tick, Some(50));
+    }
+
+    #[test]
+    fn unwrap_wrapped_shape_without_tick_interval_returns_none() {
+        let json = serde_json::json!({ "state": { "x": 1 } });
+        let (state, tick) = unwrap_handler_return(json);
+        assert_eq!(state, serde_json::json!({ "x": 1 }));
+        assert_eq!(tick, None);
+    }
+
+    #[test]
+    fn unwrap_treats_non_object_state_key_as_bare_shape() {
+        // A user setting `"state": 42` doesn't look like the wrapped form — we
+        // treat the whole hash as the new state to avoid silently dropping it.
+        let json = serde_json::json!({ "state": 42, "tick_interval": 50 });
+        let (state, tick) = unwrap_handler_return(json.clone());
+        assert_eq!(state, json);
+        assert_eq!(tick, None);
+    }
+
+    #[test]
+    fn unwrap_wrapped_shape_with_zero_tick_interval_returns_zero() {
+        let json = serde_json::json!({
+            "state": { "x": 1 },
+            "tick_interval": 0,
+        });
+        let (_, tick) = unwrap_handler_return(json);
+        assert_eq!(tick, Some(0));
+    }
 
     #[test]
     fn test_resolve_static_file_serves_existing_file() {

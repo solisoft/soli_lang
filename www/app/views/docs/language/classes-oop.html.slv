@@ -199,6 +199,42 @@ print(MathUtils.cube(3.0))    # 27.0
 print(MathUtils.clamp(150, 0, 100))  # 100</code></pre>
             </div>
         </section>
+
+        <section id="kw-singleton-class" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-singleton-class" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">class &lt;&lt; self</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Ruby-style singleton-class block: every method declared inside is treated as static, so you don't have to repeat the <code class="text-pink-400">static</code> modifier on each one. <code class="text-pink-400">def</code> and <code class="text-pink-400">fn</code> are interchangeable.
+                </p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class MathUtils
+  class &lt;&lt; self
+    def square(x: Float) -&gt; Float
+      x * x
+    end
+
+    def cube(x: Float) -&gt; Float
+      x * x * x
+    end
+
+    def max(a: Float, b: Float) -&gt; Float
+      a &gt; b ? a : b
+    end
+  end
+end
+
+print(MathUtils.square(4.0))   # 16.0
+print(MathUtils.cube(3.0))     # 27.0
+print(MathUtils.max(2.0, 7.0)) # 7.0</code></pre>
+                <p class="text-gray-400 mt-3">
+                    The block can sit anywhere in the class body and coexists with regular instance methods, top-level <code class="text-pink-400">static fn</code> declarations, and <code class="text-pink-400">static</code> fields. Only method declarations are allowed inside it — fields and constants stay at the class top level (<code class="text-pink-400">static foo: Type = ...</code>).
+                </p>
+            </div>
+        </section>
     </section>
 
     <!-- this and super -->

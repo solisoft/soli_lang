@@ -177,6 +177,107 @@ describe("Static Methods", fn() {
     });
 });
 
+describe("class << self block", fn() {
+    test("single static method declared inside the block", fn() {
+        class MathUtils {
+            class << self
+                fn square(x: Int) -> Int {
+                    return x * x;
+                }
+            end
+        }
+        assert_eq(MathUtils.square(4), 16);
+    });
+
+    test("multiple static methods grouped in one block", fn() {
+        class MathUtils {
+            class << self
+                fn square(x: Int) -> Int {
+                    return x * x;
+                }
+
+                fn cube(x: Int) -> Int {
+                    return x * x * x;
+                }
+            end
+        }
+        assert_eq(MathUtils.square(3), 9);
+        assert_eq(MathUtils.cube(3), 27);
+    });
+
+    test("def alias works inside the block", fn() {
+        class Greeter {
+            class << self
+                def hello() -> String {
+                    return "hi";
+                }
+            end
+        }
+        assert_eq(Greeter.hello(), "hi");
+    });
+
+    test("instance methods coexist with class << self block", fn() {
+        class Counter {
+            value: Int = 0;
+
+            new() {
+                this.value = 0;
+            }
+
+            fn increment() {
+                this.value = this.value + 1;
+            }
+
+            class << self
+                fn zero() -> Int {
+                    return 0;
+                }
+
+                fn one() -> Int {
+                    return 1;
+                }
+            end
+        }
+        let c = new Counter();
+        c.increment();
+        c.increment();
+        assert_eq(c.value, 2);
+        assert_eq(Counter.zero(), 0);
+        assert_eq(Counter.one(), 1);
+    });
+
+    test("class << self methods can call each other via the class name", fn() {
+        class Math2 {
+            class << self
+                fn double(x: Int) -> Int {
+                    return x * 2;
+                }
+
+                fn quadruple(x: Int) -> Int {
+                    return Math2.double(Math2.double(x));
+                }
+            end
+        }
+        assert_eq(Math2.quadruple(5), 20);
+    });
+
+    test("class << self block alongside top-level static fn", fn() {
+        class Mixed {
+            static fn outside() -> Int {
+                return 1;
+            }
+
+            class << self
+                fn inside() -> Int {
+                    return 2;
+                }
+            end
+        }
+        assert_eq(Mixed.outside(), 1);
+        assert_eq(Mixed.inside(), 2);
+    });
+});
+
 describe("Static Fields", fn() {
     test("static field declaration and access", fn() {
         class Counter {

@@ -690,7 +690,7 @@ impl Interpreter {
             Value::Function(func) => {
                 (matches!(ctx, AutoInvokeContext::Variable) || func.is_method) && func.arity() == 0
             }
-            Value::NativeFunction(func) => func.arity == Some(0),
+            Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
             _ => false,
         };
         if should_auto_invoke {

@@ -240,6 +240,18 @@ impl Parser {
                 }
             }
 
+            if self.check(&TokenKind::Class) {
+                // Detect Ruby-style singleton-class block: class << self ... end
+                let next1 = self.tokens.get(self.current + 1).map(|t| &t.kind);
+                let next2 = self.tokens.get(self.current + 2).map(|t| &t.kind);
+                if matches!(next1, Some(TokenKind::LessLess))
+                    && matches!(next2, Some(TokenKind::SelfKeyword))
+                {
+                    self.parse_singleton_class_block(&mut methods)?;
+                    continue;
+                }
+            }
+
             let (visibility, is_static, is_const) = self.parse_modifiers();
 
             if self.check(&TokenKind::New) {
@@ -373,6 +385,40 @@ impl Parser {
 
         self.expect(&TokenKind::RightBrace)?;
         Ok(statements)
+    }
+
+    /// Parse a Ruby-style `class << self ... end` block inside a class body.
+    /// Every method declared in the block is marked static; the methods are
+    /// pushed straight into the enclosing class's `methods` vector.
+    fn parse_singleton_class_block(&mut self, methods: &mut Vec<MethodDecl>) -> ParseResult<()> {
+        self.expect(&TokenKind::Class)?;
+        self.expect(&TokenKind::LessLess)?;
+        self.expect(&TokenKind::SelfKeyword)?;
+        // Optional opening brace; matches the rest of the class body grammar.
+        self.match_token(&TokenKind::LeftBrace);
+
+        while !self.check(&TokenKind::End)
+            && !self.check(&TokenKind::RightBrace)
+            && !self.is_at_end()
+        {
+            // Allow visibility modifiers; an explicit `static` is redundant
+            // here but accepted silently — every method is static anyway.
+            let (visibility, _is_static, _is_const) = self.parse_modifiers();
+
+            if !self.check(&TokenKind::Fn) {
+                return Err(ParserError::general(
+                    "`class << self` blocks may only contain method declarations",
+                    self.current_span(),
+                ));
+            }
+
+            methods.push(self.parse_method(visibility, true)?);
+        }
+
+        if !self.match_token(&TokenKind::End) {
+            self.expect(&TokenKind::RightBrace)?;
+        }
+        Ok(())
     }
 
     fn parse_modifiers(&mut self) -> (Visibility, bool, bool) {

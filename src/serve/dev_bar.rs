@@ -86,7 +86,6 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
     let elapsed_us = ctx.started.elapsed().as_micros() as u64;
     let render_str = fmt_duration_us(elapsed_us);
     let rss_str = read_rss_str();
-    let env_str = std::env::var("APP_ENV").unwrap_or_else(|_| "development".to_string());
 
     let q_count = ctx.queries.len();
     let q_total_us: u64 = ctx
@@ -245,7 +244,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         )
     };
     let breakdown_panel = format!(
-        "<div id=\"__solidev_phases\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;max-height:33vh;overflow-y:auto;\">\
+        "<div id=\"__solidev_phases\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;max-height:33vh;overflow-y:auto;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">RENDER · {total}</div>\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.25rem;font-size:11px;\">\
 {mw_row}\
@@ -284,7 +283,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
             let text = embed_binds(&q.query, q.bind_vars.as_ref());
             rows.push_str(&format!(
                 "<li style=\"display:flex;align-items:flex-start;gap:0.75rem;\">\
-<span style=\"flex:0 0 auto;color:#b8e986;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">{}</span>\
+<span class=\"__solidev_q_dur\" style=\"flex:0 0 auto;color:#b8e986;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">{}</span>\
 <pre style=\"flex:1;white-space:pre-wrap;word-break:break-all;margin:0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{}</pre>\
 </li>",
                 html_escape(&dur),
@@ -326,7 +325,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 
         let plural = if q_count == 1 { "Y" } else { "IES" };
         format!(
-            "<div id=\"__solidev_queries\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
+            "<div id=\"__solidev_queries\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">SOLIDB · {} QUER{} · {}</div>\
 {n1_block}\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.375rem;font-size:11px;\">{}</ol>\
@@ -384,11 +383,11 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
                 (r.status.to_string(), color)
             };
             rows.push_str(&format!(
-                "<li style=\"display:flex;align-items:flex-start;gap:0.75rem;\">\
-<span style=\"flex:0 0 auto;color:#b8e986;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">{dur}</span>\
-<span style=\"flex:0 0 auto;color:{sc};width:3.5rem;font-variant-numeric:tabular-nums;\">{slabel}</span>\
-<span style=\"flex:0 0 auto;color:#8be9fd;width:3.5rem;\">{method}</span>\
-<span style=\"flex:1;color:#e6e6e6;word-break:break-all;user-select:all;\">{url}</span>\
+                "<li class=\"__solidev_http_li\" style=\"display:flex;flex-wrap:wrap;align-items:center;gap:0.25rem 0.75rem;\">\
+<span class=\"__solidev_http_url\" style=\"flex:1 1 100%;order:-1;color:#e6e6e6;word-break:break-all;user-select:all;\">{url}</span>\
+<span class=\"__solidev_http_method\" style=\"flex:0 0 auto;color:#8be9fd;\">{method}</span>\
+<span class=\"__solidev_http_status\" style=\"flex:0 0 auto;color:{sc};font-variant-numeric:tabular-nums;\">{slabel}</span>\
+<span class=\"__solidev_http_dur\" style=\"flex:0 0 auto;color:#b8e986;font-variant-numeric:tabular-nums;\">{dur}</span>\
 </li>",
                 dur = html_escape(&dur),
                 sc = status_color,
@@ -399,7 +398,7 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
         }
         let plural = if h_count == 1 { "" } else { "S" };
         format!(
-            "<div id=\"__solidev_http\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
+            "<div id=\"__solidev_http\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
 <div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">HTTP · {} REQUEST{} · {}</div>\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.375rem;font-size:11px;\">{}</ol>\
 </div>",
@@ -427,27 +426,29 @@ fn render_bar(ctx: &DevBarContext<'_>) -> String {
 
     format!(
         "<!-- {marker} -->\
+<style>.__solidev_icon{{display:none}}.__solidev_mob{{display:inline-flex!important;align-items:center;gap:0.375rem;line-height:1.4}}@media(max-width:600px){{.__solidev_icon{{display:inline-flex!important;vertical-align:middle;margin:0!important}}.__solidev_label{{display:none!important}}.__solidev_mob{{padding:0.125rem 0.25rem!important;gap:0.25rem!important;font-size:11px!important}}#__solidev_bar{{max-height:80vh}}.__solidev_panel{{padding:0.5rem 0.5rem!important}}.__solidev_pr{{gap:0.5rem!important}}.__solidev_pr_name{{flex:0 0 4.5rem!important;font-size:10px}}.__solidev_pr_dur{{flex:0 0 3.5rem!important;font-size:10px}}.__solidev_col_pct{{display:none!important}}.__solidev_sub_glyph{{flex:0 0 1rem!important;font-size:9px}}.__solidev_sub_name{{flex:1 1 auto!important;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.__solidev_sub_dur{{flex:0 0 3.5rem!important;font-size:10px}}.__solidev_sub_bar{{display:none!important}}.__solidev_view_sub_bar{{display:none!important}}.__solidev_view_sub_dur{{flex:0 0 3.5rem!important;font-size:10px}}.__solidev_http_li{{gap:0.25rem 0.5rem!important}}.__solidev_http_dur,.__solidev_http_status,.__solidev_http_method,.__solidev_http_url{{font-size:10px!important}}.__solidev_q_dur{{width:4rem!important;font-size:10px}}.__solidev_flame_li{{gap:0.375rem!important}}.__solidev_flame_kind{{width:3.5rem!important;font-size:8px!important}}.__solidev_flame_dur{{width:4rem!important;font-size:10px}}.__solidev_flame_head{{flex-wrap:wrap!important;gap:0.375rem!important}}.__solidev_flame_help{{display:none!important}}}}</style>\
 <aside id=\"__solidev_bar\" style=\"position:fixed;bottom:0;left:0;right:0;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:#0b0d0f;color:#c9d1d9;border-top:1px solid #30363d;max-height:100vh;overflow-y:auto;\">\
-<div style=\"display:flex;align-items:center;gap:0.75rem;padding:0.375rem 0.75rem;overflow-x:auto;white-space:nowrap;position:sticky;top:0;background:#0b0d0f;z-index:1;border-bottom:1px solid #30363d;\">\
-<span style=\"padding:0 0.375rem;border-radius:0.25rem;background:#3a2a00;color:#f0c674;\" title=\"APP_ENV\">DEV · {env}</span>\
+<div style=\"display:flex;flex-wrap:wrap;align-items:center;column-gap:0.75rem;row-gap:0.25rem;padding:0.375rem 2rem 0.375rem 0.75rem;position:sticky;top:0;background:#0b0d0f;z-index:1;border-bottom:1px solid #30363d;\">\
+<button type=\"button\" id=\"__solidev_close\" aria-label=\"Hide dev bar (Alt+D)\" title=\"hide (Alt+D)\" style=\"position:absolute;top:0.25rem;right:0.375rem;z-index:2;padding:0 0.5rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">×</button>\
+<div style=\"display:flex;align-items:center;gap:0.5rem;flex:1 1 auto;min-width:180px;\">\
+<span style=\"padding:0 0.375rem;border-radius:0.25rem;background:#3a2a00;color:#f0c674;flex:0 0 auto;\" title=\"APP_ENV\">DEV</span>\
+<span title=\"HTTP method · path · status\" style=\"min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\"><span style=\"color:#8be9fd;\">{method}</span> <span style=\"color:#e6e6e6;\">{path}</span> <span style=\"color:#8b949e;\">[</span><span style=\"color:{status_color};\">{status}</span><span style=\"color:#8b949e;\">]</span></span>\
+</div>\
+<div style=\"display:flex;align-items:center;gap:0.5rem;flex:0 1 auto;flex-wrap:wrap;\">\
+<button type=\"button\" id=\"__solidev_rb\" class=\"__solidev_mob\" title=\"click to expand render breakdown (middleware / controller / view / db / http)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/></svg><span class=\"__solidev_label\">render</span> <span style=\"color:#b8e986;\">{render}</span></button>\
 <span style=\"color:#30363d;\">|</span>\
-<span title=\"HTTP method · path · status\"><span style=\"color:#8be9fd;\">{method}</span> <span style=\"color:#e6e6e6;\">{path}</span> <span style=\"color:#8b949e;\">[</span><span style=\"color:{status_color};\">{status}</span><span style=\"color:#8b949e;\">]</span></span>\
+<span class=\"__solidev_mob\" title=\"resident memory of this worker\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/><rect x=\"9\" y=\"9\" width=\"6\" height=\"6\"/><path d=\"M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3\"/></svg><span class=\"__solidev_label\">rss</span> <span style=\"color:#b8e986;\">{rss}</span></span>\
 <span style=\"color:#30363d;\">|</span>\
-<button type=\"button\" id=\"__solidev_rb\" title=\"click to expand render breakdown (middleware / controller / view / db / http)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">render <span style=\"color:#b8e986;\">{render}</span></button>\
+<button type=\"button\" id=\"__solidev_db\" class=\"__solidev_mob\" title=\"click to expand SolidB queries for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:{db_label_color};font:inherit;cursor:pointer;border:none;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path d=\"M21 12c0 1.66-4 3-9 3s-9-1.34-9-3\"/><path d=\"M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5\"/></svg><span class=\"__solidev_label\">db</span> <span style=\"color:#b8e986;\">{q_count}q</span>{q_btn_extra}</button>\
 <span style=\"color:#30363d;\">|</span>\
-<span title=\"resident memory of this worker\">rss <span style=\"color:#b8e986;\">{rss}</span></span>\
+<button type=\"button\" id=\"__solidev_hb\" class=\"__solidev_mob\" title=\"click to expand outgoing HTTP requests for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"2\" y1=\"12\" x2=\"22\" y2=\"12\"/><path d=\"M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z\"/></svg><span class=\"__solidev_label\">http</span> <span style=\"color:#b8e986;\">{h_count}r</span>{h_btn_extra}</button>\
 <span style=\"color:#30363d;\">|</span>\
-<button type=\"button\" id=\"__solidev_db\" title=\"click to expand SolidB queries for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:{db_label_color};font:inherit;cursor:pointer;border:none;background:transparent;\">db <span style=\"color:#b8e986;\">{q_count}q</span>{q_btn_extra}</button>\
-<span style=\"color:#30363d;\">|</span>\
-<button type=\"button\" id=\"__solidev_hb\" title=\"click to expand outgoing HTTP requests for this request\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">http <span style=\"color:#b8e986;\">{h_count}r</span>{h_btn_extra}</button>\
-<span style=\"color:#30363d;\">|</span>\
-<button type=\"button\" id=\"__solidev_fb\" title=\"click to expand the flamegraph (hierarchical timing per phase + per Soli function)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">flame <span style=\"color:#b8e986;\">{flame_count}s</span></button>\
-<button type=\"button\" id=\"__solidev_close\" aria-label=\"Hide dev bar (Alt+D)\" title=\"hide (Alt+D)\" style=\"margin-left:auto;padding:0 0.5rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\">×</button>\
+<button type=\"button\" id=\"__solidev_fb\" class=\"__solidev_mob\" title=\"click to expand the flamegraph (hierarchical timing per phase + per Soli function)\" style=\"padding:0 0.25rem;border-radius:0.25rem;color:#c9d1d9;font:inherit;cursor:pointer;border:none;background:transparent;\"><svg class=\"__solidev_icon\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z\"/></svg><span class=\"__solidev_label\">flame</span> <span style=\"color:#b8e986;\">{flame_count}s</span></button>\
+</div>\
 </div>{breakdown_panel}{queries_panel}{http_panel}{flame_panel}</aside>\
 <button type=\"button\" id=\"__solidev_show\" aria-label=\"Show dev bar\" style=\"display:none;position:fixed;bottom:0.5rem;right:0.5rem;z-index:2147483646;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;padding:0.25rem 0.5rem;border-radius:0.25rem;background:#0b0d0f;color:#f0c674;border:1px solid #30363d;letter-spacing:0.05em;cursor:pointer;\">DEV</button>\
 <script>(function(){{var bar=document.getElementById('__solidev_bar');var open=document.getElementById('__solidev_show');if(!bar||!open)return;var origPad=document.body.style.paddingBottom;function syncPad(){{if(bar.style.display==='none'){{document.body.style.paddingBottom=origPad;return;}}document.body.style.paddingBottom=bar.offsetHeight+'px';}}function setHidden(h){{if(h){{bar.style.display='none';open.style.display='inline-flex';try{{sessionStorage.setItem('__solidev_hidden','1');}}catch(e){{}}}}else{{bar.style.display='';open.style.display='none';try{{sessionStorage.removeItem('__solidev_hidden');}}catch(e){{}}}}syncPad();}}var hidden=false;try{{hidden=sessionStorage.getItem('__solidev_hidden')==='1';}}catch(e){{}}setHidden(hidden);if(typeof ResizeObserver!=='undefined'){{try{{new ResizeObserver(syncPad).observe(bar);}}catch(e){{}}}}window.addEventListener('resize',syncPad);var c=document.getElementById('__solidev_close');if(c)c.addEventListener('click',function(){{setHidden(true);}});open.addEventListener('click',function(){{setHidden(false);}});var db=document.getElementById('__solidev_db');var qp=document.getElementById('__solidev_queries');if(db&&qp){{db.addEventListener('click',function(){{qp.style.display=qp.style.display==='none'?'block':'none';}});}}var hb=document.getElementById('__solidev_hb');var hp=document.getElementById('__solidev_http');if(hb&&hp){{hb.addEventListener('click',function(){{hp.style.display=hp.style.display==='none'?'block':'none';}});}}var rb=document.getElementById('__solidev_rb');var rp=document.getElementById('__solidev_phases');if(rb&&rp){{rb.addEventListener('click',function(){{rp.style.display=rp.style.display==='none'?'block':'none';}});}}var mwt=document.getElementById('__solidev_mw_toggle');var mws=document.getElementById('__solidev_mw_subrows');var mwc=document.getElementById('__solidev_mw_chev');if(mwt&&mws){{mwt.addEventListener('click',function(){{var hidden=mws.style.display==='none';mws.style.display=hidden?'':'none';if(mwc)mwc.textContent=hidden?'▼':'▶';}});}}var vwt=document.getElementById('__solidev_view_toggle');var vws=document.getElementById('__solidev_view_subrows');var vwc=document.getElementById('__solidev_view_chev');if(vwt&&vws){{vwt.addEventListener('click',function(){{var hidden=vws.style.display==='none';vws.style.display=hidden?'':'none';if(vwc)vwc.textContent=hidden?'▼':'▶';}});}}var fb=document.getElementById('__solidev_fb');var fp=document.getElementById('__solidev_flame');if(fb&&fp){{fb.addEventListener('click',function(){{fp.style.display=fp.style.display==='none'?'block':'none';}});}}var fchart=document.getElementById('__solidev_flame_chart');var flist=document.getElementById('__solidev_flame_list');if(fchart){{var totalUs=parseFloat(fchart.getAttribute('data-total'))||1;var rects=fchart.querySelectorAll('.__solidev_rect');function applyZoom(viewStart,viewW){{rects.forEach(function(r){{var s=parseFloat(r.getAttribute('data-start'));var w=parseFloat(r.getAttribute('data-w'));var rs=s-viewStart;var re=rs+w;if(re<=0||rs>=viewW){{r.style.display='none';return;}}r.style.display='';var cs=Math.max(0,rs);var ce=Math.min(viewW,re);r.style.left=(cs/viewW*100)+'%';r.style.width=Math.max(0.001,(ce-cs)/viewW*100)+'%';}});}}function highlightRect(rect,on){{if(!rect)return;rect.style.outline=on?'2px solid #ffffff':'';rect.style.outlineOffset=on?'-2px':'';}}function highlightRow(li,on){{if(!li)return;li.style.background=on?'#1c1f23':'';if(on)li.scrollIntoView({{block:'nearest',behavior:'smooth'}});}}rects.forEach(function(r){{r.addEventListener('click',function(ev){{ev.stopPropagation();applyZoom(parseFloat(r.getAttribute('data-start')),parseFloat(r.getAttribute('data-w')));}});r.addEventListener('mouseenter',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,true);highlightRect(r,true);}});r.addEventListener('mouseleave',function(){{var idx=r.getAttribute('data-idx');var li=flist?flist.querySelector('li[data-idx=\"'+idx+'\"]'):null;highlightRow(li,false);highlightRect(r,false);}});}});fchart.addEventListener('dblclick',function(){{applyZoom(0,totalUs);}});if(flist){{flist.querySelectorAll('li[data-idx]').forEach(function(li){{li.addEventListener('mouseenter',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,true);highlightRect(rect,true);}});li.addEventListener('mouseleave',function(){{var idx=li.getAttribute('data-idx');var rect=fchart.querySelector('.__solidev_rect[data-idx=\"'+idx+'\"]');highlightRow(li,false);highlightRect(rect,false);}});li.addEventListener('click',function(){{applyZoom(parseFloat(li.getAttribute('data-start')),parseFloat(li.getAttribute('data-w')));}});}});}}}}var vrows=document.querySelectorAll('#__solidev_bar [data-solidev-view-idx]');if(vrows.length){{var ov=null,lbl=null,markerCache=null,autoScroll=false;function ensureOverlay(){{if(ov)return;ov=document.createElement('div');ov.id='__solidev_view_outline';ov.style.cssText='position:absolute;pointer-events:none;outline:2px solid #b8e986;outline-offset:-2px;background:rgba(184,233,134,0.12);z-index:2147483645;display:none;border-radius:2px;';document.body.appendChild(ov);lbl=document.createElement('div');lbl.style.cssText='position:absolute;pointer-events:none;font-family:JetBrains Mono,ui-monospace,monospace;font-size:10px;background:#0b0d0f;color:#b8e986;border:1px solid #b8e986;padding:1px 6px;border-radius:3px;z-index:2147483645;display:none;white-space:nowrap;';document.body.appendChild(lbl);}}function buildCache(){{if(markerCache)return markerCache;markerCache={{}};var w=document.createTreeWalker(document.body,NodeFilter.SHOW_COMMENT,null);var n;while(n=w.nextNode()){{var v=n.nodeValue||'';var m=v.match(/^solidev:(view|partial|layout):(start|end) id=(\\d+)/);if(!m)continue;var id=m[3];if(!markerCache[id])markerCache[id]={{}};markerCache[id][m[2]]=n;}}return markerCache;}}function ensureVisible(rect){{var barH=(bar&&bar.style.display!=='none')?bar.offsetHeight:0;var vh=window.innerHeight||document.documentElement.clientHeight;var visBottom=vh-barH;var pad=24;var needsUp=rect.top<pad;var needsDown=rect.top>visBottom-pad||(rect.bottom>visBottom&&rect.height<visBottom-2*pad);if(!needsUp&&!needsDown)return false;autoScroll=true;var sy=window.scrollY||window.pageYOffset||0;var targetY=sy+rect.top-Math.max(80,(visBottom-rect.height)/2);if(targetY<0)targetY=0;window.scrollTo({{top:targetY,left:window.scrollX||0,behavior:'auto'}});setTimeout(function(){{autoScroll=false;}},0);return true;}}function showFor(id,name){{var pair=buildCache()[id];if(!pair||!pair.start||!pair.end)return;var range=document.createRange();try{{range.setStartAfter(pair.start);range.setEndBefore(pair.end);}}catch(e){{return;}}var rect=range.getBoundingClientRect();if(rect.width===0&&rect.height===0)return;if(ensureVisible(rect)){{rect=range.getBoundingClientRect();}}ensureOverlay();var sx=window.scrollX||window.pageXOffset||0;var sy=window.scrollY||window.pageYOffset||0;ov.style.display='block';ov.style.left=(rect.left+sx)+'px';ov.style.top=(rect.top+sy)+'px';ov.style.width=rect.width+'px';ov.style.height=rect.height+'px';lbl.textContent=name;lbl.style.display='block';lbl.style.left=(rect.left+sx)+'px';lbl.style.top=Math.max(0,rect.top+sy-18)+'px';}}function hideOv(){{if(autoScroll)return;if(ov)ov.style.display='none';if(lbl)lbl.style.display='none';}}vrows.forEach(function(li){{li.addEventListener('mouseenter',function(){{var id=li.getAttribute('data-solidev-view-idx');var n=li.getAttribute('data-solidev-view-name');if(!n){{var nameEl=li.querySelector('span[title]');n=nameEl?nameEl.textContent:'';}}showFor(id,n);}});li.addEventListener('mouseleave',hideOv);}});}}document.addEventListener('keydown',function(e){{if(e.altKey&&(e.key==='d'||e.key==='D')){{e.preventDefault();setHidden(bar.style.display!=='none');}}}});}})();</script>",
         marker = MARKER,
-        env = html_escape(&env_str),
         method = html_escape(ctx.method),
         path = html_escape(ctx.path),
         status_color = status_color,
@@ -663,12 +664,12 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
             None => String::new(),
         };
         row_html.push(format!(
-            "<li data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\"{view_attrs} style=\"display:flex;align-items:center;gap:0.5rem;padding:0.125rem 0.25rem;border-radius:0.125rem;cursor:zoom-in;\">\
+            "<li class=\"__solidev_flame_li\" data-idx=\"{idx}\" data-start=\"{ds}\" data-w=\"{dw}\"{view_attrs} style=\"display:flex;align-items:center;gap:0.5rem;padding:0.125rem 0.25rem;border-radius:0.125rem;cursor:zoom-in;\">\
 <span style=\"flex:0 0 auto;width:0.5rem;height:0.5rem;background:{color};border-radius:0.125rem;display:inline-block;\"></span>\
-<span style=\"flex:0 0 auto;width:5.5rem;font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:0.05em;\">{kind}</span>\
+<span class=\"__solidev_flame_kind\" style=\"flex:0 0 auto;width:5.5rem;font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:0.05em;\">{kind}</span>\
 <span style=\"flex:1;color:#e6e6e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:{indent}px;\">{name}{meta}</span>\
-<span style=\"flex:0 0 auto;color:#b8e986;font-variant-numeric:tabular-nums;width:5rem;text-align:right;\">{dur_str}</span>\
-<span style=\"flex:0 0 auto;color:#8b949e;font-variant-numeric:tabular-nums;width:3.5rem;text-align:right;\">{pct:.1}%</span>\
+<span class=\"__solidev_flame_dur\" style=\"flex:0 0 auto;color:#b8e986;font-variant-numeric:tabular-nums;width:5rem;text-align:right;\">{dur_str}</span>\
+<span class=\"__solidev_col_pct\" style=\"flex:0 0 auto;color:#8b949e;font-variant-numeric:tabular-nums;width:3.5rem;text-align:right;\">{pct:.1}%</span>\
 </li>",
             idx = i,
             ds = s.start_us,
@@ -707,11 +708,11 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
     let trace_href = format!("data:application/json;base64,{}", trace_b64);
 
     format!(
-        "<div id=\"__solidev_flame\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;\">\
-<div style=\"display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">\
+        "<div id=\"__solidev_flame\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;\">\
+<div class=\"__solidev_flame_head\" style=\"display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">\
 <span>FLAMEGRAPH · {n_spans} SPAN{plural} · {total_str}</span>\
-<span style=\"color:#30363d;\">|</span>\
-<span style=\"color:#6c7280;\">click a span to zoom in · double-click the chart to reset</span>\
+<span class=\"__solidev_flame_help\" style=\"color:#30363d;\">|</span>\
+<span class=\"__solidev_flame_help\" style=\"color:#6c7280;\">click a span to zoom in · double-click the chart to reset</span>\
 <a href=\"{href}\" download=\"trace.json\" style=\"margin-left:auto;color:#8be9fd;text-decoration:none;border:1px solid #30363d;padding:0.125rem 0.5rem;border-radius:0.25rem;\">⬇ trace.json</a>\
 </div>\
 <div id=\"__solidev_flame_chart\" data-total=\"{total_us}\" style=\"position:relative;width:100%;height:{chart_h}px;background:#0b0d0f;overflow:hidden;\">{rects}</div>\
@@ -737,10 +738,10 @@ fn phase_row(name: &str, us: u64, total_us: u64, color: &str) -> String {
     };
     let bar_width_pct = pct.min(100);
     format!(
-        "<li style=\"display:flex;align-items:center;gap:0.75rem;\">\
-<span style=\"flex:0 0 5.5rem;color:{color};\">{name}</span>\
-<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
-<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+        "<li class=\"__solidev_pr\" style=\"display:flex;align-items:center;gap:0.75rem;\">\
+<span class=\"__solidev_pr_name\" style=\"flex:0 0 5.5rem;color:{color};\">{name}</span>\
+<span class=\"__solidev_pr_dur\" style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span class=\"__solidev_col_pct\" style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
 <span style=\"flex:1;height:0.5rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};\"></span></span>\
 </li>",
         color = color,
@@ -771,10 +772,10 @@ fn aggregate_row_clickable(
     };
     let bar_width_pct = pct.min(100);
     format!(
-        "<li id=\"{toggle_id}\" title=\"{title}\" style=\"display:flex;align-items:center;gap:0.75rem;cursor:pointer;user-select:none;\">\
-<span style=\"flex:0 0 5.5rem;color:{color};\"><span id=\"{chev_id}\" style=\"color:#8b949e;font-size:9px;margin-right:0.25rem;\">▶</span>{name}</span>\
-<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
-<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+        "<li id=\"{toggle_id}\" class=\"__solidev_pr\" title=\"{title}\" style=\"display:flex;align-items:center;gap:0.75rem;cursor:pointer;user-select:none;\">\
+<span class=\"__solidev_pr_name\" style=\"flex:0 0 5.5rem;color:{color};\"><span id=\"{chev_id}\" style=\"color:#8b949e;font-size:9px;margin-right:0.25rem;\">▶</span>{name}</span>\
+<span class=\"__solidev_pr_dur\" style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span class=\"__solidev_col_pct\" style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
 <span style=\"flex:1;height:0.5rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};\"></span></span>\
 </li>",
         toggle_id = toggle_id,
@@ -800,11 +801,11 @@ fn sub_row(name: &str, us: u64, total_us: u64, color: &str) -> String {
     let bar_width_pct = pct.min(100);
     format!(
         "<li style=\"display:flex;align-items:center;gap:0.75rem;padding-left:1rem;\">\
-<span style=\"flex:0 0 4.5rem;color:#8b949e;font-size:10px;\">└─</span>\
-<span style=\"flex:0 0 9rem;color:#e6e6e6;overflow:hidden;text-overflow:ellipsis;\" title=\"{title}\">{name}</span>\
-<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
-<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
-<span style=\"flex:1;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};opacity:0.7;\"></span></span>\
+<span class=\"__solidev_sub_glyph\" style=\"flex:0 0 4.5rem;color:#8b949e;font-size:10px;\">└─</span>\
+<span class=\"__solidev_sub_name\" style=\"flex:0 0 9rem;color:#e6e6e6;overflow:hidden;text-overflow:ellipsis;\" title=\"{title}\">{name}</span>\
+<span class=\"__solidev_sub_dur\" style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span class=\"__solidev_col_pct\" style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+<span class=\"__solidev_sub_bar\" style=\"flex:1;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};opacity:0.7;\"></span></span>\
 </li>",
         name = html_escape(name),
         title = html_escape(name),
@@ -832,15 +833,15 @@ fn view_sub_row(id: u32, depth: u32, name: &str, us: u64, total_us: u64, color: 
     // when names differ in length.
     let base_indent_rem = 1.0_f32 + 0.75 * depth as f32;
     format!(
-        "<li data-solidev-view-idx=\"{id}\" style=\"display:flex;align-items:center;gap:0.75rem;padding-left:{indent}rem;cursor:pointer;\" title=\"hover to outline this template's region in the page\">\
+        "<li data-solidev-view-idx=\"{id}\" style=\"display:flex;align-items:center;gap:0.75rem;padding-left:{indent:.2}rem;cursor:pointer;\" title=\"hover to outline this template's region in the page\">\
 <span style=\"flex:0 0 1.25rem;color:#8b949e;font-size:10px;\">{glyph}</span>\
 <span style=\"flex:1 1 auto;color:#e6e6e6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\" title=\"{title}\">{name}</span>\
-<span style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
-<span style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
-<span style=\"flex:0 0 8rem;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};opacity:0.7;\"></span></span>\
+<span class=\"__solidev_view_sub_dur\" style=\"flex:0 0 4.5rem;color:#e6e6e6;font-variant-numeric:tabular-nums;text-align:right;\">{dur}</span>\
+<span class=\"__solidev_col_pct\" style=\"flex:0 0 2.5rem;color:#8b949e;font-variant-numeric:tabular-nums;text-align:right;\">{pct}%</span>\
+<span class=\"__solidev_view_sub_bar\" style=\"flex:0 0 8rem;height:0.375rem;background:#1c1f23;border-radius:0.125rem;overflow:hidden;\"><span style=\"display:block;width:{bar}%;height:100%;background:{color};opacity:0.7;\"></span></span>\
 </li>",
         id = id,
-        indent = format!("{:.2}", base_indent_rem),
+        indent = base_indent_rem,
         glyph = if depth == 0 { "▾" } else { "└─" },
         name = html_escape(name),
         title = html_escape(name),
@@ -1091,7 +1092,6 @@ mod tests {
         assert!(out.contains("https://api.example.com/orders"));
         assert!(out.contains(">POST<"));
         assert!(out.contains(">201<"));
-        assert!(out.contains("http <span"));
         assert!(out.contains("1r</span>"));
     }
 
@@ -1259,8 +1259,8 @@ mod tests {
         let c = ctx("GET", "/");
         let out = inject_dev_bar(html, &c);
         assert!(!out.contains("__solidev_flame\""));
-        // Button still renders but with `0s` and no extra suffix.
-        assert!(out.contains("flame <span"));
+        // Button still renders but with `0s`.
+        assert!(out.contains("0s</span>"));
     }
 
     #[test]

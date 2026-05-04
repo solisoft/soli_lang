@@ -144,3 +144,192 @@ pub fn parse_range_header(range_header: &str, file_size: u64) -> Option<(u64, u6
         Some((start, end))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    // ---------- get_mime_type ----------
+
+    #[test]
+    fn mime_known_extensions() {
+        let cases = [
+            ("style.css", "text/css"),
+            ("app.js", "application/javascript"),
+            ("logo.png", "image/png"),
+            ("photo.jpg", "image/jpeg"),
+            ("photo.jpeg", "image/jpeg"),
+            ("favicon.ico", "image/x-icon"),
+            ("icon.svg", "image/svg+xml"),
+            ("page.html", "text/html"),
+            ("data.json", "application/json"),
+            ("font.woff2", "font/woff2"),
+            ("song.mp3", "audio/mpeg"),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(get_mime_type(&PathBuf::from(path)), expected, "for {path}");
+        }
+    }
+
+    #[test]
+    fn mime_unknown_extension_falls_back_to_octet_stream() {
+        assert_eq!(
+            get_mime_type(&PathBuf::from("file.xyz")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn mime_no_extension_falls_back_to_octet_stream() {
+        assert_eq!(
+            get_mime_type(&PathBuf::from("README")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn mime_extension_match_is_case_sensitive() {
+        // Pin the current behavior: "PNG" (uppercase) is NOT recognised.
+        // Path::extension preserves case; the table is lowercase-only.
+        assert_eq!(
+            get_mime_type(&PathBuf::from("logo.PNG")),
+            "application/octet-stream"
+        );
+    }
+
+    // ---------- generate_etag ----------
+
+    #[test]
+    fn etag_is_quoted_hex_seconds_since_epoch() {
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(0xDEAD);
+        assert_eq!(generate_etag(t), "\"dead\"");
+    }
+
+    #[test]
+    fn etag_for_unix_epoch_is_zero() {
+        assert_eq!(generate_etag(SystemTime::UNIX_EPOCH), "\"0\"");
+    }
+
+    #[test]
+    fn etag_pre_epoch_falls_back_to_zero() {
+        // Times before UNIX_EPOCH yield Err from duration_since; the
+        // function uses unwrap_or_default → 0 secs → "0".
+        let pre = SystemTime::UNIX_EPOCH - Duration::from_secs(1);
+        assert_eq!(generate_etag(pre), "\"0\"");
+    }
+
+    // ---------- extension predicates ----------
+
+    #[test]
+    fn is_static_extension_recognises_common_assets() {
+        for ext in ["css", "js", "html", "json", "png", "mp3", "wav", "mp4"] {
+            assert!(is_static_extension(ext), "expected {ext} to be static");
+        }
+    }
+
+    #[test]
+    fn is_static_extension_rejects_unknown() {
+        assert!(!is_static_extension("xyz"));
+        assert!(!is_static_extension(""));
+        // Case-sensitive: uppercase variants are not recognised.
+        assert!(!is_static_extension("CSS"));
+    }
+
+    #[test]
+    fn is_tracked_extension_subset_excludes_html_json_video_audio() {
+        // The "tracked" list is for hot-reload watching — code
+        // assets only, not media or HTML/JSON.
+        assert!(is_tracked_static_extension("css"));
+        assert!(is_tracked_static_extension("js"));
+        assert!(is_tracked_static_extension("png"));
+
+        // These ARE valid static extensions but NOT tracked for hot reload.
+        assert!(is_static_extension("html"));
+        assert!(!is_tracked_static_extension("html"));
+        assert!(is_static_extension("json"));
+        assert!(!is_tracked_static_extension("json"));
+        assert!(is_static_extension("mp4"));
+        assert!(!is_tracked_static_extension("mp4"));
+    }
+
+    // ---------- parse_range_header ----------
+
+    #[test]
+    fn range_full_form() {
+        assert_eq!(parse_range_header("bytes=0-1023", 2048), Some((0, 1023)));
+        assert_eq!(parse_range_header("bytes=10-99", 1000), Some((10, 99)));
+    }
+
+    #[test]
+    fn range_clamps_end_to_file_size_minus_one() {
+        // End larger than file gets clamped.
+        assert_eq!(parse_range_header("bytes=0-9999", 100), Some((0, 99)));
+    }
+
+    #[test]
+    fn range_open_ended_uses_file_size_minus_one() {
+        // "bytes=1024-" means from 1024 to end of file.
+        assert_eq!(parse_range_header("bytes=1024-", 2048), Some((1024, 2047)));
+    }
+
+    #[test]
+    fn range_suffix_form() {
+        // "bytes=-500" means last 500 bytes.
+        assert_eq!(parse_range_header("bytes=-500", 2000), Some((1500, 1999)));
+    }
+
+    #[test]
+    fn range_suffix_zero_is_unsatisfiable() {
+        assert!(parse_range_header("bytes=-0", 1000).is_none());
+    }
+
+    #[test]
+    fn range_suffix_larger_than_file_is_unsatisfiable() {
+        // Prevents underflow on file_size - suffix_len.
+        assert!(parse_range_header("bytes=-2000", 1000).is_none());
+    }
+
+    #[test]
+    fn range_start_at_or_past_file_size_is_unsatisfiable() {
+        assert!(parse_range_header("bytes=1000-", 1000).is_none());
+        assert!(parse_range_header("bytes=2000-", 1000).is_none());
+    }
+
+    #[test]
+    fn range_start_greater_than_end_is_unsatisfiable() {
+        assert!(parse_range_header("bytes=500-100", 1000).is_none());
+    }
+
+    #[test]
+    fn range_multi_range_is_rejected() {
+        // The implementation explicitly does not support multi-range.
+        assert!(parse_range_header("bytes=0-100,200-300", 1000).is_none());
+    }
+
+    #[test]
+    fn range_missing_bytes_prefix_is_rejected() {
+        assert!(parse_range_header("0-1023", 2048).is_none());
+        assert!(parse_range_header("octets=0-1023", 2048).is_none());
+    }
+
+    #[test]
+    fn range_missing_dash_is_rejected() {
+        // No `-` separator at all.
+        assert!(parse_range_header("bytes=100", 1000).is_none());
+    }
+
+    #[test]
+    fn range_non_numeric_components_are_rejected() {
+        assert!(parse_range_header("bytes=abc-def", 1000).is_none());
+        assert!(parse_range_header("bytes=10-xyz", 1000).is_none());
+        assert!(parse_range_header("bytes=-xyz", 1000).is_none());
+    }
+
+    #[test]
+    fn range_zero_to_zero_returns_first_byte() {
+        // Single-byte range at the start: 0-0 is a one-byte response.
+        assert_eq!(parse_range_header("bytes=0-0", 100), Some((0, 0)));
+    }
+}

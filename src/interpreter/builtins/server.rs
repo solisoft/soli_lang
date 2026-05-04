@@ -15,6 +15,9 @@ pub struct Route {
     pub method: String,
     pub path_pattern: String,
     pub handler_name: String, // Store function name instead of Value
+    /// Rails-style name (e.g. "post" for /posts/:id show, "posts" for index).
+    /// `None` for unnamed routes. Used to generate `*_path` / `*_url` helpers.
+    pub name: Option<String>,
     pub middleware: Vec<Value>,
     pub middleware_names: Vec<String>,
 }
@@ -26,6 +29,7 @@ pub struct WorkerRoute {
     pub method: String,
     pub path_pattern: String,
     pub handler_name: String,
+    pub name: Option<String>,
     pub middleware_names: Vec<String>,
 }
 
@@ -78,6 +82,11 @@ impl RouteIndex {
         }
 
         self.version += 1;
+
+        // Keep the named-route lookup table in lock-step with the route table
+        // so `*_path` / `*_url` helpers always see the latest patterns
+        // (including after hot-reload).
+        crate::interpreter::builtins::named_routes::rebuild_named_routes(routes);
     }
 }
 
@@ -136,7 +145,7 @@ pub fn clear_routes_for_prefix(prefix: &str) {
 /// Register a route with a handler name.
 /// Used by the MVC framework to register derived routes.
 pub fn register_route_with_handler(method: &str, path: &str, handler_name: String) {
-    register_route(method, path, handler_name, Vec::new(), Vec::new());
+    register_route(method, path, handler_name, None, Vec::new(), Vec::new());
 }
 
 /// Register a route with a handler and scoped middleware.
@@ -147,7 +156,35 @@ pub fn register_route_with_middleware(
     middleware: Vec<Value>,
     middleware_names: Vec<String>,
 ) {
-    register_route(method, path, handler_name, middleware, middleware_names);
+    register_route(
+        method,
+        path,
+        handler_name,
+        None,
+        middleware,
+        middleware_names,
+    );
+}
+
+/// Register a route with a handler, scoped middleware, and a Rails-style name.
+/// The name is what powers the auto-generated `<name>_path` / `<name>_url` helpers
+/// each worker registers from its `WorkerRoute` table at boot.
+pub fn register_route_with_name(
+    method: &str,
+    path: &str,
+    handler_name: String,
+    name: Option<String>,
+    middleware: Vec<Value>,
+    middleware_names: Vec<String>,
+) {
+    register_route(
+        method,
+        path,
+        handler_name,
+        name,
+        middleware,
+        middleware_names,
+    );
 }
 
 /// Get all registered routes.
@@ -361,6 +398,7 @@ pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
             method: r.method.clone(),
             path_pattern: r.path_pattern.clone(),
             handler_name: r.handler_name.clone(),
+            name: r.name.clone(),
             middleware_names: r.middleware_names.clone(),
         })
         .collect()
@@ -383,6 +421,7 @@ pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
             method: r.method,
             path_pattern: r.path_pattern,
             handler_name: r.handler_name,
+            name: r.name,
             middleware: Vec::new(),
             middleware_names: r.middleware_names,
         })
@@ -396,6 +435,7 @@ fn register_route(
     method: &str,
     path: &str,
     handler_name: String,
+    name: Option<String>,
     middleware: Vec<Value>,
     middleware_names: Vec<String>,
 ) {
@@ -404,6 +444,7 @@ fn register_route(
             method: method.to_string(),
             path_pattern: path.to_string(),
             handler_name,
+            name,
             middleware,
             middleware_names,
         });
@@ -1169,7 +1210,7 @@ pub fn register_server_builtins(env: &mut Environment) {
             };
 
             set_direct_routes_mode();
-            register_route("GET", &path, handler_name, Vec::new(), Vec::new());
+            register_route("GET", &path, handler_name, None, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1198,7 +1239,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("POST", &path, handler_name, Vec::new(), Vec::new());
+            register_route("POST", &path, handler_name, None, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1227,7 +1268,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("PUT", &path, handler_name, Vec::new(), Vec::new());
+            register_route("PUT", &path, handler_name, None, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1256,7 +1297,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route("DELETE", &path, handler_name, Vec::new(), Vec::new());
+            register_route("DELETE", &path, handler_name, None, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );
@@ -1295,7 +1336,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                 }
             };
 
-            register_route(&method, &path, handler_name, Vec::new(), Vec::new());
+            register_route(&method, &path, handler_name, None, Vec::new(), Vec::new());
             Ok(Value::Null)
         })),
     );

@@ -287,7 +287,12 @@ numbers.reduce(0) |acc, x| acc + x end
   let doubled = x * 2
   doubled + 1
 end
-# [3, 5, 7]</code></pre>
+# [3, 5, 7]
+
+# Ruby-style `do |params| ... end` is also accepted
+[1, 2, 3].map do |x| x * 2 end                # [2, 4, 6]
+{"a": 10, "b": 20}.map do |k, v| [k, v + 5] end  # {"a": 15, "b": 25}
+3.times do |i| print(i) end                   # 0 1 2</code></pre>
             </div>
         </div>
 

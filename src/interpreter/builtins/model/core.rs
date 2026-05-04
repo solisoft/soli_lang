@@ -1355,27 +1355,35 @@ impl Model {
         use super::crud::exec_auto_collection_as_instances;
         native_static_methods.insert(
             "all".to_string(),
-            Rc::new(NativeFunction::new("Model.all", Some(1), |args| {
-                let class = get_class_rc_from_args(&args)?;
-                let collection = class_name_to_collection(&class.name);
-                let sdbql = format!("FOR doc IN {} RETURN doc", collection);
-                Ok(exec_auto_collection_as_instances(
-                    sdbql,
-                    &collection,
-                    &class,
-                ))
-            })),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model.all",
+                Some(1),
+                |args| {
+                    let class = get_class_rc_from_args(&args)?;
+                    let collection = class_name_to_collection(&class.name);
+                    let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                    Ok(exec_auto_collection_as_instances(
+                        sdbql,
+                        &collection,
+                        &class,
+                    ))
+                },
+            )),
         );
 
         // Model.all_json() - Get all documents as raw JSON string (fastest)
         use super::crud::exec_async_query_raw;
         native_static_methods.insert(
             "all_json".to_string(),
-            Rc::new(NativeFunction::new("Model.all_json", Some(1), |args| {
-                let collection = get_collection_from_class(&args)?;
-                let sdbql = format!("FOR doc IN {} RETURN doc", collection);
-                Ok(exec_async_query_raw(sdbql))
-            })),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model.all_json",
+                Some(1),
+                |args| {
+                    let collection = get_collection_from_class(&args)?;
+                    let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                    Ok(exec_async_query_raw(sdbql))
+                },
+            )),
         );
 
         // Model.order(field, direction?) - Returns a QueryBuilder with ordering (no filter)
@@ -1576,20 +1584,24 @@ impl Model {
         use super::crud::exec_query;
         native_static_methods.insert(
             "count".to_string(),
-            Rc::new(NativeFunction::new("Model.count", Some(1), |args| {
-                let collection = get_collection_from_class(&args)?;
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model.count",
+                Some(1),
+                |args| {
+                    let collection = get_collection_from_class(&args)?;
 
-                let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
+                    let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
 
-                match exec_query(&collection, sdbql) {
-                    Ok(results) => Ok(parse_count_result(&results)),
-                    // `exec_with_auto_collection` auto-creates a missing
-                    // collection and retries, so any error reaching us here
-                    // is a real failure — surface it instead of silently
-                    // returning 0 (which previously masked broken counts).
-                    Err(e) => Err(format!("Model.count() failed: {}", e)),
-                }
-            })),
+                    match exec_query(&collection, sdbql) {
+                        Ok(results) => Ok(parse_count_result(&results)),
+                        // `exec_with_auto_collection` auto-creates a missing
+                        // collection and retries, so any error reaching us here
+                        // is a real failure — surface it instead of silently
+                        // returning 0 (which previously masked broken counts).
+                        Err(e) => Err(format!("Model.count() failed: {}", e)),
+                    }
+                },
+            )),
         );
 
         // Model.with_deleted - Returns a QueryBuilder that includes soft-deleted records

@@ -904,6 +904,7 @@ pub struct NativeFunction {
     pub name: String,
     pub arity: Option<usize>, // None means variadic
     pub func: Rc<dyn Fn(Vec<Value>) -> Result<Value, String>>,
+    pub is_auto_invocable: bool, // Can be called without parentheses
 }
 
 impl NativeFunction {
@@ -915,6 +916,19 @@ impl NativeFunction {
             name: name.into(),
             arity,
             func: Rc::new(func),
+            is_auto_invocable: false,
+        }
+    }
+
+    pub fn new_auto_invocable<F>(name: impl Into<String>, arity: Option<usize>, func: F) -> Self
+    where
+        F: Fn(Vec<Value>) -> Result<Value, String> + 'static,
+    {
+        Self {
+            name: name.into(),
+            arity,
+            func: Rc::new(func),
+            is_auto_invocable: true,
         }
     }
 }
@@ -2144,5 +2158,156 @@ mod return_type_tests {
         assert!(value_matches_type(&value, &ty_lower));
         assert!(value_matches_type(&value, &ty_upper));
         assert!(value_matches_type(&value, &ty_mixed));
+    }
+}
+
+#[cfg(test)]
+mod value_misc_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn type_name_covers_all_variants() {
+        assert_eq!(Value::Int(0).type_name(), "int");
+        assert_eq!(Value::Float(0.0).type_name(), "float");
+        assert_eq!(Value::String(String::new()).type_name(), "string");
+        assert_eq!(Value::Bool(true).type_name(), "bool");
+        assert_eq!(Value::Null.type_name(), "null");
+        assert_eq!(
+            Value::Array(Rc::new(RefCell::new(Vec::new()))).type_name(),
+            "array"
+        );
+        let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
+            indexmap::IndexMap::default();
+        assert_eq!(Value::Hash(Rc::new(RefCell::new(h))).type_name(), "hash");
+        assert_eq!(Value::Symbol("x".to_string()).type_name(), "symbol");
+    }
+
+    #[test]
+    fn is_truthy_distinguishes_zero_empty_collections() {
+        // Truthy
+        assert!(Value::Int(1).is_truthy());
+        assert!(Value::Float(0.0).is_truthy());
+        assert!(Value::String("hi".to_string()).is_truthy());
+        assert!(Value::Bool(true).is_truthy());
+        // Falsy: Bool(false), Null, Int(0), empty string, empty array, empty hash
+        assert!(!Value::Bool(false).is_truthy());
+        assert!(!Value::Null.is_truthy());
+        assert!(!Value::Int(0).is_truthy());
+        assert!(!Value::String(String::new()).is_truthy());
+        assert!(!Value::Array(Rc::new(RefCell::new(Vec::new()))).is_truthy());
+        let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
+            indexmap::IndexMap::default();
+        assert!(!Value::Hash(Rc::new(RefCell::new(h))).is_truthy());
+    }
+
+    #[test]
+    fn display_basic_values() {
+        assert_eq!(format!("{}", Value::Int(42)), "42");
+        assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Value::String("hi".to_string())), "hi");
+        assert_eq!(format!("{}", Value::Bool(true)), "true");
+        assert_eq!(format!("{}", Value::Bool(false)), "false");
+        assert_eq!(format!("{}", Value::Null), "null");
+        assert_eq!(format!("{}", Value::Symbol("foo".to_string())), ":foo");
+    }
+
+    #[test]
+    fn parse_json_primitives() {
+        assert_eq!(parse_json("42").unwrap(), Value::Int(42));
+        assert_eq!(parse_json("3.14").unwrap(), Value::Float(3.14));
+        assert_eq!(parse_json("true").unwrap(), Value::Bool(true));
+        assert_eq!(parse_json("false").unwrap(), Value::Bool(false));
+        assert_eq!(parse_json("null").unwrap(), Value::Null);
+        assert_eq!(
+            parse_json(r#""hello""#).unwrap(),
+            Value::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_json_array() {
+        let parsed = parse_json("[1, 2, 3]").unwrap();
+        match parsed {
+            Value::Array(arr) => {
+                let arr = arr.borrow();
+                assert_eq!(arr.len(), 3);
+                assert_eq!(arr[0], Value::Int(1));
+                assert_eq!(arr[2], Value::Int(3));
+            }
+            _ => panic!("expected Array, got {:?}", parsed.type_name()),
+        }
+    }
+
+    #[test]
+    fn parse_json_object() {
+        let parsed = parse_json(r#"{"a": 1, "b": "x"}"#).unwrap();
+        match parsed {
+            Value::Hash(h) => {
+                let h = h.borrow();
+                assert_eq!(h.len(), 2);
+                assert_eq!(
+                    h.get(&HashKey::String("a".to_string())),
+                    Some(&Value::Int(1))
+                );
+                assert_eq!(
+                    h.get(&HashKey::String("b".to_string())),
+                    Some(&Value::String("x".to_string()))
+                );
+            }
+            _ => panic!("expected Hash"),
+        }
+    }
+
+    #[test]
+    fn parse_json_nested() {
+        let r = parse_json(r#"{"items": [1, {"k": "v"}], "n": null}"#);
+        assert!(r.is_ok(), "nested parse failed: {:?}", r.err());
+    }
+
+    #[test]
+    fn parse_json_invalid_returns_err() {
+        assert!(parse_json("not json").is_err());
+        assert!(parse_json(r#"{"unclosed""#).is_err());
+        assert!(parse_json(r#"[1, 2,"#).is_err());
+    }
+
+    #[test]
+    fn parse_json_bytes_matches_str() {
+        let s = r#"{"a": 1}"#;
+        let from_str = parse_json(s).unwrap();
+        let from_bytes = parse_json_bytes(s.as_bytes()).unwrap();
+        assert_eq!(from_str, from_bytes);
+    }
+
+    #[test]
+    fn hashkey_string_int_equality() {
+        let k1 = HashKey::String("hello".to_string());
+        let k2 = HashKey::String("hello".to_string());
+        assert_eq!(k1, k2);
+
+        let i1 = HashKey::Int(42);
+        let i2 = HashKey::Int(42);
+        assert_eq!(i1, i2);
+
+        assert_ne!(HashKey::String("a".to_string()), HashKey::Int(1));
+    }
+
+    #[test]
+    fn value_partial_eq_collections() {
+        let a = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        let b = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(2)])));
+        assert_eq!(a, b);
+        let c = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1), Value::Int(3)])));
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn value_int_float_cross_eq() {
+        // Int and Float compare by value when integral.
+        assert_eq!(Value::Int(3), Value::Float(3.0));
+        assert_eq!(Value::Float(3.0), Value::Int(3));
+        assert_ne!(Value::Int(3), Value::Float(3.5));
     }
 }

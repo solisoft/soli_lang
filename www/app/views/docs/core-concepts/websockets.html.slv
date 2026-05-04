@@ -31,7 +31,7 @@
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Map path to handler function
-router_websocket("/ws/chat", "websocket#chat_handler")
+router_websocket("/ws/chat", "websocket#chat_handler");
 # With dynamic segments
 router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         </div>
@@ -43,21 +43,21 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/websocket_controller.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def chat_handler(event: Any)
-let type = event["type"]
-  let id = event["connection_id"]
+<pre><code class="language-soli text-sm">fn chat_handler(event: Any) -> Any {
+  let type = event["type"];
+  let id = event["connection_id"];
 
-  if (type == "connect")
-    return { "broadcast": json_encode({ "type": "join", "user": id }) }
-  end
+  if type == "connect" {
+    return { "broadcast": json_stringify({ "type": "join", "user": id }) };
+  }
 
-  if (type == "message")
-    let msg = event["message"]
-    return { "broadcast": msg }
-  end
+  if type == "message" {
+    let msg = event["message"];
+    return { "broadcast": msg };
+  }
 
   {}
-end</code></pre>
+}</code></pre>
         </div>
     </div>
 
@@ -112,22 +112,23 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Room-based Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def room_handler(event: Any)
-let room = "room:" + event["params"]["room_id"]
+<pre><code class="language-soli text-sm">fn room_handler(event: Any) -> Any {
+  let room = "room:" + event["params"]["room_id"];
 
-  if (event["type"] == "connect")
+  if event["type"] == "connect" {
     # Join the room channel on connect
-    return { "join": room }
-  end
+    return { "join": room };
+  }
 
-  if (event["type"] == "message")
-    let data = JSON.parse(event["message"])        # Broadcast only to users in this room
-    return { "broadcast_room": json_encode(data) }
-  end
+  if event["type"] == "message" {
+    let data = JSON.parse(event["message"]);
+    # Broadcast only to users in this room
+    return { "broadcast_room": json_stringify(data) };
+  }
 
   # Leave is automatic on disconnect
   {}
-end</code></pre>
+}</code></pre>
         </div>
     </div>
 
@@ -173,11 +174,12 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Presence-Enabled Chat Handler</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def chat_handler(event: Any)
-let room = "room:general"
+<pre><code class="language-soli text-sm">fn chat_handler(event: Any) -> Any {
+  let room = "room:general";
   # Get user from session/auth (example)
-  let user = get_current_user
-  if (event["type"] == "connect")
+  let user = get_current_user();
+
+  if event["type"] == "connect" {
     return {
       "join": room,
       "track": {
@@ -186,26 +188,26 @@ let room = "room:general"
         "name": user["name"],       # Extra metadata
         "avatar": user["avatar"]
       }
-    }
-  end
+    };
+  }
 
-  if (event["type"] == "message")
-    let data = JSON.parse(event["message"])
+  if event["type"] == "message" {
+    let data = JSON.parse(event["message"]);
     # Handle typing indicators
-    if (data["event"] == "typing")
-      return { "set_presence": { "channel": room, "state": "typing" } }
-    end
-    if (data["event"] == "stop_typing")
-      return { "set_presence": { "channel": room, "state": "online" } }
-    end
+    if data["event"] == "typing" {
+      return { "set_presence": { "channel": room, "state": "typing" } };
+    }
+    if data["event"] == "stop_typing" {
+      return { "set_presence": { "channel": room, "state": "online" } };
+    }
 
     # Regular messages
-    return { "broadcast_room": json_encode(data) }
-  end
+    return { "broadcast_room": json_stringify(data) };
+  }
 
   # Disconnect auto-untracks and broadcasts leave diff
   {}
-end</code></pre>
+}</code></pre>
         </div>
     </div>
 

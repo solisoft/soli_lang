@@ -1172,6 +1172,10 @@ pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
             if path.is_file() && path.extension().map(|e| e == "sl").unwrap_or(false) {
                 files.push(path);
             } else if path.is_dir() {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if dir_name.starts_with('.') || dir_name.starts_with('_') {
+                    continue;
+                }
                 files.extend(collect_test_files(&path));
             }
         }

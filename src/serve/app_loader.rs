@@ -731,11 +731,11 @@ pub(crate) const ROUTES_DSL_SOURCE: &str = r#"
             router_middleware_scope_exit();
         }
 
-        fn get(path: Any, action: Any) { router_match("GET", path, action); }
-        fn post(path: Any, action: Any) { router_match("POST", path, action); }
-        fn put(path: Any, action: Any) { router_match("PUT", path, action); }
-        fn delete(path: Any, action: Any) { router_match("DELETE", path, action); }
-        fn patch(path: Any, action: Any) { router_match("PATCH", path, action); }
+        fn get(path: Any, action: Any, name: Any = null) { router_match("GET", path, action, name); }
+        fn post(path: Any, action: Any, name: Any = null) { router_match("POST", path, action, name); }
+        fn put(path: Any, action: Any, name: Any = null) { router_match("PUT", path, action, name); }
+        fn delete(path: Any, action: Any, name: Any = null) { router_match("DELETE", path, action, name); }
+        fn patch(path: Any, action: Any, name: Any = null) { router_match("PATCH", path, action, name); }
 
         fn websocket(path: Any, action: Any) { router_websocket(path, action); }
 
@@ -873,5 +873,14 @@ pub(crate) fn reload_routes_in_worker(
         crate::interpreter::builtins::server::restore_routes(saved_routes);
         crate::serve::websocket::restore_websocket_routes(saved_ws_routes);
         crate::interpreter::builtins::server::rebuild_route_index();
+    }
+
+    // 8. Re-register `<name>_path` / `<name>_url` helpers in this worker's
+    // env from the (possibly different) route table. Idempotent: defining
+    // the same helper twice just overwrites, which is what we want when a
+    // route's pattern changes via hot reload.
+    {
+        let mut env = interpreter.environment.borrow_mut();
+        crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
     }
 }

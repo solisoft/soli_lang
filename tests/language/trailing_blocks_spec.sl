@@ -150,3 +150,56 @@ describe("Trailing Block - Equivalent to Parenthesized Form", fn() {
         assert_eq(a, b);
     });
 });
+
+describe("Trailing Block - Ruby `do |params| ... end`", fn() {
+    test("map with `do |x|` block", fn() {
+        let result = [1, 2, 3].map do |x| x * 2 end;
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 4);
+        assert_eq(result[2], 6);
+    });
+
+    test("hash map with `do |k, v|` block", fn() {
+        let h = {"a": 10, "b": 20};
+        let curved = h.map do |k, v| [k, v + 5] end;
+        assert_eq(curved["a"], 15);
+        assert_eq(curved["b"], 25);
+    });
+
+    test("filter with `do |x|` block", fn() {
+        let result = [1, 2, 3, 4, 5].filter do |x| x % 2 == 0 end;
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 4);
+    });
+
+    test("each with `do |x|` block", fn() {
+        let sum = 0;
+        [1, 2, 3].each do |x| sum = sum + x end;
+        assert_eq(sum, 6);
+    });
+
+    test("zero-param `do ... end` still works", fn() {
+        let count = 0;
+        3.times do count = count + 1 end;
+        assert_eq(count, 3);
+    });
+
+    test("multi-statement `do |x| ... end` body", fn() {
+        let log = [];
+        [1, 2, 3].each do |x|
+            let doubled = x * 2;
+            log.push(doubled);
+        end;
+        assert_eq(log[0], 2);
+        assert_eq(log[1], 4);
+        assert_eq(log[2], 6);
+    });
+
+    test("`do |params|` after parenthesized args", fn() {
+        let result = [];
+        1.upto(3) do |i| result.push(i) end;
+        assert_eq(result[0], 1);
+        assert_eq(result[2], 3);
+    });
+});

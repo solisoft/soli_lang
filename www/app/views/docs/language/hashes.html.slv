@@ -517,12 +517,13 @@ let safe = user.except(["password"])
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Swap keys and values. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {Alice: 90, Bob: 85}
-let inverted = scores.invert# {90: "Alice", 85: "Bob"}
+<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
+let inverted = scores.invert()
+print(inverted)  # {90: "Alice", 85: "Bob"}
 
-# Note: If values are not unique, later entries overwrite earlier ones
-let dupes = {a: 1, b: 1}
-print(dupes.invert());  # {1: "b"}</code></pre>
+# Note: if values are not unique, later entries overwrite earlier ones
+let dupes = {"a": 1, "b": 1}
+print(dupes.invert())  # {1: "b"}</code></pre>
                 </div>
             </section>
 
@@ -536,12 +537,13 @@ print(dupes.invert());  # {1: "b"}</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Remove entries with null values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">let user = {
-  name: "Alice",
-  age: null,
-  email: "alice@example.com",
-  phone: null
+  "name": "Alice",
+  "age": null,
+  "email": "alice@example.com",
+  "phone": null,
 }
-let cleaned = user.compact# {name: "Alice", email: "alice@example.com"}</code></pre>
+let cleaned = user.compact()
+print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                 </div>
             </section>
 
@@ -597,13 +599,13 @@ print(data.dig("user", "nonexistent", "key"));        # null (safe, no error)
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">let words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
 
-# Count occurrences
+# Count occurrences with `??=` to seed missing keys, then `+=`
 let counts = {}
-words.each(def(word)
-  let current = counts.get(word, 0)
-counts[word] = current + 1
-end)
-print(counts);  # {apple: 3, banana: 2, cherry: 1}</code></pre>
+words.each do |w|
+  counts[w] ??= 0
+  counts[w] += 1
+end
+print(counts)  # {"apple": 3, "banana": 2, "cherry": 1}</code></pre>
                 </div>
             </section>
 
@@ -616,22 +618,19 @@ print(counts);  # {apple: 3, banana: 2, cherry: 1}</code></pre>
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm">let people = [
-  {name: "Alice", department: "Engineering"},
-  {name: "Bob", department: "Sales"},
-  {name: "Charlie", department: "Engineering"}
+  {"name": "Alice",   "department": "Engineering"},
+  {"name": "Bob",     "department": "Sales"},
+  {"name": "Charlie", "department": "Engineering"},
 ]
 
-# Group by department
+# Group names by department — `??= []` seeds the bucket on first hit
 let by_dept = {}
-people.each(def(person)
-  let dept = person["department"]
-  if (!has_key(by_dept, dept))
-    by_dept[dept] = []
-  end
-  push(by_dept[dept], person["name"])
-end)
+people.each do |p|
+  by_dept[p["department"]] ??= []
+  by_dept[p["department"]].push(p["name"])
+end
 print(by_dept)
-# {Engineering: ["Alice", "Charlie"], Sales: ["Bob"]}</code></pre>
+# {"Engineering": ["Alice", "Charlie"], "Sales": ["Bob"]}</code></pre>
                 </div>
             </section>
 
@@ -658,9 +657,10 @@ let user_config = {port: 8080, debug: true}
 let config = defaults.merge(user_config)
 # {host: "localhost", port: 8080, debug: true, timeout: 30}
 
-# Safe access with defaults
-let timeout = config.get("timeout", 60)
-let retries = config.get("retries", 3);  # Uses default 3</code></pre>
+# Safe access with defaults — `.get(key)` returns null for missing keys,
+# so combine with `??` to fall back to a default.
+let timeout = config.get("timeout") ?? 60
+let retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre>
                 </div>
             </section>
         </div>

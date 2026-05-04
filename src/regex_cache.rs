@@ -70,3 +70,84 @@ pub fn get_safe_regex(pattern: &str) -> Result<Regex, String> {
     cache.put(key, re.clone());
     Ok(re)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------- get_regex ----------
+
+    #[test]
+    fn get_regex_compiles_valid_pattern() {
+        // Use a unique pattern per test to avoid relying on prior cache state.
+        let re = get_regex(r"^test_\d+$").expect("valid pattern compiles");
+        assert!(re.is_match("test_42"));
+        assert!(!re.is_match("nope"));
+    }
+
+    #[test]
+    fn get_regex_returns_invalid_pattern_error_with_prefix() {
+        // Unbalanced bracket — definitely invalid.
+        let err = get_regex("[unterminated").unwrap_err();
+        assert!(err.starts_with("invalid regex:"), "got: {err}");
+    }
+
+    #[test]
+    fn get_regex_repeated_call_returns_working_regex() {
+        // Two consecutive calls for the same pattern should both yield
+        // working regexes (the second is the cache-hit path). Pattern is
+        // unique to this test so we don't see eviction effects from
+        // unrelated parallel tests.
+        let p = r"^repeat_test_\w+$";
+        let r1 = get_regex(p).unwrap();
+        let r2 = get_regex(p).unwrap();
+        assert!(r1.is_match("repeat_test_abc"));
+        assert!(r2.is_match("repeat_test_abc"));
+    }
+
+    #[test]
+    fn get_regex_caches_independent_patterns() {
+        let a = get_regex(r"^cache_a_\d+$").unwrap();
+        let b = get_regex(r"^cache_b_\d+$").unwrap();
+        assert!(a.is_match("cache_a_1"));
+        assert!(!a.is_match("cache_b_1"));
+        assert!(b.is_match("cache_b_1"));
+        assert!(!b.is_match("cache_a_1"));
+    }
+
+    // ---------- get_safe_regex ----------
+
+    #[test]
+    fn get_safe_regex_compiles_valid_pattern() {
+        let re = get_safe_regex(r"^safe_\w+$").expect("valid pattern compiles");
+        assert!(re.is_match("safe_token"));
+        assert!(!re.is_match("nope!"));
+    }
+
+    #[test]
+    fn get_safe_regex_returns_error_with_safe_prefix() {
+        // Different prefix from the unsafe variant — let's pin it.
+        let err = get_safe_regex("(unbalanced").unwrap_err();
+        assert!(err.starts_with("Invalid regex pattern:"), "got: {err}");
+    }
+
+    #[test]
+    fn get_safe_regex_repeated_call_returns_working_regex() {
+        let p = r"^safe_repeat_\d+$";
+        let r1 = get_safe_regex(p).unwrap();
+        let r2 = get_safe_regex(p).unwrap();
+        assert!(r1.is_match("safe_repeat_99"));
+        assert!(r2.is_match("safe_repeat_99"));
+    }
+
+    #[test]
+    fn safe_and_unsafe_caches_are_distinct() {
+        // The two caches use different RegexBuilder configs, so an
+        // identical pattern lives in both independently.
+        let p = r"^both_caches_\d+$";
+        let unsafe_re = get_regex(p).unwrap();
+        let safe_re = get_safe_regex(p).unwrap();
+        assert!(unsafe_re.is_match("both_caches_1"));
+        assert!(safe_re.is_match("both_caches_1"));
+    }
+}

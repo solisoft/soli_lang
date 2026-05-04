@@ -29,13 +29,19 @@
 
 use std::cell::{Cell, RefCell};
 
+/// One captured render: `(id, parent_id, template_name, duration_us)`.
+///
+/// `parent_id` is `Some` for nested renders (a partial inside a layout),
+/// `None` for the root render of the request.
+pub type ViewEntry = (u32, Option<u32>, String, u64);
+
 thread_local! {
     // Thread-local rather than a process-wide atomic: each worker thread
     // sets its own gate at startup (see `serve::mod::set_enabled`), and
     // unit tests that flip the flag on their test thread don't leak the
     // setting into parallel tests running on other threads.
     static ENABLED: Cell<bool> = const { Cell::new(false) };
-    static LOG: RefCell<Vec<(u32, Option<u32>, String, u64)>> = const { RefCell::new(Vec::new()) };
+    static LOG: RefCell<Vec<ViewEntry>> = const { RefCell::new(Vec::new()) };
     static NEXT_ID: Cell<u32> = const { Cell::new(0) };
     // Open-render stack — pushed by `next_id`, popped by `record`. Used
     // to discover the *parent* render at record time (the new top after
@@ -96,7 +102,7 @@ pub fn record(id: u32, name: &str, dur_us: u64) {
     LOG.with(|l| l.borrow_mut().push((id, parent, name.to_string(), dur_us)));
 }
 
-pub fn snapshot() -> Vec<(u32, Option<u32>, String, u64)> {
+pub fn snapshot() -> Vec<ViewEntry> {
     LOG.with(|l| l.borrow().clone())
 }
 

@@ -2138,6 +2138,34 @@ print(result);  # 100
 print(MathUtils.calculation_count);  # 3
 ```
 
+#### Grouping static methods with `class << self`
+
+When a class has several class methods, repeating the `static` modifier on each one is noisy. Soli supports the Ruby-style singleton-class form: declare a `class << self ... end` block inside the class body and every method inside is treated as static. `def` and `fn` are interchangeable.
+
+```soli
+class MathUtils
+  class << self
+    fn square(x: Float) -> Float
+      x * x
+    end
+
+    fn cube(x: Float) -> Float
+      x * x * x
+    end
+
+    def max(a: Float, b: Float) -> Float
+      a > b ? a : b
+    end
+  end
+end
+
+print(MathUtils.square(4.0));  # 16.0
+print(MathUtils.cube(3.0));    # 27.0
+print(MathUtils.max(2.0, 7.0)); # 7.0
+```
+
+The block can sit anywhere in the class body and coexists with regular instance methods, top-level `static fn` declarations, and `static` fields. Only method declarations are allowed inside the block — fields and constants stay at the class top level (`static foo: Type = ...`).
+
 ### Complete Class Example: A Product Inventory System
 
 ```soli
@@ -2681,28 +2709,33 @@ fn subtract(a: Int, b: Int) -> Int { a - b }
 fn divide(a: Int, b: Int) -> Int { int(a / b) }
 
 let calc = 100
-  |> fn(x) { subtract(x, 10) }()
-  |> fn(x) { divide(x, 3) }()
-  |> fn(x) { multiply(x, 4) }();
+  |> |x| { subtract(x, 10) }()
+  |> |x| { divide(x, 3) }()
+  |> |x| { multiply(x, 4) }();
 print(calc);  # ((100 - 10) / 3) * 4 = 120
 ```
 
 ### Pipeline with Collection Methods
 
+Iteration over arrays uses method chaining (`.map`, `.filter`, `.reduce`, `.each`). Lambdas are most concise in pipe form — `|x| x + 1` — but `fn(x) x + 1` works too.
+
 ```soli
 let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-# Method chaining with pipeline
-let result = numbers
-  .filter(fn(x) x % 2 == 0)
-  .map(fn(x) x * x)
-  .each(fn(x) print(x));
+# Method chaining with pipe lambdas
+let evens_squared = numbers
+  .filter(|x| x % 2 == 0)
+  .map(|x| x * x);
+print(evens_squared);  # [4, 16, 36, 64, 100]
 
-# Equivalent using pipeline
-let result2 = numbers
-  |> filter(fn(x) x % 2 == 0)
-  |> map(fn(x) x * x)
-  |> each(fn(x) print(x));
+# Reduce with two parameters
+let sum_of_evens = numbers
+  .filter(|x| x % 2 == 0)
+  .reduce(|acc, x| acc + x, 0);
+print(sum_of_evens);  # 30
+
+# `.each` for side effects
+numbers.filter(|x| x > 5).each(|x| print(x));
 ```
 
 ### Real-World Pipeline Examples
@@ -2711,7 +2744,7 @@ let result2 = numbers
 # Data processing pipeline
 fn process_user_data(raw_data: Hash) -> Hash {
   raw_data
-    |> fn(d) { d["sanitized_email"] = d["email"].lower().trim(); d }()
+    |> |d| { d["sanitized_email"] = d["email"].lower().trim(); d }()
     |> validate_user()
     |> enrich_profile()
     |> calculate_metrics()
@@ -2729,10 +2762,10 @@ fn fetch_and_process(url: String) -> Hash {
 # String transformation pipeline
 fn format_filename(filename: String) -> String {
   filename
-    |> fn(s) { s.lower() }()
-    |> fn(s) { s.replace(" ", "_") }()
-    |> fn(s) { s.replace("-", "_") }()
-    |> fn(s) { s + ".txt" }()
+    |> |s| { s.lower() }()
+    |> |s| { s.replace(" ", "_") }()
+    |> |s| { s.replace("-", "_") }()
+    |> |s| { s + ".txt" }()
 }
 
 print(format_filename("My Document"));  # "my_document.txt"
@@ -2741,20 +2774,20 @@ print(format_filename("My Document"));  # "my_document.txt"
 ### Inline Transformations
 
 ```soli
-# Using inline functions for transformations
+# Inline transformations on arrays use method chaining + pipe lambdas
 let numbers = [1, 2, 3, 4, 5];
 
 let result = numbers
-  |> map(fn(x) x * 2)
-  |> filter(fn(x) x > 4)
-  |> reduce(fn(acc, x) acc + x, 0);
+  .map(|x| x * 2)
+  .filter(|x| x > 4)
+  .reduce(|acc, x| acc + x, 0);
 
 print(result);  # 18 (6+8+10)
 
 # Fetch and process user with async pipeline
 fn get_user_data(user_id: Int) -> Hash {
   user_id
-    |> fn(id) { {"id": id} }()
+    |> |id| { {"id": id} }()
     |> fetch_from_db()
     |> enrich_with_permissions()
     |> cache_result()
@@ -2768,8 +2801,8 @@ let sales_data = [
 ];
 
 let total_revenue = sales_data
-  |> map(fn(sale) sale["quantity"] * sale["price"])
-  |> reduce(fn(acc, rev) acc + rev, 0);
+  .map(|sale| sale["quantity"] * sale["price"])
+  .reduce(|acc, rev| acc + rev, 0);
 
 print("Total Revenue: $" + str(total_revenue));  # $2750
 ```
