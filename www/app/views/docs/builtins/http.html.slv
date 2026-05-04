@@ -300,11 +300,32 @@ resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</code></
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
 ])</code></pre>
+            </div>
+        </section>
+
+        <section id="def-http-get-all-json" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-http-get-all-json" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all_json(urls)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel and parse each body as JSON. Failed requests, non-2xx responses, or unparseable bodies appear as <code>{"error": ...}</code> hashes.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all_json([
+  "https://api.example.com/users.json",
+  "https://api.example.com/posts.json"
+])
+
+users = responses[0]
+if users.has_key("error") {
+  print("users failed: " + users["error"])
+}</code></pre>
             </div>
         </section>
 

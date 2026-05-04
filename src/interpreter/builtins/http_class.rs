@@ -13,6 +13,7 @@
 //! - HTTP.patch_json(url, data) -> Future<Value>
 //! - HTTP.request(method, url, options?, body?) -> Future<HTTPResponse>
 //! - HTTP.get_all(urls) -> Array<Future<String>>
+//! - HTTP.get_all_json(urls) -> Array<Future<Value>>
 //! - HTTP.parallel(requests) -> Array<Future<HTTPResponse>>
 //!
 //! Also provides helpers for working with HTTP responses.
@@ -1162,6 +1163,47 @@ pub fn register_http_class(env: &mut Environment) {
     );
 
     http_static_methods.insert(
+        "get_all_json".to_string(),
+        Rc::new(NativeFunction::new("HTTP.get_all_json", Some(1), |args| {
+            let urls = match &args[0] {
+                Value::Array(arr) => {
+                    let mut url_strings = Vec::new();
+                    for item in arr.borrow().iter() {
+                        match item {
+                            Value::String(s) => url_strings.push(s.clone()),
+                            other => {
+                                return Err(format!(
+                                    "HTTP.get_all_json() expects array of strings, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        }
+                    }
+                    url_strings
+                }
+                other => {
+                    return Err(format!(
+                        "HTTP.get_all_json() expects array of URLs, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+
+            let results = run_parallel_gets_json(urls);
+
+            let values: Vec<Value> = results
+                .into_iter()
+                .map(|r| match r {
+                    Ok(value) => value,
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                })
+                .collect();
+
+            Ok(Value::Array(Rc::new(RefCell::new(values))))
+        })),
+    );
+
+    http_static_methods.insert(
         "parallel".to_string(),
         Rc::new(NativeFunction::new("HTTP.parallel", Some(1), |args| {
             let requests = match &args[0] {
@@ -1323,28 +1365,162 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
     }
 }
 
+/// Per-call timing+status snapshot captured on the worker thread so the
+/// main thread can replay it into the dev-bar logs after `join()`. Both
+/// `http_log` and `span_log` are thread-local, so logging from the worker
+/// directly would write into a never-read store.
+struct ParallelCallStats {
+    method: String,
+    url: String,
+    start: std::time::Instant,
+    duration_ms: f64,
+    status: u16,
+    error: Option<String>,
+}
+
+fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
+    if !crate::interpreter::builtins::http_log::is_enabled()
+        && !crate::serve::span_log::is_enabled()
+    {
+        return;
+    }
+    for s in stats {
+        crate::interpreter::builtins::http_log::record_with_start(
+            s.method,
+            s.url,
+            s.status,
+            s.duration_ms,
+            s.error,
+            s.start,
+        );
+    }
+}
+
 fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
     let handles: Vec<_> = urls
         .into_iter()
         .map(|url| {
-            thread::spawn(move || match ureq::get(&url).call() {
-                Ok(response) => response
-                    .into_string()
-                    .map_err(|e| format!("Failed to read response: {}", e)),
-                Err(ureq::Error::Status(code, response)) => {
-                    let body = response.into_string().unwrap_or_default();
-                    Err(format!("HTTP {} error: {}", code, body))
-                }
-                Err(e) => Err(format!("Request failed: {}", e)),
+            thread::spawn(move || {
+                let start = std::time::Instant::now();
+                let (status, body) = match ureq::get(&url).call() {
+                    Ok(response) => {
+                        let status = response.status();
+                        let body = response
+                            .into_string()
+                            .map_err(|e| format!("Failed to read response: {}", e));
+                        (status, body)
+                    }
+                    Err(ureq::Error::Status(code, response)) => {
+                        let body = response.into_string().unwrap_or_default();
+                        (code, Err(format!("HTTP {} error: {}", code, body)))
+                    }
+                    Err(e) => (0, Err(format!("Request failed: {}", e))),
+                };
+                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                let stats = ParallelCallStats {
+                    method: "GET".to_string(),
+                    url,
+                    start,
+                    duration_ms,
+                    status,
+                    error: body.as_ref().err().cloned(),
+                };
+                (body, stats)
             })
         })
         .collect();
 
-    handles
+    let joined: Vec<_> = handles
         .into_iter()
         .map(|h| {
-            h.join()
-                .unwrap_or_else(|_| Err("Thread panicked".to_string()))
+            h.join().unwrap_or_else(|_| {
+                (
+                    Err("Thread panicked".to_string()),
+                    ParallelCallStats {
+                        method: "GET".to_string(),
+                        url: String::new(),
+                        start: std::time::Instant::now(),
+                        duration_ms: 0.0,
+                        status: 0,
+                        error: Some("Thread panicked".to_string()),
+                    },
+                )
+            })
+        })
+        .collect();
+
+    let (results, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
+    record_parallel_stats(stats);
+    results
+}
+
+fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
+    // Fetch bodies on worker threads, then parse JSON on the main thread —
+    // `Value` is `!Send` (contains Rc), so JSON parsing can't happen inside
+    // the spawned threads.
+    let handles: Vec<_> = urls
+        .into_iter()
+        .map(|url| {
+            thread::spawn(move || {
+                let start = std::time::Instant::now();
+                let (status, body) = match ureq::get(&url).set("Accept", "application/json").call()
+                {
+                    Ok(response) => {
+                        let status = response.status();
+                        let body = response
+                            .into_string()
+                            .map_err(|e| format!("Failed to read response: {}", e));
+                        (status, body)
+                    }
+                    Err(ureq::Error::Status(code, response)) => {
+                        let body = response.into_string().unwrap_or_default();
+                        (code, Err(format!("HTTP {} error: {}", code, body)))
+                    }
+                    Err(e) => (0, Err(format!("Request failed: {}", e))),
+                };
+                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                let stats = ParallelCallStats {
+                    method: "GET".to_string(),
+                    url,
+                    start,
+                    duration_ms,
+                    status,
+                    error: body.as_ref().err().cloned(),
+                };
+                (body, stats)
+            })
+        })
+        .collect();
+
+    let joined: Vec<_> = handles
+        .into_iter()
+        .map(|h| {
+            h.join().unwrap_or_else(|_| {
+                (
+                    Err("Thread panicked".to_string()),
+                    ParallelCallStats {
+                        method: "GET".to_string(),
+                        url: String::new(),
+                        start: std::time::Instant::now(),
+                        duration_ms: 0.0,
+                        status: 0,
+                        error: Some("Thread panicked".to_string()),
+                    },
+                )
+            })
+        })
+        .collect();
+
+    let (bodies, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
+    record_parallel_stats(stats);
+
+    bodies
+        .into_iter()
+        .map(|body_result| {
+            let body = body_result?;
+            let json: serde_json::Value =
+                serde_json::from_str(&body).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+            json_to_value(json)
         })
         .collect()
 }
@@ -1352,16 +1528,52 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
 fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpResponse, String>> {
     let handles: Vec<_> = requests
         .into_iter()
-        .map(|config| thread::spawn(move || execute_request(config)))
+        .map(|config| {
+            thread::spawn(move || {
+                let method = config.method.clone();
+                let url = config.url.clone();
+                let start = std::time::Instant::now();
+                let result = execute_request(config);
+                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                let (status, error) = match &result {
+                    Ok(resp) => (resp.status, None),
+                    Err(e) => (0, Some(e.clone())),
+                };
+                let stats = ParallelCallStats {
+                    method,
+                    url,
+                    start,
+                    duration_ms,
+                    status,
+                    error,
+                };
+                (result, stats)
+            })
+        })
         .collect();
 
-    handles
+    let joined: Vec<_> = handles
         .into_iter()
         .map(|h| {
-            h.join()
-                .unwrap_or_else(|_| Err("Thread panicked".to_string()))
+            h.join().unwrap_or_else(|_| {
+                (
+                    Err("Thread panicked".to_string()),
+                    ParallelCallStats {
+                        method: String::new(),
+                        url: String::new(),
+                        start: std::time::Instant::now(),
+                        duration_ms: 0.0,
+                        status: 0,
+                        error: Some("Thread panicked".to_string()),
+                    },
+                )
+            })
         })
-        .collect()
+        .collect();
+
+    let (results, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
+    record_parallel_stats(stats);
+    results
 }
 
 fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
@@ -1446,4 +1658,132 @@ fn response_to_value(response: HttpResponse) -> Value {
     );
 
     Value::Hash(Rc::new(RefCell::new(result)))
+}
+
+#[cfg(test)]
+mod parallel_logging_tests {
+    use super::*;
+    use crate::interpreter::builtins::http_log;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn spawn_mock_server() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                thread::spawn(move || {
+                    let mut s = stream;
+                    let mut buf = [0u8; 4096];
+                    let mut total = Vec::new();
+                    loop {
+                        let n = s.read(&mut buf).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        total.extend_from_slice(&buf[..n]);
+                        if total.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                        if total.len() > 64 * 1024 {
+                            break;
+                        }
+                    }
+                    let body = b"{\"ok\":true}";
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = s.write_all(resp.as_bytes());
+                    let _ = s.write_all(body);
+                });
+            }
+        });
+        port
+    }
+
+    /// Bundles all three parallel-helper checks into one test so we don't
+    /// race on the process-global `http_log::ENABLED` flag with concurrent
+    /// tests.
+    #[test]
+    fn parallel_helpers_record_to_http_log() {
+        let port = spawn_mock_server();
+        let url = |p: &str| format!("http://127.0.0.1:{}{}", port, p);
+
+        http_log::set_enabled(true);
+
+        // get_all
+        http_log::clear();
+        let urls = vec![url("/a"), url("/b"), url("/c")];
+        let _ = run_parallel_gets(urls.clone());
+        let snap = http_log::snapshot();
+        assert_eq!(snap.len(), 3, "get_all should record 3 entries");
+        for (i, entry) in snap.iter().enumerate() {
+            assert_eq!(entry.method, "GET");
+            assert_eq!(entry.status, 200);
+            assert!(entry.error.is_none());
+            assert_eq!(entry.url, urls[i]);
+        }
+
+        // get_all_json
+        http_log::clear();
+        let urls = vec![url("/x"), url("/y")];
+        let _ = run_parallel_gets_json(urls.clone());
+        let snap = http_log::snapshot();
+        assert_eq!(snap.len(), 2, "get_all_json should record 2 entries");
+        for (i, entry) in snap.iter().enumerate() {
+            assert_eq!(entry.method, "GET");
+            assert_eq!(entry.status, 200);
+            assert_eq!(entry.url, urls[i]);
+        }
+
+        // parallel (mixed methods)
+        http_log::clear();
+        let configs = vec![
+            RequestConfig {
+                method: "GET".to_string(),
+                url: url("/g"),
+                headers: vec![],
+                body: None,
+            },
+            RequestConfig {
+                method: "POST".to_string(),
+                url: url("/p"),
+                headers: vec![],
+                body: Some("{}".to_string()),
+            },
+        ];
+        let _ = run_parallel_requests(configs);
+        let snap = http_log::snapshot();
+        assert_eq!(snap.len(), 2, "parallel should record 2 entries");
+        assert_eq!(snap[0].method, "GET");
+        assert_eq!(snap[1].method, "POST");
+        assert_eq!(snap[0].status, 200);
+        assert_eq!(snap[1].status, 200);
+
+        // Errors: no listener at the chosen port → status 0, error populated.
+        http_log::clear();
+        let dead_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_port = dead_listener.local_addr().unwrap().port();
+        drop(dead_listener);
+        let _ = run_parallel_gets(vec![format!("http://127.0.0.1:{}/", dead_port)]);
+        let snap = http_log::snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].status, 0);
+        assert!(snap[0].error.is_some());
+
+        // Disabled mode: same thread, same TLS LOG — recording must
+        // short-circuit when neither dev log is enabled.
+        http_log::set_enabled(false);
+        http_log::clear();
+        let _ = run_parallel_gets(vec![url("/d1"), url("/d2")]);
+        let snap = http_log::snapshot();
+        assert_eq!(
+            snap.len(),
+            0,
+            "calls must not be logged when http_log is disabled"
+        );
+
+        http_log::clear();
+    }
 }

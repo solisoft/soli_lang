@@ -772,7 +772,7 @@ Performs multiple GET requests in parallel.
 **Parameters:**
 - `urls` (Array) - Array of URLs to fetch
 
-**Returns:** Array - Array of response objects
+**Returns:** Array - Array of response bodies as strings (or `{"error": ...}` hashes for failed requests)
 
 **Example:**
 ```soli
@@ -780,6 +780,29 @@ responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
 ])
+```
+
+### HTTP.get_all_json(urls)
+
+Performs multiple GET requests in parallel and parses each response body as JSON. Equivalent to mapping `HTTP.get_json` over an array of URLs, but executed concurrently.
+
+**Parameters:**
+- `urls` (Array) - Array of URLs to fetch
+
+**Returns:** Array - Array of parsed JSON values (or `{"error": ...}` hashes for failed requests / non-2xx responses / unparseable bodies)
+
+**Example:**
+```soli
+responses = HTTP.get_all_json([
+  "https://api.example.com/users.json",
+  "https://api.example.com/posts.json"
+])
+
+users = responses[0]
+posts = responses[1]
+if posts.has_key("error") {
+  print("posts failed: " + posts["error"])
+}
 ```
 
 ### HTTP.parallel(requests)

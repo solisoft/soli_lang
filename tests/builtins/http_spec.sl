@@ -30,4 +30,27 @@ describe("HTTP", fn() {
         let response = HTTP.request("GET", base + "/get", {});
         assert(response.len() > 0);
     });
+
+    test("HTTP.get_all fetches multiple URLs in parallel as raw text", fn() {
+        let urls = [base + "/a", base + "/b", base + "/c"];
+        let responses = HTTP.get_all(urls);
+        assert_eq(responses.len(), 3);
+        for r in responses {
+            assert_eq(r, "{\"ok\":true}");
+        }
+    });
+
+    test("HTTP.get_all_json fetches multiple URLs in parallel and parses JSON", fn() {
+        let urls = [base + "/a", base + "/b", base + "/c"];
+        let responses = HTTP.get_all_json(urls);
+        assert_eq(responses.len(), 3);
+        for r in responses {
+            assert_eq(r["ok"], true);
+        }
+    });
+
+    test("HTTP.get_all_json returns empty array for empty input", fn() {
+        let responses = HTTP.get_all_json([]);
+        assert_eq(responses.len(), 0);
+    });
 });
