@@ -179,7 +179,8 @@ SOLIDB_DATABASE=myapp_development</code></pre>
 
     <section class="mb-12">
         <h2 class="text-2xl font-bold text-white mb-6">Runtime Overrides</h2>
-        <p class="text-gray-400 mb-4">The hardening knobs above also have function equivalents that override the env-driven default at runtime — useful when a single action needs a different limit, or when test setup needs to flip the gate without re-reading the environment:</p>
+        <p class="text-gray-400 mb-4">The hardening knobs above also have function equivalents that override the env-driven default at runtime — useful when a single action needs a different limit, or when test setup needs to flip the gate without re-reading the environment.</p>
+        <p class="text-gray-400 mb-4">Soli loads <code>config/application.sl</code> once at boot, before <code>config/routes.sl</code>, which makes it the natural place for app-wide startup config:</p>
         <pre data-filename="config/application.sl"><code class="language-soli text-sm"># Trust X-Forwarded-* only behind a trusted proxy.
 enable_trust_proxy()
 

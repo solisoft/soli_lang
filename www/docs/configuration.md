@@ -108,9 +108,14 @@ These are normally set by Soli tooling rather than by applications.
 The hardening knobs above also have function equivalents that override the
 env-driven default at runtime. Useful when a single action needs a different
 limit, or when test setup needs to flip the gate without re-reading the
-environment:
+environment.
+
+Soli loads `config/application.sl` once at boot, before `config/routes.sl`,
+which makes it the natural place for app-wide startup config:
 
 ```soli
+# config/application.sl
+
 # Trust X-Forwarded-* only behind a trusted proxy.
 enable_trust_proxy()
 

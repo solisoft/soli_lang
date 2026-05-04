@@ -446,6 +446,16 @@ pub fn serve_folder_with_options_and_workers(
     // Set live reload flag for template injection (only in dev mode)
     live_reload::set_live_reload_enabled(dev_mode);
 
+    // Load app-level startup config from config/application.sl if it exists.
+    // Runs before routes so calls like `enable_trust_proxy()` or
+    // `set_max_body_size(...)` are in effect by the time the first request
+    // is handled.
+    let application_file = folder.join("config").join("application.sl");
+    if application_file.exists() {
+        execute_file(&mut interpreter, &application_file)?;
+    }
+    boot_trace("application config loaded");
+
     // Load routes from config/routes.sl if it exists
     let routes_file = folder.join("config").join("routes.sl");
     if routes_file.exists() {
