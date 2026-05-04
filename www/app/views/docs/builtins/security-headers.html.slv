@@ -6,6 +6,9 @@
         <p class="text-xl text-gray-300 leading-8">
             Automatic security header injection for HTTP responses. Protect your application from common web vulnerabilities with CSP, HSTS, X-Frame-Options, and more.
         </p>
+        <p class="text-sm text-gray-500 mt-4">
+            Part of the production-edge defaults. See also: <a href="/docs/builtins/hardening" class="text-indigo-400 hover:text-indigo-300 transition-colors">Server Hardening</a> (trust-proxy &amp; body-size cap).
+        </p>
     </div>
 
     <!-- enable_security_headers -->

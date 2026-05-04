@@ -10,6 +10,19 @@ use uuid::Uuid;
 
 use super::session::SessionStore;
 
+/// Reject session IDs that could escape the session directory or contain
+/// unexpected bytes. UUIDs (the only IDs we generate) consist of hex digits and
+/// dashes, so this allowlist passes them through while blocking `/`, `\`, `..`,
+/// null bytes, and any other path-shaping characters that could be smuggled in
+/// via the `session_id` cookie.
+fn is_safe_session_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct SessionFile {
     data: HashMap<String, JsonValue>,
@@ -62,26 +75,33 @@ impl DiskSessionStore {
         })
     }
 
-    fn session_path(&self, session_id: &str) -> PathBuf {
-        self.session_dir.join(format!("{}.json", session_id))
+    fn session_path(&self, session_id: &str) -> Option<PathBuf> {
+        if !is_safe_session_id(session_id) {
+            return None;
+        }
+        Some(self.session_dir.join(format!("{}.json", session_id)))
     }
 
     fn load_session(&self, session_id: &str) -> Option<SessionFile> {
-        let path = self.session_path(session_id);
+        let path = self.session_path(session_id)?;
         fs::read_to_string(&path)
             .ok()
             .and_then(|content| serde_json::from_str(&content).ok())
     }
 
     fn save_session(&self, session_id: &str, session: &SessionFile) -> std::io::Result<()> {
-        let path = self.session_path(session_id);
+        let path = self.session_path(session_id).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid session id")
+        })?;
         let content = serde_json::to_string_pretty(session)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         fs::write(path, content)
     }
 
     fn delete_session_file(&self, session_id: &str) -> std::io::Result<()> {
-        let path = self.session_path(session_id);
+        let Some(path) = self.session_path(session_id) else {
+            return Ok(());
+        };
         if path.exists() {
             fs::remove_file(path)
         } else {
@@ -346,6 +366,61 @@ mod tests {
     }
 
     #[test]
+    fn rejects_path_traversal_in_session_id() {
+        let dir = tempdir().unwrap();
+        let store = DiskSessionStore::new(dir.path().to_path_buf()).unwrap();
+
+        // Plant a sentinel file outside the session dir; if traversal worked,
+        // destroy() would unlink it.
+        let outside = dir.path().parent().unwrap().join("sentinel.json");
+        std::fs::write(&outside, "{}").unwrap();
+
+        // Build the relative traversal that lands on the sentinel:
+        //   <session_dir>/<traverse>.json -> <parent>/sentinel.json
+        let parent_name = dir.path().file_name().unwrap().to_str().unwrap();
+        let traversal = format!("../{}/../sentinel", parent_name);
+
+        assert!(store.session_path(&traversal).is_none());
+        store.destroy(&traversal);
+        assert!(
+            outside.exists(),
+            "destroy must not delete files outside the session dir"
+        );
+
+        // Other suspect inputs all map to None (no path constructed).
+        for bad in [
+            "../etc/passwd",
+            "..\\windows\\system32",
+            "/etc/passwd",
+            "abc/def",
+            "abc\0def",
+            "",
+        ] {
+            assert!(
+                store.session_path(bad).is_none(),
+                "should reject: {:?}",
+                bad
+            );
+        }
+
+        // get_or_create with a bad id falls back to a fresh UUID.
+        let new_id = store.get_or_create("../escape");
+        assert_ne!(new_id, "../escape");
+        assert!(is_safe_session_id(&new_id));
+
+        // set/delete on a bad id are no-ops, no file written.
+        store.set("../escape", "k", JsonValue::String("v".into()));
+        store.delete("../escape", "k");
+        assert!(!outside.with_file_name("escape.json").exists());
+
+        // regenerate with a bad old_id still returns a fresh, safe id and
+        // doesn't touch anything outside the session dir.
+        let regen_id = store.regenerate("../escape");
+        assert!(is_safe_session_id(&regen_id));
+        assert!(outside.exists());
+    }
+
+    #[test]
     fn test_disk_session_destroy_removes_file() {
         let dir = tempdir().unwrap();
         let store = DiskSessionStore::new(dir.path().to_path_buf()).unwrap();
@@ -353,7 +428,7 @@ mod tests {
         let session_id = store.create_session();
         store.set(&session_id, "data", JsonValue::String("value".to_string()));
 
-        let path = store.session_path(&session_id);
+        let path = store.session_path(&session_id).expect("valid session id");
         assert!(path.exists(), "Session file should exist before destroy");
 
         store.destroy(&session_id);

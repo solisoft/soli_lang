@@ -3399,6 +3399,87 @@ Gets the current security headers configuration.
 
 ---
 
+## Trust Proxy
+
+Controls whether the server honors `X-Forwarded-Proto` and `X-Forwarded-Host`
+on incoming requests. These headers govern two security-sensitive decisions:
+
+- The `Secure` flag on the session cookie (set when the request scheme is
+  `https`).
+- The host portion of `*_url` named-route helpers (used to build absolute
+  URLs in emails, redirects, etc.).
+
+**By default, trust-proxy is OFF.** A request reaching the Soli process
+directly cannot influence either decision via these headers — the cookie
+`Secure` flag stays off and `*_url` falls back to the `Host` header.
+This is the safe default for a directly-exposed deployment.
+
+Enable trust-proxy only when your deployment terminates TLS at a trusted
+proxy hop (Caddy, nginx, ALB, etc.) **and** that proxy is configured to
+strip inbound `X-Forwarded-*` headers from clients before adding its own.
+
+### enable_trust_proxy()
+
+Enables honoring of `X-Forwarded-Proto` and `X-Forwarded-Host`.
+
+**Returns:** Bool
+
+**Example:**
+```soli
+# config/application.sl
+enable_trust_proxy()
+```
+
+### disable_trust_proxy()
+
+Restores the safe default: ignore `X-Forwarded-*` headers.
+
+**Returns:** Bool
+
+### trust_proxy_enabled()
+
+Returns whether trust-proxy is currently on.
+
+**Returns:** Bool
+
+---
+
+## Request Body Limit
+
+Caps the size of incoming request bodies to prevent memory-exhaustion DoS.
+The cap applies to every non-GET/HEAD request: the server short-circuits to
+**413 Payload Too Large** either via the `Content-Length` header (no bytes
+read) or mid-stream once the running total crosses the limit (catches
+chunked uploads that don't declare a length).
+
+The default limit is **8 MiB** (8 × 1024 × 1024 bytes). Apps that accept
+larger uploads — e.g. document upload, image processing — should raise it
+explicitly, ideally only on routes that need it (via per-action checks)
+rather than globally.
+
+### set_max_body_size(bytes)
+
+Sets the maximum buffered request body size, in bytes.
+
+**Parameters:**
+- `bytes` (Int) - New limit in bytes (must be non-negative)
+
+**Returns:** Int - the value just set
+
+**Example:**
+```soli
+# config/application.sl
+set_max_body_size(32 * 1024 * 1024)  # 32 MiB cap for file uploads
+```
+
+### max_body_size()
+
+Returns the current limit in bytes.
+
+**Returns:** Int
+
+---
+
 ## File Upload Functions
 
 Parse multipart form data and upload files to SolidB.

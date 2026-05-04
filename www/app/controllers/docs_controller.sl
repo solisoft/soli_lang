@@ -338,6 +338,10 @@ fn builtins_security_headers(req)
     render_docs("docs/builtins/security-headers", "Security Headers Functions", "builtins", "security_headers")
 end
 
+fn builtins_hardening(req)
+    render_docs("docs/builtins/hardening", "Server Hardening", "builtins", "hardening")
+end
+
 fn builtins_upload(req)
     render_docs("docs/builtins/upload", "File Upload Functions", "builtins", "upload")
 end

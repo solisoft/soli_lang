@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use crate::interpreter::builtins::template::inject_template_helpers;
 use crate::interpreter::value::json_to_value_ref;
+use crate::template::is_safe_template_name;
 use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
 use uuid::Uuid;
@@ -130,6 +131,10 @@ pub fn get_counter_component() -> Result<ComponentInstance, String> {
 /// Render a component and return its HTML.
 /// Supports .slv and .html.slv extensions (new), with backward compat for .sliv and .html.erb.
 pub fn render_component(component_name: &str, state: &JsonValue) -> Result<String, String> {
+    if !is_safe_template_name(component_name) {
+        return Err(format!("Invalid component name: {}", component_name));
+    }
+
     let app_root = get_app_root();
 
     // Try .html.slv first (new), then .slv, then fall back to .html.erb and .sliv (backward compat)
@@ -169,4 +174,56 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
 
     // Render using the existing template renderer
     render_nodes(&nodes, &data, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// `render_component` is the only path-touching entry; gate it against
+    /// the component name leaving `app/views/live/`.
+    #[test]
+    fn render_component_rejects_path_traversal() {
+        let dir = tempdir().unwrap();
+        let live = dir.path().join("app/views/live");
+        fs::create_dir_all(&live).unwrap();
+
+        // Plant a sibling file with one of the recognised suffixes outside
+        // the live dir; if traversal worked, render_component would happily
+        // read and parse it.
+        let secret = dir.path().join("app/views/secret.html.slv");
+        fs::create_dir_all(secret.parent().unwrap()).unwrap();
+        fs::write(&secret, "<h1>secret</h1>").unwrap();
+
+        // And a real component to confirm the legitimate path still works.
+        fs::write(live.join("ok.html.slv"), "<h1>ok</h1>").unwrap();
+
+        set_app_root(dir.path().to_path_buf());
+
+        // Sanity: the legitimate name still renders.
+        assert!(render_component("ok", &json!({})).is_ok());
+
+        for bad in [
+            "../secret",
+            "../../app/views/secret",
+            "..",
+            "/etc/passwd",
+            "./secret",
+            "",
+            "foo\0bar",
+            "foo\\..\\secret",
+        ] {
+            let err = render_component(bad, &json!({}))
+                .expect_err(&format!("expected rejection for {:?}", bad));
+            assert!(
+                err.contains("Invalid component name") || err.contains("not found"),
+                "unexpected error for {:?}: {}",
+                bad,
+                err
+            );
+        }
+    }
 }

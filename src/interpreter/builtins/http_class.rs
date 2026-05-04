@@ -1148,6 +1148,10 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             };
 
+            for u in &urls {
+                validate_url_for_ssrf(u)?;
+            }
+
             let results = run_parallel_gets(urls);
 
             let values: Vec<Value> = results
@@ -1189,6 +1193,10 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             };
 
+            for u in &urls {
+                validate_url_for_ssrf(u)?;
+            }
+
             let results = run_parallel_gets_json(urls);
 
             let values: Vec<Value> = results
@@ -1222,6 +1230,10 @@ pub fn register_http_class(env: &mut Environment) {
                     ))
                 }
             };
+
+            for c in &requests {
+                validate_url_for_ssrf(&c.url)?;
+            }
 
             let results = run_parallel_requests(requests);
 
@@ -1658,6 +1670,67 @@ fn response_to_value(response: HttpResponse) -> Value {
     );
 
     Value::Hash(Rc::new(RefCell::new(result)))
+}
+
+#[cfg(test)]
+mod parallel_ssrf_tests {
+    use super::*;
+
+    fn http_static(name: &str) -> Rc<NativeFunction> {
+        let mut env = Environment::new();
+        register_http_class(&mut env);
+        match env.get("HTTP").expect("HTTP class registered") {
+            Value::Class(c) => c
+                .native_static_methods
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| panic!("HTTP.{} not registered", name)),
+            other => panic!("HTTP is not a Class: {:?}", other),
+        }
+    }
+
+    fn arr(items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(items)))
+    }
+
+    /// `file://` is rejected by the scheme guard regardless of APP_ENV, so this
+    /// test exercises the parallel-helper SSRF check without depending on the
+    /// localhost bypass that `soli test` enables.
+    #[test]
+    fn get_all_rejects_blocked_scheme() {
+        let f = http_static("get_all");
+        let err = (f.func)(vec![arr(vec![Value::String(
+            "file:///etc/passwd".to_string(),
+        )])])
+        .expect_err("get_all should reject file:// URLs");
+        assert!(err.contains("not allowed"), "got: {}", err);
+    }
+
+    #[test]
+    fn get_all_json_rejects_blocked_scheme() {
+        let f = http_static("get_all_json");
+        let err = (f.func)(vec![arr(vec![
+            Value::String("https://example.com/ok".to_string()),
+            Value::String("gopher://internal/".to_string()),
+        ])])
+        .expect_err("get_all_json should reject gopher:// URLs");
+        assert!(err.contains("not allowed"), "got: {}", err);
+    }
+
+    #[test]
+    fn parallel_rejects_blocked_scheme_in_config() {
+        let f = http_static("parallel");
+        let cfg = {
+            let mut h = HashPairs::default();
+            h.insert(
+                HashKey::String("url".to_string()),
+                Value::String("ftp://internal/etc/passwd".to_string()),
+            );
+            Value::Hash(Rc::new(RefCell::new(h)))
+        };
+        let err = (f.func)(vec![arr(vec![cfg])]).expect_err("parallel should reject ftp:// URLs");
+        assert!(err.contains("not allowed"), "got: {}", err);
+    }
 }
 
 #[cfg(test)]

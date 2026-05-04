@@ -65,6 +65,19 @@ use std::time::{Duration, Instant};
 /// since that baseline, plus the delta from the previous call.
 static BOOT_START: OnceLock<Instant> = OnceLock::new();
 static BOOT_LAST: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+static DEV_REPL_AUTH_TOKEN: OnceLock<String> = OnceLock::new();
+
+fn dev_repl_auth_token() -> &'static str {
+    DEV_REPL_AUTH_TOKEN
+        .get_or_init(|| Uuid::new_v4().to_string())
+        .as_str()
+}
+
+fn dev_repl_allows_remote() -> bool {
+    std::env::var("SOLI_DEV_REPL_ALLOW_REMOTE")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+}
 
 fn boot_trace(phase: &str) {
     if std::env::var("SOLI_TRACE_BOOT").is_err() {
@@ -88,6 +101,7 @@ use futures_util::SinkExt;
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
 use http_body_util::Full;
+use http_body_util::Limited;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -600,7 +614,7 @@ fn run_hyper_server_worker_pool(
             let _ = bound_port_tx.send(try_port);
 
             loop {
-                let (stream, _) = match listener.accept().await {
+                let (stream, peer_addr) = match listener.accept().await {
                     Ok(conn) => conn,
                     Err(_) => continue,
                 };
@@ -642,6 +656,7 @@ fn run_hyper_server_worker_pool(
                                 ws_event_tx,
                                 lv_event_tx,
                                 dev_mode,
+                                peer_addr,
                             )
                             .await
                         }
@@ -1577,6 +1592,7 @@ async fn handle_hyper_request(
     ws_event_tx: channel::Sender<WebSocketEventData>,
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
+    peer_addr: SocketAddr,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     let method: Cow<'static, str> = match *req.method() {
         hyper::Method::GET => Cow::Borrowed("GET"),
@@ -1595,6 +1611,9 @@ async fn handle_hyper_request(
     if hyper_tungstenite::is_upgrade_request(&req) {
         // Handle live reload WebSocket endpoint
         if path == "/__livereload_ws" {
+            if !websocket_origin_allowed(req.headers()) {
+                return Ok(forbidden_websocket_origin_response());
+            }
             if let Some(ref tx) = reload_tx {
                 return live_reload_ws::handle_live_reload_websocket(req, tx.subscribe()).await;
             } else {
@@ -1608,6 +1627,10 @@ async fn handle_hyper_request(
 
         // Handle LiveView WebSocket endpoint
         if path == "/live/socket" || path.starts_with("/live/socket/") {
+            if !websocket_origin_allowed(req.headers()) {
+                return Ok(forbidden_websocket_origin_response());
+            }
+
             // Extract component name from path
             let component = if path == "/live/socket" {
                 "counter".to_string()
@@ -2075,7 +2098,7 @@ async fn handle_hyper_request(
     if dev_mode {
         // REPL endpoint
         if path == "/__dev/repl" && method == "POST" {
-            return handle_dev_repl(req).await;
+            return handle_dev_repl(req, peer_addr).await;
         }
         // Source code endpoint
         if path == "/__dev/source" && method == "GET" {
@@ -2115,15 +2138,46 @@ async fn handle_hyper_request(
     // moved into `RequestData`.
     let if_none_match = headers.get("if-none-match").cloned();
 
-    // Read body - skip for GET/HEAD requests (usually empty)
+    // Read body - skip for GET/HEAD requests (usually empty). Cap the
+    // read so a hostile client can't exhaust worker memory by streaming
+    // an unbounded body. Content-Length lets us short-circuit before any
+    // bytes are buffered; chunked uploads (no Content-Length) are caught
+    // mid-stream by `Limited`.
+    let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
+    if method != "GET" && method != "HEAD" {
+        if let Some(declared) = headers
+            .get("content-length")
+            .and_then(|v| v.parse::<usize>().ok())
+        {
+            if declared > max_body {
+                return Ok(Response::builder()
+                    .status(StatusCode::PAYLOAD_TOO_LARGE)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(Full::new(Bytes::from("Request body too large")))
+                    .unwrap());
+            }
+        }
+    }
     let (body, body_bytes_opt, multipart_form, multipart_files) =
         if method == "GET" || method == "HEAD" {
             (String::new(), None, None, None)
         } else {
-            let body_bytes = http_body_util::BodyExt::collect(req.into_body())
-                .await
-                .map(|b| b.to_bytes().to_vec())
-                .unwrap_or_default();
+            let collected = BodyExt::collect(Limited::new(req.into_body(), max_body)).await;
+            let body_bytes = match collected {
+                Ok(b) => b.to_bytes().to_vec(),
+                Err(_) => {
+                    // `Limited` returns an error once the running total
+                    // crosses `max_body`. Treat any failure here as oversize:
+                    // we can't reliably distinguish a transport error from a
+                    // length-limit hit, but in either case we don't want to
+                    // proceed with a partial body.
+                    return Ok(Response::builder()
+                        .status(StatusCode::PAYLOAD_TOO_LARGE)
+                        .header("Content-Type", "text/plain; charset=utf-8")
+                        .body(Full::new(Bytes::from("Request body too large")))
+                        .unwrap());
+                }
+            };
 
             // Check if this is a multipart form
             let content_type = headers.get("content-type").map(|s| s.as_str());
@@ -2289,6 +2343,78 @@ fn is_websocket_upgrade(req: &Request<Incoming>) -> bool {
     false
 }
 
+fn forbidden_websocket_origin_response() -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Full::new(Bytes::from("Forbidden WebSocket origin")))
+        .unwrap()
+}
+
+fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
+        // Non-browser clients often omit Origin. The Origin check protects
+        // browser-driven, cookie-authenticated WebSocket requests.
+        return true;
+    };
+
+    let Some(origin_authority) = origin_authority(origin) else {
+        return false;
+    };
+    let Some(request_authority) = websocket_request_authority(headers) else {
+        return false;
+    };
+
+    origin_authority == request_authority
+}
+
+fn websocket_request_authority(headers: &hyper::HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(header::HOST))
+        .and_then(|v| v.to_str().ok())
+        .and_then(|host| host.split(',').next())
+        .map(normalize_request_authority)
+        .filter(|host| !host.is_empty())
+}
+
+fn origin_authority(origin: &str) -> Option<String> {
+    let origin = origin.trim();
+    let (scheme, rest) = origin
+        .strip_prefix("http://")
+        .map(|rest| ("http", rest))
+        .or_else(|| origin.strip_prefix("https://").map(|rest| ("https", rest)))?;
+    let authority = rest.split('/').next().unwrap_or("");
+    if authority.is_empty() {
+        return None;
+    }
+
+    Some(normalize_origin_authority(authority, scheme))
+}
+
+fn normalize_origin_authority(authority: &str, scheme: &str) -> String {
+    let authority = normalize_authority(authority);
+    match (scheme, authority.as_str()) {
+        ("http", value) if value.ends_with(":80") => value.trim_end_matches(":80").to_string(),
+        ("https", value) if value.ends_with(":443") => value.trim_end_matches(":443").to_string(),
+        _ => authority,
+    }
+}
+
+fn normalize_request_authority(authority: &str) -> String {
+    let authority = normalize_authority(authority);
+    if authority.ends_with(":80") {
+        return authority.trim_end_matches(":80").to_string();
+    }
+    if authority.ends_with(":443") {
+        return authority.trim_end_matches(":443").to_string();
+    }
+    authority
+}
+
+fn normalize_authority(authority: &str) -> String {
+    authority.trim().trim_end_matches('.').to_ascii_lowercase()
+}
+
 /// Handle WebSocket upgrade request.
 async fn handle_websocket_upgrade(
     mut req: Request<Incoming>,
@@ -2302,6 +2428,10 @@ async fn handle_websocket_upgrade(
             .status(StatusCode::BAD_REQUEST)
             .body(Full::new(Bytes::from("Not a WebSocket upgrade request")))
             .unwrap());
+    }
+
+    if !websocket_origin_allowed(req.headers()) {
+        return Ok(forbidden_websocket_origin_response());
     }
 
     // Perform the WebSocket upgrade
@@ -4164,11 +4294,14 @@ fn handle_request(
                 "The page you're looking for doesn't exist.",
                 &request_id,
             );
-            let is_https = data
-                .headers
-                .get("x-forwarded-proto")
-                .map(|v| v == "https")
-                .unwrap_or(false);
+            let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
+                data.headers
+                    .get("x-forwarded-proto")
+                    .map(|v| v == "https")
+                    .unwrap_or(false)
+            } else {
+                false
+            };
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
@@ -4250,18 +4383,28 @@ fn handle_request(
     // flag) — keep it computed here rather than re-reading the now-empty
     // headers map. The host falls back to the `Host` header per RFC 7230
     // when no proxy header is present; empty string is fine — `*_url` will
-    // reject it with a clear error.
-    let is_https = data
-        .headers
-        .get("x-forwarded-proto")
-        .map(|v| v == "https")
-        .unwrap_or(false);
-    let req_host = data
-        .headers
-        .get("x-forwarded-host")
-        .or_else(|| data.headers.get("host"))
-        .cloned()
-        .unwrap_or_default();
+    // reject it with a clear error. `X-Forwarded-*` are honored only when
+    // `enable_trust_proxy()` has been opted into; otherwise an attacker on
+    // a directly-exposed deploy could spoof the scheme/host used to set the
+    // session-cookie `Secure` flag and to build absolute URL helpers.
+    let trust_proxy = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
+    let is_https = if trust_proxy {
+        data.headers
+            .get("x-forwarded-proto")
+            .map(|v| v == "https")
+            .unwrap_or(false)
+    } else {
+        false
+    };
+    let req_host = if trust_proxy {
+        data.headers
+            .get("x-forwarded-host")
+            .or_else(|| data.headers.get("host"))
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        data.headers.get("host").cloned().unwrap_or_default()
+    };
 
     // Take ownership of headers and query to avoid cloning individual keys/values
     let headers = std::mem::take(&mut data.headers);
@@ -4605,8 +4748,33 @@ fn handle_request(
 }
 
 /// Handle REPL execution for dev mode.
-async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let body = req.into_body().collect().await?.to_bytes();
+async fn handle_dev_repl(
+    req: Request<Incoming>,
+    peer_addr: SocketAddr,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    if !is_authorized_dev_repl_request(req.headers(), peer_addr) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(
+                r#"{"error": "Forbidden dev REPL request"}"#,
+            )))
+            .unwrap());
+    }
+
+    let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
+    let body = match BodyExt::collect(Limited::new(req.into_body(), max_body)).await {
+        Ok(b) => b.to_bytes(),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::PAYLOAD_TOO_LARGE)
+                .header("Content-Type", "application/json")
+                .body(Full::new(Bytes::from(
+                    r#"{"error": "Request body too large"}"#,
+                )))
+                .unwrap());
+        }
+    };
     let body_str = String::from_utf8_lossy(&body);
 
     // Parse JSON body
@@ -4651,6 +4819,32 @@ async fn handle_dev_repl(req: Request<Incoming>) -> Result<Response<Full<Bytes>>
         .header("Content-Type", "application/json")
         .body(Full::new(Bytes::from(response_json.to_string())))
         .unwrap())
+}
+
+fn is_authorized_dev_repl_request(headers: &hyper::HeaderMap, peer_addr: SocketAddr) -> bool {
+    if !peer_addr.ip().is_loopback() && !dev_repl_allows_remote() {
+        return false;
+    }
+
+    let Some(header_token) = headers
+        .get("x-soli-dev-token")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+
+    constant_time_eq(header_token, dev_repl_auth_token())
+}
+
+fn constant_time_eq(left: &str, right: &str) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    left.bytes()
+        .zip(right.bytes())
+        .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+        == 0
 }
 
 /// Handle source code fetching for dev mode.
@@ -4987,11 +5181,11 @@ fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>,
         _ => return Ok(None), // file doesn't exist, fall through
     };
 
-    // Ensure the canonical file path is within public directory
-    if !canonical_file
-        .to_string_lossy()
-        .starts_with(&*canonical_public.to_string_lossy())
-    {
+    // Ensure the canonical file path is within public directory.
+    // Use `Path::starts_with` (segment-aware), NOT `str::starts_with`: the
+    // string form would let `…/public-evil/x` pass the check against
+    // `…/public` because the directory name is a byte-level prefix.
+    if !canonical_file.starts_with(&canonical_public) {
         return Err(()); // traversal attempt
     }
 
@@ -5084,6 +5278,9 @@ fn coverage_dump_json() -> String {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn unwrap_bare_state_shape_returns_whole_hash() {
@@ -5130,6 +5327,82 @@ mod tests {
         });
         let (_, tick) = unwrap_handler_return(json);
         assert_eq!(tick, Some(0));
+    }
+
+    #[test]
+    fn dev_repl_auth_accepts_loopback_with_token() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert("x-soli-dev-token", dev_repl_auth_token().parse().unwrap());
+        let peer_addr: SocketAddr = "127.0.0.1:5011".parse().unwrap();
+
+        assert!(is_authorized_dev_repl_request(&headers, peer_addr));
+    }
+
+    #[test]
+    fn dev_repl_auth_rejects_missing_token() {
+        let headers = hyper::HeaderMap::new();
+        let peer_addr: SocketAddr = "127.0.0.1:5011".parse().unwrap();
+
+        assert!(!is_authorized_dev_repl_request(&headers, peer_addr));
+    }
+
+    #[test]
+    fn dev_repl_auth_rejects_non_loopback_peer() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert("x-soli-dev-token", dev_repl_auth_token().parse().unwrap());
+        let peer_addr: SocketAddr = "192.0.2.10:5011".parse().unwrap();
+
+        assert!(!is_authorized_dev_repl_request(&headers, peer_addr));
+    }
+
+    #[test]
+    fn dev_repl_auth_accepts_remote_peer_when_explicitly_enabled() {
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_DEV_REPL_ALLOW_REMOTE", "1");
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert("x-soli-dev-token", dev_repl_auth_token().parse().unwrap());
+        let peer_addr: SocketAddr = "192.0.2.10:5011".parse().unwrap();
+
+        assert!(is_authorized_dev_repl_request(&headers, peer_addr));
+        std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+    }
+
+    #[test]
+    fn websocket_origin_allows_missing_origin() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, "app.test:5011".parse().unwrap());
+
+        assert!(websocket_origin_allowed(&headers));
+    }
+
+    #[test]
+    fn websocket_origin_allows_same_origin_host() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, "app.test:5011".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://app.test:5011".parse().unwrap());
+
+        assert!(websocket_origin_allowed(&headers));
+    }
+
+    #[test]
+    fn websocket_origin_rejects_cross_origin_host() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, "app.test:5011".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://evil.test:5011".parse().unwrap());
+
+        assert!(!websocket_origin_allowed(&headers));
+    }
+
+    #[test]
+    fn websocket_origin_uses_forwarded_host_for_proxied_apps() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, "127.0.0.1:5011".parse().unwrap());
+        headers.insert("x-forwarded-host", "app.test".parse().unwrap());
+        headers.insert(header::ORIGIN, "https://app.test".parse().unwrap());
+
+        assert!(websocket_origin_allowed(&headers));
     }
 
     #[test]
@@ -5195,6 +5468,59 @@ mod tests {
 
         let result = resolve_static_file("/%2e%2e/etc/passwd", &public);
         assert_eq!(result, Ok(None));
+    }
+
+    /// Regression: the containment check must compare path components, not
+    /// stringified bytes. `…/public-evil/x` is a byte-level prefix match
+    /// against `…/public`, so the previous `&str::starts_with` check would
+    /// pass it through. The fix uses `Path::starts_with`, which is segment
+    /// aware. Exercised here via a symlink inside `public/` that resolves
+    /// out to a sibling whose name starts with `public`.
+    #[cfg(unix)]
+    #[test]
+    fn test_resolve_static_file_blocks_sibling_prefix_via_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        let evil = dir.path().join("public-evil");
+        fs::create_dir(&public).unwrap();
+        fs::create_dir(&evil).unwrap();
+        fs::write(evil.join("secret.txt"), "leaked").unwrap();
+
+        // `public/escape` -> `../public-evil`
+        std::os::unix::fs::symlink(&evil, public.join("escape")).unwrap();
+
+        // `escape/secret.txt` has no `..` in the URL, so the early-out
+        // doesn't catch it; the canonical path lives in `public-evil`,
+        // which used to satisfy `starts_with("…/public")` byte-wise.
+        let result = resolve_static_file("/escape/secret.txt", &public);
+        assert_eq!(result, Err(()));
+    }
+
+    /// Regression: the same containment-check bug, without symlinks — a
+    /// canonicalized path under a sibling directory whose name is a byte
+    /// prefix of `public_dir` must not pass the check. This is harder to
+    /// trigger from a clean URL (the early `..` reject covers the obvious
+    /// vector), but we still want explicit coverage that the segment-aware
+    /// check is what's running.
+    #[test]
+    fn test_resolve_static_file_path_starts_with_is_segment_aware() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        let evil = dir.path().join("public-evil");
+        fs::create_dir(&public).unwrap();
+        fs::create_dir(&evil).unwrap();
+        let secret = evil.join("secret.txt");
+        fs::write(&secret, "leaked").unwrap();
+
+        // Sanity: with the old byte-level check, `…/public-evil/secret.txt`
+        // would test as a prefix-match against `…/public`. With Path-aware
+        // semantics it does not.
+        let canon_secret = fs::canonicalize(&secret).unwrap();
+        let canon_public = fs::canonicalize(&public).unwrap();
+        assert!(!canon_secret.starts_with(&canon_public));
+        assert!(canon_secret
+            .to_string_lossy()
+            .starts_with(&*canon_public.to_string_lossy()));
     }
 
     /// Regression test: controller actions dispatched via `call_class_method`

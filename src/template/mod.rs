@@ -32,6 +32,23 @@ struct CachedTemplate {
     modified: SystemTime,
 }
 
+/// Reject template names that could escape the views directory or contain
+/// path-shaping bytes. We only allow `Component::Normal` segments — `..`,
+/// absolute roots, drive prefixes, and `\0` are all refused before any
+/// `dir.join(name)` call. Forward slashes between normal segments are still
+/// fine, so `users/show` still resolves.
+pub fn is_safe_template_name(name: &str) -> bool {
+    if name.is_empty() || name.contains('\0') || name.contains('\\') {
+        return false;
+    }
+    if name.starts_with('/') {
+        return false;
+    }
+    Path::new(name)
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 /// Maximum size for path cache to prevent unbounded memory growth.
 const PATH_CACHE_MAX_SIZE: usize = 1000;
 
@@ -323,6 +340,10 @@ impl TemplateCache {
 
     /// Actually resolve the template path (file system lookup).
     fn do_resolve_template_path(&self, name: &str) -> Result<PathBuf, String> {
+        if !is_safe_template_name(name) {
+            return Err(format!("Template '{}' not found", name));
+        }
+
         // Try main views directory first
         if let Ok(path) = self.try_resolve_in_dir(&self.views_dir, name) {
             return Ok(path);
@@ -364,6 +385,10 @@ impl TemplateCache {
 
     /// Try to resolve a template path in a specific directory with various extensions.
     fn try_resolve_in_dir(&self, dir: &Path, name: &str) -> Result<PathBuf, String> {
+        if !is_safe_template_name(name) {
+            return Err(format!("Template not found in {}", dir.display()));
+        }
+
         let extensions = [
             ".html.slv",
             ".slv",
@@ -582,6 +607,73 @@ pub fn markdown_to_html(markdown: &str) -> String {
     html_output
 }
 
+/// Convert markdown text to HTML while escaping raw HTML and neutralizing unsafe links.
+pub fn markdown_to_safe_html(markdown: &str) -> String {
+    use pulldown_cmark::{html, Event, Options, Parser, Tag};
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let events = Parser::new_ext(markdown, options).map(|event| match event {
+        Event::Html(html) | Event::InlineHtml(html) => Event::Text(html),
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Link {
+            link_type,
+            dest_url: safe_markdown_url(dest_url),
+            title,
+            id,
+        }),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Image {
+            link_type,
+            dest_url: safe_markdown_url(dest_url),
+            title,
+            id,
+        }),
+        other => other,
+    });
+
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, events);
+    html_output
+}
+
+fn safe_markdown_url(url: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<'_> {
+    let trimmed = url.trim();
+    if is_safe_markdown_url(trimmed) {
+        url
+    } else {
+        pulldown_cmark::CowStr::from("#")
+    }
+}
+
+fn is_safe_markdown_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with('/')
+        || lower.starts_with('#')
+        || lower.starts_with('?')
+    {
+        return true;
+    }
+
+    let first_separator = lower
+        .find(|c| matches!(c, '/' | '?' | '#'))
+        .unwrap_or(lower.len());
+    !lower[..first_separator].contains(':')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -642,6 +734,64 @@ mod tests {
         let html = markdown_to_html(md);
         assert!(html.contains("<code"));
         assert!(html.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn rejects_traversal_in_template_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        // Plant a sibling file outside the views dir that we'd love an
+        // attacker not to be able to render.
+        let secret = dir.path().join("secret.html.slv");
+        fs::write(&secret, "<h1>secret</h1>").unwrap();
+        fs::write(views.join("ok.html.slv"), "<h1>ok</h1>").unwrap();
+
+        let cache = TemplateCache::new(&views);
+
+        // Sanity: the legitimate name still resolves.
+        assert!(cache.resolve_template_path("ok").is_ok());
+
+        // None of these should resolve, even though `secret.html.slv` exists.
+        for bad in [
+            "../secret",
+            "..",
+            "../../etc/passwd",
+            "users/../../secret",
+            "/etc/passwd",
+            "./secret",
+            "",
+            "foo\0bar",
+            "foo\\..\\secret",
+        ] {
+            assert!(
+                cache.resolve_template_path(bad).is_err(),
+                "expected rejection for {:?}",
+                bad
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_traversal_in_partial_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        let secret = dir.path().join("_secret.html.slv");
+        fs::write(&secret, "<h1>secret</h1>").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        // render_partial turns "../secret" into "../_secret" — the basename
+        // gets prefixed with `_`, then resolution must still reject the `..`.
+        let err = cache
+            .render_partial(
+                "../secret",
+                &Value::Hash(Rc::new(RefCell::new(Default::default()))),
+            )
+            .unwrap_err();
+        assert!(err.contains("not found"), "got: {}", err);
     }
 
     #[test]

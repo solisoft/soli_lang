@@ -105,6 +105,7 @@ get("/docs/builtins/kv", "docs#builtins_kv");
 get("/docs/builtins/solidb", "docs#builtins_solidb");
 get("/docs/builtins/rate-limit", "docs#builtins_rate_limit");
 get("/docs/builtins/security-headers", "docs#builtins_security_headers");
+get("/docs/builtins/hardening", "docs#builtins_hardening");
 get("/docs/builtins/upload", "docs#builtins_upload");
 get("/docs/builtins/soap", "docs#builtins_soap");
 get("/docs/builtins/markdown", "docs#builtins_markdown");

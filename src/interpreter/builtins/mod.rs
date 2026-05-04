@@ -12,6 +12,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 // Re-export submodules
 pub mod assertions;
 pub mod assigns_helpers;
+pub mod body_limit;
 pub mod cache;
 pub mod clock;
 pub mod collections;
@@ -65,6 +66,7 @@ pub mod system;
 pub mod template;
 pub mod test_dsl;
 pub mod test_server;
+pub mod trust_proxy;
 pub mod types;
 pub mod uploads;
 pub mod validation;
@@ -395,6 +397,14 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register security headers builtins
     security_headers::register_security_headers_builtins(env);
+
+    // Register trust-proxy gate (off by default; opt in only when the
+    // deployment terminates X-Forwarded-* at a trusted proxy hop)
+    trust_proxy::register_trust_proxy_builtins(env);
+
+    // Register body-size limit (default 8 MiB; raise via set_max_body_size
+    // when accepting larger file uploads)
+    body_limit::register_body_limit_builtins(env);
 
     // Register upload builtins
     uploads::register_upload_builtins(env);

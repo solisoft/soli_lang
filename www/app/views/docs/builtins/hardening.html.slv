@@ -1,0 +1,105 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-slate-400 via-gray-400 to-zinc-400 bg-clip-text text-transparent">Server Hardening</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Production-safe defaults for handling untrusted input at the request edge: trust-proxy gating for <code class="text-purple-400">X-Forwarded-*</code> headers, and a per-request body-size cap to prevent memory-exhaustion DoS.
+        </p>
+    </div>
+
+    <!-- Trust Proxy overview -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Trust Proxy</h2>
+        <p class="text-gray-400 mb-4">
+            Soli reads <code class="text-purple-400">X-Forwarded-Proto</code> and <code class="text-purple-400">X-Forwarded-Host</code> from incoming requests only when trust-proxy is enabled. These headers govern two security-sensitive decisions:
+        </p>
+        <ul class="space-y-2 text-gray-300 mb-6 list-disc pl-6">
+            <li>The <code class="text-purple-400">Secure</code> flag on the session cookie (set when the request scheme is <code class="text-purple-400">https</code>).</li>
+            <li>The host portion of <code class="text-purple-400">*_url</code> named-route helpers used for absolute URLs in emails and redirects.</li>
+        </ul>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6 mb-4">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Default: OFF</span>
+            </div>
+            <p class="text-gray-400 mb-4">
+                A request reaching the Soli process directly cannot influence either decision via these headers — the cookie <code class="text-purple-400">Secure</code> flag stays off and <code class="text-purple-400">*_url</code> falls back to the <code class="text-purple-400">Host</code> header. Enable trust-proxy <em>only</em> when your deployment terminates TLS at a trusted proxy hop (Caddy, nginx, ALB, etc.) <em>and</em> that proxy is configured to strip inbound <code class="text-purple-400">X-Forwarded-*</code> headers from clients before adding its own.
+            </p>
+        </div>
+    </section>
+
+    <!-- enable / disable / enabled -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">enable_trust_proxy() / disable_trust_proxy() / trust_proxy_enabled()</h2>
+        <p class="text-gray-400 mb-4">Toggle and inspect the trust-proxy gate. All three return Bool.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># config/application.sl
+enable_trust_proxy
+
+# Later, e.g. in a test harness running without a proxy:
+disable_trust_proxy
+
+# Inspect:
+if trust_proxy_enabled
+  println("X-Forwarded-* headers are honored")
+end</code></pre>
+        </div>
+    </section>
+
+    <!-- Body Limit overview -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Request Body Limit</h2>
+        <p class="text-gray-400 mb-4">
+            Every non-GET/HEAD request is capped before its body is buffered into memory. Without this cap an attacker can stream an arbitrarily large body — or open many concurrent uploads — and exhaust worker memory before any handler runs.
+        </p>
+        <p class="text-gray-400 mb-4">
+            The server short-circuits to <code class="text-purple-400">413 Payload Too Large</code> in two ways: via the <code class="text-purple-400">Content-Length</code> header (no bytes read) or mid-stream once the running total crosses the limit (catches chunked uploads that don't declare a length).
+        </p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Default: 8 MiB</span>
+            </div>
+            <p class="text-gray-400">
+                Apps that accept larger uploads — document upload, image processing, etc. — should raise the cap explicitly. Prefer per-action checks inside the handler over a high global cap so abusive clients can't open many concurrent uploads on routes that shouldn't accept them.
+            </p>
+        </div>
+    </section>
+
+    <!-- set_max_body_size -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">set_max_body_size(bytes)</h2>
+        <p class="text-gray-400 mb-4">Sets the maximum buffered request body size, in bytes.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded">Parameters</span>
+            </div>
+            <ul class="space-y-2 text-gray-300 mb-6">
+                <li><code class="text-purple-400">bytes</code> (Int) - New limit in bytes (must be non-negative)</li>
+            </ul>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code># config/application.sl
+set_max_body_size(32 * 1024 * 1024)  # 32 MiB cap for file uploads
+
+# Returns Int — the value just set.</code></pre>
+        </div>
+    </section>
+
+    <!-- max_body_size -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">max_body_size()</h2>
+        <p class="text-gray-400 mb-4">Returns the current limit in bytes.</p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>println("Current cap: " + str(max_body_size) + " bytes")</code></pre>
+        </div>
+    </section>
+
+    <!-- Related: Security Headers -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">Related: Security Headers</h2>
+        <p class="text-gray-400 mb-4">
+            Production hardening also includes the response-side defaults — Content-Security-Policy, HSTS, X-Frame-Options, and friends — covered on the dedicated reference page.
+        </p>
+        <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
+            <a href="/docs/builtins/security-headers" class="text-indigo-400 hover:text-indigo-300 transition-colors">→ Security Headers Functions</a>
+        </div>
+    </section>
+</div>
