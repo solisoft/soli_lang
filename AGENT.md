@@ -288,7 +288,6 @@ throw RuntimeError.new("Something failed");
 - `HTTP.put` / `HTTP.patch` / `HTTP.delete` / `HTTP.head` - other verbs
 - `HTTP.get_json` / `HTTP.post_json` / `HTTP.put_json` / `HTTP.patch_json` - JSON variants
 - `HTTP.request(method, url, options?)` - generic request
-- `http_server_listen(port)` - start HTTP server
 - `json_parse(str)` - parse JSON
 - `json_stringify(value)` - stringify to JSON
 

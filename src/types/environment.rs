@@ -359,61 +359,6 @@ impl TypeEnvironment {
             },
         );
 
-        // HTTP server functions
-        // http_server_get(String, Function) -> Void
-        self.functions.insert(
-            "http_server_get".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
-        // http_server_post(String, Function) -> Void
-        self.functions.insert(
-            "http_server_post".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
-        // http_server_put(String, Function) -> Void
-        self.functions.insert(
-            "http_server_put".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
-        // http_server_delete(String, Function) -> Void
-        self.functions.insert(
-            "http_server_delete".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::Any],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
-        // http_server_route(String, String, Function) -> Void
-        self.functions.insert(
-            "http_server_route".to_string(),
-            Type::Function {
-                params: vec![Type::String, Type::String, Type::Any],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
-        // http_server_listen(Int) -> Void (blocking)
-        self.functions.insert(
-            "http_server_listen".to_string(),
-            Type::Function {
-                params: vec![Type::Int],
-                return_type: Box::new(Type::Void),
-            },
-        );
-
         // Cryptographic functions
         // argon2_hash(String) -> String
         self.functions.insert(

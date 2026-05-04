@@ -303,7 +303,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register SOAP class
     soap::register_soap_class(env);
 
-    // Register HTTP server functions
+    // Register url_encode/url_decode
     server::register_server_builtins(env);
 
     // Register WebSocket server functions

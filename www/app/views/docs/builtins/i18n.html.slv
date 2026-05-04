@@ -196,9 +196,8 @@ i18n_load_translations("de", de_data)
 # Set default locale
 I18n.set_locale("en")
 
-# Define routes
-http_server_get("/", "home#index")
-http_server_listen(3000)</code></pre>
+# Define routes (MVC style)
+get("/", "home#index")</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">

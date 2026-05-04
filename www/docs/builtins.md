@@ -974,91 +974,6 @@ Copies an object within S3.
 S3.copy_object("source-bucket/file.txt", "dest-bucket/file.txt")
 ```
 
-## HTTP Server Functions
-
-Create a lightweight HTTP server without the full MVC framework. For MVC apps, use `get/post` in `config/routes.sl` instead.
-
-### http_server_get(path, handler_name)
-
-Register a GET route handler.
-
-**Parameters:**
-- `path` (String) - Route path (e.g., "/users", "/users/:id")
-- `handler_name` (String) - Handler function name
-
-**Example:**
-```soli
-def health(req)
-  return {"status": 200, "body": "OK"}
-end
-
-http_server_get("/health", "health");
-http_server_get("/users/:id", "get_user");
-```
-
-### http_server_post(path, handler_name)
-
-Register a POST route handler.
-
-**Example:**
-```soli
-def create_user(req)
-  name = req["json"]["name"]
-  return {"status": 201, "body": "Created: " + name}
-end
-
-http_server_post("/users", "create_user");
-```
-
-### http_server_put(path, handler_name)
-
-Register a PUT route handler.
-
-### http_server_delete(path, handler_name)
-
-Register a DELETE route handler.
-
-### http_server_route(method, path, handler_name)
-
-Register a route for any HTTP method.
-
-**Example:**
-```soli
-http_server_route("PATCH", "/users/:id", "patch_user");
-```
-
-### http_server_listen(port)
-
-Start the HTTP server (blocking call).
-
-**Parameters:**
-- `port` (Int) - Port number to listen on
-
-**Example:**
-```soli
-# Define routes
-http_server_get("/", "home");
-http_server_get("/health", "health");
-http_server_post("/api/users", "create_user");
-
-# Start server (blocks)
-http_server_listen(3000);
-```
-
-**Handler Function Signature:**
-```soli
-def my_handler(req)    id = req["params"]["id"]           # Path parameters
-  name = req["query"]["name"]         # Query string
-  data = req["json"]["field"]         # JSON body
-  token = req["headers"]["Authorization"]  # Headers
-  
-  return {"status": 200, "body": "Hello"}
-  # Or use helpers: render_json(), render_text(), redirect()
-end
-```
-
----
-
 ## JSON Functions
 
 ### json_parse(string)
@@ -2952,9 +2867,8 @@ i18n_load_translations("de", de_data);
 # Set default locale
 I18n.set_locale("en");
 
-# Define routes
-http_server_get("/", "home#index");
-http_server_listen(3000);
+# Define routes (MVC style)
+get("/", "home#index")
 ```
 
 **Using in Controllers:**

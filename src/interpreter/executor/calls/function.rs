@@ -3,7 +3,6 @@
 use crate::ast::expr::Argument;
 use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
-use crate::interpreter::builtins::server::is_server_listen_marker;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{HashKey, Instance, StrKey, Value};
@@ -976,17 +975,6 @@ impl Interpreter {
                 drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();
 
-                // Check if this is the http_server_listen marker
-                if let Some(port) = is_server_listen_marker(&result) {
-                    let thread_name = std::thread::current().name().map(|s| s.to_string());
-                    let is_main_thread = thread_name
-                        .as_ref()
-                        .is_some_and(|n| n == "main" || n.starts_with("tokio-runtime"));
-                    if is_main_thread {
-                        return self.run_http_server(port);
-                    }
-                }
-
                 Ok(result)
             }
 
@@ -1261,16 +1249,6 @@ impl Interpreter {
                     .map_err(|msg| RuntimeError::General { message: msg, span })?;
                 drop(_native_span);
                 crate::interpreter::executor::variables::clear_current_env();
-
-                if let Some(port) = is_server_listen_marker(&result) {
-                    let thread_name = std::thread::current().name().map(|s| s.to_string());
-                    let is_main_thread = thread_name
-                        .as_ref()
-                        .is_some_and(|n| n == "main" || n.starts_with("tokio-runtime"));
-                    if is_main_thread {
-                        return self.run_http_server(port);
-                    }
-                }
 
                 Ok(result)
             }
