@@ -1,344 +1,392 @@
 # Soli Lang
 
-Soli is a dynamically-typed, high-performance web framework written in Rust.
+Soli is a dynamically-typed, high-performance web framework written in Rust. This file orients an AI assistant (and future you) to how *this* application is laid out and what the language syntax actually looks like.
 
 ## Project Structure
 
 ```
 app/
-├── controllers/     # Request handlers (parse request, return response)
+├── controllers/     # Request handlers (one class per resource, < Controller)
 ├── helpers/         # View helper functions
-├── middleware/      # Request/response filters
-├── models/         # Data models and business logic
-└── views/          # ERB templates
+├── middleware/      # Request/response filters (per-file `# order:` directives)
+├── models/          # Data models (< Model — ORM is inherited)
+└── views/           # ERB-style templates with .html.slv extension
 config/
-└── routes.sl       # URL routing
+└── routes.sl        # URL routing
 db/
-└── migrations/     # Database migrations
-public/             # Static assets
-tests/              # Test files (.sl)
+└── migrations/      # Database migrations
+public/              # Static assets (CSS/JS compiled into here)
+tests/               # *_spec.sl test files
 ```
 
 ## Naming Conventions
 
-| Type | Convention | Example |
-|------|------------|---------|
-| Files | `snake_case.sl` | `home_controller.sl` |
-| Classes | `PascalCase` | `UsersController` |
-| Functions | `snake_case` | `get_user_by_id` |
-| Constants | `SCREAMING_SNAKE_CASE` | `MAX_SIZE` |
+| Type      | Convention             | Example                |
+|-----------|------------------------|------------------------|
+| Files     | `snake_case.sl`        | `posts_controller.sl`  |
+| Classes   | `PascalCase`           | `PostsController`      |
+| Functions | `snake_case`           | `get_user_by_id`       |
+| Constants | `SCREAMING_SNAKE_CASE` | `MAX_SIZE`             |
 
-## Routes
+## Syntax basics
 
-Routes are defined in `config/routes.sl`:
+Soli supports both Ruby-style (`def`/`end`, `class X < Y ... end`, `if cond ... end`) and C-style (`fn`/`{ }`, `class X extends Y { ... }`, `if cond { ... }`); they parse to the same AST. **The convention in this project is Ruby-style** for class declarations and control flow (`class Demo < Test ... end`, `if cond ... end`). Reserve `fn { ... }` for free-standing functions and lambdas. Match this style when writing new code.
 
 ```soli
-get("/", "home#index");
-post("/users", "users#create");
-resources("posts");
+# Variables
+let name = "Alice"        # Type inferred
+let age: Int = 30         # Explicit type
+const MAX = 100           # Immutable
+
+# Free-standing functions
+fn add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+# Implicit return: the last expression in a block is returned
+fn greet(name) {
+    "Hello, " + name + "!"
+}
+
+# Lambdas
+let double = fn(x) { return x * 2; };
+let halve  = |x| { return x / 2; };
+
+# String interpolation
+let msg = "Hi \(name), age \(age)"
+
+# Collection iteration — Ruby-style block, no parens before `do`
+[1, 2, 3].map do |x| x * 2 end
+[1, 2, 3].filter do |x| x > 2 end
+
+# Pipelines (when chaining multiple stages)
+[1, 2, 3] |> map(fn(x) x * 2) |> filter(fn(x) x > 2)
+
+# Pattern matching
+let label = match value {
+    42 => "the answer",
+    n if n > 0 => "positive",
+    [first, ...rest] => "head: " + str(first),
+    _ => "other"
+};
+
+# Postfix conditionals (idiomatic)
+print("adult") if age >= 18
+let data = fetch() rescue null     # returns null if fetch() throws
 ```
+
+> **Truthiness:** Only `false` and `null` are falsy. `0` and `""` are truthy.
+
+## Routes (`config/routes.sl`)
+
+```soli
+# Basic routes
+get("/", "home#index", name: "root")
+get("/about", "pages#about", name: "about")
+post("/users", "users#create")
+
+# RESTful resources — registers index/show/new/create/edit/update/destroy
+# plus path/url helpers: posts_path(), post_path(post), new_post_path(),
+# edit_post_path(post), and *_url variants.
+resources("posts")
+
+# Scoped middleware — only runs for routes inside the block
+middleware("authenticate", -> {
+    get("/admin", "admin#index")
+    resources("admin/users")
+})
+```
+
+Use the named helpers (`posts_path`, `root_path`, etc.) in controllers and views — never concatenate URLs by hand.
 
 ## Controllers
 
-Controllers handle HTTP requests and return responses:
+Controllers are classes that inherit from `Controller`. Action methods take a request hash and return a response.
 
 ```soli
-import "../models/post.sl";
-
-def index(req: Any) do
-    let posts = Post.all();
-    return render("posts/index", {"posts": posts});
-end
-
-def create(req: Any) do
-    let params = req["json"];
-    let post = Post.create(params);
-    if post._errors do
-        return {"status": 422, "body": json_stringify(post._errors)};
+# app/controllers/posts_controller.sl
+class PostsController < Controller
+    static
+        this.layout = "application"
     end
-    return redirect("/posts/" + str(post.id));
+
+    # GET /posts
+    def index(req)
+        let posts = Post.all()
+        return render("posts/index", { "posts": posts, "title": "Posts" })
+    end
+
+    # GET /posts/:id — Model.find raises on miss; framework maps to 404
+    def show(req)
+        let post = Post.find(req.params["id"])
+        return render("posts/show", { "post": post })
+    end
+
+    # POST /posts
+    def create(req)
+        let permitted = this._permit_params(req.params)
+        let post = Post.create(permitted)
+        if post._errors
+            return render("posts/new", { "post": post })
+        end
+        return redirect(post_path(post))
+    end
+
+    # Mass-assignment protection — whitelist allowed fields
+    def _permit_params(params)
+        return { "title": params["title"], "body": params["body"] }
+    end
 end
 ```
 
-### Response Types
+### Request access
 
-- `render("view/name", {data})` - Render an ERB template
-- `redirect("/path")` - HTTP redirect
-- `{"status": 200, "body": "text"}` - Raw response
+- `req.params["id"]` — route + query + body params merged
+- `req["json"]` — parsed JSON body
+- `req["headers"]`, `req["cookies"]`, `req["method"]`
+- Bare `params` is also available globally inside actions (= `req.params`)
+
+### Response shapes
+
+- `render("view/name", {...})` — render `app/views/view/name.html.slv` with the given locals
+- `redirect("/path")` or `redirect(post_path(post))` — HTTP redirect
+- `{"status": 422, "headers": {...}, "body": "..."}` — raw response
 
 ## Models
 
-```soli
-class Post do
-    static def all() do
-        return Post.where({}).all;
-    end
+Models inherit from `Model`; CRUD methods come with the inheritance — don't redefine them.
 
-    static def create(params: Hash) do
-        let validation = validate(params);
-        if !validation["valid"] do
-            return {"valid": false, "errors": validation["errors"]};
-        end
-        let post = Post.create(params);
-        return {"valid": true, "id": post.id};
+```soli
+# app/models/post.sl
+class Post < Model
+    # Inherited from Model:
+    #   Post.all()              Post.find(id)        Post.find_by(field, val)
+    #   Post.where({...})       Post.create({...})   post.save()  post.delete()
+    #
+    # Add associations and validations declaratively:
+    belongs_to("user")
+    has_many("comments")
+
+    validates("title", { "presence": true, "min_length": 3 })
+    validates("body",  { "presence": true })
+
+    before_save("normalize_title")
+
+    def normalize_title
+        this.title = this.title.trim()
     end
 end
 ```
 
-## Raw Database Queries (SDBQL)
+`Model.create(...)` always returns an instance. On validation/database failure, the instance has `_errors` populated — check `if post._errors` and re-render the form. Don't write fake `static` shims around the inherited CRUD.
 
-Use the ORM (`Model.where`, `Model.find`, `Model.create`, ...) first. When you need something the ORM doesn't cover, drop down to raw SDBQL. **Always parameterize** — never concatenate user input into the query string.
+### Raw queries (SDBQL)
 
-### `Solidb(host, db).query(sdbql, bind_vars?)`
-
-Construct a client with `Solidb(host, database)`, optionally `auth` it, then call `query` with `@name` placeholders and a hash of bind values:
+Drop down to raw SDBQL only when the ORM doesn't cover the case. **Always parameterize** — never concatenate user input.
 
 ```soli
-let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"));
-db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"));
-
-# Read
-let adults = db.query(
-  "FOR u IN users FILTER u.age >= @min RETURN u",
-  { "min": 18 }
-);
-
-# Insert
-db.query(
-  "INSERT { name: @name, email: @email } INTO users",
-  { "name": "Bob", "email": "bob@example.com" }
-);
-
-# Update
-db.query("UPDATE @key WITH { name: @name } IN users", {
-  "key": user_id,
-  "name": "Alice Smith"
-});
-
-# Delete
-db.query("REMOVE @key IN users", { "key": user_id });
-```
-
-`@name` is a bind placeholder — the value comes from the hash and is bound safely at query time.
-
-> Inside migrations, a pre-wired `db` helper is injected for you — you don't construct a `Solidb` instance manually.
-
-### `@sdbql{}` block
-
-Preferred for multi-line queries. Inline expressions with `#{expr}` — they are evaluated and bound as parameters, never inlined as text:
-
-```soli
-let min_age = 18;
-let city = params.city;
-
+# `@sdbql{}` block — preferred for multi-line queries.
+# `#{expr}` is bound as a parameter, not interpolated as text.
+let min_age = 18
 let users = @sdbql{
-  FOR u IN users
-  FILTER u.age >= #{min_age} AND u.city == #{city}
-  SORT u.name ASC
-  LIMIT 50
-  RETURN u
-};
-
-@sdbql{
-  UPDATE #{user_id} IN users
-  SET { last_login: NOW() }
-};
-
-@sdbql{ REMOVE #{user_id} IN users };
+    FOR u IN users
+    FILTER u.age >= #{min_age}
+    SORT u.name ASC
+    LIMIT 50
+    RETURN u
+}
 ```
 
-Supports all SDBQL operations: `FOR`, `FILTER`, `SORT`, `LIMIT`, `RETURN`, `INSERT`, `UPDATE`, `REMOVE`.
-
-> `@sdql{}` is accepted as a legacy alias for `@sdbql{}`. New code should use `@sdbql{}` to match the language name (SDBQL).
-
-### When to use which
-
-| Approach | Use it for |
-|----------|------------|
-| `Model.where(...)` / ORM | Standard CRUD — your first choice |
-| `Solidb(...).query(sdbql, {...})` | Scripts, migrations, or when bind values are already a hash |
-| `@sdbql{ ... }` | Multi-line query, inline `#{expr}` interpolation, readability |
-
-## Views (ERB Templates)
+## Views (`.html.slv`)
 
 ```erb
 <h1><%= title %></h1>
 
 <% for post in posts %>
     <article>
-        <h2><%= h(post["title"]) %></h2>
-        <%= content %>
+        <h2><%= h(post.title) %></h2>
+        <%= post.body %>
     </article>
 <% end %>
+
+<%= link_to("New post", new_post_path()) %>
 ```
 
-Always use `h()` to escape HTML and prevent XSS.
+Always use `h()` to escape user-supplied content — XSS is the default risk.
 
 ## Middleware
 
-Middleware filters requests before they reach controllers:
+A middleware file declares one function. Per-file directive comments at the top configure how the framework wires it up:
 
 ```soli
-def authenticate(req: Any) do
-    let session = req["cookies"]["session"];
-    if !session do
-        return redirect("/login");
+# app/middleware/auth.sl
+
+# order: 20
+# scope_only: true   — only runs when wrapped in `middleware("authenticate", -> { ... })`
+
+def authenticate(req)
+    let key = req["headers"]["X-Api-Key"] ?? ""
+    if key == ""
+        return {
+            "continue": false,
+            "response": { "status": 401, "body": "Unauthorized" }
+        }
     end
-    return next(req);
+    return { "continue": true, "request": req }
 end
 ```
+
+| Directive            | Meaning                                                |
+|----------------------|--------------------------------------------------------|
+| `# order: N`         | Lower runs first. Default 100.                         |
+| `# global_only: true` | Always runs; cannot be scoped.                        |
+| `# scope_only: true`  | Only runs when explicitly scoped via `middleware(...)`. |
+
+Returning `{"continue": false, "response": {...}}` short-circuits with that response. Returning `{"continue": true, "request": req}` proceeds to the next middleware / handler.
 
 ## Testing
 
+Specs live in `tests/` and run with `soli test`. Use the BDD DSL with `describe` / `test` / `before_each`. Controller tests get an E2E client (`get`, `post`, `put`, `delete`, `assigns()`, `view_path()`, `as_guest()`).
+
 ```soli
-describe("PostsController") do
-    before_each do
-        # Setup test data
-    end
-    
-    test("index returns all posts") do
-        let result = Post.all();
-        assert_eq(len(result), 2);
-    end
-end
+# tests/posts_controller_spec.sl
+describe("PostsController", fn() {
+    before_each(fn() {
+        as_guest();
+    });
+
+    describe("GET /posts", fn() {
+        test("returns list of posts", fn() {
+            let response = get("/posts");
+            assert_eq(res_status(response), 200);
+            assert_hash_has_key(assigns(), "posts");
+        });
+    });
+
+    describe("POST /posts", fn() {
+        test("creates with valid data", fn() {
+            let response = post("/posts", { "title": "Hello", "body": "World" });
+            assert_eq(res_status(response), 302);
+        });
+
+        test("rejects invalid data", fn() {
+            let response = post("/posts", {});
+            assert_eq(res_status(response), 422);
+        });
+    });
+});
 ```
 
-## Key Syntax
+### Test coverage requirement
 
-### Variables
-```soli
-let name = "Alice";           # Type inference
-let age: Int = 30;            # Explicit type
-const MAX = 100;              # Immutable
-```
-
-### Functions
-```soli
-def add(a: Int, b: Int) do
-    return a + b;
-end
-
-# Implicit return
-def greet(name) do
-    "Hello, " + name + "!"
-end
-```
-
-### Collections
-```soli
-# Arrays
-[1, 2, 3].map() do |x| x * 2 end;
-
-# Hashes
-{"name": "Alice"}.name;  # "Alice"
-```
-
-### Control Flow
-```soli
-# Pattern matching
-let msg = match value {
-    42 => "answer",
-    n if n > 0 => "positive",
-    _ => "other"
-};
-
-# Postfix conditionals
-print("adult") if age >= 18;
-```
-
-### Pipelines
-```soli
-[1, 2, 3] |> map() do |x| x * 2 end |> filter() do |x| x > 2 end;
-```
-
-## Running the App
+**Every new feature must ship with tests achieving >90% coverage of the changed code.** Run coverage locally before opening a PR:
 
 ```bash
-soli serve . --dev     # Development with hot reload
-soli serve . --port 5011  # Production
+soli test --coverage                      # generate report
+soli test --coverage --coverage-min 90.0  # fail if under 90%
 ```
+
+This applies to controllers, models, middleware, helpers, and any new library code. Don't merge a feature whose coverage report is missing or below the threshold — write the tests first if it helps you design the API.
 
 ## SOLID Principles
 
-Apply these object-oriented design principles for maintainable code:
+Apply these for maintainable code.
 
-**Single Responsibility (S)** - Each class does one thing:
 ```soli
-class UserValidator do /* only validation */ end
-class UserRepository do /* only database operations */ end
-```
-
-**Open/Closed (O)** - Open for extension, closed for modification:
-```soli
-class Shape { def area() -> Float; }
-class Circle extends Shape { radius: Float; def area() do 3.14 * radius * radius; end }
-class Rectangle extends Shape { width: Float; height: Float; def area() do width * height; end }
-```
-
-**Liskov Substitution (L)** - Subclasses can replace their parent:
-```soli
-class Bird { def fly() do end }
-class Penguin extends Bird { def fly() do throw "Can't fly"; end }  // Violation!
-```
-
-**Interface Segregation (I)** - Many small interfaces over one large:
-```soli
-interface Printable do def print(); end
-interface Exportable do def export(); end
-class Report implements Printable, Exportable do /* ... */ end
-```
-
-**Dependency Inversion (D)** - Depend on abstractions:
-```soli
-interface UserRepository do def find(id: Int) -> User; end
-class InMemoryRepo implements UserRepository do def find(id) do ... end end
-class Service do
-    repo: UserRepository;
-    def get_user(id) do repo.find(id); end
+# Single Responsibility — one reason to change per class
+class UserValidator
+    def validate(user) end
 end
-```
 
-## Common Patterns
+class UserRepository
+    def save(user) end
+end
 
-1. **Chain collection operations** instead of loops
-2. **Use named parameters** for functions with many optional args
-3. **Prefer dot notation** for hash access: `user.name` not `user["name"]`
-4. **Use `const`** for values that shouldn't change
-5. **Validate early** - return errors immediately when invalid
+# Open/Closed — extend via subclasses, don't edit the base
+class Shape
+    def area -> Float
+        0.0
+    end
+end
 
-## Available Commands
+class Circle < Shape
+    radius: Float
 
-```bash
-soli serve . --dev        # Start dev server
-soli generate controller   # Generate controller
-soli generate model        # Generate model
-soli generate migration    # Generate migration
-soli db:migrate up         # Run migrations
-soli db:migrate down       # Rollback migration
-soli test tests/           # Run tests
-soli lint                  # Lint code for style/smell issues
+    def area -> Float
+        3.14159 * this.radius * this.radius
+    end
+end
+
+# Liskov — subclasses must honor the parent's contract.
+#   Don't override a method to throw where the parent returns.
+
+# Interface Segregation — many small interfaces beat one fat one
+interface Printable
+    def print()
+end
+
+interface Exportable
+    def export()
+end
+
+# Dependency Inversion — depend on abstractions
+interface UserRepository
+    def find(id: Int) -> User
+end
+
+class UserService
+    repo: UserRepository
+
+    def get(id)
+        this.repo.find(id)
+    end
+end
 ```
 
 ## Linting
 
-Run `soli lint` to check your code for issues:
-
 ```bash
-soli lint                    # Lint entire project
-soli lint app/controllers/   # Lint specific directory
-soli lint file.sl           # Lint single file
+soli lint                       # lint entire project
+soli lint app/controllers/      # lint a directory
+soli lint path/to/file.sl       # lint a single file
 ```
 
-**Naming rules:**
-- `naming/snake-case` - variables/functions should use `snake_case`
-- `naming/pascal-case` - classes/interfaces should use `PascalCase`
+Key rules:
 
-**Style rules:**
-- `style/empty-block` - avoid empty blocks
-- `style/line-length` - lines should be under 120 characters
+- `naming/snake-case`, `naming/pascal-case`
+- `style/empty-block`, `style/line-length` (≤120 chars)
+- `style/redundant-model-import` — don't `import "../models/*.sl"` inside `app/controllers/`; models are auto-loaded
+- `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`
+- `smell/deep-nesting` (≤4 levels)
+- `smell/undefined-local` — reads of a name never assigned in scope (catches typos)
 
-**Smell rules:**
-- `smell/unreachable-code` - no code after return
-- `smell/empty-catch` - catch blocks shouldn't be empty
-- `smell/duplicate-methods` - no duplicate method names
-- `smell/deep-nesting` - nesting should be ≤4 levels deep
+## Common commands
+
+```bash
+soli serve . --dev                    # dev server, hot reload, dev bar enabled
+soli serve . --port 5011              # run without --dev (still single-process)
+
+soli generate controller posts        # scaffold controller + spec + views
+soli generate model post              # scaffold model
+soli generate migration create_posts  # scaffold migration
+
+soli db:migrate up                    # run pending migrations
+soli db:migrate down                  # roll back last migration
+soli db:migrate status                # show migration state
+
+soli test                             # run all tests in tests/
+soli test --coverage --coverage-min 90.0
+soli lint                             # static analysis
+```
+
+## Conventions to follow
+
+1. **Prefer Ruby-style** for classes and control flow — `class Demo < Test ... end`, `def name(args) ... end`, `if cond ... end`. Reserve `fn { }` for free-standing functions and lambdas.
+2. **Use type annotations** on public function signatures — they catch errors and document intent.
+3. **Prefer immutability** — `const` for values that never change.
+4. **Chain collection methods** instead of writing manual loops.
+5. **Use named parameters** when a function has multiple optional args.
+6. **Use named route helpers** (`posts_path`, `root_path`) — never hand-built URL strings.
+7. **Validate at the model**, not in the controller — keep controllers thin.
+8. **Return errors early** — don't pile `if`s; bail with a 422/redirect at the first invalid branch.
+9. **Test new features to >90% coverage** — non-negotiable, see above.
