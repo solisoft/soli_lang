@@ -176,9 +176,9 @@ soli serve . -d</code></pre>
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Introduction &rarr;</h3>
             <p class="text-sm text-gray-400">Learn about MVC architecture and Soli's philosophy.</p>
         </a>
-        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
-            <p class="text-sm text-gray-400">Define URLs and connect them to controllers.</p>
+        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Configuration &rarr;</h3>
+            <p class="text-sm text-gray-400">Set up environment variables for databases, sessions, jobs, and deployment.</p>
         </a>
     </div>
 </div>

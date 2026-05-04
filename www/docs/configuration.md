@@ -1,0 +1,106 @@
+# Configuration
+
+Soli loads environment variables from the process, then from `.env`, and finally from `.env.{APP_ENV}` when `APP_ENV` is set. Environment-specific files override `.env`, except variables listed in `SOLI_PROTECT_ENV`.
+
+```bash
+# .env
+APP_ENV=development
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp_development
+```
+
+## Application Environment
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `APP_ENV` | Selects `.env.{APP_ENV}` and marks test mode for features that need it. | unset |
+| `SOLI_PROTECT_ENV` | Comma-separated variable names that `.env.{APP_ENV}` must not override. Mostly used by the test runner. | unset |
+
+## Server And Development
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_REQUEST_LOG` | Enables per-request logging when set to `1` or `true`. | `false` |
+| `SOLI_PREFETCH` | Controls hover prefetch injection. Set `off`, `false`, `0`, or `no` to disable. | enabled |
+| `SOLI_DEFAULT_URL_HOST` | Host used by `*_url` route helpers outside an active request. | unset |
+| `SOLI_DEFAULT_URL_SCHEME` | Scheme used with `SOLI_DEFAULT_URL_HOST`. | `http` |
+| `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. | `false` |
+| `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
+
+## Database
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLIDB_HOST` | SoliDB server URL. | `http://localhost:6745` |
+| `SOLIDB_DATABASE` | Database name used by models, migrations, uploads, and jobs fallback. | `default` |
+| `SOLIDB_API_KEY` | API-key auth for SoliDB where supported. | unset |
+| `SOLIDB_USERNAME` | Username for SolidB login/basic auth. | unset |
+| `SOLIDB_PASSWORD` | Password paired with `SOLIDB_USERNAME`. | unset |
+
+## Sessions
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_SESSION_DRIVER` | Session backend: `in_memory`, `disk`, `solidb`, or `solikv`. | `in_memory` |
+| `SOLI_SESSION_PATH` | Directory for disk-backed session files. | `./sessions` |
+| `SOLI_SESSION_TTL` | Session timeout in seconds. | `86400` |
+| `SOLI_SOLIDB_HOST` | SolidB host for the `solidb` session driver. | driver default |
+| `SOLI_SOLIDB_DATABASE` | SolidB database for sessions. | driver default |
+| `SOLI_SOLIDB_COLLECTION` | SolidB collection for sessions. | driver default |
+| `SOLI_SOLIKV_HOST` | SoliKV host for the `solikv` session driver. | `localhost` |
+| `SOLI_SOLIKV_PORT` | SoliKV port for sessions. | `6380` |
+| `SOLI_SOLIKV_TOKEN` | SoliKV auth token for sessions. | unset |
+
+## Jobs
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_JOBS_DATABASE` | SolidB database that stores queues and cron entries. Falls back to `SOLIDB_DATABASE`. | `default` |
+| `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
+| `SOLI_JOBS_CALLBACK_URL` | Base URL SolidB calls when a job fires. | `http://127.0.0.1:3000/_jobs/run` |
+
+## Cache And KV
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLIKV_RESP_HOST` | SoliKV RESP host used by KV/cache builtins. | `localhost` |
+| `SOLIKV_RESP_PORT` | SoliKV RESP port. | `6380` |
+| `SOLIKV_TOKEN` | SoliKV auth token. | unset |
+
+## S3
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS-compatible access key. Alternative: `S3_ACCESS_KEY`. | required for S3 calls |
+| `AWS_SECRET_ACCESS_KEY` | AWS-compatible secret key. Alternative: `S3_SECRET_KEY`. | required for S3 calls |
+| `AWS_REGION` | AWS region. Alternative: `S3_REGION`. | `us-east-1` |
+| `S3_ACCESS_KEY` | S3-compatible access key fallback. | unset |
+| `S3_SECRET_KEY` | S3-compatible secret key fallback. | unset |
+| `S3_REGION` | S3-compatible region fallback. | `us-east-1` |
+| `S3_ENDPOINT` | Custom endpoint for MinIO or another S3-compatible service. | unset |
+
+## Deploy
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_DEPLOY_API_KEY` | API key required by `soli deploy` for proxy deployment. | required for deploy |
+
+## Test And Coverage Internals
+
+These are normally set by Soli tooling rather than by applications.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_COVERAGE_ENABLED` | Enables the server-side coverage dump endpoint for test aggregation. | unset |
+
+## Related Runtime Configuration
+
+Some important settings are configured with Soli functions instead of environment variables:
+
+```soli
+# Trust X-Forwarded-* only behind a trusted proxy.
+enable_trust_proxy()
+
+# Raise the default 8 MiB body cap when an app needs larger uploads.
+set_max_body_size(32 * 1024 * 1024)
+```

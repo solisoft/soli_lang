@@ -22,6 +22,7 @@ get("/docs", "docs#index");
 # Getting Started
 get("/docs/getting-started/introduction", "docs#getting_started_introduction");
 get("/docs/getting-started/installation", "docs#getting_started_installation");
+get("/docs/getting-started/configuration", "docs#getting_started_configuration");
 
 # Core Concepts
 get("/docs/core-concepts/routing", "docs#core_concepts_routing");
@@ -133,6 +134,7 @@ get("/docs/blog/:slug", "blog#show")
 
 get("/docs/introduction", "docs#redirect_introduction");
 get("/docs/installation", "docs#redirect_installation");
+get("/docs/configuration", "docs#redirect_configuration");
 get("/docs/routing", "docs#redirect_routing");
 get("/docs/controllers", "docs#redirect_controllers");
 get("/docs/middleware", "docs#redirect_middleware");

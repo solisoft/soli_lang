@@ -30,6 +30,10 @@ fn getting_started_installation(req)
     render_docs("docs/getting-started/installation", "Installation", "getting_started", "installation")
 end
 
+fn getting_started_configuration(req)
+    render_docs("docs/getting-started/configuration", "Configuration", "getting_started", "configuration")
+end
+
 # ============================================================================
 # Core Concepts
 # ============================================================================
@@ -147,7 +151,12 @@ fn development_tools_deploy(req)
 end
 
 fn development_tools_editor_integration(req)
-    render_docs("docs/development-tools/editor-integration", "Editor Integration", "development_tools", "editor_integration")
+    render_docs(
+        "docs/development-tools/editor-integration",
+        "Editor Integration",
+        "development_tools",
+        "editor_integration"
+    )
 end
 
 # ============================================================================
@@ -382,7 +391,12 @@ fn testing(req)
 end
 
 fn testing_quick_reference(req)
-    render_docs("docs/core-concepts/testing-quick-reference", "Testing Quick Reference", "testing", "testing_quick_reference")
+    render_docs(
+        "docs/core-concepts/testing-quick-reference",
+        "Testing Quick Reference",
+        "testing",
+        "testing_quick_reference"
+    )
 end
 
 # ============================================================================
@@ -395,6 +409,10 @@ end
 
 fn redirect_installation(req)
     redirect("/docs/getting-started/installation")
+end
+
+fn redirect_configuration(req)
+    redirect("/docs/getting-started/configuration")
 end
 
 fn redirect_routing(req)

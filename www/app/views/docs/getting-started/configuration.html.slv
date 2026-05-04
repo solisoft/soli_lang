@@ -1,0 +1,186 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-lime-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Configuration</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            A single reference for Soli environment variables: app environment, database, sessions, jobs, cache, S3, deployment, and development tooling.
+        </p>
+    </div>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">How Environment Files Load</h2>
+        <p class="text-gray-400 mb-4">
+            Soli reads environment variables from the process, then loads <code>.env</code>, then loads <code>.env.{APP_ENV}</code> when <code>APP_ENV</code> is set. Environment-specific files override <code>.env</code>, except variables listed in <code>SOLI_PROTECT_ENV</code>.
+        </p>
+        <pre data-filename=".env"><code class="language-bash text-sm">APP_ENV=development
+SOLIDB_HOST=http://localhost:6745
+SOLIDB_DATABASE=myapp_development</code></pre>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Application Environment</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>APP_ENV</code></td><td class="py-3 px-4">Selects <code>.env.{APP_ENV}</code> and marks test mode for features that need it.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_PROTECT_ENV</code></td><td class="py-3 px-4">Comma-separated variable names that <code>.env.{APP_ENV}</code> must not override. Mostly used by the test runner.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Server And Development</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_REQUEST_LOG</code></td><td class="py-3 px-4">Enables per-request logging when set to <code>1</code> or <code>true</code>.</td><td class="py-3 px-4"><code>false</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_PREFETCH</code></td><td class="py-3 px-4">Controls hover prefetch injection. Set <code>off</code>, <code>false</code>, <code>0</code>, or <code>no</code> to disable.</td><td class="py-3 px-4">enabled</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DEFAULT_URL_HOST</code></td><td class="py-3 px-4">Host used by <code>*_url</code> route helpers outside an active request.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DEFAULT_URL_SCHEME</code></td><td class="py-3 px-4">Scheme used with <code>SOLI_DEFAULT_URL_HOST</code>.</td><td class="py-3 px-4"><code>http</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DEV_REPL_ALLOW_REMOTE</code></td><td class="py-3 px-4">Allows the token-protected dev error-page REPL from non-loopback clients when set to <code>1</code>, <code>true</code>, or <code>yes</code>.</td><td class="py-3 px-4"><code>false</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_TRACE_BOOT</code></td><td class="py-3 px-4">Prints boot timing trace when set.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Database</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLIDB_HOST</code></td><td class="py-3 px-4">SoliDB server URL.</td><td class="py-3 px-4"><code>http://localhost:6745</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIDB_DATABASE</code></td><td class="py-3 px-4">Database name used by models, migrations, uploads, and jobs fallback.</td><td class="py-3 px-4"><code>default</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIDB_API_KEY</code></td><td class="py-3 px-4">API-key auth for SoliDB where supported.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIDB_USERNAME</code></td><td class="py-3 px-4">Username for SolidB login/basic auth.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIDB_PASSWORD</code></td><td class="py-3 px-4">Password paired with <code>SOLIDB_USERNAME</code>.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Sessions</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_DRIVER</code></td><td class="py-3 px-4">Session backend: <code>in_memory</code>, <code>disk</code>, <code>solidb</code>, or <code>solikv</code>.</td><td class="py-3 px-4"><code>in_memory</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_PATH</code></td><td class="py-3 px-4">Directory for disk-backed session files.</td><td class="py-3 px-4"><code>./sessions</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_TTL</code></td><td class="py-3 px-4">Session timeout in seconds.</td><td class="py-3 px-4"><code>86400</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIDB_HOST</code></td><td class="py-3 px-4">SolidB host for the <code>solidb</code> session driver.</td><td class="py-3 px-4">driver default</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIDB_DATABASE</code></td><td class="py-3 px-4">SolidB database for sessions.</td><td class="py-3 px-4">driver default</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIDB_COLLECTION</code></td><td class="py-3 px-4">SolidB collection for sessions.</td><td class="py-3 px-4">driver default</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIKV_HOST</code></td><td class="py-3 px-4">SoliKV host for the <code>solikv</code> session driver.</td><td class="py-3 px-4"><code>localhost</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIKV_PORT</code></td><td class="py-3 px-4">SoliKV port for sessions.</td><td class="py-3 px-4"><code>6380</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SOLIKV_TOKEN</code></td><td class="py-3 px-4">SoliKV auth token for sessions.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Jobs</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_DATABASE</code></td><td class="py-3 px-4">SolidB database that stores queues and cron entries. Falls back to <code>SOLIDB_DATABASE</code>.</td><td class="py-3 px-4"><code>default</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_DEFAULT_QUEUE</code></td><td class="py-3 px-4">Queue used when no queue is specified.</td><td class="py-3 px-4"><code>default</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_CALLBACK_URL</code></td><td class="py-3 px-4">Base URL SolidB calls when a job fires.</td><td class="py-3 px-4"><code>http://127.0.0.1:3000/_jobs/run</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Cache And KV</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLIKV_RESP_HOST</code></td><td class="py-3 px-4">SoliKV RESP host used by KV/cache builtins.</td><td class="py-3 px-4"><code>localhost</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIKV_RESP_PORT</code></td><td class="py-3 px-4">SoliKV RESP port.</td><td class="py-3 px-4"><code>6380</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIKV_TOKEN</code></td><td class="py-3 px-4">SoliKV auth token.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">S3</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>AWS_ACCESS_KEY_ID</code></td><td class="py-3 px-4">AWS-compatible access key. Alternative: <code>S3_ACCESS_KEY</code>.</td><td class="py-3 px-4">required for S3 calls</td></tr>
+                    <tr><td class="py-3 px-4"><code>AWS_SECRET_ACCESS_KEY</code></td><td class="py-3 px-4">AWS-compatible secret key. Alternative: <code>S3_SECRET_KEY</code>.</td><td class="py-3 px-4">required for S3 calls</td></tr>
+                    <tr><td class="py-3 px-4"><code>AWS_REGION</code></td><td class="py-3 px-4">AWS region. Alternative: <code>S3_REGION</code>.</td><td class="py-3 px-4"><code>us-east-1</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>S3_ACCESS_KEY</code></td><td class="py-3 px-4">S3-compatible access key fallback.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>S3_SECRET_KEY</code></td><td class="py-3 px-4">S3-compatible secret key fallback.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>S3_REGION</code></td><td class="py-3 px-4">S3-compatible region fallback.</td><td class="py-3 px-4"><code>us-east-1</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>S3_ENDPOINT</code></td><td class="py-3 px-4">Custom endpoint for MinIO or another S3-compatible service.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Deploy And Internals</h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_DEPLOY_API_KEY</code></td><td class="py-3 px-4">API key required by <code>soli deploy</code> for proxy deployment.</td><td class="py-3 px-4">required for deploy</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_COVERAGE_ENABLED</code></td><td class="py-3 px-4">Enables the server-side coverage dump endpoint for test aggregation. Normally set by Soli tooling.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Runtime Configuration Functions</h2>
+        <p class="text-gray-400 mb-4">Some important server settings are configured in Soli code instead of environment variables:</p>
+        <pre data-filename="config/application.sl"><code class="language-soli text-sm"># Trust X-Forwarded-* only behind a trusted proxy.
+enable_trust_proxy()
+
+# Raise the default 8 MiB body cap when an app needs larger uploads.
+set_max_body_size(32 * 1024 * 1024)</code></pre>
+    </section>
+
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/getting-started/installation" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Installation
+        </a>
+        <a href="/docs/core-concepts/routing" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            Routing
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

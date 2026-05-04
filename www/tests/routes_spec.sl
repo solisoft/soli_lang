@@ -64,6 +64,7 @@ describe("Routes Configuration", fn()
                 "/docs",
                 "/docs/introduction",
                 "/docs/installation",
+                "/docs/configuration",
                 "/docs/routing",
                 "/docs/controllers",
                 "/docs/models",
