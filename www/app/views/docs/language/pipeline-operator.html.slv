@@ -42,10 +42,10 @@ def add_one(x: Int) -&gt; Int { x + 1 }
 def square(x: Int) -&gt; Int { x * x }
 
 # Without pipeline (nested calls)
-let result1 = square(add_one(double(5)))  # Hard to read
+result1 = square(add_one(double(5)))  # Hard to read
 
 # With pipeline (left to right)
-let result2 = 5 |&gt; double() |&gt; add_one() |&gt; square()
+result2 = 5 |&gt; double() |&gt; add_one() |&gt; square()
 print(result2)  # ((5 * 2) + 1)^2 = 121</code></pre>
             </div>
         </section>
@@ -60,14 +60,14 @@ print(result2)  # ((5 * 2) + 1)^2 = 121</code></pre>
 def multiply(a: Int, b: Int) -&gt; Int { a * b }
 
 # `5 |&gt; add(3)` is shorthand for `add(5, 3)`
-let result = 5 |&gt; add(3) |&gt; multiply(2)  # (5 + 3) * 2 = 16
+result = 5 |&gt; add(3) |&gt; multiply(2)  # (5 + 3) * 2 = 16
 print(result)
 
 # Inline lambdas via the immediately-invoked `|x| { ... }()` form
 def subtract(a: Int, b: Int) -&gt; Int { a - b }
 def divide(a: Int, b: Int) -&gt; Int { int(a / b) }
 
-let calc = 100
+calc = 100
   |&gt; |x| { subtract(x, 10) }()
   |&gt; |x| { divide(x, 3) }()
   |&gt; |x| { multiply(x, 4) }()
@@ -82,16 +82,16 @@ print(calc)  # ((100 - 10) / 3) * 4 = 120</code></pre>
             <p class="text-gray-400 mb-3">
                 Iteration over arrays uses method chaining: <code class="text-pink-400">.map</code>, <code class="text-pink-400">.filter</code>, <code class="text-pink-400">.reduce</code>, <code class="text-pink-400">.each</code>. Lambdas are most concise in pipe form — <code class="text-pink-400">|x| x + 1</code> — but <code class="text-pink-400">fn(x) x + 1</code> works too.
             </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            <pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Method chaining with pipe lambdas
-let evens_squared = numbers
+evens_squared = numbers
   .filter(|x| x % 2 == 0)
   .map(|x| x * x)
 print(evens_squared)  # [4, 16, 36, 64, 100]
 
 # Reduce with two parameters
-let sum_of_evens = numbers
+sum_of_evens = numbers
   .filter(|x| x % 2 == 0)
   .reduce(|acc, x| acc + x, 0)
 print(sum_of_evens)  # 30
@@ -131,13 +131,13 @@ end</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Complex data pipeline</h3>
-            <pre data-filename="sales.sl"><code class="language-soli text-sm">let sales_data = [
+            <pre data-filename="sales.sl"><code class="language-soli text-sm">sales_data = [
   {"product": "A", "quantity": 10, "price": 100},
   {"product": "B", "quantity": 5,  "price": 200},
   {"product": "C", "quantity": 15, "price": 50},
 ]
 
-let total_revenue = sales_data
+total_revenue = sales_data
   .map(|sale| sale["quantity"] * sale["price"])
   .reduce(|acc, rev| acc + rev, 0)
 

@@ -54,7 +54,7 @@
   end
 
   def introduce -> String
-    let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old"
+    intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old"
     if (this.email != "")
       intro = intro + ". You can reach me at " + this.email
     end
@@ -115,7 +115,7 @@ are considered internal/private helpers:</p>
 
   def create(req: Any)
     # Using the private helper
-    let permitted = this._permit_params(req["params"])
+    permitted = this._permit_params(req["params"])
     Posts.create(permitted)
   end
 end</code></pre>
@@ -144,7 +144,7 @@ for internal helper methods. The underscore convention is used throughout the co
   end
 end
 
-let account = new BankAccount("123456789", 1000.0)
+account = new BankAccount("123456789", 1000.0)
 account.deposit(500.0)           # Works - public method
 print(account.get_balance())     # 1500.0</code></pre>
             </div>
@@ -412,7 +412,7 @@ class Dog extends Pet
   end
 end
 
-let dog = new Dog("Rex", "Alice")
+dog = new Dog("Rex", "Alice")
 print(dog.speak())     # "Woof!"
 print(dog.describe())  # "Rex belongs to Alice"
 print(dog.name)        # "Rex" (inherited from Animal)</code></pre>
@@ -484,13 +484,13 @@ print(new C().identify())  # "A -> B -> C"</code></pre>
 end
 
 # Using nested classes
-let outer = new Outer(10)
-let inner = new Outer::Inner(outer, 5)
+outer = new Outer(10)
+inner = new Outer::Inner(outer, 5)
 print(inner.get_combined())   # 15
 print(inner.get_outer_value()) # 10
 
 # Factory pattern
-let inner2 = outer.create_inner(20)
+inner2 = outer.create_inner(20)
 print(inner2.get_combined())   # 30</code></pre>
             </div>
         </section>
@@ -543,7 +543,7 @@ print(inner2.get_combined())   # 30</code></pre>
   end
 end
 
-let tree = new Tree()
+tree = new Tree()
 tree.insert(5)
 tree.insert(3)
 tree.insert(7)</code></pre>
@@ -577,8 +577,8 @@ class User
   end
 end
 
-let profile = new User::Profile("alice")
-let settings = new User::Settings()
+profile = new User::Profile("alice")
+settings = new User::Settings()
 
 # Controller action organization
 class Posts
@@ -599,7 +599,7 @@ class Posts
   end
 end
 
-let action = new Posts::Action()
+action = new Posts::Action()
 action.create("Hello", "World")</code></pre>
             </div>
         </section>
@@ -623,8 +623,8 @@ action.create("Hello", "World")</code></pre>
 end
 
 # Accessing from any scope using fully qualified names
-let db = new Service::Database()
-let cache = new Service::Cache()
+db = new Service::Database()
+cache = new Service::Cache()
 print(db.query("SELECT * FROM users"))
 print(cache.get("session:123"))</code></pre>
             </div>

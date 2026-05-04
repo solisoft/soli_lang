@@ -110,7 +110,7 @@ end
 List all collections in the database:
 
 ```soli
-fn up(db: Any)    let collections = db.list_collections()
+fn up(db: Any)    collections = db.list_collections()
   print(collections)
 end
 ```
@@ -120,7 +120,7 @@ end
 Get statistics for a collection:
 
 ```soli
-fn up(db: Any)    let stats = db.collection_stats("users")
+fn up(db: Any)    stats = db.collection_stats("users")
   print(stats)
 end
 ```
@@ -173,7 +173,7 @@ end
 List all indexes for a collection:
 
 ```soli
-fn up(db: Any)    let indexes = db.list_indexes("users")
+fn up(db: Any)    indexes = db.list_indexes("users")
   print(indexes)
 end
 ```

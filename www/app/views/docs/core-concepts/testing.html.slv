@@ -61,7 +61,7 @@
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">describe("HomeController", fn() {
   test("GET /up returns UP status", fn() {
-    let response = get("/up")
+    response = get("/up")
     assert_eq(res_status(response), 200)
     assert_eq(res_body(response), "UP")
   })
@@ -115,12 +115,12 @@ soli test tests/builtins</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Example</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let response = get("/posts")
+<pre><code class="language-soli text-sm">response = get("/posts")
 assert_eq(res_status(response), 200)
-let posts = res_json(response)
+posts = res_json(response)
 assert_gt(len(posts), 0)
 
-let response = post("/posts", {
+response = post("/posts", {
   "title": "New Post",
   "content": "Hello World"
 })
@@ -136,7 +136,7 @@ assert_eq(res_status(response), 201)</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">set_header("X-Request-ID", "test-123")
 set_header("X-Custom-Header", "custom-value")
-let response = get("/api/data")
+response = get("/api/data")
 clear_headers()</code></pre>
             </div>
         </div>
@@ -147,7 +147,7 @@ clear_headers()</code></pre>
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Token Auth</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">with_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
-let response = get("/api/protected")
+response = get("/api/protected")
 clear_authorization()</code></pre>
             </div>
         </div>
@@ -158,7 +158,7 @@ clear_authorization()</code></pre>
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Cookies</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">set_cookie("session_id", "abc123session")
-let response = get("/dashboard")
+response = get("/dashboard")
 clear_cookies()</code></pre>
             </div>
         </div>
@@ -200,11 +200,11 @@ clear_cookies()</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Response Helpers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let body = res_body(response)
+<pre><code class="language-soli text-sm">body = res_body(response)
 assert_contains(body, "expected text")
 
-let response = post("/users", {"name": "John"})
-let user = res_json(response)
+response = post("/users", {"name": "John"})
+user = res_json(response)
 assert_eq(user["name"], "John")</code></pre>
             </div>
         </div>
@@ -214,10 +214,10 @@ assert_eq(user["name"], "John")</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Headers</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let content_type = res_header(response, "Content-Type")
+<pre><code class="language-soli text-sm">content_type = res_header(response, "Content-Type")
 assert_contains(content_type, "application/json")
 
-let headers = res_headers(response)
+headers = res_headers(response)
 assert_hash_has_key(headers, "Content-Type")</code></pre>
             </div>
         </div>
@@ -229,7 +229,7 @@ assert_hash_has_key(headers, "Content-Type")</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">assert(res_redirect(response))
 
-let location = res_location(response)
+location = res_location(response)
 assert_eq(location, "/expected/path")</code></pre>
             </div>
         </div>
@@ -277,7 +277,7 @@ end)</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Simulates a logged-in regular user with the specified ID.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">as_user(42)
-let response = get("/profile")
+response = get("/profile")
 assert_eq(res_status(response), 200)</code></pre>
             </div>
         </section>
@@ -289,7 +289,7 @@ assert_eq(res_status(response), 200)</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Simulates an authenticated administrator.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">as_admin()
-let response = get("/admin/dashboard")
+response = get("/admin/dashboard")
 assert_eq(res_status(response), 200)</code></pre>
             </div>
         </section>
@@ -301,7 +301,7 @@ assert_eq(res_status(response), 200)</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Sets a Bearer authorization header for subsequent requests.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">with_token("your-jwt-token-here")
-let response = get("/api/protected")</code></pre>
+response = get("/api/protected")</code></pre>
             </div>
         </section>
 
@@ -314,7 +314,7 @@ let response = get("/api/protected")</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Performs a login request and maintains session state via cookies.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">login("user@example.com", "secretpassword")
-let response = get("/dashboard")
+response = get("/dashboard")
 assert_eq(res_status(response), 200)</code></pre>
             </div>
         </section>
@@ -327,7 +327,7 @@ assert_eq(res_status(response), 200)</code></pre>
                 <p class="text-gray-400 mb-2">Destroys the current session.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">login("user@example.com", "password")
 logout()
-let response = get("/dashboard")
+response = get("/dashboard")
 assert_eq(res_status(response), 302)  # Redirect to login</code></pre>
             </div>
         </section>
@@ -385,7 +385,7 @@ assert(signed_out())</code></pre>
                 </a>
                 <p class="text-gray-400 mb-2">Returns the currently authenticated user as a hash, or <code>null</code> if no user is signed in.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">as_user(42)
-let user = current_user()
+user = current_user()
 assert_eq(user["id"], 42)</code></pre>
             </div>
         </section>
@@ -398,7 +398,7 @@ assert_eq(user["id"], 42)</code></pre>
                     <code class="font-mono text-indigo-400">create_session(user_id)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Creates a session cookie for the specified user and returns the new session id.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let session_id = create_session(42)
+                <pre data-filename="Example"><code class="language-soli text-sm">session_id = create_session(42)
 assert_not_null(session_id)</code></pre>
             </div>
         </section>
@@ -427,7 +427,7 @@ assert(signed_out())</code></pre>
   "user_id": 42,
   "role": "editor"
 })
-let response = get("/dashboard")
+response = get("/dashboard")
 assert_eq(res_status(response), 200)</code></pre>
             </div>
         </section>
@@ -466,24 +466,24 @@ assert_eq(res_status(response), 200)</code></pre>
 
   test("creates post with valid data", fn() {
     login("author@example.com", "password123")
-    let response = post("/posts", {
+    response = post("/posts", {
       "title": "New Post Title",
       "body": "Post content here"
     })
     assert_eq(res_status(response), 201)
-    let result = res_json(response)
+    result = res_json(response)
     assert_not_null(result["id"])
   })
 
   test("rejects unauthenticated request", fn() {
-    let response = post("/posts", {"title": "Test"})
+    response = post("/posts", {"title": "Test"})
     assert_eq(res_status(response), 302)
   })
 
   test("shows single post", fn() {
-    let response = get("/posts/1")
+    response = get("/posts/1")
     assert_eq(res_status(response), 200)
-    let post = res_json(response)
+    post = res_json(response)
     assert_eq(post["title"], "First Post")
   })
 })</code></pre>
@@ -640,7 +640,7 @@ expect(value).to_contain("substring")</code></pre>
                     <code class="font-mono text-indigo-400">Factory.create(name)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Create an instance from a factory.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let user = Factory.create("user")</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">user = Factory.create("user")</code></pre>
             </div>
         </section>
 
@@ -650,7 +650,7 @@ expect(value).to_contain("substring")</code></pre>
                     <code class="font-mono text-indigo-400">Factory.create_with(name, overrides)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Create an instance with custom overrides.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">admin = Factory.create_with("user", { "role": "admin" })</code></pre>
             </div>
         </section>
 
@@ -677,7 +677,7 @@ expect(value).to_contain("substring")</code></pre>
         <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
   test("creates user", fn() {
     with_transaction(fn() {
-      let user = Factory.create("user", hash("name": "Test"))
+      user = Factory.create("user", hash("name": "Test"))
       expect(User.count).to_equal(1)
       expect(user.name).to_equal("Test")
     })
@@ -696,9 +696,9 @@ Factory.define("post", hash(
   "content": "Content here"
 ))
 # Use factories
-let user = Factory.create("user")
-let post = Factory.create("post", hash("title": "Custom Title"))
-let users = Factory.create_list("user", 5);</code></pre>
+user = Factory.create("user")
+post = Factory.create("post", hash("title": "Custom Title"))
+users = Factory.create_list("user", 5);</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4" id="section-mock-queries">Mock Database Queries</h3>
         <p class="text-gray-400 mb-4">For integration tests without a real database, use <code>Model.mock_query_result()</code> to intercept queries and return predefined data:</p>
@@ -720,7 +720,7 @@ let users = Factory.create_list("user", 5);</code></pre>
       ]
     )
     
-    let user = User.find("123")
+    user = User.find("123")
     assert_eq(user.name, "Alice")
   })
   
@@ -750,8 +750,8 @@ let users = Factory.create_list("user", 5);</code></pre>
       ]
     )
     
-    let contact = Contact.includes("organisation").first
-    let org = contact.organisation
+    contact = Contact.includes("organisation").first
+    org = contact.organisation
     
     # Verify the relation has the correct class (not Contact)
     assert_eq(org.class_name, "Organisation")

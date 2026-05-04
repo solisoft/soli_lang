@@ -94,7 +94,7 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let user = User.create({ "email": "" })
+            <pre><code class="language-soli text-sm">user = User.create({ "email": "" })
 if user._errors
   for error in user._errors
     print(error["field"] + ": " + error["message"])
@@ -130,7 +130,7 @@ end</code></pre>
   end
 end
 
-let user = User.find("user123")
+user = User.find("user123")
 if user.is_admin
   print("Welcome, admin " + user.full_name())
 end</code></pre>
@@ -239,7 +239,7 @@ end</code></pre>
   end
 
   def validate_role
-    let valid_roles = ["admin", "user", "moderator"]
+    valid_roles = ["admin", "user", "moderator"]
     if !valid_roles.includes?(this.role)
       return "must be one of: admin, user, moderator"
     end
@@ -255,7 +255,7 @@ end</code></pre>
 end
 
 # Creating a user with validation
-let user = User.create({
+user = User.create({
   "email": "Alice@Example.com",
   "name": "Alice",
   "age": 30,

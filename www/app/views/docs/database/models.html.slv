@@ -80,7 +80,7 @@ end</code></pre>
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">CREATE</span>
                 Creating Records
             </h3>
-            <pre><code class="language-soli text-sm">let user = User.create({
+            <pre><code class="language-soli text-sm">user = User.create({
   "email": "alice@example.com",
   "name": "Alice",
   "age": 30
@@ -100,25 +100,25 @@ user._errors # => nil</code></pre>
                 Finding Records
             </h3>
             <pre><code class="language-soli text-sm"># Find by ID - returns a User instance
-let user = User.find("user123")
+user = User.find("user123")
 user.name  # => "Alice"
 
 # Find all - returns array of User instances
-let users = User.all
+users = User.all
 users.first.name  # => "Alice"
 
 # Find with filter - returns array of User instances
-let adults = User.where("age >= @age", { "age": 18 }).all
+adults = User.where("age >= @age", { "age": 18 }).all
 
 # Complex conditions
-let results = User.where("age >= @min AND role == @role", {
+results = User.where("age >= @min AND role == @role", {
   "min": 21,
   "role": "admin"
 }).all
 
 # Dynamic finder methods — automatically generated
-let user = User.find_by_email("alice@example.com")
-let user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
+user = User.find_by_email("alice@example.com")
+user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
         </div>
 
         <div>
@@ -130,7 +130,7 @@ let user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
 User.update("user123", { "name": "Alice Smith", "age": 31 })
 
 # Instance method: modify fields and save
-let user = User.find("user123")
+user = User.find("user123")
 user.name = "Alice Smith"
 user.save()
 
@@ -154,7 +154,7 @@ user.update({ "name": "Alice Smith", "age": 31 })</code></pre>
 User.delete("user123")
 
 # Instance method
-let user = User.find("user123")
+user = User.find("user123")
 user.delete()</code></pre>
         </div>
 
@@ -163,7 +163,7 @@ user.delete()</code></pre>
                 <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
                 Counting Records
             </h3>
-            <pre><code class="language-soli text-sm">let total = User.count</code></pre>
+            <pre><code class="language-soli text-sm">total = User.count</code></pre>
         </div>
     </div>
 
@@ -222,7 +222,7 @@ user.delete()</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Create a new instance and save it
-let user = User.new()
+user = User.new()
 user.name = "Bob"
 user.email = "bob@example.com"
 user.save()
@@ -266,11 +266,11 @@ user.save({
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Partial update
-let p = Product.find(id)
+p = Product.find(id)
 p.update({ "price": 99.00 })    # only price changes
 
 # Mix pre-assignment + hash
-let p = Product.new()
+p = Product.new()
 p.name = "Widget"               # will survive
 p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code></pre>
         </div>
@@ -769,19 +769,19 @@ end
 class UsersController < Controller
   def index(req: Any)
     # Eager load posts and profiles to avoid N+1 queries
-    let users = User.includes("posts", "profile").all
+    users = User.includes("posts", "profile").all
     render("users/index", { "users": users })
   end
 
   def show(req: Any)
-    let id = req["params"]["id"]
-    let user = User.includes("posts").find(id)
+    id = req["params"]["id"]
+    user = User.includes("posts").find(id)
     render("users/show", { "user": user })
   end
 
   def active(req: Any)
     # Find active users who have at least one post
-    let users = User.join("posts")
+    users = User.join("posts")
       .where("active = @a", { "a": true })
       .order("created_at", "desc")
       .limit(10)
@@ -790,7 +790,7 @@ class UsersController < Controller
   end
 
   def create(req: Any)
-    let user = User.create({
+    user = User.create({
       "name": req["params"]["name"],
       "email": req["params"]["email"]
     })
@@ -802,14 +802,14 @@ class UsersController < Controller
   end
 
   def update(req: Any)
-    let user = User.find(req["params"]["id"])
+    user = User.find(req["params"]["id"])
     user.name = req["params"]["name"]
     user.save()
     redirect("/users/" + user._key)
   end
 
   def destroy(req: Any)
-    let user = User.find(req["params"]["id"])
+    user = User.find(req["params"]["id"])
     user.delete()
     redirect("/users")
   end
@@ -824,7 +824,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req)
-  let users = User.where("doc.active == true").all()
+  users = User.where("doc.active == true").all()
   render("users/index", { "users": users, "queries": dev_queries() })
 end
 

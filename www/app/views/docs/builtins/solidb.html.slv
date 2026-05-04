@@ -46,7 +46,7 @@
                     <code class="text-lg font-mono text-indigo-400">Solidb(host, database)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Build a client pointed at <code class="text-emerald-400">host</code> and the named <code class="text-emerald-400">database</code>. Add credentials with <code class="text-emerald-400">auth</code> when the server requires them.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let db = Solidb("http://localhost:6745", "mydb")
+                <pre data-filename="Example"><code class="language-soli text-sm">db = Solidb("http://localhost:6745", "mydb")
 db.auth("admin", "secret")</code></pre>
                 <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-purple-400">Solidb</code> instance.</p>
             </div>
@@ -329,7 +329,7 @@ db.drop_index("users", "idx_email")</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-2">Read &amp; seed in a script</h3>
             <p class="text-gray-400 mb-3">A throwaway connection is fine here &mdash; the script runs once and exits.</p>
-            <pre data-filename="scripts/seed_users.sl"><code class="language-soli text-sm">let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+            <pre data-filename="scripts/seed_users.sl"><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
 
 ["Alice", "Bob", "Carol"].each(fn(name) {
@@ -352,7 +352,7 @@ println("seeded " + str(len(db.list("users"))) + " users")</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-2">Inspect a query plan</h3>
             <p class="text-gray-400 mb-3">Use <code class="text-emerald-400">explain</code> to confirm an index is being picked up before relying on it in production.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">let plan = db.explain(
+            <pre data-filename="Example"><code class="language-soli text-sm">plan = db.explain(
   "FOR p IN posts FILTER p.slug == @slug RETURN p",
   { "slug": "hello-world" }
 )

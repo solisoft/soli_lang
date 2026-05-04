@@ -78,7 +78,7 @@ end</code></pre>
         <section id="if-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
+                <pre data-filename="Example"><code class="language-soli text-sm">age = 18
 
 if age >= 18
   print("Adult")
@@ -95,7 +95,7 @@ end</code></pre>
         <section id="if-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
+                <pre data-filename="Example"><code class="language-soli text-sm">age = 18
 
 if age >= 18
   print("Adult")
@@ -124,7 +124,7 @@ end</code></pre>
         <section id="while-braces" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using Curly Braces</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+                <pre data-filename="Example"><code class="language-soli text-sm">i = 0
 while i < 5
   print(i)
   i = i + 1
@@ -135,11 +135,11 @@ end</code></pre>
         <section id="while-end" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Using end Keyword</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+                <pre data-filename="Example"><code class="language-soli text-sm">i = 0
 while i < 5
 end
 
-let j = 0
+j = 0
 while j < 5
   print(j)
   j = j + 1

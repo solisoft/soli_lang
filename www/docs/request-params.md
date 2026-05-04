@@ -22,7 +22,7 @@ Use `req["all"]` to access all parameters unified:
 
 fn update_profile(req)
   # Unified access to all params
-  let all = req["all"];
+  all = req["all"];
 
   print("User ID:", all["id"]);       # "123" (from route)
   print("Name:", all["name"]);        # "alice" (query overrides route)
@@ -65,7 +65,7 @@ When the same parameter exists in multiple sources, values are merged with this 
 # Body: {"status": "urgent", "quantity": "5"}
 
 fn update_item(req)
-  let all = req["all"];
+  all = req["all"];
 
   # "status" appears in both query and body
   # Body wins: all["status"] = "urgent"
@@ -88,19 +88,19 @@ You can still access individual parameter sources separately:
 ```soli
 fn handler(req)
   # Route parameters only
-  let id = req["params"]["id"];
+  id = req["params"]["id"];
 
   # Query parameters only
-  let page = req["query"]["page"];
+  page = req["query"]["page"];
 
   # JSON body only
-  let data = req["json"];
+  data = req["json"];
 
   # Form data only
-  let form = req["form"];
+  form = req["form"];
 
   # Or unified access
-  let all = req["all"];
+  all = req["all"];
 
   {"status": 200, "body": "OK"}
 end
@@ -110,17 +110,17 @@ end
 
 ```soli
 fn search(req)
-  let all = req["all"];
+  all = req["all"];
 
   # Unified params allow flexible API design
   # Can pass filters via query, body, or both
-  let query = all["q"] or "";
-  let page = all["page"] or "1";
-  let limit = all["limit"] or "20";
-  let sort = all["sort"] or "relevance";
+  query = all["q"] or "";
+  page = all["page"] or "1";
+  limit = all["limit"] or "20";
+  sort = all["sort"] or "relevance";
 
   # Use unified params for flexible filtering
-  let filters = {
+  filters = {
     "query": query,
     "page": page,
     "limit": limit,
@@ -131,7 +131,7 @@ fn search(req)
   };
 
   # Execute search with filters
-  let results = execute_search(filters);
+  results = execute_search(filters);
 
   {
     "status": 200,
@@ -165,18 +165,18 @@ end
 
 ```soli
 # Get single param from unified source
-let id = req["all"]["id"];
+id = req["all"]["id"];
 
 # Same thing via the global shorthand
-let id = params.id;
+id = params.id;
 
 # Check if param exists
 if params.page != null
-  let page = params.page;
+  page = params.page;
 end
 
 # Get with default value
-let limit = params.limit or "20";
+limit = params.limit or "20";
 
 # Iterate over all params (hashes iterate via entries/keys/values)
 for pair in entries(params)

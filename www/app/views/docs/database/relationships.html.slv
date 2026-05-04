@@ -133,14 +133,14 @@ end</code></pre>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+            <pre><code class="language-soli text-sm">user = User.find("user_id")
 
 # Access has_one / belongs_to — single instance (or nil)
-let profile = user.profile
-let author  = post.user
+profile = user.profile
+author = post.user
 
 # Access has_many — chainable QueryBuilder
-let posts = user.posts</code></pre>
+posts = user.posts</code></pre>
         </div>
     </div>
 
@@ -162,25 +162,25 @@ for post in user.posts
 end
 
 # Indexing materializes the result set
-let first = user.posts[0]
+first = user.posts[0]
 
 # len() / .length / .size
-let n = len(user.posts)
+n = len(user.posts)
 
 # Array-style helpers materialize then delegate
 user.posts.each(fn(p) { print(p.title) })
-let titles = user.posts.map(fn(p) { p.title })
+titles = user.posts.map(fn(p) { p.title })
 
 # Chained query — composes onto the seed user_id == @__rel_fk filter
-let published = user.posts.where("published = @p", { "p": true }).all
-let n_pub     = user.posts.where("published = @p", { "p": true }).count
+published = user.posts.where("published = @p", { "p": true }).all
+n_pub = user.posts.where("published = @p", { "p": true }).count
 
 # Bulk delete — one REMOVE statement, no N+1
 user.posts.delete_all
 user.posts.where("draft = @d", { "d": true }).delete_all
 
 # Sort / paginate before materializing
-let recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
+recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
         </div>
     </div>
 
@@ -201,10 +201,10 @@ let recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Load users with their posts and profiles in a single query
-let users = User.includes("posts", "profile").all
+users = User.includes("posts", "profile").all
 
 # Combine with where clauses
-let active = User.where("active = @a", { "a": true }).includes("posts").first
+active = User.where("active = @a", { "a": true }).includes("posts").first
 
 # Inspect the generated query
 print(User.includes("posts").to_query)</code></pre>
@@ -231,13 +231,13 @@ print(User.includes("posts").to_query)</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Find users who have at least one post
-let users_with_posts = User.join("posts").all
+users_with_posts = User.join("posts").all
 
 # Find users who have published posts
-let count = User.join("posts", "published = @p", { "p": true }).count
+count = User.join("posts", "published = @p", { "p": true }).count
 
 # Chain with other query methods
-let recent = User.join("posts").order("created_at", "desc").limit(10).all</code></pre>
+recent = User.join("posts").order("created_at", "desc").limit(10).all</code></pre>
         </div>
     </div>
 
@@ -247,10 +247,10 @@ let recent = User.join("posts").order("created_at", "desc").limit(10).all</code>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Only load published posts for each user
-let users = User.includes("posts", "published = @p", { "p": true }).all
+users = User.includes("posts", "published = @p", { "p": true }).all
 
 # Combine a filter with field projection using the "fields" key
-let users = User.includes("posts", "published = @p", {
+users = User.includes("posts", "published = @p", {
   "p": true,
   "fields": ["title", "body"]
 }).all</code></pre>
@@ -263,7 +263,7 @@ let users = User.includes("posts", "published = @p", {
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Only load title and body from posts
-let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
+users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
         </div>
     </div>
 
@@ -273,7 +273,7 @@ let users = User.includes({ "posts": ["title", "body"] }).all</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Filtered posts + unfiltered profile
-let users = User.includes("posts", "published = @p", { "p": true })
+users = User.includes("posts", "published = @p", { "p": true })
   .includes("profile")
   .all</code></pre>
         </div>
@@ -287,12 +287,12 @@ let users = User.includes("posts", "published = @p", { "p": true })
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Each Category gets a `products_count` integer field, in one round-trip
-let cats = Category.includes_count("products").all
+cats = Category.includes_count("products").all
 print(cats[0].products_count)
 # => 3
 
 # Combine with .includes() and other chain steps
-let q = Author.where("active = @a", { "a": true })
+q = Author.where("active = @a", { "a": true })
   .includes("profile")
   .includes_count("posts")
   .order("name", "asc")
@@ -331,8 +331,8 @@ end</code></pre>
     <h3 id="habtm-reading" class="text-lg font-semibold text-white mb-3">Reading associations</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let post = Post.find(post_id)
-let tags = post.tags  # => [Tag, Tag, ...]</code></pre>
+            <pre><code class="language-soli text-sm">post = Post.find(post_id)
+tags = post.tags  # => [Tag, Tag, ...]</code></pre>
         </div>
     </div>
 
@@ -356,7 +356,7 @@ post.remove_tag([tag1, tag2])</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">post.tags << tag                # equivalent to post.add_tag(tag)
 
-let nums = [1, 2, 3]
+nums = [1, 2, 3]
 nums << 4                       # array push: nums == [1, 2, 3, 4]</code></pre>
         </div>
     </div>
@@ -365,7 +365,7 @@ nums << 4                       # array push: nums == [1, 2, 3, 4]</code></pre>
     <p class="text-gray-400 mb-4">Includes use a two-stage subquery through the join table:</p>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let posts = Post.includes("tags").all
+            <pre><code class="language-soli text-sm">posts = Post.includes("tags").all
 
 # Generated subquery:
 # LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key
@@ -376,8 +376,8 @@ nums << 4                       # array push: nums == [1, 2, 3, 4]</code></pre>
     <h3 id="habtm-existence-filtering" class="text-lg font-semibold text-white mb-3">Existence filtering</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let tagged_posts = Post.join("tags").all
-let tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all</code></pre>
+            <pre><code class="language-soli text-sm">tagged_posts = Post.join("tags").all
+tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all</code></pre>
         </div>
     </div>
 

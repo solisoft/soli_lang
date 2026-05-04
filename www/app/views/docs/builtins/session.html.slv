@@ -99,7 +99,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - One of: <code class="text-amber-400">"in_memory"</code>, <code class="text-amber-400">"disk"</code>, <code class="text-amber-400">"solidb"</code>, <code class="text-amber-400">"solikv"</code>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let current = session_driver()
+                <pre data-filename="Example"><code class="language-soli text-sm">current = session_driver()
 print("Using: " + current)</code></pre>
             </div>
         </section>
@@ -117,7 +117,7 @@ print("Using: " + current)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - Configuration with driver, path, host, port, ttl, etc.
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let config = session_config()
+                <pre data-filename="Example"><code class="language-soli text-sm">config = session_config()
 print(config["driver"])
 print(config["ttl"])</code></pre>
             </div>
@@ -189,7 +189,7 @@ print(config["ttl"])</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login
 def login(email: String, password: String) -> Bool
-  let user = User.find_by_email(email)
+  user = User.find_by_email(email)
   if !user || !argon2_verify(password, user["password_hash"])
     return false
   end
@@ -201,7 +201,7 @@ end
 
 # Check authentication
 def current_user -> Hash?
-  let user_id = session_get("user_id")
+  user_id = session_get("user_id")
   if !user_id
     return null
   end
@@ -218,14 +218,14 @@ end</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Flash Messages</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Set a flash message
 def flash(type: String, message: String)
-  let flashes = session_get("_flashes") ?? []
+  flashes = session_get("_flashes") ?? []
   push(flashes, { "type": type, "message": message })
   session_set("_flashes", flashes)
 end
 
 # Get and clear flash messages
 def get_flashes -> Array
-  let flashes = session_get("_flashes") ?? []
+  flashes = session_get("_flashes") ?? []
   session_delete("_flashes")
   flashes
 end

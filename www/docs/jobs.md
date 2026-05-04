@@ -12,7 +12,7 @@ Create a file under `app/jobs/`. The filename and class name follow the same con
 // app/jobs/welcome_email_job.sl
 class WelcomeEmailJob {
   static fn perform(args: Hash) {
-    let user = User.find(args["user_id"]);
+    user = User.find(args["user_id"]);
     Mailer.send(user.email, "Welcome to the app");
   }
 }
@@ -46,12 +46,12 @@ Duration strings accept `seconds`, `minutes`, `hours`, `days`, `weeks` (and the 
 If you'd rather not use the per-class facade:
 
 ```soli
-let job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 });
+job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 });
 Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 });
 Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 });
 Job.cancel(job_id);
-let jobs = Job.list("default");      // jobs in the "default" queue
-let queue_names = Job.queues();
+jobs = Job.list("default");      // jobs in the "default" queue
+queue_names = Job.queues();
 ```
 
 ## Cron (Recurring Jobs)

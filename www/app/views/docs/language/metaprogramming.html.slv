@@ -48,7 +48,7 @@
   end
 end
 
-let person = Person.new
+person = Person.new
 person.send("greet")                    # => "Hello!"
 person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         </div>
@@ -87,14 +87,14 @@ person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
             <pre><code class="language-soli text-sm">class Person
   def method_missing(method_name)
     if (method_name.starts_with("find_by_"))
-      let field = method_name.sub("find_by_", "")
+      field = method_name.sub("find_by_", "")
       return "Finding person by " + field
     end
     return "Method '" + method_name + "' was called"
   end
 end
 
-let person = Person.new
+person = Person.new
 person.find_by_name("Alice")   # => "Finding person by name"
 person.find_by_email("a@b.c")  # => "Finding person by email"
 person.any_undefined_method     # => "Method 'any_undefined_method' was called"</code></pre>
@@ -137,7 +137,7 @@ person.any_undefined_method     # => "Method 'any_undefined_method' was called"<
   end
 end
 
-let person = Person.new
+person = Person.new
 person.respond_to?("greet")        # => true
 person.respond_to?("find_by_name") # => false
 person.respond_to?("send")          # => true
@@ -179,7 +179,7 @@ let is_universal = matches!(method_name.as_str(),
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Foo { }
-let foo = Foo.new()
+foo = Foo.new()
 
 # Define a method with no arguments
 foo.define_method("greet", || { "Hello!" })
@@ -190,7 +190,7 @@ foo.define_method("add", |a, b| { a + b })
 foo.add(1, 2)  # => 3
 
 # Methods are defined on the class, so all instances see it:
-let foo2 = Foo.new()
+foo2 = Foo.new()
 foo2.greet()  # => "Hello!"</code></pre>
         </div>
 
@@ -239,7 +239,7 @@ class.methods.insert(method_name, function_rc);
   }
 }
 
-let foo = Foo.new()
+foo = Foo.new()
 foo.alias_method("say_hello", "greet")
 foo.say_hello("World")  # => "Hello, World!"</code></pre>
         </div>
@@ -321,14 +321,14 @@ if let Some(inherited_native) = superclass.find_native_static_method("inherited"
   count: Int = 0
 end
 
-let c = new Counter()
+c = new Counter()
 c.instance_eval {
   this.count = 42
 }
 c.count  # => 42
 
 # Can also read values
-let val = c.instance_eval { this.count }
+val = c.instance_eval { this.count }
 val  # => 42</code></pre>
         </div>
 
@@ -370,7 +370,7 @@ val  # => 42</code></pre>
       JSON.encode(this.as_hash)
     })
     base.define_method("as_hash", def {
-      let result = {}
+      result = {}
       for v in this.instance_variables
         result[v] = this.instance_variable_get(v)
       end
@@ -482,7 +482,7 @@ User.new.to_json</code></pre>
   end
 end
 
-let user = User.new
+user = User.new
 user.instance_variables   # => ["@name", "@email"]
 user.methods             # => ["greet", "to_s", ...]
 user.respond_to?("greet") # => true</code></pre>
@@ -521,7 +521,7 @@ user.respond_to?("greet") # => true</code></pre>
             <pre><code class="language-soli text-sm">class ApplicationRecord
   static def method_missing(method_name)
     if (method_name.starts_with("find_by_"))
-      let field = method_name.sub("find_by_", "")
+      field = method_name.sub("find_by_", "")
       return "Finding by " + field
     end
     return "Method '" + method_name + "' was called"

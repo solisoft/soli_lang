@@ -29,16 +29,16 @@
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Symbol literals start with a colon
-let s = :name
-let status = :active
+s = :name
+status = :active
 
 # Symbols can contain letters, numbers, underscores
-let field = :first_name
-let key = :user_id
+field = :first_name
+key = :user_id
 
 # Symbols can end with ? or !
-let check = :empty?
-let action = :save!</code></pre>
+check = :empty?
+action = :save!</code></pre>
             </div>
         </div>
     </section>
@@ -101,14 +101,14 @@ let action = :save!</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Symbols make great hash keys. They are distinct from string keys in the same hash.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Symbol keys use fat arrow syntax
-let person = { :name => "Alice", :age => 30 }
+person = { :name => "Alice", :age => 30 }
 person[:name]   # "Alice"
 
-let config = { :host => "localhost", :port => 3000 }
+config = { :host => "localhost", :port => 3000 }
 config[:host]   # "localhost"
 
 # Symbol keys are separate from string keys
-let h = { :name => "sym_value" }
+h = { :name => "sym_value" }
 h["name"] = "str_value"
 h[:name]     # "sym_value"
 h["name"]    # "str_value"
@@ -143,8 +143,8 @@ h.length     # 2</code></pre>
 :hello.to_string # "hello"
 
 # Round-trip conversion
-let original = "test"
-let sym = original.to_sym
+original = "test"
+sym = original.to_sym
 sym.to_s == original  # true</code></pre>
                 </div>
             </section>
@@ -260,11 +260,11 @@ sym.to_s == original  # true</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">&amp;:method_name</code> as a shorthand for creating a lambda that calls a method on each element. Works with <code class="text-indigo-400">map</code>, <code class="text-indigo-400">filter</code>, and other collection methods.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Convert all elements to strings
-let arr = [1, 2, 3]
+arr = [1, 2, 3]
 arr.map(&:to_s)       # ["1", "2", "3"]
 
 # Filter with predicate methods
-let nums = [1, 2, 3, 4, 5, 6]
+nums = [1, 2, 3, 4, 5, 6]
 nums.filter(&:even?)  # [2, 4, 6]
 
 # Equivalent to writing a full lambda
@@ -296,11 +296,11 @@ arr.map(|x| x.to_s)  # same as arr.map(&:to_s)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Symbols work naturally in ternary expressions and conditionals. They are always truthy.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Ternary with symbols
-let result = true ? :yes : :no
+result = true ? :yes : :no
 result  # :yes
 
 # Symbols as status values
-let status = user.active ? :active : :inactive</code></pre>
+status = user.active ? :active : :inactive</code></pre>
                 </div>
             </section>
         </div>

@@ -38,19 +38,19 @@
                     </a>
                     <p class="text-gray-400 mb-3">Create strings using double quotes. Supports escape sequences for special characters.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic string literals
-let greeting = "Hello, World!"
-let name = "Alice"
-let empty = ""
+greeting = "Hello, World!"
+name = "Alice"
+empty = ""
 
 # Escape sequences
-let newline = "Line 1\nLine 2"
-let tab = "Column1\tColumn2"
-let quote = "She said \"Hello\""
-let backslash = "Path: C:\\Users\\name"
+newline = "Line 1\nLine 2"
+tab = "Column1\tColumn2"
+quote = "She said \"Hello\""
+backslash = "Path: C:\\Users\\name"
 
 # Unicode characters
-let emoji = "Hello \u{1F44B}";  # Hello with wave emoji
-let unicode = "\u{00E9}";       # e with accent</code></pre>
+emoji = "Hello \u{1F44B}";  # Hello with wave emoji
+unicode = "\u{00E9}";       # e with accent</code></pre>
                 </div>
             </section>
 
@@ -64,12 +64,12 @@ let unicode = "\u{00E9}";       # e with accent</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Raw strings don't process escape sequences - useful for paths and regex patterns.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Raw strings - no escape processing
-let path = r"C:\Users\name\Documents"
-let regex = r"\d+\.\d+"
+path = r"C:\Users\name\Documents"
+regex = r"\d+\.\d+"
 
 # Compare with regular strings
-let regular = "C:\\Users\\name";  # Need double backslashes
-let raw = r"C:\Users\name";       # Single backslashes work</code></pre>
+regular = "C:\\Users\\name";  # Need double backslashes
+raw = r"C:\Users\name";       # Single backslashes work</code></pre>
                 </div>
             </section>
 
@@ -83,24 +83,24 @@ let raw = r"C:\Users\name";       # Single backslashes work</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Use triple quotes or bracket syntax for multiline strings. Preserves newlines and indentation.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Triple quote syntax (recommended)
-let poem = """The fog comes
+poem = """The fog comes
 on little cat feet.
 It sits looking
 over harbor and city."""
 
 # Bracket syntax [[ ]]
-let story = [[Once upon
+story = [[Once upon
 a time in
 the wild west.]]
 
 # HTML template example
-let html = """<div class="container">
+html = """<div class="container">
   <h1>Welcome</h1>
   <p>This is a paragraph.</p>
 </div>"""
 
 # SQL query example
-let query = """SELECT id, name, email
+query = """SELECT id, name, email
 FROM users
 WHERE active = true
 ORDER BY created_at DESC""";</code></pre>
@@ -120,17 +120,17 @@ ORDER BY created_at DESC""";</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Join strings together using the + operator. Non-string values are automatically converted.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic concatenation
-let greeting = "Hello, " + "World!";  # "Hello, World!"
+greeting = "Hello, " + "World!";  # "Hello, World!"
 
 # Auto-conversion of other types
-let message = "Value: " + 42;         # "Value: 42"
-let result = "Pi is " + 3.14159;      # "Pi is 3.14159"
-let status = "Active: " + true;       # "Active: true"
+message = "Value: " + 42;         # "Value: 42"
+result = "Pi is " + 3.14159;      # "Pi is 3.14159"
+status = "Active: " + true;       # "Active: true"
 
 # Building strings
-let name = "Alice"
-let age = 30
-let intro = "My name is " + name + " and I am " + age.to_s + " years old."</code></pre>
+name = "Alice"
+age = 30
+intro = "My name is " + name + " and I am " + age.to_s + " years old."</code></pre>
                 </div>
             </section>
 
@@ -144,30 +144,30 @@ let intro = "My name is " + name + " and I am " + age.to_s + " years old."</code
                     </a>
                     <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-indigo-400">#{expression}</code> syntax.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic variable interpolation
-let name = "World"
-let greeting = "Hello #{name}!";           # "Hello World!"
+name = "World"
+greeting = "Hello #{name}!";           # "Hello World!"
 
 # Arithmetic expressions
-let a = 2
-let b = 3
-let result = "Sum is #{a + b}";             # "Sum is 5"
+a = 2
+b = 3
+result = "Sum is #{a + b}";             # "Sum is 5"
 
 # Multiple interpolations
-let first = "John"
-let last = "Doe"
-let full = "#{first} #{last}";              # "John Doe"
+first = "John"
+last = "Doe"
+full = "#{first} #{last}";              # "John Doe"
 
 # Method calls
-let text = "hello"
-let upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
+text = "hello"
+upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 
 # Array access
-let items = ["Alice", "Bob"]
-let first_item = "First: #{items[0]}";       # "First: Alice"
+items = ["Alice", "Bob"]
+first_item = "First: #{items[0]}";       # "First: Alice"
 
 # Hash access
-let person = {"name": "Charlie"}
-let person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
+person = {"name": "Charlie"}
+person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
                 </div>
             </section>
 
@@ -218,7 +218,7 @@ end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access individual characters using zero-based indexing. Negative indices count from the end.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let str = "Hello, World!"
+<pre data-filename="Example"><code class="language-soli text-sm">str = "Hello, World!"
 
 # Zero-based indexing
 print(str[0]);    # "H" (first character)
@@ -242,13 +242,13 @@ print(str[100]);  # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Strings are immutable - methods return new strings rather than modifying the original.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let original = "hello"
-let upper = original.upcase
+<pre data-filename="Example"><code class="language-soli text-sm">original = "hello"
+upper = original.upcase
 print(original)  # "hello" (unchanged)
 print(upper)     # "HELLO" (new string)
 
 # To "modify", reassign the variable
-let text = "hello"
+text = "hello"
 text = text.upcase
 print(text)  # "HELLO"</code></pre>
                 </div>
@@ -781,7 +781,7 @@ url_encode("a/b?c=d")            # "a%2Fb%3Fc%3Dd"
 url_encode("café")               # "caf%C3%A9"
 
 # Building a query string by hand
-let url = "/results?q=" + url_encode("search " + str(page))</code></pre>
+url = "/results?q=" + url_encode("search " + str(page))</code></pre>
                 </div>
             </section>
 
@@ -803,7 +803,7 @@ url_decode("caf%C3%A9")              # "café"
 url_decode(url_encode("a/b?c=d"))    # "a/b?c=d"
 
 # Fallback for input you don't trust
-let safe = url_decode(raw) rescue raw</code></pre>
+safe = url_decode(raw) rescue raw</code></pre>
                 </div>
             </section>
         </div>
@@ -830,25 +830,25 @@ let safe = url_decode(raw) rescue raw</code></pre>
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Parse CSV line
-let csv_line = "Alice,30,Engineer"
-let fields = csv_line.split(",")
-let name = fields[0]      # "Alice"
-let age = fields[1].to_i  # 30
-let job = fields[2]       # "Engineer"
+csv_line = "Alice,30,Engineer"
+fields = csv_line.split(",")
+name = fields[0]      # "Alice"
+age = fields[1].to_i  # 30
+job = fields[2]       # "Engineer"
 
 # Parse URL query string
 def parse_query(query: String) -> Hash
-  let result = {}
-  let pairs = query.split("&")
+  result = {}
+  pairs = query.split("&")
   for (pair in pairs)
-    let parts = pair.split("=")
+    parts = pair.split("=")
     if (parts.length == 2)
       result[parts[0]] = parts[1]
     end
   end
   result
 end
-let params = parse_query("name=Alice&age=30")
+params = parse_query("name=Alice&age=30")
 # {"name": "Alice", "age": "30"}</code></pre>
                 </div>
             </section>
@@ -886,7 +886,7 @@ end
 
 # Validate username
 def is_valid_username(username: String) -> Bool
-  let trimmed = username.trim
+  trimmed = username.trim
   trimmed.length >= 3 && trimmed.length <= 20
 end</code></pre>
                 </div>
@@ -902,17 +902,17 @@ end</code></pre>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple template replacement
 def template(text: String, vars: Hash) -> String
-  let result = text
+  result = text
   for (pair in entries(vars))
-    let key = pair[0]
-    let value = pair[1]
+    key = pair[0]
+    value = pair[1]
     result = result.replace("{{" + key + "}}", value.to_string)
   end
   result
 end
 
-let tmpl = "Hello, {{name}}! You have {{count}} messages."
-let output = template(tmpl, {"name": "Alice", "count": 5})
+tmpl = "Hello, {{name}}! You have {{count}} messages."
+output = template(tmpl, {"name": "Alice", "count": 5})
 # "Hello, Alice! You have 5 messages."
 
 # Build HTML safely

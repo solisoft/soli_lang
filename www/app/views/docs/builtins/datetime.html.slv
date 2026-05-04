@@ -48,7 +48,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current local time
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now
+                <pre data-filename="Example"><code class="language-soli text-sm">now = DateTime.now
 println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
@@ -66,7 +66,7 @@ println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance representing the current UTC time
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let utc = DateTime.utc
+                <pre data-filename="Example"><code class="language-soli text-sm">utc = DateTime.utc
 println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
             </div>
         </section>
@@ -88,8 +88,8 @@ println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00Z")
-let date_only = DateTime.parse("2024-01-15")</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-01-15T10:30:00Z")
+date_only = DateTime.parse("2024-01-15")</code></pre>
             </div>
         </section>
 
@@ -106,7 +106,7 @@ let date_only = DateTime.parse("2024-01-15")</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance at epoch
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let epoch = DateTime.epoch()
+                <pre data-filename="Example"><code class="language-soli text-sm">epoch = DateTime.epoch()
 println(epoch.year())  # 1970</code></pre>
             </div>
         </section>
@@ -128,7 +128,7 @@ println(epoch.year())  # 1970</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.from_unix(1704067200)
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.from_unix(1704067200)
 println(dt.to_iso())  # "2024-01-01T00:00:00Z"</code></pre>
             </div>
         </section>
@@ -146,7 +146,7 @@ println(dt.to_iso())  # "2024-01-01T00:00:00Z"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Float</code> - Microseconds since epoch
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let mt = DateTime.microtime()
+                <pre data-filename="Example"><code class="language-soli text-sm">mt = DateTime.microtime()
 println(mt)  # 1712832000000000.0</code></pre>
             </div>
         </section>
@@ -265,7 +265,7 @@ println(mt)  # 1712832000000000.0</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The weekday name (e.g., "monday", "tuesday")
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15")
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-01-15")
 println(dt.weekday())  # "monday"</code></pre>
             </div>
         </section>
@@ -288,7 +288,7 @@ println(dt.weekday())  # "monday"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Int</code> - Unix timestamp in seconds
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.now
 println(dt.to_unix())  # 1705315800</code></pre>
             </div>
         </section>
@@ -306,7 +306,7 @@ println(dt.to_unix())  # 1705315800</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - ISO 8601 formatted string
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.now
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.now
 println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
             </div>
         </section>
@@ -338,12 +338,12 @@ println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
                     <div><code class="text-amber-400">%b</code> - Abbreviated month (localized)</div>
                     <div><code class="text-amber-400">%a</code> - Abbreviated weekday (localized)</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let dt = DateTime.parse("2024-01-15T10:30:00")
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-01-15T10:30:00")
 dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
 dt.format("%B %d, %Y")           # "January 15, 2024"
 dt.format("%A")                  # "Monday"</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Locale Examples</h4>
-                <pre data-filename="I18n Formatting"><code class="language-soli text-sm">let dt = DateTime.parse("2024-03-06T14:30:00Z")
+                <pre data-filename="I18n Formatting"><code class="language-soli text-sm">dt = DateTime.parse("2024-03-06T14:30:00Z")
 
 # French
 dt.format("%A %d %B %Y", "fr")   # "mercredi 06 mars 2024"
@@ -380,9 +380,9 @@ dt.format("%A %d %B %Y", "en")   # "Wednesday 06 March 2024"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
-let tomorrow = today.add_days(1)
-let yesterday = today.add_days(-1)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
+tomorrow = today.add_days(1)
+yesterday = today.add_days(-1)</code></pre>
             </div>
         </section>
 
@@ -403,8 +403,8 @@ let yesterday = today.add_days(-1)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let now = DateTime.now
-let in_two_hours = now.add_hours(2)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">now = DateTime.now
+in_two_hours = now.add_hours(2)</code></pre>
             </div>
         </section>
 
@@ -425,8 +425,8 @@ let in_two_hours = now.add_hours(2)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
-let next_week = today.add_weeks(1)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
+next_week = today.add_weeks(1)</code></pre>
             </div>
         </section>
 
@@ -447,9 +447,9 @@ let next_week = today.add_weeks(1)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
-let next_month = today.add_months(1)
-let last_quarter = today.add_months(-3)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
+next_month = today.add_months(1)
+last_quarter = today.add_months(-3)</code></pre>
             </div>
         </section>
 
@@ -470,8 +470,8 @@ let last_quarter = today.add_months(-3)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">DateTime</code> - A new DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let today = DateTime.now
-let next_year = today.add_years(1)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">today = DateTime.now
+next_year = today.add_years(1)</code></pre>
             </div>
         </section>
     </section>
@@ -482,7 +482,7 @@ let next_year = today.add_years(1)</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre data-filename="DateTime Example"><code class="language-soli text-sm"># Get current date/time
-let now = DateTime.now
+now = DateTime.now
 println("Current time: " + now.to_iso())
 
 # Extract components
@@ -499,11 +499,11 @@ println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
 println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
-let next_week = now.add_weeks(1)
-let last_month = now.add_months(-1)
+next_week = now.add_weeks(1)
+last_month = now.add_months(-1)
 
 # Parse a date string
-let birthday = DateTime.parse("1990-06-15")
+birthday = DateTime.parse("1990-06-15")
 println("Birthday was on a " + birthday.weekday())</code></pre>
         </div>
     </section>

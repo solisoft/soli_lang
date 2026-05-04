@@ -36,7 +36,7 @@
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Conditional branching statements.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 18
+                <pre data-filename="Example"><code class="language-soli text-sm">age = 18
 
 # Simple if
 if (age >= 18)
@@ -44,7 +44,7 @@ if (age >= 18)
 end
 
 # If-else
-let score = 75
+score = 75
 if (score >= 60)
   print("Pass")
 else
@@ -52,7 +52,7 @@ else
 end
 
 # Else-if chain
-let grade = 85
+grade = 85
 let letter
 if (grade >= 90)
   letter = "A"
@@ -102,7 +102,7 @@ end
 if user != null then print("Welcome, " + user.name) end
 
 # Works with elsif too
-let x = 42
+x = 42
 if x > 100 then
   print("big")
 elsif x > 10 then
@@ -141,7 +141,7 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Repeats while a condition is true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+                <pre data-filename="Example"><code class="language-soli text-sm">i = 0
 while (i < 5)
   print("Count: " + str(i))
   i = i + 1
@@ -165,7 +165,7 @@ end
                 </a>
                 <p class="text-gray-400 mb-3">Iterates over collections or ranges.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Iterate over array
-let fruits = ["apple", "banana", "cherry"]
+fruits = ["apple", "banana", "cherry"]
 for (fruit in fruits)
   print(fruit)
 end
@@ -203,13 +203,13 @@ end</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Ruby-style postfix conditionals for concise one-liners.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10
+                <pre data-filename="Example"><code class="language-soli text-sm">x = 10
 print("big") if (x > 5)
 
-let y = 3
+y = 3
 print("small") unless (y > 5)
 
-let status = "active"
+status = "active"
 print("Welcome!") if (status == "active")
 print("Account locked") unless (status != "banned")</code></pre>
             </div>
@@ -229,13 +229,13 @@ print("Account locked") unless (status != "banned")</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Inline conditional expression.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let x = 10
-let size = x > 5 ? "large" : "small"
+                <pre data-filename="Example"><code class="language-soli text-sm">x = 10
+size = x > 5 ? "large" : "small"
 print(size);  # "large"
 
 # Nested ternary
-let grade = 85
-let letter = grade >= 90 ? "A"
+grade = 85
+letter = grade >= 90 ? "A"
       : grade >= 80 ? "B"
       : grade >= 70 ? "C"
       : grade >= 60 ? "D"
@@ -273,8 +273,8 @@ print(letter);  # "B"</code></pre>
             </div>
         </section>
 
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let sum = 0
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+sum = 0
 for (n in numbers)
   if (n % 2 == 0)
     next

@@ -79,7 +79,7 @@ puts 42</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Reads a line of input from the user. Returns the user's input as a String.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let name = input("Enter your name: ")
+                    <pre data-filename="Example"><code class="language-soli text-sm">name = input("Enter your name: ")
 puts "Hello, " + name</code></pre>
                 </div>
             </section>
@@ -116,7 +116,7 @@ type(null)      # "null"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns whether a value is an instance of the specified class. For instances (including models), checks class hierarchy. For primitives, supports "int", "numeric", "object" type names.</p>
-                    <pre data-filename="Instance example"><code class="language-soli text-sm">let user = User.find("123")
+                    <pre data-filename="Instance example"><code class="language-soli text-sm">user = User.find("123")
 user.is_a?("User")      # true
 user.is_a?("Model")     # true (inheritance)
 user.is_a?("String")    # false</code></pre>
@@ -136,7 +136,7 @@ user.is_a?("String")    # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Checks if a variable is defined in the current scope chain. Returns true if the variable exists, false otherwise.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let x = 42;
+                    <pre data-filename="Example"><code class="language-soli text-sm">x = 42;
 defined("x");        # true
 defined("y");        # false</code></pre>
                     <pre data-filename="In a function"><code class="language-soli text-sm">fn check(val) {
@@ -231,11 +231,11 @@ len({"a": 1})     # 1
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Add an element to the end of an array.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2]
+                    <pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2]
 push(arr, 3)     # arr is now [1, 2, 3]
 
 # Or use class method style:
-let arr2 = [1, 2]
+arr2 = [1, 2]
 arr2.push(3)     # arr2 is now [1, 2, 3]</code></pre>
                 </div>
             </section>
@@ -249,12 +249,12 @@ arr2.push(3)     # arr2 is now [1, 2, 3]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove and return the last element from an array.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
-let last = pop(arr)  # last is 3, arr is [1, 2]
+                    <pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
+last = pop(arr)  # last is 3, arr is [1, 2]
 
 # Or use class method style:
-let arr2 = [1, 2, 3]
-let last2 = arr2.pop  # last2 is 3, arr2 is [1, 2]</code></pre>
+arr2 = [1, 2, 3]
+last2 = arr2.pop  # last2 is 3, arr2 is [1, 2]</code></pre>
                 </div>
             </section>
 
@@ -282,10 +282,10 @@ range(5, 0, -1)  # [5, 4, 3, 2, 1]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove all elements from an array or all entries from a hash.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+                    <pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 clear(arr)  # arr is now []
 
-let h = {"a": 1, "b": 2}
+h = {"a": 1, "b": 2}
 h.clear   # h is now {}</code></pre>
                 </div>
             </section>
@@ -313,7 +313,7 @@ h.clear   # h is now {}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all keys in a hash.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
+                    <pre data-filename="Example"><code class="language-soli text-sm">h = {"name": "Alice", "age": 30}
 keys(h)       # ["name", "age"]
 h.keys      # ["name", "age"]</code></pre>
                 </div>
@@ -328,7 +328,7 @@ h.keys      # ["name", "age"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all values in a hash.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
+                    <pre data-filename="Example"><code class="language-soli text-sm">h = {"name": "Alice", "age": 30}
 values(h)     # ["Alice", 30]
 h.values    # ["Alice", 30]</code></pre>
                 </div>
@@ -343,7 +343,7 @@ h.values    # ["Alice", 30]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let h = {"name": "Alice", "age": 30}
+                    <pre data-filename="Example"><code class="language-soli text-sm">h = {"name": "Alice", "age": 30}
 entries(h)    # [["name", "Alice"], ["age", 30]]
 h.entries   # [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
@@ -360,7 +360,7 @@ h.entries   # [["name", "Alice"], ["age", 30]]</code></pre>
                     <p class="text-gray-400 mb-3">Check if a key exists in a hash.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">has_key({"a": 1}, "a")    # true
 has_key({"a": 1}, "b")    # false
-let h = {"a": 1}; h.has_key("a")  # true</code></pre>
+h = {"a": 1}; h.has_key("a")  # true</code></pre>
                 </div>
             </section>
 
@@ -374,7 +374,7 @@ let h = {"a": 1}; h.has_key("a")  # true</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Merge two hashes together. Values from <code>other</code> take precedence.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">{"x": 1}.merge({"y": 2})     # {"x": 1, "y": 2}
-let h1 = {"a": 1}; let h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
+h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
                 </div>
             </section>
 
@@ -593,9 +593,9 @@ pow(2, 3)     # 8.0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the current Unix timestamp as a float with sub-second precision.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let start = clock
+                    <pre data-filename="Example"><code class="language-soli text-sm">start = clock
 # ... do work ...
-let elapsed = clock() - start</code></pre>
+elapsed = clock() - start</code></pre>
                 </div>
             </section>
         </div>
@@ -615,7 +615,7 @@ let elapsed = clock() - start</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Read an entire file into a string.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let content = slurp("config.json")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">content = slurp("config.json")</code></pre>
                 </div>
             </section>
 
@@ -642,7 +642,7 @@ let elapsed = clock() - start</code></pre>
                         <div>
                             <code class="text-indigo-400">File.read(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Read file contents as string.</p>
-                            <pre data-filename="Example"><code class="language-soli text-sm">let content = File.read("config.json")</code></pre>
+                            <pre data-filename="Example"><code class="language-soli text-sm">content = File.read("config.json")</code></pre>
                         </div>
                         
                         <div>
@@ -666,19 +666,19 @@ let elapsed = clock() - start</code></pre>
                         <div>
                             <code class="text-indigo-400">File.glob(pattern)</code>
                             <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (non-recursive).</p>
-                            <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob("docs/*.md")</code></pre>
+                            <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob("docs/*.md")</code></pre>
                         </div>
                         
                         <div>
                             <code class="text-indigo-400">File.glob_recursive(pattern)</code>
                             <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (recursive).</p>
-                            <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob_recursive("docs/**/*.md")</code></pre>
+                            <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob_recursive("docs/**/*.md")</code></pre>
                         </div>
                         
                         <div>
                             <code class="text-indigo-400">File.lines(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Read file as array of lines.</p>
-                            <pre data-filename="Example"><code class="language-soli text-sm">let lines = File.lines("data.txt")</code></pre>
+                            <pre data-filename="Example"><code class="language-soli text-sm">lines = File.lines("data.txt")</code></pre>
                         </div>
                         
                         <div>
@@ -699,7 +699,7 @@ let elapsed = clock() - start</code></pre>
                         <div>
                             <code class="text-indigo-400">File.modified(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Get file modification timestamp (Unix epoch in seconds).</p>
-                            <pre data-filename="Example"><code class="language-soli text-sm">let time = File.modified("config.json")</code></pre>
+                            <pre data-filename="Example"><code class="language-soli text-sm">time = File.modified("config.json")</code></pre>
                         </div>
                         
                         <div>

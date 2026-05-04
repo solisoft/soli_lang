@@ -44,7 +44,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The rendered HTML
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let html = Markdown.to_html("# Hello World")
+                <pre data-filename="Example"><code class="language-soli text-sm">html = Markdown.to_html("# Hello World")
 println(html)  # &lt;h1&gt;Hello World&lt;/h1&gt;</code></pre>
             </div>
         </section>
@@ -90,15 +90,15 @@ Markdown.to_html("1. first\n2. second\n3. third")</code></pre>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Code Blocks</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let md = "```soli\nlet x = 42\nprintln(x)\n```"
-let html = Markdown.to_html(md)
+                <pre data-filename="Example"><code class="language-soli text-sm">md = "```soli\nlet x = 42\nprintln(x)\n```"
+html = Markdown.to_html(md)
 # Renders a &lt;pre&gt;&lt;code&gt; block</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Tables</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let md = "| Name  | Age |\n|-------|-----|\n| Alice | 30  |\n| Bob   | 25  |"
-let html = Markdown.to_html(md)
+                <pre data-filename="Example"><code class="language-soli text-sm">md = "| Name  | Age |\n|-------|-----|\n| Alice | 30  |\n| Bob   | 25  |"
+html = Markdown.to_html(md)
 # Renders an HTML &lt;table&gt;</code></pre>
             </div>
 
@@ -119,8 +119,8 @@ let html = Markdown.to_html(md)
                 <h3 class="text-lg font-semibold text-white mb-3">Rendering Content from a Database</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm"># In a controller action
 def show(req)
-  let post = Post.find(req.params["id"])
-  let html_body = Markdown.to_html(post.body)
+  post = Post.find(req.params["id"])
+  html_body = Markdown.to_html(post.body)
 
   render("posts/show", { post: post, html_body: html_body })
 end</code></pre>
@@ -128,23 +128,23 @@ end</code></pre>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Building Dynamic Content</h3>
-                <pre data-filename="Example"><code class="language-soli text-sm">let title = "Release Notes"
-let items = ["Bug fixes", "New features", "Performance"]
+                <pre data-filename="Example"><code class="language-soli text-sm">title = "Release Notes"
+items = ["Bug fixes", "New features", "Performance"]
 
-let md = "# #{title}\n\n"
+md = "# #{title}\n\n"
 for item in items
   md = md + "- #{item}\n"
 end
 
-let html = Markdown.to_html(md)</code></pre>
+html = Markdown.to_html(md)</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Processing API Responses</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Fetch markdown content from an external API
-let response = Http.get("https://api.example.com/docs/readme")
-let data = JSON.parse(response.body)
-let html = Markdown.to_html(data["content"])</code></pre>
+response = Http.get("https://api.example.com/docs/readme")
+data = JSON.parse(response.body)
+html = Markdown.to_html(data["content"])</code></pre>
             </div>
         </div>
     </section>
@@ -206,7 +206,7 @@ We build **great** software.
 
 Tags: &lt;% for tag in tags %&gt;**&lt;%= tag %&gt;** &lt;% end %&gt;</code></pre>
                 <pre data-filename="Controller"><code class="language-soli text-sm">def show(req)
-  let post = Post.find(req.params["id"])
+  post = Post.find(req.params["id"])
   render("posts/show", {
     title: post.title,
     published_at: post.published_at,

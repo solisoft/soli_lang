@@ -82,7 +82,7 @@ S3_REGION=us-east-1
                 <p class="text-gray-400 mb-3">Lists all buckets in the S3 account.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Array of bucket names</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let buckets = S3.list_buckets()
+                <pre data-filename="Example"><code class="language-soli text-sm">buckets = S3.list_buckets()
 print(buckets)  # ["bucket1", "bucket2"]</code></pre>
             </div>
         </section>
@@ -181,7 +181,7 @@ S3.put_object("my-bucket", "data.json", '{"key": "value"}', {
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">String - Object content</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let content = S3.get_object("my-bucket", "hello.txt")
+                <pre data-filename="Example"><code class="language-soli text-sm">content = S3.get_object("my-bucket", "hello.txt")
 print(content)  # "Hello World!"</code></pre>
             </div>
         </section>
@@ -223,10 +223,10 @@ print(content)  # "Hello World!"</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Array of object keys</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># List all objects
-let files = S3.list_objects("my-bucket")
+files = S3.list_objects("my-bucket")
 
 # List objects with prefix
-let files = S3.list_objects("my-bucket", "documents/")</code></pre>
+files = S3.list_objects("my-bucket", "documents/")</code></pre>
             </div>
         </section>
 

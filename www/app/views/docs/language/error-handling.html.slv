@@ -38,14 +38,14 @@
                 <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>. Ruby-style aliases are supported: <code class="text-indigo-400">begin</code> for <code class="text-indigo-400">try</code>, and <code class="text-indigo-400">rescue</code> for <code class="text-indigo-400">catch</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
-  let result = 10 / 0
+  result = 10 / 0
 catch e
   print("Error: " + str(e))
 end
 
 # With finally (always runs)
 try
-  let data = read_file("config.sl")
+  data = read_file("config.sl")
   print(data)
 catch e
   print("Failed: " + str(e))
@@ -121,7 +121,7 @@ end</code></pre>
 end
 
 try
-  let result = divide(10, 0)
+  result = divide(10, 0)
 catch e
   print("Caught: " + str(e))  # "Caught: Division by zero"
 end</code></pre>
@@ -136,7 +136,7 @@ end</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
-  let result = risky_operation()
+  result = risky_operation()
 catch e
   print("Error: " + str(e))
 finally
@@ -318,17 +318,17 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Returns <code class="text-indigo-400">fallback</code> if <code class="text-indigo-400">expr</code> throws an exception. A concise alternative to try/catch for simple cases.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple rescue
-let data = fetch_data() rescue null;
+data = fetch_data() rescue null;
 print(data);  # null if fetch_data threw
 
 # With fallback value
-let config = load_config() rescue {"host": "localhost", "port": 8080};
+config = load_config() rescue {"host": "localhost", "port": 8080};
 
 # Chaining with nullish coalescing
-let result = risky_operation() rescue null ?? "default";
+result = risky_operation() rescue null ?? "default";
 
 # In pipelines
-let data = user_id |> fetch_user |> validate_user rescue null;</code></pre>
+data = user_id |> fetch_user |> validate_user rescue null;</code></pre>
             </div>
         </section>
 
@@ -342,11 +342,11 @@ let data = user_id |> fetch_user |> validate_user rescue null;</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Rescue has the same precedence as assignment, so <code class="text-indigo-400">x = y rescue z</code> parses as <code class="text-indigo-400">x = (y rescue z)</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># These are equivalent
-let x = risky() rescue "default";
-let x = (risky() rescue "default");
+x = risky() rescue "default";
+x = (risky() rescue "default");
 
 # Can chain with other operators
-let a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
+a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
             </div>
         </section>
 

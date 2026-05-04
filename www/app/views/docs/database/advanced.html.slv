@@ -25,13 +25,13 @@ post.delete
 post.restore
 
 # Query without deleted records (default behavior)
-let posts = Post.all
+posts = Post.all
 
 # Include soft-deleted records
-let all = Post.with_deleted.all
+all = Post.with_deleted.all
 
 # Query only deleted records
-let deleted = Post.only_deleted.all</code></pre>
+deleted = Post.only_deleted.all</code></pre>
         </div>
     </div>
 
@@ -53,8 +53,8 @@ let deleted = Post.only_deleted.all</code></pre>
 end
 
 # Use scopes
-let active = User.scope("active").all
-let recent = User.scope("active").limit(10).all</code></pre>
+active = User.scope("active").all
+recent = User.scope("active").limit(10).all</code></pre>
         </div>
     </div>
 
@@ -70,7 +70,7 @@ let recent = User.scope("active").limit(10).all</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Batch create
-let result = User.create_many([
+result = User.create_many([
   { "name": "Alice", "email": "alice@example.com" },
   { "name": "Bob", "email": "bob@example.com" },
   { "name": "Charlie", "email": "charlie@example.com" }
@@ -96,7 +96,7 @@ User.upsert("user123", { "name": "Updated Name" })
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Get transaction handle
-let tx = User.transaction()
+tx = User.transaction()
 
 # Perform operations within the transaction
 tx.create({ name: "Alice", age: 30 })
@@ -120,7 +120,7 @@ tx.commit()
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Execute SDBQL in a transaction (auto-commits)
-let result = User.transaction("
+result = User.transaction("
   INSERT { name: 'Alice', age: 30 } INTO users;
   INSERT { name: 'Bob', age: 25 } INTO users;
   RETURN users
@@ -142,11 +142,11 @@ let result = User.transaction("
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+            <pre><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
 
 # Read with named parameters
-let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
 })
 
@@ -176,14 +176,14 @@ db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Simple query with interpolation
-let users = @sdbql{
+users = @sdbql{
   FOR u IN users
   FILTER u.age >= #{age}
   RETURN u
 }
 
 # Multiple interpolations
-let results = @sdbql{
+results = @sdbql{
   FOR u IN users
   FILTER u.age >= #{min_age} AND u.city == #{city}
   SORT u.name ASC

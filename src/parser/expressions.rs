@@ -935,9 +935,7 @@ impl Parser {
                 // Same-line requirement: don't swallow tokens from the next statement.
                 } else if let TokenKind::Identifier(_) = &self.peek().kind {
                     let peeked_line = self.peek().span.line;
-                    if peeked_line == name_span.line
-                        && self.peek_nth(1).kind == TokenKind::Colon
-                    {
+                    if peeked_line == name_span.line && self.peek_nth(1).kind == TokenKind::Colon {
                         let arguments = self.parse_named_arguments_without_parens()?;
                         let span = start_span.merge(&self.previous_span());
                         let member = Expr::new(

@@ -511,7 +511,7 @@ expect(user).to_not_be_null();</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Create an instance from a factory.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">let user = Factory.create("user")
+                    <pre data-filename="Example"><code class="language-soli text-sm">user = Factory.create("user")
 println(user["name"])  # "Test User"</code></pre>
                 </div>
             </div>
@@ -527,7 +527,7 @@ println(user["name"])  # "Test User"</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">Create an instance with custom overrides.</p>
                 <div class="mt-4">
-                    <pre data-filename="Example"><code class="language-soli text-sm">let admin = Factory.create_with("user", { "role": "admin" })
+                    <pre data-filename="Example"><code class="language-soli text-sm">admin = Factory.create_with("user", { "role": "admin" })
 println(admin["role"])  # "admin"
 println(admin["name"])  # "Test User" (from factory)</code></pre>
                 </div>

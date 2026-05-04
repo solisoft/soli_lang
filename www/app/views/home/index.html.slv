@@ -132,7 +132,7 @@
 <span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
 
 <span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
- <span class="text-white">&lt;% for post in posts %&gt;</span>
+ <span class="text-white">&lt;% for post in @post %&gt;</span>
   <span class="text-blue-400">&lt;article&gt;</span>
    <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
    <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
@@ -148,23 +148,19 @@
                         <div id="content-controller" class="hidden">
 <pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span>
   <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
-    <span class="text-purple-400">let</span> posts = <span class="text-yellow-200">Post</span>
+    @post = <span class="text-yellow-200">Post</span>
       .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
       .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
       .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
       .<span class="text-blue-400">all</span>
 
-    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, {
-      <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span>,
-      <span class="text-green-400">"posts"</span>: posts
-    })
+    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, { <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span> })
   <span class="text-purple-400">end</span>
 
   <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>)
-    <span class="text-purple-400">let</span> result = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>[<span class="text-green-400">"params"</span>]);
-    <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
-      <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>);
-    <span class="text-purple-400">end</span>
+    result = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>[<span class="text-green-400">"params"</span>]);
+    <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>) <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
+
     <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>)
   <span class="text-purple-400">end</span>
 <span class="text-purple-400">end</span></code></pre>
@@ -497,14 +493,6 @@
                     <div class="p-4 overflow-x-auto">
 <pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Chainable query builder</span>
 <span class="text-purple-400">let</span> admins = <span class="text-yellow-200">User</span>
-  .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.role == @role"</span>, { <span class="text-green-400">"role"</span>: <span class="text-green-400">"admin"</span> })
-  .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.active == @a"</span>, { <span class="text-green-400">"a"</span>: <span class="text-purple-400">true</span> })
-  .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-  .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
-  .<span class="text-blue-400">all</span>
-
-<span class="text-gray-500"># CRUD with validations</span>
-<span class="text-purple-400">let</span> result = <span class="text-yellow-200">User</span>.<span class="text-blue-400">create</span>({
   <span class="text-green-400">"name"</span>: <span class="text-green-400">"Alice"</span>,
   <span class="text-green-400">"email"</span>: <span class="text-green-400">"alice@example.com"</span>
 })

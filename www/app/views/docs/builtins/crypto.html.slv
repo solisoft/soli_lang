@@ -57,7 +57,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha256("hello")
+                <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.sha256("hello")
 # "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"</code></pre>
             </div>
         </section>
@@ -79,7 +79,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - 128-character hex string (64 bytes)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.sha512("hello")
+                <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.sha512("hello")
 # 128-character hex string</code></pre>
             </div>
         </section>
@@ -101,7 +101,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - 32-character hex string (16 bytes)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.md5("hello")
+                <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.md5("hello")
 # "5d41402abc4b2a76b9719d911017c592"</code></pre>
             </div>
         </section>
@@ -124,7 +124,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let mac = Crypto.hmac("message", "secret_key")
+                <pre data-filename="Example"><code class="language-soli text-sm">mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.</code></pre>
             </div>
         </section>
@@ -158,7 +158,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The Argon2id hash string
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let hash = Crypto.argon2_hash("secretpassword")
+                <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.argon2_hash("secretpassword")
 # $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
             </div>
         </section>
@@ -207,7 +207,7 @@ end</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair
+                <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.x25519_keypair
 println(keypair["public"])   # Hex-encoded public key
 println(keypair["private"])  # Hex-encoded private key</code></pre>
             </div>
@@ -231,12 +231,12 @@ println(keypair["private"])  # Hex-encoded private key</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Hex-encoded shared secret
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let alice = Crypto.x25519_keypair
-let bob = Crypto.x25519_keypair
+                <pre data-filename="Example"><code class="language-soli text-sm">alice = Crypto.x25519_keypair
+bob = Crypto.x25519_keypair
 
 # Both compute the same shared secret
-let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
-let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
+alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
+bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
 # alice_secret == bob_secret</code></pre>
             </div>
         </section>
@@ -258,8 +258,8 @@ let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Hex-encoded public key
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.x25519_keypair
-let derived_public = Crypto.x25519_public_key(keypair["private"])
+                <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.x25519_keypair
+derived_public = Crypto.x25519_public_key(keypair["private"])
 # derived_public == keypair["public"]</code></pre>
             </div>
         </section>
@@ -282,7 +282,7 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let keypair = Crypto.ed25519_keypair
+                <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.ed25519_keypair
 # Use keypair["private"] to sign messages
 # Share keypair["public"] for verification</code></pre>
             </div>
@@ -321,13 +321,13 @@ let derived_public = Crypto.x25519_public_key(keypair["private"])
                     <code class="text-purple-400">String</code> - 6-digit TOTP code
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Generate code for current time
-let code = Crypto.totp_generate("JBSWY3DPEHPK3PXP")
+code = Crypto.totp_generate("JBSWY3DPEHPK3PXP")
 
 # Generate code for specific time
-let code = Crypto.totp_generate("JBSWY3DPEHPK3PXP", 1704067200, 30)
+code = Crypto.totp_generate("JBSWY3DPEHPK3PXP", 1704067200, 30)
 
 # Use RFC 6238 test vector
-let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
+code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
 # Returns "287082"</code></pre>
             </div>
         </section>
@@ -352,8 +352,8 @@ let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Bool</code> - true if code is valid, false otherwise
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let secret = "JBSWY3DPEHPK3PXP"
-let user_code = request.body["code"]
+                <pre data-filename="Example"><code class="language-soli text-sm">secret = "JBSWY3DPEHPK3PXP"
+user_code = request.body["code"]
 
 if Crypto.totp_verify(secret, user_code)
   println("Authentication successful!")
@@ -383,13 +383,13 @@ end</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - otpauth:// URI
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let secret = "JBSWY3DPEHPK3PXP"
-let uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
+                <pre data-filename="Example"><code class="language-soli text-sm">secret = "JBSWY3DPEHPK3PXP"
+uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
 
 # Returns: otpauth://totp/MyApp:user%40example.com?secret=...&algorithm=SHA1&digits=6&period=30
 
 # Use with QR code library
-let qr_data = QRCode.encode(uri)
+qr_data = QRCode.encode(uri)
 # Display qr_data to user for scanning</code></pre>
             </div>
         </section>

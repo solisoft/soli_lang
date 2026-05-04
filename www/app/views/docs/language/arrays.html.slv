@@ -38,15 +38,15 @@
                     </a>
                     <p class="text-gray-400 mb-3">Create arrays using square brackets with comma-separated values.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic array literal
-let numbers = [1, 2, 3, 4, 5]
-let names = ["Alice", "Bob", "Charlie"]
-let mixed = [1, "hello", true, null]
+numbers = [1, 2, 3, 4, 5]
+names = ["Alice", "Bob", "Charlie"]
+mixed = [1, "hello", true, null]
 
 # Empty array
-let empty = []
+empty = []
 
 # Nested arrays
-let matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
+matrix = [[1, 2], [3, 4], [5, 6]];</code></pre>
                 </div>
             </section>
 
@@ -95,15 +95,15 @@ range(5, 0, -1)    # [5, 4, 3, 2, 1] (reverse)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Shorthand syntax for creating arrays of strings (%w), symbols (%i), or numbers (%n). Elements are separated by whitespace. Use D suffix for decimals.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># %w[] creates string arrays
-let words = %w[foo bar baz]
+words = %w[foo bar baz]
 print(words);  # ["foo", "bar", "baz"]
 
 # %i[] creates symbol arrays
-let methods = %i[get post put delete]
+methods = %i[get post put delete]
 print(methods);  # [:get, :post, :put, :delete]
 
 # %n[] creates number arrays (integers, floats, and decimals with D suffix)
-let nums = %n[1 2.5 3.5D]
+nums = %n[1 2.5 3.5D]
 print(nums);  # [1, 2.5, 3.5]
 
 # Empty arrays
@@ -155,7 +155,7 @@ const BOX = %n[0 0 100 100]
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access elements using zero-based indexing. Negative indices count from the end.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [10, 20, 30, 40, 50]
 
 # Zero-based indexing
 print(arr[0]);    # 10 (first element)
@@ -179,7 +179,7 @@ print(arr[10]);   # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Arrays are mutable - you can modify elements by index.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
 
 # Modify existing element
 arr[0] = 100
@@ -215,20 +215,20 @@ print(arr);  # [100, 2, 3, 4, 5, null, null, null, null, null, 999]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Subtract an array from another array, removing all matching elements. Returns a new array (original unchanged). Uses identity comparison for instances.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic array subtraction
-let a = [1, 2, 3]
-let b = [1]
-let result = a - b
+a = [1, 2, 3]
+b = [1]
+result = a - b
 print(result);  # [2, 3]
 
 # Remove multiple occurrences
-let a = [1, 2, 1, 3, 1]
-let b = [1]
-let result = a - b
+a = [1, 2, 1, 3, 1]
+b = [1]
+result = a - b
 print(result);  # [2, 3]
 
 # Works with strings
-let fruits = ["apple", "banana", "cherry"]
-let to_remove = ["banana"]
+fruits = ["apple", "banana", "cherry"]
+to_remove = ["banana"]
 print(fruits - to_remove);  # ["apple", "cherry"]
 
 # Instance comparison uses identity (pointer equality)
@@ -236,10 +236,10 @@ class Person {
   name: String;
   fn new(n) { this.name = n; }
 }
-let p1 = Person.new({"name": "Alice"})
-let p2 = Person.new({"name": "Bob"})
-let arr = [p1, p2]
-let result = arr - [p1]
+p1 = Person.new({"name": "Alice"})
+p2 = Person.new({"name": "Bob"})
+arr = [p1, p2]
+result = arr - [p1]
 print(result);  # [<Person name: "Bob">]</code></pre>
                 </div>
             </section>
@@ -254,19 +254,19 @@ print(result);  # [<Person name: "Bob">]</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Concatenate two arrays, returning a new array containing all elements from both. Original arrays are unchanged.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Concatenate two arrays
-let a = [1, 2]
-let b = [3, 4]
-let result = a + b
+a = [1, 2]
+b = [3, 4]
+result = a + b
 print(result);  # [1, 2, 3, 4]
 
 # Works with any types
-let nums = [1, 2] + [3, 4]
-let strings = ["a", "b"] + ["c", "d"]
+nums = [1, 2] + [3, 4]
+strings = ["a", "b"] + ["c", "d"]
 
 # Original arrays unchanged
-let x = [1, 2]
-let y = [3, 4]
-let combined = x + y
+x = [1, 2]
+y = [3, 4]
+combined = x + y
 print(x);  # [1, 2]
 print(y);  # [3, 4]</code></pre>
                 </div>
@@ -295,21 +295,21 @@ print(y);  # [3, 4]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Transform each element using a function. Returns a new array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5]
 
 # Double each number
-let doubled = numbers.map(|x| x * 2)
+doubled = numbers.map(|x| x * 2)
 print(doubled);  # [2, 4, 6, 8, 10]
 
 # Trailing block syntax (equivalent)
-let doubled = numbers.map |x| x * 2 end
+doubled = numbers.map |x| x * 2 end
 
 # Symbol shorthand: &:method → |__it| __it.method()
-let strings = numbers.map(&:to_s)
+strings = numbers.map(&:to_s)
 print(strings);  # ["1", "2", "3", "4", "5"]
 
 # Convert to strings
-let strings = numbers.map(|x| str(x))
+strings = numbers.map(|x| str(x))
 print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                 </div>
             </section>
@@ -323,21 +323,21 @@ print(strings);  # ["1", "2", "3", "4", "5"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Keep elements matching a condition. Returns a new array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Keep only even numbers
-let evens = numbers.filter(|x| x % 2 == 0)
+evens = numbers.filter(|x| x % 2 == 0)
 print(evens);  # [2, 4, 6, 8, 10]
 
 # Trailing block syntax (equivalent)
-let evens = numbers.filter |x| x % 2 == 0 end
+evens = numbers.filter |x| x % 2 == 0 end
 
 # Symbol shorthand: &:predicate → |__it| __it.predicate()
-let evens = numbers.filter(&:even?)
+evens = numbers.filter(&:even?)
 print(evens);  # [2, 4, 6, 8, 10]
 
 # Keep numbers greater than 5
-let large = numbers.filter(|x| x > 5)
+large = numbers.filter(|x| x > 5)
 print(large);  # [6, 7, 8, 9, 10]</code></pre>
                 </div>
             </section>
@@ -351,17 +351,17 @@ print(large);  # [6, 7, 8, 9, 10]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Accumulate array elements to a single value.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5]
 
 # Sum all numbers
-let sum = numbers.reduce(|acc, x| acc + x, 0)
+sum = numbers.reduce(|acc, x| acc + x, 0)
 print(sum);  # 15
 
 # Trailing block syntax — extra args in parens, block after
-let sum = numbers.reduce(0) |acc, x| acc + x end
+sum = numbers.reduce(0) |acc, x| acc + x end
 
 # Product of all numbers
-let product = numbers.reduce(|acc, x| acc * x, 1)
+product = numbers.reduce(|acc, x| acc * x, 1)
 print(product);  # 120</code></pre>
                 </div>
             </section>
@@ -375,7 +375,7 @@ print(product);  # 120</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Iterate over elements for side effects. Returns the original array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3]
 
 # Print each number
 numbers.each(|x| print(x))
@@ -387,7 +387,7 @@ numbers.each(|x| print(x))
 numbers.each |x| print(x) end
 
 # Modify external state
-let sum = 0;
+sum = 0;
 numbers.each |x| sum = sum + x end
 print(sum);  # 6</code></pre>
                 </div>
@@ -402,7 +402,7 @@ print(sum);  # 6</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Iterate over elements with their index. The block receives <code>(value, index)</code>. Returns the original array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"]
+<pre data-filename="Example"><code class="language-soli text-sm">names = ["Alice", "Bob", "Charlie"]
 
 names.each_with_index(|name, i| print("\(i): \(name)"))
 # Output: 0: Alice
@@ -423,24 +423,24 @@ names.each_with_index |name, i| print("\(i): \(name)") end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Search and check array elements.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5]
 
 # find - returns first matching element
-let first_even = numbers.find(|x| x % 2 == 0)
+first_even = numbers.find(|x| x % 2 == 0)
 print(first_even)  # 2
 
 # any? - returns true if any element matches
-let has_large = numbers.any?(|x| x > 4)
+has_large = numbers.any?(|x| x > 4)
 print(has_large)  # true
 
 # all? - returns true if all elements match
-let all_positive = numbers.all?(|x| x > 0)
+all_positive = numbers.all?(|x| x > 0)
 print(all_positive)  # true
 
 # Trailing block syntax works too
-let found = numbers.find |x| x > 3 end
-let any = numbers.any? |x| x > 4 end
-let all = numbers.all? |x| x > 0 end</code></pre>
+found = numbers.find |x| x > 3 end
+any = numbers.any? |x| x > 4 end
+all = numbers.all? |x| x > 0 end</code></pre>
                 </div>
             </section>
 
@@ -453,7 +453,7 @@ let all = numbers.all? |x| x > 0 end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Return the position of the first element equal to <code>value</code>, or <code>-1</code> if not found.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie", "Bob"]
+<pre data-filename="Example"><code class="language-soli text-sm">names = ["Alice", "Bob", "Charlie", "Bob"]
 
 print(names.index_of("Bob"));      # 1  (first match)
 print(names.index_of("Charlie"));  # 2
@@ -470,22 +470,22 @@ print(names.index_of("Dave"));     # -1 (not found)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [3, 1, 4, 1, 5, 9, 2, 6]
 
 # Default sort (ascending)
-let sorted = numbers.sort
+sorted = numbers.sort
 print(sorted);  # [1, 1, 2, 3, 4, 5, 6, 9]
 
 # Custom comparator (descending)
-let desc = numbers.sort(|a, b| b - a)
+desc = numbers.sort(|a, b| b - a)
 print(desc);  # [9, 6, 5, 4, 3, 2, 1, 1]
 
 # Trailing block syntax
-let desc = numbers.sort |a, b| b - a end
+desc = numbers.sort |a, b| b - a end
 
 # Sort by string length
-let words = ["cherry", "pie", "apple"]
-let by_length = words.sort |a, b| len(a) - len(b) end
+words = ["cherry", "pie", "apple"]
+by_length = words.sort |a, b| len(a) - len(b) end
 print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                 </div>
             </section>
@@ -499,22 +499,22 @@ print(by_length);  # ["pie", "apple", "cherry"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Sort an array of hashes by a key, or use a function to extract the sort value from each element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let people = [
+<pre data-filename="Example"><code class="language-soli text-sm">people = [
  { "name": "Charlie", "age": 30 },
  { "name": "Alice", "age": 25 },
  { "name": "Bob", "age": 20 }
 ]
 
 # Sort by hash key (string argument)
-let by_name = people.sort_by("name")
+by_name = people.sort_by("name")
 print(by_name.map(|p| p.get("name")));  # [Alice, Bob, Charlie]
 
-let by_age = people.sort_by("age")
+by_age = people.sort_by("age")
 print(by_age.map(|p| p.get("age")));  # [20, 25, 30]
 
 # Sort by function (for computed values)
-let words = ["cherry", "pie", "apple"]
-let by_length = words.sort_by(|w| len(w))
+words = ["cherry", "pie", "apple"]
+by_length = words.sort_by(|w| len(w))
 print(by_length);  # [pie, apple, cherry]</code></pre>
                 </div>
             </section>
@@ -528,8 +528,8 @@ print(by_length);  # [pie, apple, cherry]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Return a new array with elements in reverse order.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
-let reversed = arr.reverse
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
+reversed = arr.reverse
 print(reversed);  # [5, 4, 3, 2, 1]
 print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                 </div>
@@ -544,8 +544,8 @@ print(arr);       # [1, 2, 3, 4, 5] (original unchanged)</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove duplicate elements. Returns a new array with unique values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 2, 3, 3, 3, 4]
-let unique = arr.uniq
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 2, 3, 3, 3, 4]
+unique = arr.uniq
 print(unique)  # [1, 2, 3, 4]</code></pre>
                 </div>
             </section>
@@ -559,8 +559,8 @@ print(unique)  # [1, 2, 3, 4]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove null values from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, 2, null, 3, null]
-let cleaned = arr.compact
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, null, 2, null, 3, null]
+cleaned = arr.compact
 print(cleaned)  # [1, 2, 3]</code></pre>
                 </div>
             </section>
@@ -574,8 +574,8 @@ print(cleaned)  # [1, 2, 3]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove null, empty strings, empty arrays, and empty hashes from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, null, "", [], {}, "hello", [1], {a: 1}]
-let cleaned = arr.compact_blank
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, null, "", [], {}, "hello", [1], {a: 1}]
+cleaned = arr.compact_blank
 print(cleaned)  # [1, "hello", [1], {a: 1}]</code></pre>
                 </div>
             </section>
@@ -589,13 +589,13 @@ print(cleaned)  # [1, "hello", [1], {a: 1}]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Flatten nested arrays. Optionally specify depth.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let nested = [[1, 2], [3, 4], [5, 6]]
-let flat = nested.flatten
+<pre data-filename="Example"><code class="language-soli text-sm">nested = [[1, 2], [3, 4], [5, 6]]
+flat = nested.flatten
 print(flat);  # [1, 2, 3, 4, 5, 6]
 
 # Flatten only 1 level deep
-let deep = [[1, 2], [[3, 4]]]
-let partial = deep.flatten(1)
+deep = [[1, 2], [[3, 4]]]
+partial = deep.flatten(1)
 print(partial);  # [1, 2, [3, 4]]</code></pre>
                 </div>
             </section>
@@ -609,12 +609,12 @@ print(partial);  # [1, 2, [3, 4]]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get the first or last element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [10, 20, 30, 40, 50]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [10, 20, 30, 40, 50]
 print(arr.first);  # 10
 print(arr.last);   # 50
 
 # Returns null for empty arrays
-let empty = []
+empty = []
 print(empty.first);  # null
 print(empty.last);   # null</code></pre>
                 </div>
@@ -629,7 +629,7 @@ print(empty.last);   # null</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if array is empty, blank, present, or contains a value. <code>.includes?</code> and <code>.contains</code> are aliases.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 
 print(arr.empty?);         # false
 print(arr.blank?);         # false
@@ -637,7 +637,7 @@ print(arr.present?);       # true
 print(arr.includes?(2));   # true
 print(arr.contains(2));    # true
 
-let empty = []
+empty = []
 print(empty.empty?);       # true
 print(empty.blank?);       # true
 print(empty.present?);     # false</code></pre>
@@ -653,14 +653,14 @@ print(empty.present?);     # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Random element selection and shuffling.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
 
 # Get random element
-let random = arr.sample
+random = arr.sample
 print(random);  # Random element (e.g., 3)
 
 # Shuffle array
-let shuffled = arr.shuffle
+shuffled = arr.shuffle
 print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                 </div>
             </section>
@@ -674,14 +674,14 @@ print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Take or skip the first n elements.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3, 4, 5]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
 
 # Take first n elements
-let first_three = arr.take(3)
+first_three = arr.take(3)
 print(first_three);  # [1, 2, 3]
 
 # Skip first n elements
-let rest = arr.drop(3)
+rest = arr.drop(3)
 print(rest);  # [4, 5]</code></pre>
                 </div>
             </section>
@@ -695,10 +695,10 @@ print(rest);  # [4, 5]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Combine two arrays into pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let names = ["Alice", "Bob", "Charlie"]
-let scores = [95, 87, 92]
+<pre data-filename="Example"><code class="language-soli text-sm">names = ["Alice", "Bob", "Charlie"]
+scores = [95, 87, 92]
 
-let pairs = names.zip(scores)
+pairs = names.zip(scores)
 # [["Alice", 95], ["Bob", 87], ["Charlie", 92]]</code></pre>
                 </div>
             </section>
@@ -712,7 +712,7 @@ let pairs = names.zip(scores)
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Numeric aggregation methods.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let numbers = [10, 5, 8, 3, 12]
+<pre data-filename="Example"><code class="language-soli text-sm">numbers = [10, 5, 8, 3, 12]
 
 print(numbers.sum);   # 38.0
 print(numbers.min);   # 3
@@ -729,13 +729,13 @@ print(numbers.max);   # 12</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Joins array elements into a string using the specified delimiter.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let words = ["Hello", "World"]
+<pre data-filename="Example"><code class="language-soli text-sm">words = ["Hello", "World"]
 print(words.join(" "));   # "Hello World"
 
-let numbers = [1, 2, 3, 4, 5]
+numbers = [1, 2, 3, 4, 5]
 print(numbers.join("-")); # "1-2-3-4-5"
 
-let paths = ["usr", "local", "bin"]
+paths = ["usr", "local", "bin"]
 print(paths.join("/"));   # "usr/local/bin"</code></pre>
                 </div>
             </section>
@@ -756,10 +756,10 @@ print(paths.join("/"));   # "usr/local/bin"</code></pre>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Chaining Example</label>
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+<pre><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 # Chain multiple methods together
-let result = numbers
+result = numbers
   .filter(|x| x % 2 == 0)   # Keep evens: [2, 4, 6, 8, 10]
   .map(|x| x * x)           # Square them: [4, 16, 36, 64, 100]
   .filter(|x| x < 50)       # Keep less than 50: [4, 16, 36]
@@ -767,7 +767,7 @@ let result = numbers
 print(result);  # [4, 16, 36]
 
 # With pipeline operator
-let result2 = numbers
+result2 = numbers
   |> filter(|x| x > 5)
   |> map(|x| x * 2)
   |> sum
@@ -799,7 +799,7 @@ print(result2);  # 90</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the array. Called automatically in REPL.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 # In REPL, displays: [1, 2, 3]
 # Equivalent to: arr.to_string()</code></pre>
                 </div>
@@ -814,10 +814,10 @@ print(result2);  # 90</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Serializes the array to a JSON string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, "hello", true, null]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, "hello", true, null]
 arr.to_json  # '[1,"hello",true,null]'
 
-let nested = [{name: "Alice"}, {name: "Bob"}]
+nested = [{name: "Alice"}, {name: "Bob"}]
 nested.to_json  # '[{"name":"Alice"},{"name":"Bob"}]'</code></pre>
                 </div>
             </section>
@@ -831,7 +831,7 @@ nested.to_json  # '[{"name":"Alice"},{"name":"Bob"}]'</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of elements in the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 arr.length  # 3
 arr.len     # 3
 arr.size    # 3</code></pre>
@@ -847,10 +847,10 @@ arr.size    # 3</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Adds an element to the end or removes and returns the last element.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = []
+<pre data-filename="Example"><code class="language-soli text-sm">arr = []
 arr.push(1)  # [1]
 arr.push(2)  # [1, 2]
-let last = arr.pop  # 2, arr is now [1]</code></pre>
+last = arr.pop  # 2, arr is now [1]</code></pre>
                 </div>
             </section>
 
@@ -863,7 +863,7 @@ let last = arr.pop  # 2, arr is now [1]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the element at the specified index. Supports negative indices for backward access.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = ["first", "second", "third"]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = ["first", "second", "third"]
 arr.get(0);      # "first"
 arr.get(2);      # "third"
 arr.get(-1);     # "third" (last)
@@ -880,7 +880,7 @@ arr.get(-2);     # "second"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Removes all elements from the array.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 arr.clear
 arr.length  # 0</code></pre>
                 </div>
@@ -895,7 +895,7 @@ arr.length  # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Type introspection methods available on all types.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let arr = [1, 2, 3]
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3]
 arr.class         # "array"
 arr.inspect       # "[1, 2, 3]"
 arr.nil?          # false

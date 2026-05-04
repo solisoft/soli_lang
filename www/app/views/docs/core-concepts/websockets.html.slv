@@ -44,15 +44,15 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/websocket_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn chat_handler(event: Any) -> Any {
-  let type = event["type"];
-  let id = event["connection_id"];
+  type = event["type"];
+  id = event["connection_id"];
 
   if type == "connect" {
     return { "broadcast": json_stringify({ "type": "join", "user": id }) };
   }
 
   if type == "message" {
-    let msg = event["message"];
+    msg = event["message"];
     return { "broadcast": msg };
   }
 
@@ -113,7 +113,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Room-based Chat Handler</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn room_handler(event: Any) -> Any {
-  let room = "room:" + event["params"]["room_id"];
+  room = "room:" + event["params"]["room_id"];
 
   if event["type"] == "connect" {
     # Join the room channel on connect
@@ -121,7 +121,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
   }
 
   if event["type"] == "message" {
-    let data = JSON.parse(event["message"]);
+    data = JSON.parse(event["message"]);
     # Broadcast only to users in this room
     return { "broadcast_room": json_stringify(data) };
   }
@@ -175,9 +175,9 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Presence-Enabled Chat Handler</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn chat_handler(event: Any) -> Any {
-  let room = "room:general";
+  room = "room:general";
   # Get user from session/auth (example)
-  let user = get_current_user();
+  user = get_current_user();
 
   if event["type"] == "connect" {
     return {
@@ -192,7 +192,7 @@ router_websocket("/ws/room/:room_id", "websocket#room_handler");</code></pre>
   }
 
   if event["type"] == "message" {
-    let data = JSON.parse(event["message"]);
+    data = JSON.parse(event["message"]);
     # Handle typing indicators
     if data["event"] == "typing" {
       return { "set_presence": { "channel": room, "state": "typing" } };
@@ -308,15 +308,15 @@ function renderUserList() {
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Get all users in a room
-let users = ws_list_presence("room:lobby")
+users = ws_list_presence("room:lobby")
 # Returns: [{ user_id: "123", metas: [...] }, ...]
 
 # Get user count (unique users, not connections)
-let count = ws_presence_count("room:lobby")
+count = ws_presence_count("room:lobby")
 # Returns: 5
 
 # Get a specific user's presence
-let user = ws_get_presence("room:lobby", "user_123")
+user = ws_get_presence("room:lobby", "user_123")
 # Returns: { user_id: "123", metas: [...] } or null</code></pre>
         </div>
     </div>
@@ -403,7 +403,7 @@ ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_count">ws_count()</h3>
             <p class="text-gray-400 mb-4">Get total number of active connections.</p>
-            <pre><code class="language-soli text-sm">let total = ws_count()</code></pre>
+            <pre><code class="language-soli text-sm">total = ws_count()</code></pre>
         </div>
 
         <!-- ws_join -->
@@ -424,14 +424,14 @@ ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_clients">ws_clients()</h3>
             <p class="text-gray-400 mb-4">Get all connected client IDs.</p>
-            <pre><code class="language-soli text-sm">let clients = ws_clients()</code></pre>
+            <pre><code class="language-soli text-sm">clients = ws_clients()</code></pre>
         </div>
 
         <!-- ws_clients_in -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_clients_in">ws_clients_in(channel)</h3>
             <p class="text-gray-400 mb-4">Get all client IDs in a channel.</p>
-            <pre><code class="language-soli text-sm">let room_clients = ws_clients_in("room:lobby");</code></pre>
+            <pre><code class="language-soli text-sm">room_clients = ws_clients_in("room:lobby");</code></pre>
         </div>
 
         <!-- ws_close -->
@@ -445,21 +445,21 @@ ws.send(JSON.stringify({ event: 'stop_typing' }));</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_list_presence">ws_list_presence(channel)</h3>
             <p class="text-gray-400 mb-4">Get all users in a channel with presence data.</p>
-            <pre><code class="language-soli text-sm">let users = ws_list_presence("room:lobby");</code></pre>
+            <pre><code class="language-soli text-sm">users = ws_list_presence("room:lobby");</code></pre>
         </div>
 
         <!-- ws_presence_count -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_presence_count">ws_presence_count(channel)</h3>
             <p class="text-gray-400 mb-4">Get unique user count in a channel.</p>
-            <pre><code class="language-soli text-sm">let count = ws_presence_count("room:lobby");</code></pre>
+            <pre><code class="language-soli text-sm">count = ws_presence_count("room:lobby");</code></pre>
         </div>
 
         <!-- ws_get_presence -->
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <h3 class="text-lg font-bold text-white mb-2 font-mono" id="ws_get_presence">ws_get_presence(channel, user_id)</h3>
             <p class="text-gray-400 mb-4">Get presence data for a specific user.</p>
-            <pre><code class="language-soli text-sm">let user = ws_get_presence("room:lobby", "user_123");</code></pre>
+            <pre><code class="language-soli text-sm">user = ws_get_presence("room:lobby", "user_123");</code></pre>
         </div>
     </div>
 </div>

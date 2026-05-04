@@ -28,7 +28,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Read file contents as string.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let content = File.read("config.json")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">content = File.read("config.json")</code></pre>
                 </div>
             </section>
 
@@ -82,7 +82,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Match files using glob pattern (non-recursive).</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob("docs/*.md")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob("docs/*.md")</code></pre>
                 </div>
             </section>
 
@@ -95,7 +95,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Match files using glob pattern (recursive).</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let files = File.glob_recursive("docs/**/*.md")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob_recursive("docs/**/*.md")</code></pre>
                 </div>
             </section>
 
@@ -108,7 +108,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Read file as array of lines.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let lines = File.lines("data.txt")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">lines = File.lines("data.txt")</code></pre>
                 </div>
             </section>
 
@@ -157,7 +157,7 @@
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get file modification timestamp (Unix epoch in seconds).</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">let time = File.modified("config.json")</code></pre>
+                    <pre data-filename="Example"><code class="language-soli text-sm">time = File.modified("config.json")</code></pre>
                 </div>
             </section>
 

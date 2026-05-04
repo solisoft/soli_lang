@@ -48,20 +48,20 @@
                     <code class="text-purple-400">Hash</code> - Response with <code class="text-cyan-400">status</code>, <code class="text-cyan-400">body</code> (raw XML), and <code class="text-cyan-400">parsed</code> (nested Hash)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text the SOAP request body-sm"># Build
-let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
-let envelope = SOAP.wrap(body)
+body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
+envelope = SOAP.wrap(body)
 
 # Make the SOAP call (returns Hash directly, no await needed)
-let result = SOAP.call(
+result = SOAP.call(
   "https://weather.example.com/service",
   "http://example.com/weather/GetWeather",
   envelope
 )
 
 if result["status"] == 200
-  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-  let temp = response["Temperature"]
-  let condition = response["Condition"]
+  response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  temp = response["Temperature"]
+  condition = response["Condition"]
   
   println("Temperature: " + temp)
   println("Condition: " + condition)
@@ -98,8 +98,8 @@ end</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Complete SOAP envelope XML
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
-let envelope = SOAP.wrap(body)
+                <pre data-filename="Example"><code class="language-soli text-sm">body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
+envelope = SOAP.wrap(body)
 # Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"</code></pre>
             </div>
         </section>
@@ -133,8 +133,8 @@ let envelope = SOAP.wrap(body)
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - Nested Hash with element names as keys
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;/root&gt;"
-let parsed = SOAP.parse(xml)
+                <pre data-filename="Example"><code class="language-soli text-sm">xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;/root&gt;"
+parsed = SOAP.parse(xml)
 # Returns: { "root" => { "item" => { "_text" => "value" } } }</code></pre>
             </div>
         </section>
@@ -168,7 +168,7 @@ let parsed = SOAP.parse(xml)
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - XML-escaped text (&lt;, &gt;, &amp;, &quot;, &apos;)
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let escaped = SOAP.xml_escape("&lt;script&gt;alert('xss')&lt;/script&gt;")
+                <pre data-filename="Example"><code class="language-soli text-sm">escaped = SOAP.xml_escape("&lt;script&gt;alert('xss')&lt;/script&gt;")
 # Returns: "&amp;lt;script&amp;gt;alert(&amp;apos;xss&amp;ript)"</code></pre>
             </div>
         </section>
@@ -209,7 +209,7 @@ to XML string. Supports attributes with @ prefix and text content with _text key
                     <div><code class="text-amber-400">@name</code> - Creates attribute on parent element</div>
                     <div><code class="text-amber-400">_text</code> - Sets text content of element</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let data = {
+                <pre data-filename="Example"><code class="language-soli text-sm">data = {
   "user" => {
     "@id" => "123",
     "name" => "John",
@@ -221,7 +221,7 @@ to XML string. Supports attributes with @ prefix and text content with _text key
   }
 }
 
-let xml = SOAP.to_xml(data, "users")
+xml = SOAP.to_xml(data, "users")
 # Returns XML:
 # &lt;users&gt
 #   &lt;user id="123"&gt
@@ -236,7 +236,7 @@ let xml = SOAP.to_xml(data, "users")
 # &lt;/users&gt;</code></pre>
 
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">With _text for Element Content</h4>
-                <pre data-filename="Example"><code class="language-soli text-sm">let data = {
+                <pre data-filename="Example"><code class="language-soli text-sm">data = {
   "product" => {
     "name" => "Laptop",
     "description" => {
@@ -246,7 +246,7 @@ let xml = SOAP.to_xml(data, "users")
   }
 }
 
-let xml = SOAP.to_xml(data, "catalog")
+xml = SOAP.to_xml(data, "catalog")
 # Returns:
 # &lt;catalog&gt
 #   &lt;product&gt
@@ -265,11 +265,11 @@ let xml = SOAP.to_xml(data, "catalog")
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre data-filename="weather_service.sol"><code class="language-soli text-sm"># Build the SOAP request body
-let body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
-let envelope = SOAP.wrap(body)
+body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
+envelope = SOAP.wrap(body)
 
 # Make the SOAP call (auto-resolved, no await needed)
-let result = SOAP.call(
+result = SOAP.call(
   "https://weather.example.com/service",
   "http://example.com/weather/GetWeather",
   envelope,
@@ -278,9 +278,9 @@ let result = SOAP.call(
 
 # Handle the response
 if result["status"] == 200
-  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-  let temp = response["Temperature"]
-  let condition = response["Condition"]
+  response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  temp = response["Temperature"]
+  condition = response["Condition"]
   
   println("Temperature: " + temp)
   println("Condition: " + condition)

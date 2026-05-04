@@ -52,8 +52,8 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Duration</code> - A Duration instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let timeout = Duration.seconds(30)
-let one_minute = Duration.seconds(60)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">timeout = Duration.seconds(30)
+one_minute = Duration.seconds(60)</code></pre>
             </div>
         </section>
 
@@ -74,8 +74,8 @@ let one_minute = Duration.seconds(60)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Duration</code> - A Duration instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let break_time = Duration.minutes(15)
-let hour = Duration.minutes(60)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">break_time = Duration.minutes(15)
+hour = Duration.minutes(60)</code></pre>
             </div>
         </section>
 
@@ -96,8 +96,8 @@ let hour = Duration.minutes(60)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Duration</code> - A Duration instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let work_day = Duration.hours(8)
-let session_timeout = Duration.hours(1)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">work_day = Duration.hours(8)
+session_timeout = Duration.hours(1)</code></pre>
             </div>
         </section>
 
@@ -118,8 +118,8 @@ let session_timeout = Duration.hours(1)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Duration</code> - A Duration instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let week = Duration.days(7)
-let trial_period = Duration.days(30)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">week = Duration.days(7)
+trial_period = Duration.days(30)</code></pre>
             </div>
         </section>
     </section>
@@ -141,7 +141,7 @@ let trial_period = Duration.days(30)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Float</code> - Total seconds
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
+                <pre data-filename="Example"><code class="language-soli text-sm">duration = Duration.hours(2)
 println(duration.total_seconds())  # 7200</code></pre>
             </div>
         </section>
@@ -159,7 +159,7 @@ println(duration.total_seconds())  # 7200</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Float</code> - Total minutes
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.hours(2)
+                <pre data-filename="Example"><code class="language-soli text-sm">duration = Duration.hours(2)
 println(duration.total_minutes())  # 120</code></pre>
             </div>
         </section>
@@ -177,7 +177,7 @@ println(duration.total_minutes())  # 120</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Float</code> - Total hours
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.days(1)
+                <pre data-filename="Example"><code class="language-soli text-sm">duration = Duration.days(1)
 println(duration.total_hours())  # 24</code></pre>
             </div>
         </section>
@@ -195,7 +195,7 @@ println(duration.total_hours())  # 24</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Float</code> - Total days
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.weeks(1)
+                <pre data-filename="Example"><code class="language-soli text-sm">duration = Duration.weeks(1)
 println(duration.total_days())  # 7</code></pre>
             </div>
         </section>
@@ -213,7 +213,7 @@ println(duration.total_days())  # 7</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - Formatted duration (e.g., "7200s")
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let duration = Duration.of_seconds(3661)
+                <pre data-filename="Example"><code class="language-soli text-sm">duration = Duration.of_seconds(3661)
 println(duration.to_string())  # "3661s"</code></pre>
             </div>
         </section>
@@ -225,10 +225,10 @@ println(duration.to_string())  # "3661s"</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <pre data-filename="Duration Example"><code class="language-soli text-sm"># Create durations
-let timeout = Duration.seconds(30)
-let break_time = Duration.minutes(15)
-let work_day = Duration.hours(8)
-let trial = Duration.days(7)
+timeout = Duration.seconds(30)
+break_time = Duration.minutes(15)
+work_day = Duration.hours(8)
+trial = Duration.days(7)
 
 # Convert to different units
 println("Timeout: " + timeout.total_seconds() + " seconds")
@@ -237,8 +237,8 @@ println("Work day: " + work_day.total_hours() + " hours")
 println("Trial: " + trial.total_days() + " days")
 
 # Practical example: session expiry
-let session_duration = Duration.hours(1)
-let expiry_seconds = session_duration.total_seconds()
+session_duration = Duration.hours(1)
+expiry_seconds = session_duration.total_seconds()
 println("Session expires in " + expiry_seconds + " seconds")</code></pre>
         </div>
     </section>

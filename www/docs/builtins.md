@@ -49,7 +49,7 @@ Reads a line of input from the user.
 
 **Example:**
 ```soli
-let name = input("Enter your name: ")
+name = input("Enter your name: ")
 println("Hello, " + name)
 ```
 
@@ -80,7 +80,7 @@ Returns whether a value is an instance of the specified class (or a subclass). W
 
 **For instances (including model instances):** Checks class hierarchy
 ```soli
-let user = User.find("123")
+user = User.find("123")
 user.is_a?("User")      # true
 user.is_a?("Model")     # true (inheritance)
 user.is_a?("String")    # false
@@ -106,7 +106,7 @@ Checks if a variable is defined in the current scope chain. Returns `true` if th
 
 **Example:**
 ```soli
-let x = 42;
+x = 42;
 defined("x");        # true
 defined("y");        # false
 
@@ -223,7 +223,7 @@ Returns an array of all keys in a hash.
 
 **Example:**
 ```soli
-let h = {"name": "Alice", "age": 30}
+h = {"name": "Alice", "age": 30}
 keys(h)  # ["name", "age"]
 ```
 
@@ -238,7 +238,7 @@ Returns an array of all values in a hash.
 
 **Example:**
 ```soli
-let h = {"name": "Alice", "age": 30}
+h = {"name": "Alice", "age": 30}
 values(h)  # ["Alice", 30]
 ```
 
@@ -254,7 +254,7 @@ Checks if a hash contains a specific key.
 
 **Example:**
 ```soli
-let h = {"name": "Alice"}
+h = {"name": "Alice"}
 has_key(h, "name")  # true
 has_key(h, "age")   # false
 ```
@@ -271,7 +271,7 @@ Removes a key-value pair from a hash.
 
 **Example:**
 ```soli
-let h = {"name": "Alice", "age": 30}
+h = {"name": "Alice", "age": 30}
 delete(h, "age")
 println(h)  # {"name": "Alice"}
 ```
@@ -287,8 +287,8 @@ Merges two hashes into a new hash.
 
 **Example:**
 ```soli
-let a = {"x": 1, "y": 2}
-let b = {"y": 3, "z": 4}
+a = {"x": 1, "y": 2}
+b = {"y": 3, "z": 4}
 a.merge(b)  # {"x": 1, "y": 3, "z": 4}
 ```
 
@@ -303,7 +303,7 @@ Returns an array of [key, value] pairs.
 
 **Example:**
 ```soli
-let h = {"a": 1, "b": 2}
+h = {"a": 1, "b": 2}
 entries(h)  # [["a", 1], ["b", 2]]
 ```
 
@@ -332,7 +332,7 @@ Removes all entries from a hash.
 
 **Example:**
 ```soli
-let h = {"a": 1, "b": 2}
+h = {"a": 1, "b": 2}
 clear(h)
 println(h)  # {}
 ```
@@ -531,8 +531,8 @@ url_encode("a/b?c=d")            # "a%2Fb%3Fc%3Dd"
 url_encode("café")               # "caf%C3%A9"
 
 # Building a query string by hand:
-let q = "search " + str(page)
-let url = "/results?q=" + url_encode(q)
+q = "search " + str(page)
+url = "/results?q=" + url_encode(q)
 ```
 
 Reach for `url_encode` whenever you splice user-controlled or framework
@@ -562,7 +562,7 @@ url_decode("caf%C3%A9")              # "café"
 url_decode(url_encode("a/b?c=d"))    # "a/b?c=d"
 
 # Fallback for input you don't trust:
-let safe = url_decode(raw) rescue raw
+safe = url_decode(raw) rescue raw
 ```
 
 `req["query"]` and `req["form"]` are already decoded — use `url_decode`
@@ -584,7 +584,7 @@ Reads the entire contents of a file.
 
 **Example:**
 ```soli
-let content = slurp("config.json")
+content = slurp("config.json")
 println(content)
 ```
 
@@ -627,9 +627,9 @@ Returns the current Unix timestamp as a float with sub-second precision.
 
 **Example:**
 ```soli
-let start = clock()
+start = clock()
 # ... do work ...
-let elapsed = clock() - start
+elapsed = clock() - start
 println("Took " + str(elapsed) + " seconds")
 ```
 
@@ -654,7 +654,7 @@ Performs an HTTP GET request.
 
 **Example:**
 ```soli
-let response = HTTP.get("https://api.example.com/data")
+response = HTTP.get("https://api.example.com/data")
 if response["status"] == 200
   println(response["body"])
 end
@@ -673,7 +673,7 @@ Performs an HTTP POST request.
 
 **Example:**
 ```soli
-let response = HTTP.post(
+response = HTTP.post(
   "https://api.example.com/users",
   "name=Alice&email=alice@example.com",
   { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
@@ -693,7 +693,7 @@ Performs an HTTP POST request with JSON body.
 
 **Example:**
 ```soli
-let response = HTTP.post_json(
+response = HTTP.post_json(
   "https://api.example.com/users",
   { "name": "Alice", "email": "alice@example.com" }
 )
@@ -711,7 +711,7 @@ Performs an HTTP GET request and parses JSON response.
 
 **Example:**
 ```soli
-let data = HTTP.get_json("https://api.example.com/users/1")
+data = HTTP.get_json("https://api.example.com/users/1")
 println(data["body"]["name"])
 ```
 
@@ -733,7 +733,7 @@ Performs a custom HTTP request.
 
 **Example:**
 ```soli
-let response = HTTP.request("DELETE", "https://api.example.com/users/1")
+response = HTTP.request("DELETE", "https://api.example.com/users/1")
 ```
 
 ### HTTP Status Helpers
@@ -776,7 +776,7 @@ Performs multiple GET requests in parallel.
 
 **Example:**
 ```soli
-let responses = HTTP.get_all([
+responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
 ])
@@ -793,7 +793,7 @@ Performs multiple custom requests in parallel.
 
 **Example:**
 ```soli
-let responses = HTTP.parallel([
+responses = HTTP.parallel([
   { "method": "GET", "url": "https://api.example.com/users" },
   { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])
@@ -830,7 +830,7 @@ Lists all buckets in the S3 account.
 
 **Example:**
 ```soli
-let buckets = S3.list_buckets()
+buckets = S3.list_buckets()
 print(buckets)  # ["bucket1", "bucket2"]
 ```
 
@@ -898,7 +898,7 @@ Downloads an object from S3.
 
 **Example:**
 ```soli
-let content = S3.get_object("my-bucket", "hello.txt")
+content = S3.get_object("my-bucket", "hello.txt")
 print(content)  # "Hello World!"
 ```
 
@@ -930,10 +930,10 @@ Lists objects in a bucket.
 **Example:**
 ```soli
 # List all objects
-let files = S3.list_objects("my-bucket")
+files = S3.list_objects("my-bucket")
 
 # List objects with prefix
-let files = S3.list_objects("my-bucket", "documents/")
+files = S3.list_objects("my-bucket", "documents/")
 ```
 
 ### S3.copy_object(source, dest)
@@ -980,7 +980,7 @@ Register a POST route handler.
 **Example:**
 ```soli
 def create_user(req)
-  let name = req["json"]["name"]
+  name = req["json"]["name"]
   return {"status": 201, "body": "Created: " + name}
 end
 
@@ -1024,10 +1024,10 @@ http_server_listen(3000);
 
 **Handler Function Signature:**
 ```soli
-def my_handler(req)    let id = req["params"]["id"]           # Path parameters
-  let name = req["query"]["name"]         # Query string
-  let data = req["json"]["field"]         # JSON body
-  let token = req["headers"]["Authorization"]  # Headers
+def my_handler(req)    id = req["params"]["id"]           # Path parameters
+  name = req["query"]["name"]         # Query string
+  data = req["json"]["field"]         # JSON body
+  token = req["headers"]["Authorization"]  # Headers
   
   return {"status": 200, "body": "Hello"}
   # Or use helpers: render_json(), render_text(), redirect()
@@ -1049,7 +1049,7 @@ Parses a JSON string into a Soli value.
 
 **Example:**
 ```soli
-let data = json_parse('{"name": "Alice", "age": 30}')
+data = json_parse('{"name": "Alice", "age": 30}')
 println(data["name"])  # Alice
 ```
 
@@ -1064,7 +1064,7 @@ Converts a Soli value to a JSON string.
 
 **Example:**
 ```soli
-let json = json_stringify({ "name": "Alice", "scores": [95, 87, 92] })
+json = json_stringify({ "name": "Alice", "scores": [95, 87, 92] })
 println(json)  # {"name":"Alice","scores":[95,87,92]}
 ```
 
@@ -1087,7 +1087,7 @@ Computes SHA-256 hash of a string.
 
 **Example:**
 ```soli
-let hash = Crypto.sha256("hello")
+hash = Crypto.sha256("hello")
 # "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 ```
 
@@ -1102,7 +1102,7 @@ Computes SHA-512 hash of a string.
 
 **Example:**
 ```soli
-let hash = Crypto.sha512("hello")
+hash = Crypto.sha512("hello")
 ```
 
 #### Crypto.md5(data) / md5(data)
@@ -1116,7 +1116,7 @@ Computes MD5 hash of a string. **Note:** MD5 is cryptographically broken. Use on
 
 **Example:**
 ```soli
-let hash = Crypto.md5("hello")
+hash = Crypto.md5("hello")
 # "5d41402abc4b2a76b9719d911017c592"
 ```
 
@@ -1132,7 +1132,7 @@ Computes HMAC-SHA256 message authentication code.
 
 **Example:**
 ```soli
-let mac = Crypto.hmac("message", "secret_key")
+mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.
 ```
 
@@ -1158,7 +1158,7 @@ Hashes a password using Argon2id (recommended).
 
 **Example:**
 ```soli
-let hash = Crypto.argon2_hash("secretpassword")
+hash = Crypto.argon2_hash("secretpassword")
 # $argon2id$v=19$m=19456,t=2,p=1$...
 ```
 
@@ -1197,7 +1197,7 @@ Generates a new X25519 key pair.
 
 **Example:**
 ```soli
-let keypair = Crypto.x25519_keypair()
+keypair = Crypto.x25519_keypair()
 println(keypair["public"])
 ```
 
@@ -1223,14 +1223,14 @@ Computes the shared secret from a private key and another party's public key.
 **Example:**
 ```soli
 # Alice
-let alice = Crypto.x25519_keypair()
+alice = Crypto.x25519_keypair()
 
 # Bob
-let bob = Crypto.x25519_keypair()
+bob = Crypto.x25519_keypair()
 
 # Both compute the same shared secret
-let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
-let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
+alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
+bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
 # alice_secret == bob_secret
 ```
 
@@ -1261,7 +1261,7 @@ Creates a signed JWT token.
 
 **Example:**
 ```soli
-let token = jwt_sign(
+token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   "my-secret-key",
   { "expires_in": 3600 }
@@ -1280,7 +1280,7 @@ Verifies and decodes a JWT token.
 
 **Example:**
 ```soli
-let result = jwt_verify(token, "my-secret-key")
+result = jwt_verify(token, "my-secret-key")
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
@@ -1299,7 +1299,7 @@ Decodes a JWT token without verification (unsafe for authentication).
 
 **Example:**
 ```soli
-let payload = jwt_decode(token)
+payload = jwt_decode(token)
 println(payload["sub"])  # Inspect claims without verification
 ```
 
@@ -1337,7 +1337,7 @@ Finds the first match of a pattern in a string.
 
 **Example:**
 ```soli
-let result = Regex.find("[0-9]+", "abc123def")
+result = Regex.find("[0-9]+", "abc123def")
 println(result["match"])  # "123"
 println(result["start"])  # 3
 ```
@@ -1354,7 +1354,7 @@ Finds all matches of a pattern in a string.
 
 **Example:**
 ```soli
-let matches = Regex.find_all("[0-9]+", "a1b2c3")
+matches = Regex.find_all("[0-9]+", "a1b2c3")
 # [{"match": "1", ...}, {"match": "2", ...}, {"match": "3", ...}]
 ```
 
@@ -1417,7 +1417,7 @@ Finds the first match with named capture groups.
 
 **Example:**
 ```soli
-let result = Regex.capture(
+result = Regex.capture(
   "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})",
   "Date: 2024-01-15"
 )
@@ -1456,10 +1456,10 @@ Parses a JSON string into a Soli value (Hash, Array, String, Int, Float, Bool, o
 
 **Example:**
 ```soli
-let data = JSON.parse('{"name": "Alice", "age": 30}')
+data = JSON.parse('{"name": "Alice", "age": 30}')
 println(data["name"])  # "Alice"
 
-let numbers = JSON.parse('[1, 2, 3, 4, 5]')
+numbers = JSON.parse('[1, 2, 3, 4, 5]')
 println(numbers[0])  # 1
 ```
 
@@ -1474,10 +1474,10 @@ Serializes a Soli value to a JSON string.
 
 **Example:**
 ```soli
-let json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
+json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
 println(json)  # {"name":"Alice","scores":[95,87]}
 
-let arr = JSON.stringify([1, 2, 3])
+arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]
 ```
 
@@ -1498,7 +1498,7 @@ Converts a Markdown string to HTML.
 
 **Example:**
 ```soli
-let html = Markdown.to_html("# Hello World")
+html = Markdown.to_html("# Hello World")
 println(html)  # <h1>Hello World</h1>
 ```
 
@@ -1534,12 +1534,12 @@ Markdown.to_html("> This is a quote")
 
 ```soli
 # From a database field
-let post = Post.find(1)
-let html = Markdown.to_html(post.body)
+post = Post.find(1)
+html = Markdown.to_html(post.body)
 
 # With string interpolation
-let title = "My Post"
-let html = Markdown.to_html("# #{title}\n\nSome content here.")
+title = "My Post"
+html = Markdown.to_html("# #{title}\n\nSome content here.")
 ```
 
 ---
@@ -1565,11 +1565,11 @@ Makes a SOAP request by performing an HTTP POST with the SOAP envelope.
 
 **Example:**
 ```soli
-let envelope = SOAP.wrap("<GetWeather><City>London</City></GetWeather>")
-let result = await(SOAP.call("https://weather.example.com/service", "GetWeather", envelope))
+envelope = SOAP.wrap("<GetWeather><City>London</City></GetWeather>")
+result = await(SOAP.call("https://weather.example.com/service", "GetWeather", envelope))
 
 if result["status"] == 200
-  let temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
+  temp = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]["Temperature"]
   println("Temperature: " + temp)
 end
 ```
@@ -1585,8 +1585,8 @@ Wraps an XML body in a complete SOAP envelope with the standard SOAP 1.1 namespa
 
 **Example:**
 ```soli
-let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
-let envelope = SOAP.wrap(body)
+body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
+envelope = SOAP.wrap(body)
 # Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
 ```
 
@@ -1601,8 +1601,8 @@ Parses an XML string into a nested Hash structure for easy access.
 
 **Example:**
 ```soli
-let xml = "<?xml version=\"1.0\"?><root><item>value</item></root>"
-let parsed = SOAP.parse(xml)
+xml = "<?xml version=\"1.0\"?><root><item>value</item></root>"
+parsed = SOAP.parse(xml)
 # Returns: { "root" => { "item" => { "_text" => "value" } } }
 ```
 
@@ -1617,7 +1617,7 @@ Escapes special XML characters for safe inclusion in XML documents.
 
 **Example:**
 ```soli
-let escaped = SOAP.xml_escape("<script>alert('xss')</script>")
+escaped = SOAP.xml_escape("<script>alert('xss')</script>")
 # Returns: "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
 ```
 
@@ -1625,11 +1625,11 @@ let escaped = SOAP.xml_escape("<script>alert('xss')</script>")
 
 ```soli
 # Build the SOAP request body
-let body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
-let envelope = SOAP.wrap(body)
+body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
+envelope = SOAP.wrap(body)
 
 # Make the SOAP call
-let result = await(SOAP.call(
+result = await(SOAP.call(
   "https://weather.example.com/service",
   "http://example.com/weather/GetWeather",
   envelope,
@@ -1638,9 +1638,9 @@ let result = await(SOAP.call(
 
 # Handle the response
 if result["status"] == 200
-  let response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
-  let temp = response["Temperature"]
-  let condition = response["Condition"]
+  response = result["parsed"]["soap:Envelope"]["soap:Body"]["GetWeatherResponse"]
+  temp = response["Temperature"]
+  condition = response["Condition"]
   
   println("Temperature: " + temp)
   println("Condition: " + condition)
@@ -1664,8 +1664,8 @@ Gets an environment variable.
 
 **Example:**
 ```soli
-let path = getenv("PATH")
-let debug = getenv("DEBUG")
+path = getenv("PATH")
+debug = getenv("DEBUG")
 ```
 
 ### setenv(name, value)
@@ -1704,7 +1704,7 @@ Checks if an environment variable exists.
 **Example:**
 ```soli
 if hasenv("DATABASE_URL")
-  let url = getenv("DATABASE_URL")
+  url = getenv("DATABASE_URL")
 end
 ```
 
@@ -1743,7 +1743,7 @@ Gets the current local date and time.
 
 **Example:**
 ```soli
-let now = DateTime.now()
+now = DateTime.now()
 println(now.to_iso())  # "2024-01-15T10:30:00"
 ```
 
@@ -1755,7 +1755,7 @@ Gets the current UTC date and time.
 
 **Example:**
 ```soli
-let utc = DateTime.utc()
+utc = DateTime.utc()
 println(utc.to_iso())  # "2024-01-15T15:30:00Z"
 ```
 
@@ -1776,8 +1776,8 @@ Supported formats:
 
 **Example:**
 ```soli
-let dt = DateTime.parse("2024-01-15T10:30:00Z")
-let date_only = DateTime.parse("2024-01-15")
+dt = DateTime.parse("2024-01-15T10:30:00Z")
+date_only = DateTime.parse("2024-01-15")
 ```
 
 #### DateTime.epoch()
@@ -1788,7 +1788,7 @@ Creates a DateTime at Unix epoch (1970-01-01 00:00:00 UTC).
 
 **Example:**
 ```soli
-let epoch = DateTime.epoch()
+epoch = DateTime.epoch()
 println(epoch.year())  # 1970
 ```
 
@@ -1803,7 +1803,7 @@ Creates a DateTime from a Unix timestamp (seconds since epoch).
 
 **Example:**
 ```soli
-let dt = DateTime.from_unix(1704067200)
+dt = DateTime.from_unix(1704067200)
 println(dt.to_iso())  # "2024-01-01T00:00:00Z"
 ```
 
@@ -1815,7 +1815,7 @@ Gets the current Unix timestamp in microseconds as a Float.
 
 **Example:**
 ```soli
-let mt = DateTime.microtime()
+mt = DateTime.microtime()
 println(mt)  # 1712832000000000.0
 ```
 
@@ -1865,7 +1865,7 @@ Gets the day of the week as a string.
 
 **Example:**
 ```soli
-let dt = DateTime.parse("2024-01-15")
+dt = DateTime.parse("2024-01-15")
 println(dt.weekday())  # "monday"
 ```
 
@@ -1879,7 +1879,7 @@ Gets the Unix timestamp (seconds since epoch).
 
 **Example:**
 ```soli
-let dt = DateTime.now()
+dt = DateTime.now()
 println(dt.to_unix())  # 1705315800
 ```
 
@@ -1891,7 +1891,7 @@ Gets the date/time as an ISO 8601 string.
 
 **Example:**
 ```soli
-let dt = DateTime.now()
+dt = DateTime.now()
 println(dt.to_iso())  # "2024-01-15T10:30:00"
 ```
 
@@ -1919,13 +1919,13 @@ Common format specifiers:
 
 **Example:**
 ```soli
-let dt = DateTime.parse("2024-01-15T10:30:00")
+dt = DateTime.parse("2024-01-15T10:30:00")
 dt.format("%Y-%m-%d %H:%M:%S")  # "2024-01-15 10:30:00"
 dt.format("%B %d, %Y")           # "January 15, 2024"
 dt.format("%A")                  # "Monday"
 
 # With locale for I18n
-let dt2 = DateTime.parse("2024-03-06T14:30:00Z")
+dt2 = DateTime.parse("2024-03-06T14:30:00Z")
 dt2.format("%A %d %B %Y", "fr")  # "mercredi 06 mars 2024"
 dt2.format("%A %d %B %Y", "es")  # "miércoles 06 marzo 2024"
 dt2.format("%d %b %Y", "fr")     # "06 mars 2024"
@@ -1944,9 +1944,9 @@ Adds days to the date. Use negative values to subtract.
 
 **Example:**
 ```soli
-let today = DateTime.now()
-let tomorrow = today.add_days(1)
-let yesterday = today.add_days(-1)
+today = DateTime.now()
+tomorrow = today.add_days(1)
+yesterday = today.add_days(-1)
 ```
 
 #### .add_hours(n)
@@ -1989,7 +1989,7 @@ Adds years to the date. Use negative values to subtract.
 
 ```soli
 # Get current date/time
-let now = DateTime.now()
+now = DateTime.now()
 println("Current time: " + now.to_iso())
 
 # Extract components
@@ -2006,11 +2006,11 @@ println(now.format("%A %d %B %Y", "fr"))  # "lundi 15 janvier 2024"
 println(now.format("%A %d %B %Y", "es"))  # "lunes 15 enero 2024"
 
 # Date arithmetic
-let next_week = now.add_weeks(1)
-let last_month = now.add_months(-1)
+next_week = now.add_weeks(1)
+last_month = now.add_months(-1)
 
 # Parse a date string
-let birthday = DateTime.parse("1990-06-15")
+birthday = DateTime.parse("1990-06-15")
 println("Birthday was on a " + birthday.weekday())
 ```
 
@@ -2033,8 +2033,8 @@ Creates a duration from a number of seconds.
 
 **Example:**
 ```soli
-let timeout = Duration.seconds(30)
-let one_minute = Duration.seconds(60)
+timeout = Duration.seconds(30)
+one_minute = Duration.seconds(60)
 ```
 
 #### Duration.minutes(n)
@@ -2048,7 +2048,7 @@ Creates a duration from a number of minutes.
 
 **Example:**
 ```soli
-let break_time = Duration.minutes(15)
+break_time = Duration.minutes(15)
 ```
 
 #### Duration.hours(n)
@@ -2062,8 +2062,8 @@ Creates a duration from a number of hours.
 
 **Example:**
 ```soli
-let work_day = Duration.hours(8)
-let session_timeout = Duration.hours(1)
+work_day = Duration.hours(8)
+session_timeout = Duration.hours(1)
 ```
 
 #### Duration.days(n)
@@ -2077,8 +2077,8 @@ Creates a duration from a number of days.
 
 **Example:**
 ```soli
-let week = Duration.days(7)
-let trial_period = Duration.days(30)
+week = Duration.days(7)
+trial_period = Duration.days(30)
 ```
 
 #### Duration.weeks(n)
@@ -2092,7 +2092,7 @@ Creates a duration from a number of weeks.
 
 **Example:**
 ```soli
-let fortnight = Duration.weeks(2)
+fortnight = Duration.weeks(2)
 ```
 
 #### Duration.of_seconds(n)
@@ -2152,9 +2152,9 @@ Creates a Duration representing the difference between two DateTime instances.
 
 **Example:**
 ```soli
-let dt1 = DateTime.parse("2024-01-15T10:00:00Z")
-let dt2 = DateTime.parse("2024-01-15T11:30:00Z")
-let dur = Duration.between(dt1, dt2)
+dt1 = DateTime.parse("2024-01-15T10:00:00Z")
+dt2 = DateTime.parse("2024-01-15T11:30:00Z")
+dur = Duration.between(dt1, dt2)
 println(dur.total_minutes())  # 90
 ```
 
@@ -2168,7 +2168,7 @@ Gets the total duration in seconds.
 
 **Example:**
 ```soli
-let duration = Duration.hours(2)
+duration = Duration.hours(2)
 println(duration.total_seconds())  # 7200
 ```
 
@@ -2180,7 +2180,7 @@ Gets the total duration in minutes.
 
 **Example:**
 ```soli
-let duration = Duration.hours(2)
+duration = Duration.hours(2)
 println(duration.total_minutes())  # 120
 ```
 
@@ -2192,7 +2192,7 @@ Gets the total duration in hours.
 
 **Example:**
 ```soli
-let duration = Duration.days(1)
+duration = Duration.days(1)
 println(duration.total_hours())  # 24
 ```
 
@@ -2204,7 +2204,7 @@ Gets the total duration in days.
 
 **Example:**
 ```soli
-let duration = Duration.weeks(1)
+duration = Duration.weeks(1)
 println(duration.total_days())  # 7
 ```
 
@@ -2216,7 +2216,7 @@ Gets the duration as a formatted string.
 
 **Example:**
 ```soli
-let duration = Duration.of_seconds(3661)
+duration = Duration.of_seconds(3661)
 println(duration.to_string())  # "3661s"
 ```
 
@@ -2224,10 +2224,10 @@ println(duration.to_string())  # "3661s"
 
 ```soli
 # Create durations
-let timeout = Duration.seconds(30)
-let break_time = Duration.minutes(15)
-let work_day = Duration.hours(8)
-let trial = Duration.days(7)
+timeout = Duration.seconds(30)
+break_time = Duration.minutes(15)
+work_day = Duration.hours(8)
+trial = Duration.days(7)
 
 # Convert to different units
 println("Timeout: " + timeout.total_seconds() + " seconds")
@@ -2236,8 +2236,8 @@ println("Work day: " + work_day.total_hours() + " hours")
 println("Trial: " + trial.total_days() + " days")
 
 # Practical example: session expiry
-let session_duration = Duration.hours(1)
-let expiry_seconds = session_duration.to_seconds()
+session_duration = Duration.hours(1)
+expiry_seconds = session_duration.to_seconds()
 println("Session expires in " + expiry_seconds + " seconds")
 ```
 
@@ -2310,13 +2310,13 @@ Validates data against a schema.
 
 **Example:**
 ```soli
-let schema = {
+schema = {
   "name": V.string().required().min(2),
   "email": V.string().required().email(),
   "age": V.int().optional().min(0).max(150)
 }
 
-let result = validate({
+result = validate({
   "name": "Alice",
   "email": "alice@example.com"
 }, schema)
@@ -2348,7 +2348,7 @@ Gets a value from the current session.
 
 **Example:**
 ```soli
-let user_id = session_get("user_id")
+user_id = session_get("user_id")
 ```
 
 ### session_set(key, value)
@@ -2431,7 +2431,7 @@ Every user-defined `XJob` class also gets these static helpers injected automati
 Enqueues a job by handler name. Returns the SolidB job id.
 
 ```soli
-let job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
+job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
 ```
 
 #### Job.enqueue_in(handler, duration, args, queue?)
@@ -2729,7 +2729,7 @@ Creates an instance from a factory.
 
 **Example:**
 ```soli
-let user = Factory.create("user")
+user = Factory.create("user")
 ```
 
 ### Factory.create_with(name, overrides)
@@ -2744,7 +2744,7 @@ Creates an instance with overridden attributes.
 
 **Example:**
 ```soli
-let admin = Factory.create_with("user", { "role": "admin" })
+admin = Factory.create_with("user", { "role": "admin" })
 ```
 
 ### Factory.create_list(name, count)
@@ -2759,7 +2759,7 @@ Creates multiple instances.
 
 **Example:**
 ```soli
-let users = Factory.create_list("user", 5)
+users = Factory.create_list("user", 5)
 ```
 
 ### Factory.sequence(name)
@@ -2826,7 +2826,7 @@ Translates a key.
 
 **Example:**
 ```soli
-let translations = {
+translations = {
   "en.greeting": "Hello",
   "fr.greeting": "Bonjour"
 }
@@ -2849,7 +2849,7 @@ Gets pluralized translation.
 
 **Example:**
 ```soli
-let translations = {
+translations = {
   "en.items_zero": "No items",
   "en.items_one": "1 item",
   "en.items_other": "Many items"
@@ -2886,16 +2886,16 @@ Load translations from external JSON files at application startup. This is typic
 **Helper Functions:**
 
 ```soli
-let i18n_translations = {}
+i18n_translations = {}
 
 def flatten_dict(dict, prefix) -> Hash
-  let result = {}
+  result = {}
   for (pair in entries(dict))
-    let key = pair[0]
-    let value = pair[1]
-    let full_key = prefix + "." + key
+    key = pair[0]
+    value = pair[1]
+    full_key = prefix + "." + key
     if (type(value) == "Hash")
-      let nested = flatten_dict(value, full_key)
+      nested = flatten_dict(value, full_key)
       for (np in entries(nested))
         result[np[0]] = np[1]
       end
@@ -2907,7 +2907,7 @@ def flatten_dict(dict, prefix) -> Hash
 end
 
 def i18n_load_translations(locale, dict)
-  let flat = flatten_dict(dict, locale)
+  flat = flatten_dict(dict, locale)
   for (pair in entries(flat))
     i18n_translations[pair[0]] = pair[1]
   end
@@ -2938,8 +2938,8 @@ http_server_listen(3000);
 
 ```soli
 def home_index(req)
-  let welcome = I18n.translate("app.welcome", null, i18n_translations)
-  let home_link = I18n.translate("nav.home", null, i18n_translations)
+  welcome = I18n.translate("app.welcome", null, i18n_translations)
+  home_link = I18n.translate("nav.home", null, i18n_translations)
   
   return render("home/index", {
     "welcome": welcome,
@@ -3137,17 +3137,17 @@ Cache-aside pattern: returns cached value on hit, or executes the block on miss,
 
 ```soli
 # Basic usage
-let user = Cache.fetch("user:123") do
+user = Cache.fetch("user:123") do
     User.find(123)
 end
 
 # With TTL (5 minutes)
-let user = Cache.fetch("user:123", 300) do
+user = Cache.fetch("user:123", 300) do
     User.find(123)
 end
 
 # Without block — acts like Cache.get()
-let user = Cache.fetch("user:123")
+user = Cache.fetch("user:123")
 ```
 
 ---
@@ -3231,7 +3231,7 @@ Creates a new rate limiter instance for the given key.
 **Example:**
 ```soli
 # Create a rate limiter for API access
-let limiter = RateLimiter("api:user123", 100, 60)
+limiter = RateLimiter("api:user123", 100, 60)
 ```
 
 ### Instance Methods
@@ -3244,7 +3244,7 @@ Checks if a request is allowed under the rate limit.
 
 **Example:**
 ```soli
-let limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
+limiter = RateLimiter("ip:" + req["headers"]["X-Forwarded-For"], 100, 60)
 if !limiter.allowed()
   return { "status": 429, "body": "Too Many Requests" }
 end
@@ -3269,8 +3269,8 @@ Gets detailed rate limit status.
 
 **Example:**
 ```soli
-let limiter = RateLimiter("api:" + api_key, 1000, 3600)
-let status = limiter.status()
+limiter = RateLimiter("api:" + api_key, 1000, 3600)
+status = limiter.status()
 println("Remaining: " + str(status["remaining"]) + "/" + str(status["limit"]))
 ```
 
@@ -3482,7 +3482,7 @@ Parses multipart/form-data from a request.
 
 **Example:**
 ```soli
-let files = parse_multipart(req)
+files = parse_multipart(req)
 for file in files
   println("Uploaded: " + file["filename"] + " (" + str(file["size"]) + " bytes)")
 end
@@ -3506,7 +3506,7 @@ Uploads a file from multipart form data to SolidB blob storage.
 
 **Example:**
 ```soli
-let result = upload_to_solidb(req, "uploads", "avatar", "localhost:5678")
+result = upload_to_solidb(req, "uploads", "avatar", "localhost:5678")
 if has_key(result, "blob_id")
   println("Uploaded: " + result["filename"])
   println("Blob ID: " + result["blob_id"])
@@ -3553,7 +3553,7 @@ Connect to a SolidB server and ping it.
 
 **Example:**
 ```soli
-let result = solidb_connect("localhost:5678")
+result = solidb_connect("localhost:5678")
 # Returns: "Connected (ping: timestamp)"
 ```
 
@@ -3592,7 +3592,7 @@ Execute a SDBQL query against a SolidB database.
 
 **Example:**
 ```soli
-let results = solidb_query("localhost:5678", "myapp", "FOR doc IN collection RETURN doc")
+results = solidb_query("localhost:5678", "myapp", "FOR doc IN collection RETURN doc")
 ```
 
 ---
@@ -3615,8 +3615,8 @@ Stores a file as a blob in SolidB.
 
 **Example:**
 ```soli
-let db = Solidb("localhost:5678", "myapp")
-let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jpeg")
+db = Solidb("localhost:5678", "myapp")
+blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jpeg")
 ```
 
 ### solidb.get_blob(collection, blob_id)
@@ -3676,7 +3676,7 @@ Makes a SOAP request to a web service.
 
 **Example:**
 ```soli
-let envelope = '''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+envelope = '''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
  <soap:Body>
   <GetUser xmlns="http://example.com/service">
    <id>123</id>
@@ -3684,7 +3684,7 @@ let envelope = '''<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/env
  </soap:Body>
 </soap:Envelope>'''
 
-let result = SOAP.call(
+result = SOAP.call(
  "https://example.com/service",
  "GetUser",
  envelope,
@@ -3708,8 +3708,8 @@ Wraps an XML body in a SOAP envelope.
 
 **Example:**
 ```soli
-let body = "<GetCustomer><id>42</id></GetCustomer>"
-let envelope = SOAP.wrap(body)
+body = "<GetCustomer><id>42</id></GetCustomer>"
+envelope = SOAP.wrap(body)
 ```
 
 #### SOAP.parse(xml_string)
@@ -3723,8 +3723,8 @@ Parses a SOAP XML response into a Hash.
 
 **Example:**
 ```soli
-let response = SOAP.parse(xml_response)
-let customer_name = response["Body"]["GetCustomerResponse"]["Name"]
+response = SOAP.parse(xml_response)
+customer_name = response["Body"]["GetCustomerResponse"]["Name"]
 ```
 
 #### SOAP.xml_escape(string)
@@ -3738,7 +3738,7 @@ Escapes special XML characters in a string.
 
 **Example:**
 ```soli
-let safe = SOAP.xml_escape("Tom & Jerry <test>")
+safe = SOAP.xml_escape("Tom & Jerry <test>")
 # Returns: "Tom &amp; Jerry &lt;test&gt;"
 ```
 
@@ -3758,7 +3758,7 @@ Converts a Hash (including nested hashes and arrays) to XML.
 
 **Example with attributes:**
 ```soli
-let data = {
+data = {
   "user" => {
     "@id" => "123",
     "name" => "John",
@@ -3771,7 +3771,7 @@ let data = {
   }
 }
 
-let xml = SOAP.to_xml(data, "users")
+xml = SOAP.to_xml(data, "users")
 # Returns:
 # <users>
 #   <user id="123">
@@ -3789,7 +3789,7 @@ let xml = SOAP.to_xml(data, "users")
 
 **Example with _text for element content:**
 ```soli
-let data = {
+data = {
   "product" => {
     "name" => "Laptop",
     "description" => {
@@ -3799,7 +3799,7 @@ let data = {
   }
 }
 
-let xml = SOAP.to_xml(data, "catalog")
+xml = SOAP.to_xml(data, "catalog")
 # Returns:
 # <catalog>
 #   <product>
@@ -3827,7 +3827,7 @@ Runs a command asynchronously and returns a Future.
 
 **Example:**
 ```soli
-let result = System.run("echo hello")
+result = System.run("echo hello")
 # result is a Future that auto-resolves when used
 
 # Access properties directly (auto-resolves)
@@ -3835,7 +3835,7 @@ print(result.stdout)   # "hello"
 print(result.exit_code) # 0
 
 # Or resolve manually
-let output = await(result)
+output = await(result)
 print(output["stdout"])
 ```
 
@@ -3850,7 +3850,7 @@ Runs a command synchronously (blocking).
 
 **Example:**
 ```soli
-let result = System.run_sync("ls -la")
+result = System.run_sync("ls -la")
 print(result["stdout"])
 print(result["exit_code"])
 ```
@@ -3860,15 +3860,15 @@ print(result["exit_code"])
 You can use backtick syntax for convenient command execution:
 
 ```soli
-let result = `echo hello`
+result = `echo hello`
 print(result.stdout)  # "hello"
 
 # With shell features
-let files = `ls *.sl`
+files = `ls *.sl`
 print(files.stdout)
 
 # Access exit code
-let status = `grep pattern file`
+status = `grep pattern file`
 if status.exit_code != 0
   println("Pattern not found")
 end
@@ -3895,7 +3895,7 @@ Loads an image from a file path. Supports JPEG, PNG, GIF, BMP, ICO, TIFF, and We
 
 **Example:**
 ```soli
-let img = Image.new("photo.jpg")
+img = Image.new("photo.jpg")
 println(img.width)   # 1920
 println(img.height)  # 1080
 ```
@@ -3911,9 +3911,9 @@ Loads an image from a base64-encoded string. Useful for processing images receiv
 
 **Example:**
 ```soli
-let data = S3.get_object("my-bucket", "photo.jpg")
+data = S3.get_object("my-bucket", "photo.jpg")
 # Encode raw bytes to base64 first, then:
-let img = Image.from_buffer(base64_data)
+img = Image.from_buffer(base64_data)
 ```
 
 ### Properties
@@ -3932,7 +3932,7 @@ Returns the image height in pixels.
 
 **Example:**
 ```soli
-let img = Image.new("photo.jpg")
+img = Image.new("photo.jpg")
 println("Size: " + str(img.width) + "x" + str(img.height))
 ```
 
@@ -3950,7 +3950,7 @@ Resizes the image to the specified dimensions using Lanczos3 filtering (high qua
 
 **Example:**
 ```soli
-let resized = Image.new("photo.jpg").resize(800, 600)
+resized = Image.new("photo.jpg").resize(800, 600)
 resized.to_file("photo_resized.jpg")
 ```
 
@@ -3965,7 +3965,7 @@ Creates a thumbnail that fits within a square of the given size, preserving the 
 
 **Example:**
 ```soli
-let thumb = Image.new("photo.jpg").thumbnail(200)
+thumb = Image.new("photo.jpg").thumbnail(200)
 thumb.to_file("thumb.jpg")
 ```
 
@@ -3985,7 +3985,7 @@ Crops a rectangular region from the image. Coordinates must be non-negative.
 
 **Example:**
 ```soli
-let cropped = Image.new("photo.jpg").crop(100, 50, 400, 300)
+cropped = Image.new("photo.jpg").crop(100, 50, 400, 300)
 cropped.to_file("cropped.jpg")
 ```
 
@@ -4035,7 +4035,7 @@ Inverts all colors in the image.
 
 **Example:**
 ```soli
-let img = Image.new("photo.jpg")
+img = Image.new("photo.jpg")
   .grayscale()
   .flip_horizontal()
   .rotate90()
@@ -4055,7 +4055,7 @@ Applies a Gaussian blur.
 
 **Example:**
 ```soli
-let blurred = Image.new("photo.jpg").blur(3.5)
+blurred = Image.new("photo.jpg").blur(3.5)
 ```
 
 #### img.brightness(value)
@@ -4087,7 +4087,7 @@ Rotates the hue of all pixels.
 
 **Example:**
 ```soli
-let adjusted = Image.new("photo.jpg")
+adjusted = Image.new("photo.jpg")
   .brightness(20)
   .contrast(1.5)
   .hue_rotate(90)
@@ -4117,7 +4117,7 @@ Sets the output format.
 **Example:**
 ```soli
 # Convert PNG to JPEG at 70% quality
-let img = Image.new("photo.png")
+img = Image.new("photo.png")
   .format("jpeg")
   .quality(70)
 img.to_file("photo.jpg")
@@ -4147,8 +4147,8 @@ Encodes the image to a base64 string. Useful for storing in databases, sending i
 
 **Example:**
 ```soli
-let img = Image.new("photo.jpg").thumbnail(100)
-let base64_data = img.to_buffer()
+img = Image.new("photo.jpg").thumbnail(100)
+base64_data = img.to_buffer()
 
 # Store in S3
 S3.put_object("my-bucket", "thumb.jpg", base64_data, {
@@ -4161,13 +4161,13 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
 **Thumbnail generation in a controller:**
 ```soli
 def upload(req)
-  let file = req.files["avatar"]
-  let img = Image.from_buffer(file.data)
+  file = req.files["avatar"]
+  img = Image.from_buffer(file.data)
 
   # Create multiple sizes
-  let large = img.resize(800, 800)
-  let medium = img.thumbnail(400)
-  let small = img.thumbnail(100)
+  large = img.resize(800, 800)
+  medium = img.thumbnail(400)
+  small = img.thumbnail(100)
 
   large.to_file("public/uploads/avatar_large.jpg")
   medium.to_file("public/uploads/avatar_medium.jpg")
@@ -4179,7 +4179,7 @@ end
 
 **Image processing pipeline:**
 ```soli
-let img = Image.new("raw_photo.jpg")
+img = Image.new("raw_photo.jpg")
   .resize(1200, 900)
   .brightness(10)
   .contrast(1.2)
@@ -4194,14 +4194,14 @@ img.grayscale().thumbnail(200).to_file("thumb_gray.jpg")
 **Format conversion:**
 ```soli
 # Convert all PNGs to WebP
-let files = S3.list_objects("images", "photos/")
+files = S3.list_objects("images", "photos/")
 for file in files
   if file.ends_with(".png")
-    let data = S3.get_object("images", file)
-    let img = Image.from_buffer(data)
+    data = S3.get_object("images", file)
+    img = Image.from_buffer(data)
       .format("webp")
       .quality(80)
-    let new_key = file.replace(".png", ".webp")
+    new_key = file.replace(".png", ".webp")
     S3.put_object("images", new_key, img.to_buffer(), {
       "content_type": "image/webp"
     })

@@ -50,10 +50,10 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Any</code> - The parsed value
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let data = JSON.parse('{"name": "Alice", "age": 30}')
+                <pre data-filename="Example"><code class="language-soli text-sm">data = JSON.parse('{"name": "Alice", "age": 30}')
 println(data["name"])  # "Alice"
 
-let numbers = JSON.parse('[1, 2, 3, 4, 5]')
+numbers = JSON.parse('[1, 2, 3, 4, 5]')
 println(numbers[0])  # 1</code></pre>
             </div>
         </section>
@@ -84,10 +84,10 @@ println(numbers[0])  # 1</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">String</code> - The JSON string representation
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
+                <pre data-filename="Example"><code class="language-soli text-sm">json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
 println(json)  # {"name":"Alice","scores":[95,87]}
 
-let arr = JSON.stringify([1, 2, 3])
+arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]</code></pre>
             </div>
         </section>
@@ -100,11 +100,11 @@ println(arr)  # [1,2,3]</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Reading and Writing JSON Files</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Read JSON file
-let config = JSON.parse(slurp("config.json"))
+config = JSON.parse(slurp("config.json"))
 println(config["database"]["host"])
 
 # Write JSON file
-let data = { "users": [{ "name": "Alice" }] }
+data = { "users": [{ "name": "Alice" }] }
 barf("data.json", JSON.stringify(data))</code></pre>
         </div>
     </section>

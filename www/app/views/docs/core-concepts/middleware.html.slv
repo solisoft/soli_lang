@@ -86,8 +86,8 @@ fn add_cors_headers(req: Any) -&gt; Any {
 // scope_only: true
 
 fn authenticate(req: Any) -&gt; Any {
-  let headers = req["headers"];
-  let api_key = "";
+  headers = req["headers"];
+  api_key = "";
 
   if (has_key(headers, "X-Api-Key")) {
     api_key = headers["X-Api-Key"];

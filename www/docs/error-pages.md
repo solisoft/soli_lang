@@ -156,8 +156,8 @@ You can also handle errors explicitly in your controllers by returning appropria
 
 ```soli
 fn show(req)
-  let id = req["params"]["id"]
-  let user = database.get_user(id)
+  id = req["params"]["id"]
+  user = database.get_user(id)
   
   if user == null
     return {

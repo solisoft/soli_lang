@@ -64,7 +64,7 @@ Regex.matches(r"\d{3}-\d{4}", "555-1234")  # true</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash?</code> - <code>{ "match": String, "start": Int, "end": Int }</code> or null if no match
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = Regex.find(r"[0-9]+", "abc123def")
+                <pre data-filename="Example"><code class="language-soli text-sm">result = Regex.find(r"[0-9]+", "abc123def")
 println(result["match"])  # "123"
 println(result["start"])  # 3
 println(result["end"])    # 6</code></pre>
@@ -84,7 +84,7 @@ println(result["end"])    # 6</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Array</code> - Array of match objects
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let all = Regex.find_all(r"[0-9]+", "a1b2c3")
+                <pre data-filename="Example"><code class="language-soli text-sm">all = Regex.find_all(r"[0-9]+", "a1b2c3")
 # [{"match": "1", "start": 1, "end": 2},
 #  {"match": "2", "start": 3, "end": 4},
 #  {"match": "3", "start": 5, "end": 6}]</code></pre>
@@ -178,7 +178,7 @@ Regex.split(r"\s+", "hello   world")  # ["hello", "world"]</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Capture named groups from a pattern.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = Regex.capture(
+                <pre data-filename="Example"><code class="language-soli text-sm">result = Regex.capture(
   r"(?P&lt;year&gt;[0-9]{4})-(?P&lt;month&gt;[0-9]{2})-(?P&lt;day&gt;[0-9]{2})",
   "2024-01-15"
 )

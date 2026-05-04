@@ -51,7 +51,7 @@
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm"># 1. Define your payload
-let payload = {
+payload = {
   "sub": "user_12345",
   "name": "Alice Wonderland",
   "role": "admin",
@@ -59,11 +59,11 @@ let payload = {
 }
 
 # 2. Get your secret key securely
-let secret = getenv("JWT_SECRET")
+secret = getenv("JWT_SECRET")
 # 3. Sign the token (default algorithm: HS256)
-let token = jwt_sign(payload, secret)
+token = jwt_sign(payload, secret)
 # Option: Set expiration (e.g., 1 hour from now)
-let token_with_exp = jwt_sign(
+token_with_exp = jwt_sign(
   payload, 
   secret, 
   { "expires_in": 3600 }
@@ -90,13 +90,13 @@ let token_with_exp = jwt_sign(
                 <span class="ml-2 text-xs text-gray-500 font-mono">middleware/auth.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">let result = jwt_verify(token, secret)
+<pre><code class="language-soli text-sm">result = jwt_verify(token, secret)
 if result["error"] == true
   # Handle invalid token
   print("Auth Error:", result["message"])
 else
   # Token is valid, access claims
-  let user_id = result["sub"]
+  user_id = result["sub"]
   print("Authenticated User:", user_id)
 end</code></pre>
             </div>

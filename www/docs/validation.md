@@ -18,16 +18,16 @@ V.hash()     # Hash/object validator
 ## Basic Validation
 
 ```soli
-let schema = {
+schema = {
   "email": V.string().required().email(),
   "password": V.string().required().min_length(8),
   "age": V.int().optional().min(18)
 };
 
-let result = validate(req["json"], schema);
+result = validate(req["json"], schema);
 
 if result["valid"]
-  let data = result["data"];
+  data = result["data"];
   # Use validated and coerced data
   print("Email:", data["email"]);
   print("Age:", data["age"]);  # Already converted to int
@@ -93,19 +93,19 @@ V.int().one_of([1, 2, 3])
 Validate complex objects with nested schemas:
 
 ```soli
-let address_schema = {
+address_schema = {
   "street": V.string().required(),
   "city": V.string().required(),
   "zip": V.string().pattern("^\\d{5}$")
 };
 
-let user_schema = {
+user_schema = {
   "name": V.string().required(),
   "email": V.string().required().email(),
   "address": V.hash(address_schema).required()
 };
 
-let result = validate(req["json"], user_schema);
+result = validate(req["json"], user_schema);
 ```
 
 ## Arrays
@@ -114,10 +114,10 @@ Validate arrays with element schemas:
 
 ```soli
 # Validate array of strings
-let tags_schema = V.array(V.string().required()).required();
+tags_schema = V.array(V.string().required()).required();
 
 # Validate array of objects
-let items_schema = V.array(
+items_schema = V.array(
   V.hash({
     "id": V.int().required(),
     "name": V.string().required()
@@ -125,7 +125,7 @@ let items_schema = V.array(
 ).required();
 
 # Usage
-let result = validate({
+result = validate({
   "items": [
     {"id": 1, "name": "Item 1"},
     {"id": 2, "name": "Item 2"}
@@ -153,7 +153,7 @@ fn new(req)
 end
 
 fn create(req)
-  let schema = {
+  schema = {
     "username": V.string().required()
       .min_length(3)
       .max_length(20)
@@ -164,7 +164,7 @@ fn create(req)
     "age": V.int().optional().min(13)
   };
 
-  let result = validate(req["json"], schema);
+  result = validate(req["json"], schema);
 
   if !result["valid"]
     return {
@@ -175,7 +175,7 @@ fn create(req)
     };
   end
 
-  let data = result["data"];
+  data = result["data"];
 
   # Check password confirmation
   if data["password"] != data["confirm_password"]
@@ -192,7 +192,7 @@ fn create(req)
   end
 
   # Create user (example)
-  let user = create_user(data["username"], data["email"], data["password"]);
+  user = create_user(data["username"], data["email"], data["password"]);
 
   {
     "status": 201,
@@ -252,19 +252,19 @@ All validators: `.one_of([values])`
 The validation system automatically coerces types:
 
 ```soli
-let schema = {
+schema = {
   "age": V.int().required(),
   "active": V.bool().required(),
   "score": V.float().required()
 };
 
 # Input (strings get converted)
-let input = {
+input = {
   "age": "25",       # -> 25 (int)
   "active": "true",  # -> true (bool)
   "score": "95.5"    # -> 95.5 (float)
 };
 
-let result = validate(input, schema);
+result = validate(input, schema);
 # result["data"] contains properly typed values
 ```

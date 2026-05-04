@@ -76,13 +76,13 @@ expect(json_string).to_be_valid_json();
 ```soli
 describe("Users API", fn()
   test("GET /users returns list", fn()
-    let response = TestHTTP.get("/users")
+    response = TestHTTP.get("/users")
     expect(response.status).to_equal(200)
     expect(response.body).to_contain("users")
   end)
   
   test("POST /users creates user", fn()
-    let response = TestHTTP.post("/users", hash(
+    response = TestHTTP.post("/users", hash(
       "email": "test@example.com",
       "name": "Test User"
     ))
@@ -90,12 +90,12 @@ describe("Users API", fn()
   end)
   
   test("PUT /users/:id updates user", fn()
-    let response = TestHTTP.put("/users/1", hash("name": "Updated"))
+    response = TestHTTP.put("/users/1", hash("name": "Updated"))
     expect(response.status).to_equal(200)
   end)
   
   test("DELETE /users/:id removes user", fn()
-    let response = TestHTTP.delete("/users/1")
+    response = TestHTTP.delete("/users/1")
     expect(response.status).to_equal(204)
   end)
 end)
@@ -124,7 +124,7 @@ describe("UsersController", fn()
   end)
   
   test("create action", fn()
-    let result = ControllerTest.helpers.users_controller.create(
+    result = ControllerTest.helpers.users_controller.create(
       params: hash("email": "test@example.com"),
       session: Session.new(),
       headers: Headers.new()
@@ -133,8 +133,8 @@ describe("UsersController", fn()
   end)
   
   test("show action", fn()
-    let user = Factory.create("user")
-    let result = ControllerTest.helpers.users_controller.show(
+    user = Factory.create("user")
+    result = ControllerTest.helpers.users_controller.show(
       params: hash("id": user.id),
       session: Session.new(),
       headers: Headers.new()
@@ -154,7 +154,7 @@ Tests are isolated using database transactions:
 describe("User model", fn()
   test("creates user", fn()
     with_transaction(fn()
-      let user = Factory.create("user", hash("name": "Test"))
+      user = Factory.create("user", hash("name": "Test"))
       expect(User.count()).to_equal(1)
       expect(user.name).to_equal("Test")
     end)
@@ -178,9 +178,9 @@ Factory.define("post", hash(
 ))
 
 # Use factories
-let user = Factory.create("user")
-let post = Factory.create("post", hash("title": "Custom Title"))
-let users = Factory.create_list("user", 5)
+user = Factory.create("user")
+post = Factory.create("post", hash("title": "Custom Title"))
+users = Factory.create_list("user", 5)
 ```
 
 ## Parallel Execution
@@ -237,7 +237,7 @@ describe("UsersController", fn()
   
   context("POST /users", fn()
     test("creates user with valid data", fn()
-      let response = TestHTTP.post("/users", hash(
+      response = TestHTTP.post("/users", hash(
         "email": "user@example.com",
         "name": "Test User"
       ))
@@ -246,14 +246,14 @@ describe("UsersController", fn()
     end)
     
     test("returns 422 with invalid email", fn()
-      let response = TestHTTP.post("/users", hash(
+      response = TestHTTP.post("/users", hash(
         "email": "invalid-email"
       ))
       expect(response.status).to_equal(422)
     end)
     
     test("returns 422 without email", fn()
-      let response = TestHTTP.post("/users", hash(
+      response = TestHTTP.post("/users", hash(
         "name": "Test"
       ))
       expect(response.status).to_equal(422)
@@ -262,22 +262,22 @@ describe("UsersController", fn()
   
   context("GET /users/:id", fn()
     test("shows user profile", fn()
-      let user = Factory.create("user")
-      let response = TestHTTP.get("/users/" + user.id)
+      user = Factory.create("user")
+      response = TestHTTP.get("/users/" + user.id)
       expect(response.status).to_equal(200)
       expect(response.body).to_contain(user.name)
     end)
     
     test("returns 404 for unknown user", fn()
-      let response = TestHTTP.get("/users/99999")
+      response = TestHTTP.get("/users/99999")
       expect(response.status).to_equal(404)
     end)
   end)
   
   context("DELETE /users/:id", fn()
     test("removes user", fn()
-      let user = Factory.create("user")
-      let response = TestHTTP.delete("/users/" + user.id)
+      user = Factory.create("user")
+      response = TestHTTP.delete("/users/" + user.id)
       expect(response.status).to_equal(204)
       expect(User.find(user.id)).to_be_null()
     end)
@@ -333,7 +333,7 @@ describe("User queries", fn()
       ]
     )
     
-    let user = User.find("123")
+    user = User.find("123")
     expect(user.name).to_equal("Alice")
     expect(user.class_name).to_equal("User")
   end)
@@ -377,8 +377,8 @@ describe("Contact with organisation", fn()
       ]
     )
     
-    let contact = Contact.includes("organisation").first
-    let org = contact.organisation
+    contact = Contact.includes("organisation").first
+    org = contact.organisation
     
     # Verify the relation has the correct class
     expect(org.class_name).to_equal("Organisation")

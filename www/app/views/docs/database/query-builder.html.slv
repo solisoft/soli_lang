@@ -15,7 +15,7 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Start with .where()
-let results = User
+results = User
   .where("age >= @age", { "age": 18 })
   .where("active == @active", { "active": true })
   .order("created_at", "desc")
@@ -24,16 +24,16 @@ let results = User
   .all
 
 # Start with .order() — no filter needed
-let recent = User.order("created_at", "desc").limit(5).all
+recent = User.order("created_at", "desc").limit(5).all
 
 # Start with .limit()
-let sample = User.limit(3).all
+sample = User.limit(3).all
 
 # Get first result only
-let first = User.where("email == @email", { "email": "alice@example.com" }).first
+first = User.where("email == @email", { "email": "alice@example.com" }).first
 
 # Count with conditions
-let count = User.where("role == @role", { "role": "admin" }).count
+count = User.where("role == @role", { "role": "admin" }).count
 
 # Bulk delete — one AQL REMOVE for the whole match (no N+1 loop)
 User.where("active == @a", { "a": false }).delete_all

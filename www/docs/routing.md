@@ -37,7 +37,7 @@ Access parameters in your controller:
 
 ```soli
 fn show(req)
-  let user_id = req.params["id"];
+  user_id = req.params["id"];
   # ...
 end
 ```
@@ -49,8 +49,8 @@ Query parameters are automatically parsed:
 ```soli
 # URL: /search?q=solilang&page=1
 fn search(req)
-  let query = req.query["q"];  # "solilang"
-  let page = req.query["page"]; # "1"
+  query = req.query["q"];  # "solilang"
+  page = req.query["page"]; # "1"
   # ...
 end
 ```
@@ -180,12 +180,12 @@ See the [Testing Guide](/docs/testing) for comprehensive information on testing 
 ```soli
 describe("User routes", fn()
   test("GET /users returns list", fn()
-    let response = TestHTTP.get("/users");
+    response = TestHTTP.get("/users");
     expect(response.status).to_equal(200);
   end)
   
   test("POST /users creates user", fn()
-    let response = TestHTTP.post("/users", hash(
+    response = TestHTTP.post("/users", hash(
       "email": "test@example.com"
     ));
     expect(response.status).to_equal(201);

@@ -84,13 +84,13 @@ Standard CRUD actions:
 ```soli
 class UsersController extends Controller
   fn index(req)
-    let users = Users.all();
+    users = Users.all();
     return render("users/index", { "users": users });
   end
 
   fn show(req)
-    let id = req.params["id"];
-    let user = Users.find(id);
+    id = req.params["id"];
+    user = Users.find(id);
     if user == null
       return halt(404, "User not found");
     end

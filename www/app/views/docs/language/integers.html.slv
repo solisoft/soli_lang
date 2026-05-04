@@ -28,9 +28,9 @@
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let x = 42
-let negative = -100
-let big = 9_000_000       # Underscores for readability
+<pre><code class="language-soli text-sm">x = 42
+negative = -100
+big = 9_000_000       # Underscores for readability
 let typed: Int = 10</code></pre>
             </div>
         </div>
@@ -296,7 +296,7 @@ end
                     </a>
                     <p class="text-gray-400 mb-3">Pauses the current thread for the integer number of seconds. Negative values are a no-op. Returns <code class="text-indigo-400">null</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">2.sleep         # pause for 2 seconds
-let n = 5
+n = 5
 n.sleep         # pause for 5 seconds</code></pre>
                 </div>
             </section>

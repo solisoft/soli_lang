@@ -83,17 +83,17 @@
         </h2>
         <p class="text-gray-400 mb-4">The <code class="text-indigo-400">&lt;&lt;</code> (shovel) operator appends an element to an array. It modifies the array in place and returns the array.</p>
         <pre data-filename="Example"><code class="language-soli text-sm"># Append element to array
-let arr = [1, 2, 3]
+arr = [1, 2, 3]
 arr << 4
 print(arr);  # [1, 2, 3, 4]
 
 # Push strings
-let names = ["Alice", "Bob"]
+names = ["Alice", "Bob"]
 names << "Charlie"
 print(names);  # ["Alice", "Bob", "Charlie"]
 
 # Returns the array for chaining
-let result = [1] << 2 << 3
+result = [1] << 2 << 3
 print(result);  # [1, 2, 3]</code></pre>
     </section>
 
@@ -152,8 +152,8 @@ print(result);  # [1, 2, 3]</code></pre>
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Both conditions must be true.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let age = 25
-let has_license = true
+                <pre data-filename="Example"><code class="language-soli text-sm">age = 25
+has_license = true
 
 if age >= 18 && has_license
   print("Can drive")
@@ -171,11 +171,11 @@ end</code></pre>
 
                 <p class="text-gray-400 mb-3">String Concatenation.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Concatenation
-let greeting = "Hello, " + "World!";    # "Hello, World!"
-let message = "Value: " + 42;           # "Value: 42" (auto-conversion)</code></pre>
+greeting = "Hello, " + "World!";    # "Hello, World!"
+message = "Value: " + 42;           # "Value: 42" (auto-conversion)</code></pre>
 
                 <pre data-filename="Example"><code class="language-soli text-sm"># String methods
-let text = "  Hello, World!  "
+text = "  Hello, World!  "
 print(text.trim());           # "Hello, World!"
 print(text.lstrip());         # "Hello, World!  "
 print(text.rstrip());         # "  Hello, World!"
@@ -184,7 +184,7 @@ print(text.lower());          # "  hello, world!  "
 print(text.len());            # 18
 
 # Substring operations
-let s = "Hello, World!"
+s = "Hello, World!"
 print(s.sub(0, 5));           # "Hello" (from index 0, length 5)
 print(s.find("World"));       # 7 (index of first occurrence)
 print(s.contains("Hello"));   # true
@@ -230,40 +230,40 @@ print("hello".bytesize());        # 5
 print("hello world".truncate(5)); # "he..."</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">??</code> to provide default values for null.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let user = {"name": "Alice", "email": null}
+                <pre data-filename="Example"><code class="language-soli text-sm">user = {"name": "Alice", "email": null}
 
 # Traditional null check
-let email = user["email"]
+email = user["email"]
 if email == null
   email = "unknown"
 end
 
 # Null coalescing operator
-let display_email = user["email"] ?? "unknown"
+display_email = user["email"] ?? "unknown"
 
 # Chaining with null values
-let city = user["address"]["city"] ?? "Unknown City"
+city = user["address"]["city"] ?? "Unknown City"
 # If any key in the chain is null/missing, returns "Unknown City"</code></pre>
 
                 <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">&amp;.</code> for safe navigation — access properties or call methods on values that might be null without raising an error.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Safe navigation operator
-let user = get_user  # might return null
+user = get_user  # might return null
 
 # Returns null if user is null, otherwise returns user.name
-let name = user&.name
+name = user&.name
 
 # Chain safe navigation for nested access
-let city = user&.address&.city
+city = user&.address&.city
 
 # Call methods safely — returns null if user is null
-let greeting = user&.greet
+greeting = user&.greet
 
 # Combine with ?? for default values
-let display_name = user&.name ?? "Anonymous"</code></pre>
+display_name = user&.name ?? "Anonymous"</code></pre>
 
                 <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Range creates an array
-let numbers = 1..5  # [1, 2, 3, 4]
+numbers = 1..5  # [1, 2, 3, 4]
 
 # Use in for loops
 for i in 0..10
@@ -320,7 +320,7 @@ end</code></pre>
                 </tbody>
             </table>
         </div>
-        <pre data-filename="Example"><code class="language-soli text-sm">let score = 0
+        <pre data-filename="Example"><code class="language-soli text-sm">score = 0
 score += 10       # score is now 10
 score -= 3        # score is now 7
 score *= 2        # score is now 14
@@ -328,11 +328,11 @@ score /= 7        # score is now 2
 score %= 2        # score is now 0
 
 # Also works with floats
-let price = 19.99
+price = 19.99
 price *= 0.9      # apply 10% discount
 
 # String concatenation with +=
-let msg = "Hello"
+msg = "Hello"
 msg += " World"   # msg is now "Hello World"</code></pre>
     </section>
 
@@ -376,25 +376,25 @@ msg += " World"   # msg is now "Hello World"</code></pre>
             </table>
         </div>
         <pre data-filename="Example"><code class="language-soli text-sm"># ||= : provide a fallback for falsy values
-let name = null
+name = null
 name ||= "Anonymous"   # name is now "Anonymous"
 
-let name = "Alice"
+name = "Alice"
 name ||= "Anonymous"   # name stays "Alice"
 
 # ??= : default only for null (preserves false / 0)
-let port = null
+port = null
 port ??= 8080          # port is now 8080
 
-let flag = false
+flag = false
 flag ??= true          # flag stays false (only null triggers ??=)
 
 # &&= : only update when already set
-let user = load_user()
+user = load_user()
 user &&= enrich(user)  # skips enrichment when user is null
 
 # Lazy default for hash keys
-let cache = {}
+cache = {}
 cache["key"] ||= expensive_lookup()  # computed once, reused on repeat</code></pre>
     </section>
 
@@ -432,14 +432,14 @@ cache["key"] ||= expensive_lookup()  # computed once, reused on repeat</code></p
                 </tbody>
             </table>
         </div>
-        <pre data-filename="Example"><code class="language-soli text-sm">let i = 0
+        <pre data-filename="Example"><code class="language-soli text-sm">i = 0
 i++            # i is now 1
 i++            # i is now 2
 
-let old = i--  # old is 2, i is now 1
+old = i--  # old is 2, i is now 1
 
 # Common pattern: loop counter
-let n = 0
+n = 0
 while n < 5
   println(n)
   n = n + 1

@@ -30,11 +30,11 @@
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Null represents the absence of a value
-let x = null
+x = null
 let typed: Null = null
 
 # nil is an alias for null
-let y = nil      # same as null
+y = nil      # same as null
 print(y)         # null
 
 # Uninitialized variables
@@ -42,11 +42,11 @@ let z
 print(z)         # null
 
 # Missing hash keys return null
-let h = {"name": "Alice"}
+h = {"name": "Alice"}
 print(h["age"])  # null
 
 # Safe navigation to avoid errors on null
-let user = null
+user = null
 print(user&.name)  # null (no error)</code></pre>
             </div>
         </div>

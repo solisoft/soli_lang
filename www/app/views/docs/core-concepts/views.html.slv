@@ -910,7 +910,7 @@ soli serve
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/posts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show(req)
-  let post = Post.find(req.params["id"])    
+  post = Post.find(req.params["id"])    
   render("posts/show", {
     "title": post["title"],
     "post": post

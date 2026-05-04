@@ -47,7 +47,7 @@
                     <div><code class="text-amber-400">expires_in</code> : <code class="text-purple-400">Int</code> - Token lifetime in seconds</div>
                     <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - HS256, HS384, or HS512 (default: HS256)</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let token = jwt_sign(
+                <pre data-filename="Example"><code class="language-soli text-sm">token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   "my-secret-key",
   { "expires_in": 3600 }
@@ -74,7 +74,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let result = jwt_verify(token, "my-secret-key")
+                <pre data-filename="Example"><code class="language-soli text-sm">result = jwt_verify(token, "my-secret-key")
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
@@ -102,7 +102,7 @@ end</code></pre>
                     <code class="text-purple-400">Hash</code> - The payload without verification
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Useful for debugging or extracting public info
-let payload = jwt_decode(token)
+payload = jwt_decode(token)
 println(payload["sub"])  # User ID without verification</code></pre>
             </div>
         </section>
@@ -116,12 +116,12 @@ println(payload["sub"])  # User ID without verification</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Authentication Flow</h3>
             <pre data-filename="Example"><code class="language-soli text-sm"># Login endpoint
 def login(email: String, password: String) -> Hash
-  let user = User.find_by_email(email)
+  user = User.find_by_email(email)
   if !user || !argon2_verify(password, user["password_hash"])
     return { "error": "Invalid credentials" }
   end
 
-  let token = jwt_sign(
+  token = jwt_sign(
     { "sub": str(user["id"]), "role": user["role"] },
     getenv("JWT_SECRET"),
     { "expires_in": 86400 }  # 24 hours
@@ -132,13 +132,13 @@ end
 
 # Protected endpoint middleware
 def authenticate(req: Hash) -> Hash?
-  let auth_header = req["headers"]["Authorization"] ?? ""
+  auth_header = req["headers"]["Authorization"] ?? ""
   if !contains(auth_header, "Bearer ")
     return null
   end
 
-  let token = substring(auth_header, 7)
-  let result = jwt_verify(token, getenv("JWT_SECRET"))
+  token = substring(auth_header, 7)
+  result = jwt_verify(token, getenv("JWT_SECRET"))
 
   if has_key(result, "error")
     return null

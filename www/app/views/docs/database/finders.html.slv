@@ -24,7 +24,7 @@
                 Returns the first record whose field equals the given value, or <code>null</code> if none is found.
             </p>
             <pre><code class="language-soli text-sm"># Find by exact field match
-let user = User.find_by("email", "alice@example.com")</code></pre>
+user = User.find_by("email", "alice@example.com")</code></pre>
         </div>
 
         <div>
@@ -36,7 +36,7 @@ let user = User.find_by("email", "alice@example.com")</code></pre>
                 Returns the first record matching the field value, with ordering applied.
             </p>
             <pre><code class="language-soli text-sm"># Find with ordering (first by field value)
-let user = User.first_by("name", "Alice")</code></pre>
+user = User.first_by("name", "Alice")</code></pre>
         </div>
 
         <div>
@@ -48,8 +48,8 @@ let user = User.first_by("name", "Alice")</code></pre>
                 Returns an existing record if one matches, or creates a new one. An optional third argument provides additional fields for creation.
             </p>
             <pre><code class="language-soli text-sm"># Find or create - returns existing or creates new
-let user = User.find_or_create_by("email", "new@example.com")
-let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" })</code></pre>
+user = User.find_or_create_by("email", "new@example.com")
+user = User.find_or_create_by("email", "new@example.com", { "name": "New User" })</code></pre>
         </div>
 
         <div>
@@ -61,13 +61,13 @@ let user = User.find_or_create_by("email", "new@example.com", { "name": "New Use
                 Automatically generated finders for any field combination. Method name encodes the field names and conditions.
             </p>
             <pre><code class="language-soli text-sm"># Single field finder — find_by_fieldname(value)
-let user = User.find_by_email("alice@example.com")
+user = User.find_by_email("alice@example.com")
 
 # Two-field finder — find_by_field1_and_field2(val1, val2)
-let user = User.find_by_email_and_active("alice@example.com", true)
+user = User.find_by_email_and_active("alice@example.com", true)
 
 # Three+ field combinations
-let post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code></pre>
+post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code></pre>
             <p class="text-gray-400 mt-4">
                 These methods return the first matching record or <code>null</code> if not found.
             </p>
@@ -95,7 +95,7 @@ let post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</c
                 Compute the sum of a numeric field. Chain <code>.first</code> to execute.
             </p>
             <pre><code class="language-soli text-sm"># Sum — chain .first to execute
-let total = User.where("age > @a", { "a": 18 }).sum("balance").first</code></pre>
+total = User.where("age > @a", { "a": 18 }).sum("balance").first</code></pre>
         </div>
 
         <div>
@@ -104,7 +104,7 @@ let total = User.where("age > @a", { "a": 18 }).sum("balance").first</code></pre
                 Average
             </h3>
             <pre><code class="language-soli text-sm"># Average
-let avg = User.avg("score").first</code></pre>
+avg = User.avg("score").first</code></pre>
         </div>
 
         <div>
@@ -113,7 +113,7 @@ let avg = User.avg("score").first</code></pre>
                 Minimum
             </h3>
             <pre><code class="language-soli text-sm"># Minimum
-let min_score = User.min("score").first</code></pre>
+min_score = User.min("score").first</code></pre>
         </div>
 
         <div>
@@ -122,7 +122,7 @@ let min_score = User.min("score").first</code></pre>
                 Maximum
             </h3>
             <pre><code class="language-soli text-sm"># Maximum
-let max_score = User.max("views").first</code></pre>
+max_score = User.max("views").first</code></pre>
         </div>
 
         <div>
@@ -134,7 +134,7 @@ let max_score = User.max("views").first</code></pre>
                 Group records by a field and apply an aggregation function. Chain <code>.all</code> for grouped results.
             </p>
             <pre><code class="language-soli text-sm"># Group by aggregation — chain .all for grouped results
-let by_country = User.group_by("country", "sum", "balance").all
+by_country = User.group_by("country", "sum", "balance").all
 # Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]</code></pre>
         </div>
 
@@ -147,7 +147,7 @@ let by_country = User.group_by("country", "sum", "balance").all
                 Use <code>.to_query</code> to see the SDBQL that a QueryBuilder will execute.
             </p>
             <pre><code class="language-soli text-sm"># Inspect the generated query
-let q = User.where("active = @a", { "a": true }).sum("balance").to_query
+q = User.where("active = @a", { "a": true }).sum("balance").to_query
 # => FOR doc IN users FILTER doc.active == @a RETURN SUM(doc.balance)</code></pre>
         </div>
     </div>
@@ -167,7 +167,7 @@ let q = User.where("active = @a", { "a": true }).sum("balance").to_query
                 Returns a flat array of values. Chain <code>.all</code> to execute.
             </p>
             <pre><code class="language-soli text-sm"># Get array of single field values — chain .all to execute
-let names = User.where("active = @a", { "a": true }).pluck("name").all
+names = User.where("active = @a", { "a": true }).pluck("name").all
 # Returns: ["Alice", "Bob", "Charlie"]</code></pre>
         </div>
 
@@ -180,7 +180,7 @@ let names = User.where("active = @a", { "a": true }).pluck("name").all
                 Returns an array of objects with the requested keys.
             </p>
             <pre><code class="language-soli text-sm"># Get multiple fields as objects
-let users = User.pluck("name", "email").all
+users = User.pluck("name", "email").all
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]</code></pre>
         </div>
     </div>
@@ -193,11 +193,11 @@ let users = User.pluck("name", "email").all
     <div class="space-y-8 mb-12">
         <div>
             <pre><code class="language-soli text-sm"># Check if records exist — chain .first to execute (returns boolean)
-let exists = User.where("role = @r", { "r": "admin" }).exists.first
+exists = User.where("role = @r", { "r": "admin" }).exists.first
 # Returns: true or false
 
 # Inspect the generated query
-let q = User.where("role = @r", { "r": "admin" }).exists.to_query
+q = User.where("role = @r", { "r": "admin" }).exists.to_query
 # => FOR doc IN users FILTER doc.role == @r LIMIT 1 RETURN true</code></pre>
         </div>
     </div>
@@ -216,7 +216,7 @@ let q = User.where("role = @r", { "r": "admin" }).exists.to_query
             <p class="text-gray-400 mb-4">
                 Atomically increment or decrement a numeric field in the database. The default step is 1.
             </p>
-            <pre><code class="language-soli text-sm">let user = User.find("user_id")
+            <pre><code class="language-soli text-sm">user = User.find("user_id")
 
 # Atomic increment/decrement
 user.increment("view_count")       # +1

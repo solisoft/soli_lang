@@ -79,7 +79,7 @@ V.hash(schema)    # Matches a nested object</code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm"># 1. Define the schema
-let user_schema = {
+user_schema = {
   "email": V.string().required().email().trim(),
   "password": V.string().required().min_length(8),
   "age": V.int().optional().min(18).max(120),
@@ -87,7 +87,7 @@ let user_schema = {
 }
 
 # 2. Validate input data (e.g., from a POST request)
-let result = validate(req["body"], user_schema)
+result = validate(req["body"], user_schema)
 # 3. Handle results
 if result["valid"]
   # result["data"] contains the clean, coerced data

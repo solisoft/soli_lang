@@ -45,7 +45,7 @@
             <p class="text-gray-400 mb-3">Create a file under <code class="text-amber-400">app/jobs/</code>. Filename and class name follow the same convention as controllers and models — <code class="text-amber-400">welcome_email_job.sl</code> defines <code class="text-amber-400">class WelcomeEmailJob</code>.</p>
             <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
   static fn perform(args: Hash) {
-    let user = User.find(args["user_id"])
+    user = User.find(args["user_id"])
     Mailer.send(user.email, "Welcome to the app")
   }
 }</code></pre>
@@ -112,7 +112,7 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
                     <code class="text-lg font-mono text-indigo-400">Job.enqueue(handler, args, queue?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })</code></pre>
             </div>
         </section>
 
@@ -152,7 +152,7 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
                     <code class="text-lg font-mono text-indigo-400">Job.list(queue?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">List jobs in a queue. Defaults to the configured default queue.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let jobs = Job.list("mailers")</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">jobs = Job.list("mailers")</code></pre>
             </div>
         </section>
 
@@ -162,7 +162,7 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
                     <code class="text-lg font-mono text-indigo-400">Job.queues()</code>
                 </a>
                 <p class="text-gray-400 mb-3">Return all queues defined in the SolidB database.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let names = Job.queues()</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">names = Job.queues()</code></pre>
             </div>
         </section>
     </section>
@@ -188,7 +188,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
                     <code class="text-lg font-mono text-indigo-400">Cron.list()</code>
                 </a>
                 <p class="text-gray-400 mb-3">List all cron entries.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let entries = Cron.list()</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">entries = Cron.list()</code></pre>
             </div>
         </section>
 
@@ -335,12 +335,12 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
             <h3 class="text-lg font-semibold text-white mb-3">Send an email asynchronously</h3>
             <pre data-filename="app/jobs/welcome_email_job.sl"><code class="language-soli text-sm">class WelcomeEmailJob {
   static fn perform(args: Hash) {
-    let user = User.find(args["user_id"])
+    user = User.find(args["user_id"])
     Mailer.send(user.email, "Welcome!")
   }
 }</code></pre>
             <pre data-filename="app/controllers/users_controller.sl" class="mt-3"><code class="language-soli text-sm">fn create(req) {
-  let user = User.create(req["json"])
+  user = User.create(req["json"])
   WelcomeEmailJob.perform_later({ "user_id": user.id })
   return redirect("/users/" + str(user.id))
 }</code></pre>
@@ -363,7 +363,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
             <p class="text-gray-400 text-sm mb-3">SolidB owns retry semantics. Treat handlers as idempotent. The callback receives <code class="text-amber-400">job_id</code> and <code class="text-amber-400">attempt</code> in the request body if you need to dedupe.</p>
             <pre data-filename="app/jobs/charge_job.sl"><code class="language-soli text-sm">class ChargeJob {
   static fn perform(args: Hash) {
-    let charge_id = args["charge_id"]
+    charge_id = args["charge_id"]
     if Charge.find(charge_id).processed {
       return  # already done — no-op on retry
     }

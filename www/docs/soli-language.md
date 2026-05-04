@@ -44,8 +44,8 @@ fn calculate_area(radius: Float) -> Float
   3.14159 * radius * radius
 end
 
-let radius = 5.0;
-let area = calculate_area(radius);
+radius = 5.0;
+area = calculate_area(radius);
 print("The area of a circle with radius " + str(radius) + " is " + str(area));
 # Output: The area of a circle with radius 5.0 is 78.53975
 ```
@@ -78,11 +78,11 @@ Variables are declared using the `let` keyword. Soli uses block scoping.
 
 ```soli
 # Basic variable declarations
-let name = "Alice";           # String
-let age = 30;                 # Int
-let temperature = 98.6;       # Float
-let is_active = true;         # Bool
-let nothing = null;           # Null
+name = "Alice";           # String
+age = 30;                 # Int
+temperature = 98.6;       # Float
+is_active = true;         # Bool
+nothing = null;           # Null
 ```
 
 ### Type Annotations
@@ -105,39 +105,39 @@ Soli provides five primitive types:
 
 ```soli
 # Int - 64-bit signed integer
-let count = 42;
-let negative = -100;
-let large = 9_000_000;  # Underscores for readability
+count = 42;
+negative = -100;
+large = 9_000_000;  # Underscores for readability
 
 # Float - 64-bit floating-point
-let pi = 3.14159;
-let small = 0.001;
-let scientific = 2.5e10;  # 25000000000.0
+pi = 3.14159;
+small = 0.001;
+scientific = 2.5e10;  # 25000000000.0
 
 # String - UTF-8 text
-let greeting = "Hello, World!";
-let multiline = "Line 1\nLine 2\tTabbed";
-let raw = r"Path: C:\Users\name";  # Raw string (no escape processing)
+greeting = "Hello, World!";
+multiline = "Line 1\nLine 2\tTabbed";
+raw = r"Path: C:\Users\name";  # Raw string (no escape processing)
 
 # Multiline strings
-let poem = """The fog comes
+poem = """The fog comes
 on little cat feet.""";
 
-let story = [[Once upon
+story = [[Once upon
 a time in
 the wild west.]];
 
 # Command substitution - execute shell commands
-let files = `ls *.sl`;        # Returns Future<{stdout, stderr, exit_code}>
-let output = files.stdout;     # Auto-resolves when accessed
-let code = files.exit_code;    # Exit code (0 = success)
+files = `ls *.sl`;        # Returns Future<{stdout, stderr, exit_code}>
+output = files.stdout;     # Auto-resolves when accessed
+code = files.exit_code;    # Exit code (0 = success)
 
 # Bool - Boolean values
-let is_valid = true;
-let is_complete = false;
+is_valid = true;
+is_complete = false;
 
 # Null - Absence of value
-let missing = null;
+missing = null;
 ```
 
 ### Type Inference
@@ -146,15 +146,15 @@ Soli automatically infers types when not explicitly specified:
 
 ```soli
 # Type inference examples
-let x = 5;              # Inferred as Int
-let y = 3.14;           # Inferred as Float
-let z = "hello";        # Inferred as String
-let flag = true;        # Inferred as Bool
-let nums = [1, 2, 3];   # Inferred as Int[]
-let person = {"name": "Alice"};  # Inferred as Hash
+x = 5;              # Inferred as Int
+y = 3.14;           # Inferred as Float
+z = "hello";        # Inferred as String
+flag = true;        # Inferred as Bool
+nums = [1, 2, 3];   # Inferred as Int[]
+person = {"name": "Alice"};  # Inferred as Hash
 
 # You can always add annotations even with inference
-let id = 123;  # Int - inferred
+id = 123;  # Int - inferred
 let user_id: Int = 123;  # Explicit annotation, still Int
 ```
 
@@ -176,11 +176,11 @@ const PI = 3.14159265359;
 Variables in Soli are block-scoped:
 
 ```soli
-let x = 1;
+x = 1;
 
 if true
-  let y = 2;      # y is only visible in this block
-  let x = 3;      # This shadows the outer x
+  y = 2;      # y is only visible in this block
+  x = 3;      # This shadows the outer x
   print(x);       # Output: 3 (inner x)
 end
 
@@ -198,19 +198,19 @@ end
 Variable shadowing allows inner blocks to redefine outer variables:
 
 ```soli
-let message = "outer";
+message = "outer";
 
 if true
-  let message = "inner";
+  message = "inner";
   print(message);  # "inner"
 end
 
 print(message);      # "outer"
 
 # Common use case: transforming data
-let data = get_data();
+data = get_data();
 if data != null
-  let data = process(data);  # Transform while keeping same name
+  data = process(data);  # Transform while keeping same name
   print(data);
 end
 ```
@@ -222,8 +222,8 @@ end
 ### Arithmetic Operators
 
 ```soli
-let a = 10;
-let b = 3;
+a = 10;
+b = 3;
 
 # Basic arithmetic
 print(a + b);   # 13  (addition)
@@ -233,11 +233,11 @@ print(a / b);   # 3.3333333333333335  (division - always float!)
 print(a % b);   # 1   (modulo)
 
 # Integer division requires special handling
-let int_result = int(a / b);  # 3
-let remainder = a % b;        # 1
+int_result = int(a / b);  # 3
+remainder = a % b;        # 1
 
 # Compound assignment
-let counter = 0;
+counter = 0;
 counter = counter + 1;  # 1
 counter += 1;           # 2 (shorthand)
 counter *= 2;           # 4
@@ -252,25 +252,25 @@ matching binary operators.
 
 ```soli
 # ||=  Assign only if the current value is falsy (null or false)
-let name = null;
+name = null;
 name ||= "Anonymous";   # name is now "Anonymous"
 
-let name = "Alice";
+name = "Alice";
 name ||= "Anonymous";   # name stays "Alice"
 
 # ??=  Assign only if the current value is null
-let port = null;
+port = null;
 port ??= 8080;          # port is now 8080
 
-let flag = false;
+flag = false;
 flag ??= true;          # flag stays false (only null triggers ??=)
 
 # &&=  Assign only if the current value is truthy
-let user = {"name": "Alice"};
+user = {"name": "Alice"};
 user &&= load_full_profile(user);  # only runs when user is truthy
 
 # Common idiom: lazy default for hash keys
-let cache = {};
+cache = {};
 cache["key"] ||= expensive_lookup();   # compute once, reuse on repeat
 ```
 
@@ -286,8 +286,8 @@ safe to use expensive expressions on the right.
 ### Comparison Operators
 
 ```soli
-let x = 5;
-let y = 10;
+x = 5;
+y = 10;
 
 # Equality
 print(x == y);   # false
@@ -311,9 +311,9 @@ print([1, 2] < [1, 2, 3]);      # true (shorter is "less")
 ### Logical Operators
 
 ```soli
-let age = 25;
-let has_license = true;
-let is_weekend = false;
+age = 25;
+has_license = true;
+is_weekend = false;
 
 # AND - both conditions must be true
 if age >= 18 && has_license
@@ -331,7 +331,7 @@ if !is_raining
 end
 
 # Chained conditions
-let score = 85;
+score = 85;
 if score >= 90 && attendance >= 80
   print("Grade: A");
 elsif score >= 80 || extra_credit > 10
@@ -343,19 +343,19 @@ end
 
 ```soli
 # Concatenation
-let greeting = "Hello, " + "World!";    # "Hello, World!"
-let message = "Value: " + 42;           # "Value: 42" (auto-conversion)
-let path = "/home/" + "user";           # "/home/user"
+greeting = "Hello, " + "World!";    # "Hello, World!"
+message = "Value: " + 42;           # "Value: 42" (auto-conversion)
+path = "/home/" + "user";           # "/home/user"
 
 # String methods
-let text = "  Hello, World!  ";
+text = "  Hello, World!  ";
 print(text.trim());        # "Hello, World!" (removes whitespace)
 print(text.upper());       # "  HELLO, WORLD!  "
 print(text.lower());       # "  hello, world!  "
 print(text.len());         # 18
 
 # Substring operations
-let s = "Hello, World!";
+s = "Hello, World!";
 print(s.sub(0, 5));        # "Hello" (from index 0, length 5)
 print(s.find("World"));    # 7 (index of first occurrence)
 print(s.contains("Hello"));  # true
@@ -363,24 +363,24 @@ print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
 
 # String transformation
-let snake_case = "HelloWorld".snake_case();  # "hello_world"
-let camel_case = "hello_world".camel_case(); # "helloWorld"
+snake_case = "HelloWorld".snake_case();  # "hello_world"
+camel_case = "hello_world".camel_case(); # "helloWorld"
 
 # String interpolation
-let name = "World";
-let greeting = "Hello #{name}!";           # "Hello World!"
-let a = 2;
-let b = 3;
-let result = "Sum is #{a + b}";             # "Sum is 5"
-let first = "John";
-let last = "Doe";
-let full = "#{first} #{last}";              # "John Doe"
-let text = "hello";
-let upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
-let items = ["Alice", "Bob"];
-let first_item = "First: #{items[0]}";       # "First: Alice"
-let person = {"name": "Charlie"};
-let person_name = "Name: #{person["name"]}"; # "Name: Charlie"
+name = "World";
+greeting = "Hello #{name}!";           # "Hello World!"
+a = 2;
+b = 3;
+result = "Sum is #{a + b}";             # "Sum is 5"
+first = "John";
+last = "Doe";
+full = "#{first} #{last}";              # "John Doe"
+text = "hello";
+upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
+items = ["Alice", "Bob"];
+first_item = "First: #{items[0]}";       # "First: Alice"
+person = {"name": "Charlie"};
+person_name = "Name: #{person["name"]}"; # "Name: Charlie"
 ```
 
 ### Type Coercion
@@ -402,29 +402,29 @@ let s = str(n);            # "123" (any type to string)
 ### Null-Safe Operations
 
 ```soli
-let user = {"name": "Alice", "email": null};
+user = {"name": "Alice", "email": null};
 
 # Traditional null check
-let email = user["email"];
+email = user["email"];
 if email == null
   email = "unknown";
 end
 
 # Null coalescing operator
-let display_email = user["email"] ?? "unknown";
+display_email = user["email"] ?? "unknown";
 
 # Chaining with null values
-let city = user["address"]["city"] ?? "Unknown City";
+city = user["address"]["city"] ?? "Unknown City";
 # If any key in the chain is null/missing, returns "Unknown City"
 
 # Safe navigation operator (&.)
 # Access properties or call methods on values that might be null
-let user = get_user()  # might return null
+user = get_user()  # might return null
 
-let name = user&.name              # null if user is null, otherwise user.name
-let city = user&.address&.city     # chain for nested access
-let greeting = user&.greet()       # null if user is null, otherwise calls greet()
-let display = user&.name ?? "Anon" # combine with ?? for defaults
+name = user&.name              # null if user is null, otherwise user.name
+city = user&.address&.city     # chain for nested access
+greeting = user&.greet()       # null if user is null, otherwise calls greet()
+display = user&.name ?? "Anon" # combine with ?? for defaults
 ```
 
 ---
@@ -434,7 +434,7 @@ let display = user&.name ?? "Anon" # combine with ?? for defaults
 ### If/Else Statements
 
 ```soli
-let age = 18;
+age = 18;
 
 # Simple if
 if age >= 18
@@ -442,7 +442,7 @@ if age >= 18
 end
 
 # If-else
-let score = 75;
+score = 75;
 if score >= 60
   print("Pass");
 else
@@ -450,7 +450,7 @@ else
 end
 
 # Else-if chain
-let grade = 85;
+grade = 85;
 let letter;
 if grade >= 90
   letter = "A";
@@ -466,9 +466,9 @@ end
 print(letter);  # "B"
 
 # Nested conditions
-let is_weekend = true;
-let is_holiday = false;
-let has_plans = true;
+is_weekend = true;
+is_holiday = false;
+has_plans = true;
 
 if is_weekend
   if is_holiday
@@ -515,7 +515,7 @@ end
 
 ```soli
 # Basic while loop
-let i = 0;
+i = 0;
 while i < 5
   print("Count: " + str(i));
   i = i + 1;
@@ -528,9 +528,9 @@ end
 # Count: 4
 
 # While with complex condition
-let data = [1, 2, 3, 4, 5];
-let sum = 0;
-let idx = 0;
+data = [1, 2, 3, 4, 5];
+sum = 0;
+idx = 0;
 while idx < len(data) && data[idx] < 4
   sum = sum + data[idx];
   idx = idx + 1;
@@ -538,7 +538,7 @@ end
 print("Sum: " + str(sum));  # 6 (1+2+3)
 
 # Do-while equivalent (using break)
-let count = 0;
+count = 0;
 loop
   count = count + 1;
   print("Iteration: " + str(count));
@@ -611,18 +611,18 @@ print("Sum of odd numbers < 7: " + str(sum));  # 1+3+5 = 9
 Ruby-style postfix conditionals for concise single statements:
 
 ```soli
-let x = 10;
+x = 10;
 print("big") if (x > 5);
 
-let y = 3;
+y = 3;
 print("small") unless (y > 5);
 
 # More examples
-let status = "active";
+status = "active";
 print("Welcome!") if (status == "active");
 print("Account locked") unless (status != "banned");
 
-let items = [];
+items = [];
 print("Empty") if (len(items) == 0);
 ```
 
@@ -630,13 +630,13 @@ print("Empty") if (len(items) == 0);
 
 ```soli
 # Basic ternary
-let x = 10;
-let size = x > 5 ? "large" : "small";
+x = 10;
+size = x > 5 ? "large" : "small";
 print(size);  # "large"
 
 # Nested ternary
-let grade = 85;
-let letter = grade >= 90 ? "A"
+grade = 85;
+letter = grade >= 90 ? "A"
       : grade >= 80 ? "B"
       : grade >= 70 ? "C"
       : grade >= 60 ? "D"
@@ -644,8 +644,8 @@ let letter = grade >= 90 ? "A"
 print(letter);  # "B"
 
 # In assignments
-let max_val = a > b ? a : b;
-let status = is_valid ? "valid" : "invalid";
+max_val = a > b ? a : b;
+status = is_valid ? "valid" : "invalid";
 ```
 
 ### Match Expression
@@ -654,8 +654,8 @@ Soli's powerful pattern matching (covered in detail in the Pattern Matching sect
 
 ```soli
 # Basic match
-let x = 42;
-let result = match x {
+x = 42;
+result = match x {
   42 => "the answer",
   _ => "something else",
 };
@@ -676,7 +676,7 @@ Soli follows common truthiness rules:
 
 ```soli
 # Falsy values
-let falsy_values = [false, null, 0, 0.0, "", []];
+falsy_values = [false, null, 0, 0.0, "", []];
 
 # Truthy values (everything else)
 if "hello"
@@ -692,12 +692,12 @@ if 42
 end
 
 # Practical examples
-let config = get_config();
+config = get_config();
 if config
   print("Config loaded: " + str(config));
 end
 
-let items = get_items() ?? [];
+items = get_items() ?? [];
 if len(items) > 0
   print("Found " + str(len(items)) + " items");
 end
@@ -714,14 +714,14 @@ Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimi
 ```soli
 # Basic try/catch
 try
-  let result = 10 / 0;
+  result = 10 / 0;
 catch e
   print("Error: " + str(e));
 end
 
 # With finally (always runs)
 try
-  let data = read_file("config.sl");
+  data = read_file("config.sl");
   print(data);
 catch e
   print("Failed to read file: " + str(e));
@@ -772,7 +772,7 @@ fn divide(a: Int, b: Int) -> Int
 end
 
 try
-  let result = divide(10, 0);
+  result = divide(10, 0);
 catch e
   print("Caught: " + str(e));  # "Caught: Division by zero"
 end
@@ -843,7 +843,7 @@ Try/catch also supports brace-delimited blocks:
 
 ```soli
 try {
-  let result = risky_operation();
+  result = risky_operation();
 } catch (e) {
   print("Error: " + str(e));
 } finally {
@@ -923,7 +923,7 @@ fn is_prime(n: Int) -> Bool
   if n % 2 == 0
     return false;
   end
-  let i = 3;
+  i = 3;
   while i * i <= n
     if n % i == 0
       return false;
@@ -938,7 +938,7 @@ fn find_max(arr: Int[]) -> Int
   if len(arr) == 0
     return 0;  # or panic for empty array
   end
-  let max = arr[0];
+  max = arr[0];
   for i in range(1, len(arr))
     if arr[i] > max
       max = arr[i];
@@ -961,13 +961,13 @@ fn process_user(user: Hash) -> Hash
   end
 
   # Validate email format
-  let email = user["email"];
+  email = user["email"];
   if !email.contains("@")
     return {"error": "Invalid email format"};
   end
 
   # Process user data
-  let processed = user;
+  processed = user;
   processed["status"] = "active";
   processed["created_at"] = DateTime.utc().to_iso();
 
@@ -993,20 +993,20 @@ fn square(x: Int) -> Int
   x * x
 end
 
-let result = apply(5, double);   # 10
-let squared = apply(5, square);  # 25
+result = apply(5, double);   # 10
+squared = apply(5, square);  # 25
 
 # Passing anonymous functions
 fn transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
-  let result = [];
+  result = [];
   for item in arr
     push(result, transformer(item));
   end
   result
 end
 
-let numbers = [1, 2, 3, 4, 5];
-let doubled = transform_array(numbers, fn(x) x * 2);  # [2, 4, 6, 8, 10]
+numbers = [1, 2, 3, 4, 5];
+doubled = transform_array(numbers, fn(x) x * 2);  # [2, 4, 6, 8, 10]
 
 # Function that returns a function
 fn multiplier(factor: Int) -> (Int) -> Int
@@ -1016,11 +1016,11 @@ fn multiplier(factor: Int) -> (Int) -> Int
   closure
 end
 
-let times_two = multiplier(2);
+times_two = multiplier(2);
 print(times_two(5));   # 10
 print(times_two(10));  # 20
 
-let times_three = multiplier(3);
+times_three = multiplier(3);
 print(times_three(5));  # 15
 ```
 
@@ -1075,16 +1075,16 @@ print(greet("Charlie", "Welcome")); # "Welcome, Charlie!"
 
 # Optional parameters
 fn create_user(name: String, email: String = null, role: String = "user") -> Hash
-  let user = {"name": name, "role": role};
+  user = {"name": name, "role": role};
   if email != null
     user["email"] = email;
   end
   user
 end
 
-let user1 = create_user("Alice");
-let user2 = create_user("Bob", "bob@example.com");
-let user3 = create_user("Charlie", "charlie@example.com", "admin");
+user1 = create_user("Alice");
+user2 = create_user("Bob", "bob@example.com");
+user3 = create_user("Charlie", "charlie@example.com", "admin");
 ```
 
 ### Named Parameters
@@ -1173,7 +1173,7 @@ http_request(
 
 ```soli
 fn sum(numbers: Int[]) -> Int
-  let total = 0;
+  total = 0;
   for n in numbers
     total = total + n;
   end
@@ -1183,13 +1183,13 @@ end
 print(sum([1, 2, 3, 4, 5]));  # 15
 
 # Using spread operator
-let nums = [1, 2, 3];
+nums = [1, 2, 3];
 print(sum(nums));             # 6
 print(sum([...nums, 4, 5]));  # 15
 
 # Variadic-like with array
 fn format_list(items: String[], separator: String = ", ", final_separator: String = "and") -> String
-  let len = len(items);
+  len = len(items);
   if len == 0
     return "";
   end
@@ -1199,7 +1199,7 @@ fn format_list(items: String[], separator: String = ", ", final_separator: Strin
   if len == 2
     return items[0] + " " + final_separator + " " + items[1];
   end
-  let result = "";
+  result = "";
   for i in range(0, len - 1)
     result = result + items[i] + separator;
   end
@@ -1215,7 +1215,7 @@ print(format_list(["one", "two"]));                 # "one and two"
 Functions are first-class values, and the universal predicates available on every other type work on them too. Useful in defensive view partials where a local might resolve to a function, a string, or be undefined.
 
 ```soli
-let f = fn(x) { x + 1 };
+f = fn(x) { x + 1 };
 
 f.nil?       # false — a function value is never null
 f.blank?     # false
@@ -1236,31 +1236,31 @@ f.inspect    # "<function>"
 
 ```soli
 # Basic array creation
-let numbers = [1, 2, 3, 4, 5];
-let names = ["Alice", "Bob", "Charlie"];
-let mixed = [1, "two", 3.0, true];
+numbers = [1, 2, 3, 4, 5];
+names = ["Alice", "Bob", "Charlie"];
+mixed = [1, "two", 3.0, true];
 
 # Type-annotated arrays
 let scores: Int[] = [95, 87, 92, 88, 90];
 let words: String[] = [];  # Empty array
 
 # Array from range
-let range_arr = range(1, 10);  # [1, 2, 3, 4, 5, 6, 7, 8, 9]
-let step_arr = range(0, 10, 2);  # [0, 2, 4, 6, 8]
+range_arr = range(1, 10);  # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+step_arr = range(0, 10, 2);  # [0, 2, 4, 6, 8]
 
 # Initialize with default value
-let zeros = [];
+zeros = [];
 for _ in range(0, 5)
   push(zeros, 0);
 end  # [0, 0, 0, 0, 0]
 
 # Percent literal arrays - quick string/symbol/number arrays (with decimals)
-let words = %w[foo bar baz];    # ["foo", "bar", "baz"]
-let keys = %i[get post put];    # [:get, :post, :put]
-let nums = %n[1 2.5 3.5D];     # [1, 2.5, 3.5]
-let empty_w = %w[];            # []
-let empty_i = %i[];            # []
-let empty_n = %n[];            # []
+words = %w[foo bar baz];    # ["foo", "bar", "baz"]
+keys = %i[get post put];    # [:get, :post, :put]
+nums = %n[1 2.5 3.5D];     # [1, 2.5, 3.5]
+empty_w = %w[];            # []
+empty_i = %i[];            # []
+empty_n = %n[];            # []
 ```
 
 #### Percent Literal Arrays
@@ -1269,15 +1269,15 @@ Soli provides `%w[]`, `%i[]`, and `%n[]` as sugar syntax for creating arrays of 
 
 ```soli
 # %w[] - Array of strings
-let words = %w[demo test production];
+words = %w[demo test production];
 words;  # ["demo", "test", "production"]
 
 # %i[] - Array of symbols
-let methods = %i[get post put delete];
+methods = %i[get post put delete];
 methods;  # [:get, :post, :put, :delete]
 
 # %n[] - Array of numbers (integers, floats, and decimals with D suffix)
-let numbers = %n[1 2.5 3.5D 4];
+numbers = %n[1 2.5 3.5D 4];
 numbers;  # [1, 2.5, 3.5, 4]
 
 # Equivalent to regular arrays
@@ -1300,13 +1300,13 @@ const HTTP_METHODS = %i[
 
 # Number arrays useful for coordinates, indices, etc.
 const COORDINATES = %n[0 0 10 10];
-let tags = %w[ruby javascript python elixir];
+tags = %w[ruby javascript python elixir];
 ```
 
 #### Array Access and Modification
 
 ```soli
-let fruits = ["apple", "banana", "cherry", "date"];
+fruits = ["apple", "banana", "cherry", "date"];
 
 # Access elements
 print(fruits[0]);   # "apple"
@@ -1323,8 +1323,8 @@ print(fruits[100]);  # null
 
 # Slicing
 fn slice(arr: Array, start: Int, end: Int) -> Array {
-  let result = [];
-  let actual_end = end;
+  result = [];
+  actual_end = end;
   if (end > len(arr)) {
     actual_end = len(arr);
   }
@@ -1340,39 +1340,39 @@ print(slice(fruits, 1, 3));  # ["banana", "cherry"]
 #### Array Methods
 
 ```soli
-let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 # map - transform each element
-let doubled = numbers.map(fn(x) x * 2);
+doubled = numbers.map(fn(x) x * 2);
 print(doubled);  # [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
 
 # filter - keep elements matching condition
-let evens = numbers.filter(fn(x) x % 2 == 0);
+evens = numbers.filter(fn(x) x % 2 == 0);
 print(evens);  # [2, 4, 6, 8, 10]
 
 # each - iterate with side effects
 numbers.each(fn(x) print(x));  # Prints each number
 
 # reduce - accumulate to single value
-let sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
-let product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800
+sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
+product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800
 
 # find - first matching element
-let first_even = numbers.find(fn(x) x % 2 == 0);  # 2
+first_even = numbers.find(fn(x) x % 2 == 0);  # 2
 
 # find_index - index of first matching element
-let idx = numbers.find_index(fn(x) x > 5);  # 5
+idx = numbers.find_index(fn(x) x > 5);  # 5
 
 # every - check if all elements match
-let all_positive = numbers.every(fn(x) x > 0);  # true
+all_positive = numbers.every(fn(x) x > 0);  # true
 
 # some - check if any element matches
-let has_large = numbers.some(fn(x) x > 8);  # true
+has_large = numbers.some(fn(x) x > 8);  # true
 
 # chunk - split into chunks
 fn chunk(arr: Array, size: Int) -> Array[]
-  let result = [];
-  let current = [];
+  result = [];
+  current = [];
   for item in arr
     push(current, item);
     if len(current) >= size
@@ -1389,7 +1389,7 @@ end
 print(chunk(numbers, 3));  # [[1,2,3], [4,5,6], [7,8,9], [10]]
 
 # Chaining methods
-let result = numbers
+result = numbers
   .filter(fn(x) x % 2 == 0)   # [2, 4, 6, 8, 10]
   .map(fn(x) x * x)           # [4, 16, 36, 64, 100]
   .filter(fn(x) x < 50);      # [4, 16, 36]
@@ -1465,17 +1465,17 @@ print(by_name);  # Sorted by name: Alice, Bob, Charlie
 
 ```soli
 # Basic hash creation
-let person = {
+person = {
   "name": "Alice",
   "age": 30,
   "city": "New York"
 };
 
 # Alternative syntax with =>
-let scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92};
+scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92};
 
 # Nested hashes
-let user = {
+user = {
   "id": 1,
   "profile": {
     "name": "Alice",
@@ -1488,7 +1488,7 @@ let user = {
 };
 
 # Empty hash
-let empty = {};
+empty = {};
 
 # Type-annotated hash
 let config: Hash = {
@@ -1501,7 +1501,7 @@ let config: Hash = {
 #### Hash Access and Modification
 
 ```soli
-let person = {"name": "Alice", "age": 30, "city": "Paris"};
+person = {"name": "Alice", "age": 30, "city": "Paris"};
 
 # Access values
 print(person["name"]);   # "Alice"
@@ -1515,7 +1515,7 @@ person["country"] = "France";  # Add new key
 print(person);  # {name: Alice, age: 31, city: Paris, country: France}
 
 # Delete key
-let deleted = delete(person, "city");
+deleted = delete(person, "city");
 print(deleted);  # Paris
 print(person);   # {name: Alice, age: 31, country: France}
 ```
@@ -1533,24 +1533,24 @@ h.map(fn(pair) [pair[0], pair[1] * 2])
 ```
 
 ```soli
-let scores = {"Alice": 90, "Bob": 85, "Charlie": 95, "Diana": 88};
+scores = {"Alice": 90, "Bob": 85, "Charlie": 95, "Diana": 88};
 
 # map - transform entries
 # Returns a new hash. The function MUST return [key, value] (exactly 2 elements).
 # Returning fewer or more elements skips that entry.
-let curved = scores.map(fn(k, v) [k, v + 5]);
+curved = scores.map(fn(k, v) [k, v + 5]);
 print(curved);  # {Alice: 95, Bob: 90, Charlie: 100, Diana: 93}
 
 # Transform only values (keep key unchanged)
-let doubled = scores.map(fn(k, v) [k, v * 2]);
+doubled = scores.map(fn(k, v) [k, v * 2]);
 
 # Transform keys (prefix with "user_")
-let prefixed = scores.map(fn(k, v) ["user_" + k, v]);
+prefixed = scores.map(fn(k, v) ["user_" + k, v]);
 
 # filter - keep entries matching condition
 # Function receives (key, value) or [key, value] pair
 # Returns boolean or truthy/falsy value
-let high_scores = scores.filter(fn(k, v) v >= 90);
+high_scores = scores.filter(fn(k, v) v >= 90);
 print(high_scores);  # {Alice: 90, Charlie: 95}
 
 # each - iterate with side effects
@@ -1564,7 +1564,7 @@ scores.each(fn(k, v) print(k + ": " + str(v)));
 Hash `.map()` expects your function to return exactly `[key, value]` with 2 elements:
 
 ```soli
-let h = {"a": 1, "b": 2};
+h = {"a": 1, "b": 2};
 
 # ✓ Returns [key, value] - works correctly
 h.map(fn(k, v) [k, v * 10]);  # {a: 10, b: 20}
@@ -1581,28 +1581,28 @@ h.map(fn(k, v) v * 10);         # {} (empty!)
 If you only need transformed values (not a new hash):
 
 ```soli
-let h = {"a": 1, "b": 2};
+h = {"a": 1, "b": 2};
 
 # Get values first, then map to array
-let doubled = h.values() |> map(fn(v) v * 10);
+doubled = h.values() |> map(fn(v) v * 10);
 print(doubled);  # [10, 20]
 ```
 
 #### Hash Functions
 
 ```soli
-let person = {"name": "Alice", "age": 30, "city": "Paris", "country": "France"};
+person = {"name": "Alice", "age": 30, "city": "Paris", "country": "France"};
 
 # Get length (also available as .len, .length, .size methods)
 print(len(person));    # 4
 print(person.len);     # 4
 
 # Get all keys
-let keys_list = keys(person);
+keys_list = keys(person);
 print(keys_list);  # [name, age, city, country]
 
 # Get all values
-let values_list = values(person);
+values_list = values(person);
 print(values_list);  # [Alice, 30, Paris, France]
 
 # Check if key exists
@@ -1610,12 +1610,12 @@ print(has_key(person, "name"));      # true
 print(has_key(person, "email"));     # false
 
 # Get entries as [key, value] pairs
-let entries_list = entries(person);
+entries_list = entries(person);
 print(entries_list);  # [[name, Alice], [age, 30], [city, Paris], [country, France]]
 
 # Merge hashes
-let defaults = {"age": 0, "country": "Unknown", "active": true};
-let merged = person.merge(defaults);
+defaults = {"age": 0, "country": "Unknown", "active": true};
+merged = person.merge(defaults);
 print(merged);  # {name: Alice, age: 30, city: Paris, country: France, active: true}
 
 # Clear hash
@@ -1626,12 +1626,12 @@ print(person);  # {}
 #### Iterating Over Hashes
 
 ```soli
-let prices = {"apple": 1.50, "banana": 0.75, "orange": 2.00, "grape": 3.00};
+prices = {"apple": 1.50, "banana": 0.75, "orange": 2.00, "grape": 3.00};
 
 # Iterate entries
 for pair in entries(prices)
-  let item = pair[0];
-  let price = pair[1];
+  item = pair[0];
+  price = pair[1];
   print(item + " costs $" + str(price));
 end
 
@@ -1641,14 +1641,14 @@ for item in keys(prices)
 end
 
 # Iterate values and calculate total
-let total = 0;
+total = 0;
 for price in values(prices)
   total = total + price;
 end
 print("Total: $" + str(total));  # Total: $7.25
 
 # Filter and transform
-let expensive = prices
+expensive = prices
   .filter(fn(k, v) v > 1.00)
   .map(fn(k, v) [k, v * 1.1]);  # 10% tax
 
@@ -1660,8 +1660,8 @@ print(expensive);  # {apple: 1.65, orange: 2.2, grape: 3.3}
 ```soli
 # Slicing
 fn slice(arr: Array, start: Int, end: Int) -> Array
-  let result = [];
-  let actual_end = end;
+  result = [];
+  actual_end = end;
   if end > len(arr)
     actual_end = len(arr);
   end
@@ -1700,7 +1700,7 @@ class Person
   end
 
   fn introduce() -> String
-    let intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
+    intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old";
     if this.email != ""
       intro = intro + ". You can reach me at " + this.email;
     end
@@ -1713,8 +1713,8 @@ class Person
 end
 
 # Creating instances
-let alice = new Person("Alice", 30);
-let bob = new Person("Bob", 25, "bob@example.com");
+alice = new Person("Alice", 30);
+bob = new Person("Bob", 25, "bob@example.com");
 
 # Using instances
 print(alice.greet());      # "Hello, I'm Alice"
@@ -1838,19 +1838,19 @@ class Rectangle
 
   # Another factory method
   static fn from_area(area: Float, aspect_ratio: Float = 1.0) -> Rectangle
-    let width = sqrt(area / aspect_ratio);
-    let height = width * aspect_ratio;
+    width = sqrt(area / aspect_ratio);
+    height = width * aspect_ratio;
     new Rectangle(width, height)
   end
 end
 
-let rect = new Rectangle(10.0, 5.0);
+rect = new Rectangle(10.0, 5.0);
 print(rect.area());  # 50.0
 
-let square = Rectangle.square(7.0);
+square = Rectangle.square(7.0);
 print(square.area());  # 49.0
 
-let from_area = Rectangle.from_area(24.0, 2.0);  # 2:1 aspect ratio
+from_area = Rectangle.from_area(24.0, 2.0);  # 2:1 aspect ratio
 print(from_area.width);   # ~3.464
 print(from_area.height);  # ~6.928
 ```
@@ -1916,18 +1916,18 @@ class Cat < Animal
 end
 
 # Using inheritance
-let dog = new Dog("Buddy", 3, "Golden Retriever");
+dog = new Dog("Buddy", 3, "Golden Retriever");
 print(dog.speak());        # "Buddy barks!"
 print(dog.get_info());     # "Buddy is 3 years old"
 print(dog.fetch());        # "Buddy fetches the ball!"
 print(dog.breed);          # "Golden Retriever"
 
-let cat = new Cat("Whiskers", 5);
+cat = new Cat("Whiskers", 5);
 print(cat.speak());        # "Whiskers meows!"
 print(cat.purr());         # "Whiskers purrs contentedly"
 
 # Polymorphism
-let animals = [
+animals = [
   new Dog("Rex", 2, "German Shepherd"),
   new Cat("Mittens", 4),
   new Dog("Spot", 1, "Beagle")
@@ -1961,7 +1961,7 @@ class HomeController extends BaseController
   end
 end
 
-let c = new HomeController()
+c = new HomeController()
 print(c.action())   # "base -> home"
 print(c.before())   # "authenticated" (inherited from BaseController)
 ```
@@ -2038,7 +2038,7 @@ class Rectangle implements Drawable, Resizable {
 }
 
 # Using interfaces
-let shapes = [
+shapes = [
   new Circle(5.0, "red"),
   new Rectangle(10.0, 6.0, "blue")
 ];
@@ -2112,7 +2112,7 @@ class BankAccount
 end
 
 # Using the class
-let account = new BankAccount("123456789", 1000.0);
+account = new BankAccount("123456789", 1000.0);
 
 account.deposit(500.0);           # Works - public method
 print(account.get_balance());     # 1500.0
@@ -2169,7 +2169,7 @@ print(MathUtils.PI);           # 3.14159265359
 print(MathUtils.square(4.0));  # 16.0
 print(MathUtils.cube(3.0));    # 27.0
 
-let result = MathUtils.clamp(150, 0, 100);
+result = MathUtils.clamp(150, 0, 100);
 print(result);  # 100
 
 print(MathUtils.calculation_count);  # 3
@@ -2313,7 +2313,7 @@ class Inventory
   end
 
   fn get_total_inventory_value() -> Float
-    let total = 0.0;
+    total = 0.0;
     for product in this.products
       total = total + product.get_total_value();
     end
@@ -2332,7 +2332,7 @@ class Inventory
 end
 
 # Using the inventory system
-let inventory = new Inventory();
+inventory = new Inventory();
 
 # Add products
 inventory.add_product(new Product("P001", "Laptop", 999.99, 10));
@@ -2342,7 +2342,7 @@ inventory.add_product(new Product("P002", "Mouse", 29.99, 100));
 # Work with inventory
 print("Total inventory value: $" + str(inventory.get_total_inventory_value()));
 
-let laptop = inventory.find_product("P001");
+laptop = inventory.find_product("P001");
 if laptop != null
   print("Found: " + laptop.to_string());
 end
@@ -2379,11 +2379,11 @@ end
 Use the `::` (scope resolution operator) to access nested classes:
 
 ```soli
-let dept = new Organization::Department();
+dept = new Organization::Department();
 print("Department: " + dept.get_name());  # "Department: Engineering"
 print("Budget: $" + str(dept.get_budget()));  # "Budget: $1000000"
 
-let team = new Organization::Team();
+team = new Organization::Team();
 print("Team: " + team.get_name());  # "Team: Backend Team"
 ```
 
@@ -2427,7 +2427,7 @@ class TrafficLight
   end
 end
 
-let red = new TrafficLight::RedState();
+red = new TrafficLight::RedState();
 print("Red light duration: " + str(red.get_duration()) + "s");  # "Red light duration: 30s"
 print("Next state: " + red.next());  # "Next state: green"
 ```
@@ -2457,9 +2457,9 @@ class Database
   end
 end
 
-let conn = new Database::Connection();
-let query = new Database::QueryBuilder();
-let tx = new Database::Transaction();
+conn = new Database::Connection();
+query = new Database::QueryBuilder();
+tx = new Database::Transaction();
 
 print(conn.connect());  # "Connected to database"
 print(query.select("users"));  # "SELECT * FROM users"
@@ -2493,7 +2493,7 @@ class Server
   end
 end
 
-let ssl = new Server::SSLConfig();
+ssl = new Server::SSLConfig();
 print("Protocol: " + ssl.get_protocol());  # "Protocol: TLS 1.3"
 ```
 
@@ -2522,9 +2522,9 @@ class Service
   end
 end
 
-let db = new Service::Database();
-let cache = new Service::Cache();
-let logger = new Service::Logger();
+db = new Service::Database();
+cache = new Service::Cache();
+logger = new Service::Logger();
 
 print(db.connect());  # "DB connected"
 print(cache.get("test"));  # "cached:test"
@@ -2539,8 +2539,8 @@ print(logger.log("test message"));  # "[LOG] test message"
 
 ```soli
 # Simple value matching
-let x = 42;
-let result = match x {
+x = 42;
+result = match x {
   42 => "the answer to everything",
   0 => "zero",
   _ => "something else",
@@ -2548,8 +2548,8 @@ let result = match x {
 print(result);  # "the answer to everything"
 
 # String matching
-let status = "active";
-let status_message = match status {
+status = "active";
+status_message = match status {
   "active" => "User is active and can access the system",
   "pending" => "Awaiting approval from administrator",
   "suspended" => "Account is temporarily disabled",
@@ -2563,8 +2563,8 @@ print(status_message);  # "User is active and can access the system"
 
 ```soli
 # Guard clauses with conditions
-let n = 5;
-let category = match n {
+n = 5;
+category = match n {
   n if n < 0 => "negative",
   0 => "zero",
   n if n > 0 && n < 10 => "single digit positive",
@@ -2594,10 +2594,10 @@ print(handle_status(503));  # "Server Error: 503"
 ### Array Patterns
 
 ```soli
-let numbers = [1, 2, 3];
+numbers = [1, 2, 3];
 
 # Match array length
-let description = match numbers {
+description = match numbers {
   [] => "empty array",
   [_] => "single element array",
   [_, _] => "two element array",
@@ -2606,7 +2606,7 @@ let description = match numbers {
 };
 
 # Destructuring arrays
-let result = match numbers {
+result = match numbers {
   [first] => "First element is: " + str(first),
   [first, second] => "First: " + str(first) + ", Second: " + str(second),
   [first, second, third] => "Three elements: " + str(first) + ", " + str(second) + ", " + str(third),
@@ -2614,7 +2614,7 @@ let result = match numbers {
 };
 
 # Rest pattern
-let arr = [1, 2, 3, 4, 5];
+arr = [1, 2, 3, 4, 5];
 match arr {
   [first, second, ...rest] => {
     print("First two: " + str(first) + ", " + str(second));
@@ -2626,7 +2626,7 @@ match arr {
 ### Hash Patterns
 
 ```soli
-let user = {"name": "Alice", "age": 30, "city": "Paris"};
+user = {"name": "Alice", "age": 30, "city": "Paris"};
 
 # Match hash structure
 match user {
@@ -2638,7 +2638,7 @@ match user {
 };
 
 # Nested hash matching
-let data = {
+data = {
   "user": {"name": "Alice", "email": "alice@example.com"},
   "posts": [{"title": "Post 1"}, {"title": "Post 2"}]
 };
@@ -2681,8 +2681,8 @@ fn handle_json_value(value: Any) -> String {
     false => "false",
     arr: Array => "[" + join(arr.map(fn(x) handle_json_value(x)), ", ") + "]",
     h: Hash => "{" + join(h.entries().map(fn(pair) {
-      let k = pair[0];
-      let v = pair[1];
+      k = pair[0];
+      v = pair[1];
       "\"" + k + "\": " + handle_json_value(v)
     }), ", ") + "}",
     _ => "\"unknown\"",
@@ -2745,10 +2745,10 @@ fn add_one(x: Int) -> Int { x + 1 }
 fn square(x: Int) -> Int { x * x }
 
 # Without pipeline (nested calls)
-let result1 = square(add_one(double(5)));  # Hard to read
+result1 = square(add_one(double(5)));  # Hard to read
 
 # With pipeline (left to right)
-let result2 = 5 |> double() |> add_one() |> square();
+result2 = 5 |> double() |> add_one() |> square();
 print(result2);  # (5 * 2 + 1)^2 = 121
 ```
 
@@ -2759,14 +2759,14 @@ fn add(a: Int, b: Int) -> Int { a + b }
 fn multiply(a: Int, b: Int) -> Int { a * b }
 
 # 5 |> add(3) means add(5, 3)
-let result = 5 |> add(3) |> multiply(2);
+result = 5 |> add(3) |> multiply(2);
 print(result);  # (5 + 3) * 2 = 16
 
 # More complex chaining
 fn subtract(a: Int, b: Int) -> Int { a - b }
 fn divide(a: Int, b: Int) -> Int { int(a / b) }
 
-let calc = 100
+calc = 100
   |> |x| { subtract(x, 10) }()
   |> |x| { divide(x, 3) }()
   |> |x| { multiply(x, 4) }();
@@ -2778,16 +2778,16 @@ print(calc);  # ((100 - 10) / 3) * 4 = 120
 Iteration over arrays uses method chaining (`.map`, `.filter`, `.reduce`, `.each`). Lambdas are most concise in pipe form — `|x| x + 1` — but `fn(x) x + 1` works too.
 
 ```soli
-let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 # Method chaining with pipe lambdas
-let evens_squared = numbers
+evens_squared = numbers
   .filter(|x| x % 2 == 0)
   .map(|x| x * x);
 print(evens_squared);  # [4, 16, 36, 64, 100]
 
 # Reduce with two parameters
-let sum_of_evens = numbers
+sum_of_evens = numbers
   .filter(|x| x % 2 == 0)
   .reduce(|acc, x| acc + x, 0);
 print(sum_of_evens);  # 30
@@ -2833,9 +2833,9 @@ print(format_filename("My Document"));  # "my_document.txt"
 
 ```soli
 # Inline transformations on arrays use method chaining + pipe lambdas
-let numbers = [1, 2, 3, 4, 5];
+numbers = [1, 2, 3, 4, 5];
 
-let result = numbers
+result = numbers
   .map(|x| x * 2)
   .filter(|x| x > 4)
   .reduce(|acc, x| acc + x, 0);
@@ -2852,13 +2852,13 @@ fn get_user_data(user_id: Int) -> Hash {
 }
 
 # Complex data pipeline
-let sales_data = [
+sales_data = [
   {"product": "A", "quantity": 10, "price": 100},
   {"product": "B", "quantity": 5, "price": 200},
   {"product": "C", "quantity": 15, "price": 50},
 ];
 
-let total_revenue = sales_data
+total_revenue = sales_data
   .map(|sale| sale["quantity"] * sale["price"])
   .reduce(|acc, rev| acc + rev, 0);
 
@@ -2927,20 +2927,20 @@ print(fibonacci(10));    # 55
 # Named imports - only import specific functions
 import { add, multiply } from "./math.sl";
 
-let sum = add(1, 2);          # 3
-let product = multiply(3, 4); # 12
+sum = add(1, 2);          # 3
+product = multiply(3, 4); # 12
 
 # Aliased imports - import with different names
 import { add as sum, multiply as times } from "./math.sl";
 
-let result = sum(10, 20);  # 30
-let doubled = times(5, 6); # 30
+result = sum(10, 20);  # 30
+doubled = times(5, 6); # 30
 
 # Import everything with a namespace
 import "./utils.sl" as utils;
 
-let formatted = utils.format_date(DateTime.utc());
-let cleaned = utils.sanitize_input(user_input);
+formatted = utils.format_date(DateTime.utc());
+cleaned = utils.sanitize_input(user_input);
 ```
 
 ### Module Structure Example
@@ -2970,9 +2970,9 @@ import "./utils/mod.sl" as utils;
 import "../lib/math/mod.sl" as math;
 
 fn main() {
-  let config = load_config();
-  let processed = utils.process_data(config);
-  let result = math.calculate(processed);
+  config = load_config();
+  processed = utils.process_data(config);
+  result = math.calculate(processed);
   print(result);
 }
 ```
@@ -3025,26 +3025,26 @@ print([1, 2, 3]);
 print("Name:", "Alice", "Age:", 30);
 
 # Read input from stdin
-let name = input("Enter your name: ");
+name = input("Enter your name: ");
 print("Hello, " + name + "!");
 
 # Input with default
-let age_str = input("Enter age: ", "18");
-let age = int(age_str);
+age_str = input("Enter age: ", "18");
+age = int(age_str);
 ```
 
 ### Type Conversion
 
 ```soli
-let num_str = "42";
-let float_str = "3.14";
+num_str = "42";
+float_str = "3.14";
 
 # String conversions
-let num = int(num_str);        # 42
-let f = float(float_str);      # 3.14
-let s = str(123);              # "123"
-let s2 = str(3.14);            # "3.14"
-let s3 = str([1, 2, 3]);       # "[1, 2, 3]"
+num = int(num_str);        # 42
+f = float(float_str);      # 3.14
+s = str(123);              # "123"
+s2 = str(3.14);            # "3.14"
+s3 = str([1, 2, 3]);       # "[1, 2, 3]"
 
 # Type checking
 let value: Any = "hello";
@@ -3107,7 +3107,7 @@ print(3.2.ceil);       # 4
 print(3.5.round);      # 4
 
 # Random
-let random_num = Math.random();   # 0.0 to 1.0
+random_num = Math.random();   # 0.0 to 1.0
 
 # Time
 print(clock());  # Current time in seconds since epoch
@@ -3116,27 +3116,27 @@ print(clock());  # Current time in seconds since epoch
 ### Hash Functions
 
 ```soli
-let person = {"name": "Alice", "age": 30, "city": "Paris"};
+person = {"name": "Alice", "age": 30, "city": "Paris"};
 
 # Keys and values
-let keys_list = keys(person);   # ["name", "age", "city"]
-let values_list = values(person);  # ["Alice", 30, "Paris"]
+keys_list = keys(person);   # ["name", "age", "city"]
+values_list = values(person);  # ["Alice", 30, "Paris"]
 
 # Check existence
 print(has_key(person, "name"));   # true
 print(has_key(person, "email"));  # false
 
 # Merge
-let additional = {"country": "France", "email": "alice@example.com"};
-let merged = person.merge(additional);
+additional = {"country": "France", "email": "alice@example.com"};
+merged = person.merge(additional);
 
 # Delete
-let deleted = delete(person, "age");
+deleted = delete(person, "age");
 print(deleted);  # 30
 print(person);   # {name: Alice, city: Paris}
 
 # Entries
-let entries_list = entries(person);  # [["name", "Alice"], ["age", 30], ["city", "Paris"]]
+entries_list = entries(person);  # [["name", "Alice"], ["age", 30], ["city", "Paris"]]
 
 # Clear
 clear(person);
@@ -3163,20 +3163,20 @@ let binary_data = slurp("data.bin", true);
 
 ```soli
 # GET request (async)
-let response = HTTP.get("https://api.example.com/data");
+response = HTTP.get("https://api.example.com/data");
 print(response["status"]);  # 200
 print(response["body"]);    # Response body
 
 # GET JSON and parse automatically
-let json_data = HTTP.get_json("https://api.example.com/users");
+json_data = HTTP.get_json("https://api.example.com/users");
 print(json_data[0]["name"]);
 
 # POST request
-let post_response = HTTP.post("https://api.example.com/submit", {"key": "value"});
+post_response = HTTP.post("https://api.example.com/submit", {"key": "value"});
 print(post_response["body"]);
 
 # Generic request with options
-let custom_request = HTTP.request("DELETE", "https://api.example.com/resource/123", {
+custom_request = HTTP.request("DELETE", "https://api.example.com/resource/123", {
   "headers": {"Authorization": "Bearer token123"},
   "timeout": 30,
 });
@@ -3186,47 +3186,47 @@ let custom_request = HTTP.request("DELETE", "https://api.example.com/resource/12
 
 ```soli
 # Parse JSON string
-let json_str = '{"name": "Alice", "age": 30, "scores": [95, 87, 92]}';
-let parsed = json_parse(json_str);
+json_str = '{"name": "Alice", "age": 30, "scores": [95, 87, 92]}';
+parsed = json_parse(json_str);
 
 print(parsed["name"]);   # "Alice"
 print(parsed["scores"]); # [95, 87, 92]
 
 # Convert to JSON
-let data = {"users": [{"name": "Alice"}, {"name": "Bob"}], "count": 2};
-let json_string = json_stringify(data);
+data = {"users": [{"name": "Alice"}, {"name": "Bob"}], "count": 2};
+json_string = json_stringify(data);
 # '{"users":[{"name":"Alice"},{"name":"Bob"}],"count":2}'
 ```
 
 ### Regex Class
 
 ```soli
-let text = "The quick brown fox jumps over the lazy dog";
+text = "The quick brown fox jumps over the lazy dog";
 
 # Match check
-let has_fox = Regex.matches("fox", text);  # true
+has_fox = Regex.matches("fox", text);  # true
 
 # Find matches
-let first_word = Regex.find("\\w+", text);  # "The"
-let all_words = Regex.find_all("\\w+", text);  # ["The", "quick", "brown", "fox", ...]
+first_word = Regex.find("\\w+", text);  # "The"
+all_words = Regex.find_all("\\w+", text);  # ["The", "quick", "brown", "fox", ...]
 
 # Replace
-let replaced = Regex.replace("fox", text, "cat");  # "The quick brown cat..."
-let all_replaced = Regex.replace_all("\\s+", text, "-");  # "The-quick-brown-fox-..."
+replaced = Regex.replace("fox", text, "cat");  # "The quick brown cat..."
+all_replaced = Regex.replace_all("\\s+", text, "-");  # "The-quick-brown-fox-..."
 
 # Split
-let words = Regex.split("\\s+", text);  # ["The", "quick", "brown", "fox", ...]
+words = Regex.split("\\s+", text);  # ["The", "quick", "brown", "fox", ...]
 
 # Capture groups
-let date = "2024-01-15";
-let captures = Regex.capture("(\\d{4})-(\\d{2})-(\\d{2})", date);
+date = "2024-01-15";
+captures = Regex.capture("(\\d{4})-(\\d{2})-(\\d{2})", date);
 print(captures["match"]);  # "2024-01-15"
 print(captures[0]);  # "2024" (when using numbered groups)
 print(captures[1]);  # "01"
 print(captures[2]);  # "15"
 
 # Escape special characters
-let escaped = Regex.escape("file.txt (1).pdf");
+escaped = Regex.escape("file.txt (1).pdf");
 # "file\\.txt\\ \\(1\\)\\.pdf"
 ```
 
@@ -3278,17 +3278,17 @@ print(is_valid);  # true
 
 ```soli
 # Escape HTML special characters
-let user_input = "<script>alert('xss')</script>";
-let escaped = html_escape(user_input);
+user_input = "<script>alert('xss')</script>";
+escaped = html_escape(user_input);
 # "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
 
 # Unescape HTML entities
-let html = "&lt;div&gt;Content&lt;/div&gt;";
-let unescaped = html_unescape(html);  # "<div>Content</div>"
+html = "&lt;div&gt;Content&lt;/div&gt;";
+unescaped = html_unescape(html);  # "<div>Content</div>"
 
 # Sanitize HTML (remove dangerous tags)
-let raw_html = "<div><script>evil()</script><p>Safe content</p></div>";
-let safe = sanitize_html(raw_html);
+raw_html = "<div><script>evil()</script><p>Safe content</p></div>";
+safe = sanitize_html(raw_html);
 # "<div><p>Safe content</p></div>"
 ```
 
@@ -3300,26 +3300,26 @@ let safe = sanitize_html(raw_html);
 
 ```soli
 # Current local time
-let now = DateTime.utc();
+now = DateTime.utc();
 print(now.to_string());  # "2024-01-15 10:30:00"
 
 # Parse from ISO 8601 string
-let parsed = DateTime.parse("2024-01-15T10:30:00");
+parsed = DateTime.parse("2024-01-15T10:30:00");
 print(parsed.year());    # 2024
 print(parsed.month());   # 1
 print(parsed.day());     # 15
 
 # Parse with timezone
-let with_tz = DateTime.parse("2024-01-15T10:30:00+05:00");
+with_tz = DateTime.parse("2024-01-15T10:30:00+05:00");
 
 # Create from Unix timestamp
-let from_timestamp = DateTime.from_unix(1705315800);
+from_timestamp = DateTime.from_unix(1705315800);
 ```
 
 ### DateTime Methods
 
 ```soli
-let dt = DateTime.parse("2024-01-15T10:30:45");
+dt = DateTime.parse("2024-01-15T10:30:45");
 
 # Component accessors
 print(dt.year());       # 2024
@@ -3333,17 +3333,17 @@ print(dt.second());     # 45
 print(dt.weekday());    # "monday" (or 0)
 
 # Conversion
-let unix_ts = dt.to_unix();           # 1705315845
-let iso_str = dt.to_iso();            # "2024-01-15T10:30:45"
-let human = dt.to_string();           # "2024-01-15 10:30:45"
+unix_ts = dt.to_unix();           # 1705315845
+iso_str = dt.to_iso();            # "2024-01-15T10:30:45"
+human = dt.to_string();           # "2024-01-15 10:30:45"
 
 # Formatting
-let custom = dt.format("%Y-%m-%d");     # "2024-01-15"
-let time_only = dt.format("%H:%M:%S");  # "10:30:45"
+custom = dt.format("%Y-%m-%d");     # "2024-01-15"
+time_only = dt.format("%H:%M:%S");  # "10:30:45"
 
 # Formatting with locale (I18n)
-let fr = dt.format("%A %d %B %Y", "fr");  # "lundi 15 janvier 2024"
-let es = dt.format("%A %d %B %Y", "es");  # "lunes 15 enero 2024"
+fr = dt.format("%A %d %B %Y", "fr");  # "lundi 15 janvier 2024"
+es = dt.format("%A %d %B %Y", "es");  # "lunes 15 enero 2024"
 ```
 
 ### DateTime Arithmetic
@@ -3373,15 +3373,15 @@ print(diff.total_hours());  # 348.0
 
 ```soli
 # Create duration from components
-let dur1 = Duration.days(7);           # 7 days
-let dur2 = Duration.hours(24);         # 24 hours (same as 1 day)
-let dur3 = Duration.minutes(90);       # 90 minutes
-let dur4 = Duration.seconds(3600);     # 3600 seconds (1 hour)
+dur1 = Duration.days(7);           # 7 days
+dur2 = Duration.hours(24);         # 24 hours (same as 1 day)
+dur3 = Duration.minutes(90);       # 90 minutes
+dur4 = Duration.seconds(3600);     # 3600 seconds (1 hour)
 
 # Duration between two DateTimes
-let dt1 = DateTime.parse("2024-01-01T00:00:00");
-let dt2 = DateTime.parse("2024-01-02T12:00:00");
-let between = Duration.between(dt1, dt2);
+dt1 = DateTime.parse("2024-01-01T00:00:00");
+dt2 = DateTime.parse("2024-01-02T12:00:00");
+between = Duration.between(dt1, dt2);
 
 # Duration methods
 print(between.total_seconds());  # 108000.0
@@ -3396,8 +3396,8 @@ print(between.to_string());      # "1 day, 6 hours"
 ```soli
 # Calculate age from birthdate
 fn calculate_age(birthdate: DateTime) -> Int {
-  let now = DateTime.utc();
-  let age = now.year() - birthdate.year();
+  now = DateTime.utc();
+  age = now.year() - birthdate.year();
   if (now.month() < birthdate.month() ||
     (now.month() == birthdate.month() && now.day() < birthdate.day())) {
     age = age - 1;
@@ -3405,28 +3405,28 @@ fn calculate_age(birthdate: DateTime) -> Int {
   age
 }
 
-let birthdate = DateTime.parse("1990-05-15");
+birthdate = DateTime.parse("1990-05-15");
 print(calculate_age(birthdate));  # e.g., 33
 
 # Format relative time
 fn relative_time(dt: DateTime) -> String {
-  let now = DateTime.utc();
-  let diff = now.sub(dt);
+  now = DateTime.utc();
+  diff = now.sub(dt);
 
-  let seconds = diff.total_seconds();
+  seconds = diff.total_seconds();
   if (seconds < 60) {
     return "just now";
   }
   if (seconds < 3600) {
-    let mins = int(seconds / 60);
+    mins = int(seconds / 60);
     return str(mins) + (mins == 1 ? " minute ago" : " minutes ago");
   }
   if (seconds < 86400) {
-    let hours = int(seconds / 3600);
+    hours = int(seconds / 3600);
     return str(hours) + (hours == 1 ? " hour ago" : " hours ago");
   }
   if (seconds < 604800) {
-    let days = int(seconds / 86400);
+    days = int(seconds / 86400);
     return str(days) + (days == 1 ? " day ago" : " days ago");
   }
   dt.to_string()
@@ -3434,7 +3434,7 @@ fn relative_time(dt: DateTime) -> String {
 
 # Check if date is in the past
 fn is_past(dt: DateTime) -> Bool {
-  let now = DateTime.utc();
+  now = DateTime.utc();
   dt.to_unix() < now.to_unix()
 }
 
@@ -3449,10 +3449,10 @@ fn start_of_day(dt: DateTime) -> DateTime {
 
 # Get business days between two dates
 fn business_days(start: DateTime, end: DateTime) -> Int {
-  let count = 0;
-  let current = start;
+  count = 0;
+  current = start;
   while (current.to_unix() <= end.to_unix()) {
-    let weekday = current.weekday();
+    weekday = current.weekday();
     if (weekday != "saturday" && weekday != "sunday") {
       count = count + 1;
     }
@@ -3597,8 +3597,8 @@ require('lspconfig').soli.setup({
 
 ```soli
 # Good: Use type inference when obvious
-let count = 10;
-let name = "Alice";
+count = 10;
+name = "Alice";
 
 # Good: Add annotations for public API or complex types
 pub fn process_user(user_id: Int) -> User {
@@ -3606,12 +3606,12 @@ pub fn process_user(user_id: Int) -> User {
 }
 
 # Good: Use meaningful names
-let items_per_page = 25;
-let max_retry_attempts = 3;
+items_per_page = 25;
+max_retry_attempts = 3;
 
 # Avoid: Single-letter names except for loop variables
-let c = 10;           # Bad
-let item_count = 10;  # Good
+c = 10;           # Bad
+item_count = 10;  # Good
 ```
 
 ### Functions
@@ -3648,7 +3648,7 @@ fn process_order(order: Hash) -> Result {
 
 ```soli
 # Good: Initialize with known values
-let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 # Good: Check bounds
 fn safe_get(arr: Array, index: Int) -> Any? {
@@ -3659,8 +3659,8 @@ fn safe_get(arr: Array, index: Int) -> Any? {
 }
 
 # Good: Use functional methods for transformations
-let doubled = numbers.map(fn(x) x * 2);
-let evens = numbers.filter(fn(x) x % 2 == 0);
+doubled = numbers.map(fn(x) x * 2);
+evens = numbers.filter(fn(x) x % 2 == 0);
 ```
 
 ### Classes
@@ -3730,7 +3730,7 @@ print("Hello, World!");
 
 ### Variables
 ```soli
-let name = "Alice";
+name = "Alice";
 let age: Int = 30;
 const PI = 3.14159;
 ```
@@ -3797,8 +3797,8 @@ end
 
 ### Collections
 ```soli
-let arr = [1, 2, 3];
-let hash = {"key": "value"};
+arr = [1, 2, 3];
+hash = {"key": "value"};
 
 arr.map(fn(x) x * 2);
 hash.filter(fn(pair) pair[1] > 0);

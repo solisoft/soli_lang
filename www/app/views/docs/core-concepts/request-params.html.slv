@@ -101,7 +101,7 @@
 # Body: {"status": "urgent", "quantity": "5"}
 
 def update_item(req: Any)    # Unified access to all parameters
-  let all = req["all"]
+  all = req["all"]
 
   # ID from route params
   print("ID:", all["id"]);           # "42"
@@ -147,7 +147,7 @@ fn update_profile(req: Any) -> Any
   print("Bio:", params.bio);          # "Developer" (from JSON body)
 
   # Bracket access is also supported
-  let limit = params["limit"] or "20";
+  limit = params["limit"] or "20";
 
   {"status": 200, "body": "Profile updated"}
 end</code></pre>
@@ -220,19 +220,19 @@ end</code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handler(req: Any)    # Route parameters only
-  let id = req["params"]["id"]
+  id = req["params"]["id"]
 
   # Query parameters only
-  let page = req["query"]["page"]
+  page = req["query"]["page"]
 
   # JSON body only
-  let data = req["json"]
+  data = req["json"]
 
   # Form data only
-  let form = req["form"]
+  form = req["form"]
 
   # Or unified access
-  let all = req["all"]
+  all = req["all"]
 
   {"status": 200, "body": "OK"}
 end</code></pre></code></pre>
@@ -259,15 +259,15 @@ end</code></pre></code></pre>
 # orrust&page= POST /api/search with body {"q": "rust", "filters": "recent"}
 
 def search(req: Any)
-let all = req["all"]
+all = req["all"]
 
   # Unified params allow flexible API design
-  let query = all["q"] or ""
-  let page = all["page"] or "1"
-  let limit = all["limit"] or "20"
+  query = all["q"] or ""
+  page = all["page"] or "1"
+  limit = all["limit"] or "20"
 
   # Use unified params for filtering
-  let filters = {
+  filters = {
     "query": query,
     "page": page,
     "limit": limit,
@@ -278,7 +278,7 @@ let all = req["all"]
   }
 
   # Execute search
-  let results = execute_search(filters)
+  results = execute_search(filters)
   {
     "status": 200,
     "body": json_stringify({

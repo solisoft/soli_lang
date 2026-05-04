@@ -165,9 +165,9 @@ class User extends Model
 end
 
 # These all use the configured database
-let users = User.all()
-let user = User.create({ "name": "Alice" })
-let found = User.find(user["id"])
+users = User.all()
+user = User.create({ "name": "Alice" })
+found = User.find(user["id"])
 ```
 
 ## Raw Queries
@@ -179,11 +179,11 @@ For everyday CRUD inside a server, use the [Model ORM](models.md) — it shares 
 Construct a client with `Solidb(host, database)` and call `query` on it. `@param` placeholders are bound from the bind-vars hash — never concatenate user input into the query string.
 
 ```soli
-let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"));
+db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"));
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"));
 
 # SDBQL query with named parameters
-let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
 });
 
@@ -202,14 +202,14 @@ The `@sdbql{}` syntax provides a more readable way to write database queries wit
 
 ```soli
 # Simple query with interpolation
-let users = @sdbql{
+users = @sdbql{
   FOR u IN users
   FILTER u.age >= #{age}
   RETURN u
 };
 
 # Query with multiple interpolations
-let results = @sdbql{
+results = @sdbql{
   FOR u IN users
   FILTER u.age >= #{min_age} AND u.city == #{city}
   SORT u.name ASC

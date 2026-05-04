@@ -28,10 +28,10 @@
         </h2>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let pi = 3.14159
-let temp = -40.0
-let tiny = 0.001
-let sci = 2.5e10          # Scientific notation
+<pre><code class="language-soli text-sm">pi = 3.14159
+temp = -40.0
+tiny = 0.001
+sci = 2.5e10          # Scientific notation
 let typed: Float = 1.5</code></pre>
             </div>
         </div>
@@ -231,7 +231,7 @@ let typed: Float = 1.5</code></pre>
                     <p class="text-gray-400 mb-3">Pauses the current thread for the float number of seconds (sub-second precision). Negative, NaN, or infinite values are a no-op. Returns <code class="text-indigo-400">null</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">0.5.sleep       # pause for 500ms
 0.01.sleep      # pause for 10ms
-let delay = 1.5
+delay = 1.5
 delay.sleep     # pause for 1.5 seconds</code></pre>
                 </div>
             </section>

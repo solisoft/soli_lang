@@ -39,23 +39,23 @@ with powerful methods for data manipulation.
                     </a>
                     <p class="text-gray-400 mb-3">Create hashes using curly braces with key-value pairs.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Colon syntax (keys are strings)
-let person = {
+person = {
   name: "Alice",
   age: 30,
   city: "New York"
 }
 
 # Fat arrow syntax (=>)
-let scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92}
+scores = {"Alice" => 95, "Bob" => 87, "Charlie" => 92}
 
 # Symbol keys (distinct from string keys)
-let config = { :host => "localhost", :port => 3000 }
+config = { :host => "localhost", :port => 3000 }
 
 # Empty hash
-let empty = {}
+empty = {}
 
 # Mixed values
-let mixed = {
+mixed = {
   number: 42,
   string: "hello",
   bool: true,
@@ -75,7 +75,7 @@ let mixed = {
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Hashes can contain other hashes for complex data structures.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let user = {
+<pre data-filename="Example"><code class="language-soli text-sm">user = {
   id: 1,
   name: "Alice",
   profile: {
@@ -104,19 +104,19 @@ let mixed = {
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">When a key name matches a variable name, you can omit the value. The variable's value is used automatically. Raises an error if the variable is not defined.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let name = "Alice"
-let age = 30
+<pre data-filename="Example"><code class="language-soli text-sm">name = "Alice"
+age = 30
 
 # Shorthand - value taken from variable with same name
-let person = { name:, age: }
+person = { name:, age: }
 # Equivalent to: { "name": name, "age": age }
 
 person["name"]  # "Alice"
 person["age"]   # 30
 
 # Mix shorthand with regular entries
-let city = "NYC"
-let user = { name:, age:, "email": "alice@example.com", city: }</code></pre>
+city = "NYC"
+user = { name:, age:, "email": "alice@example.com", city: }</code></pre>
                 </div>
             </section>
         </div>
@@ -144,7 +144,7 @@ let user = { name:, age:, "email": "alice@example.com", city: }</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access values using square brackets with the key. Returns null if key doesn't exist.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
 
 # Access existing keys
 print(person["name"]);   # "Alice"
@@ -154,7 +154,7 @@ print(person["age"]);    # 30
 print(person["email"]);  # null
 
 # Access nested values
-let user = {profile: {email: "alice@example.com"}}
+user = {profile: {email: "alice@example.com"}}
 print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                 </div>
             </section>
@@ -168,22 +168,22 @@ print(user["profile"]["email"]);  # "alice@example.com"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Access values using dot notation. Shorthand for bracket access. Works with nested hashes too.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
 
 # Dot notation access
 print(person.name);   # "Alice"
 print(person.age);    # 30
 
 # Access nested values
-let user = {profile: {email: "alice@example.com"}}
+user = {profile: {email: "alice@example.com"}}
 print(user.profile.email);  # "alice@example.com"
 
 # Dot notation also allows method chaining
-let data = {items: [1, 2, 3]}
+data = {items: [1, 2, 3]}
 print(data.items.length);  # 3
 
 # Safe navigation with &. (returns null if any part is null)
-let user = {profile: null}
+user = {profile: null}
 print(user&.profile&.email);  # null (no error)
 print(user&.profile&.email || "no email");  # "no email"</code></pre>
                 </div>
@@ -198,7 +198,7 @@ print(user&.profile&.email || "no email");  # "no email"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Hashes are mutable - you can add, update, or remove key-value pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
 
 # Update existing key (bracket notation)
 person["age"] = 31
@@ -239,12 +239,12 @@ print(person);  # {name: "Alice", age: 32, city: "NYC"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30, city: "NYC"}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30, city: "NYC"}
 print(person.length);  # 3
 print(person.len);     # 3
 print(person.size);    # 3
 
-let empty = {}
+empty = {}
 print(empty.length);   # 0</code></pre>
                 </div>
             </section>
@@ -258,8 +258,8 @@ print(empty.length);   # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all keys in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
-let k = person.keys
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
+k = person.keys
 print(k);  # ["name", "age"]</code></pre>
                 </div>
             </section>
@@ -273,8 +273,8 @@ print(k);  # ["name", "age"]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of all values in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
-let v = person.values
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
+v = person.values
 print(v);  # ["Alice", 30]</code></pre>
                 </div>
             </section>
@@ -288,8 +288,8 @@ print(v);  # ["Alice", 30]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns an array of [key, value] pairs.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
-let e = person.entries
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
+e = person.entries
 print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
                 </div>
             </section>
@@ -303,7 +303,7 @@ print(e);  # [["name", "Alice"], ["age", 30]]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Check if a key exists in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
 
 print(person.has_key("name"));   # true
 print(person.has_key("email"));  # false</code></pre>
@@ -319,7 +319,7 @@ print(person.has_key("email"));  # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove a key-value pair from the hash (modifies in place).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30, city: "NYC"}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30, city: "NYC"}
 person.delete("age")
 print(person);  # {name: "Alice", city: "NYC"}</code></pre>
                 </div>
@@ -334,10 +334,10 @@ print(person);  # {name: "Alice", city: "NYC"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Merge another hash. Values from the other hash take precedence. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let defaults = {theme: "light", lang: "en"}
-let user_prefs = {theme: "dark"}
+<pre data-filename="Example"><code class="language-soli text-sm">defaults = {theme: "light", lang: "en"}
+user_prefs = {theme: "dark"}
 
-let merged = defaults.merge(user_prefs)
+merged = defaults.merge(user_prefs)
 print(merged);  # {theme: "dark", lang: "en"}</code></pre>
                 </div>
             </section>
@@ -351,7 +351,7 @@ print(merged);  # {theme: "dark", lang: "en"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove all key-value pairs from the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let person = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">person = {name: "Alice", age: 30}
 person.clear
 print(person);    # {}
 print(person.len);  # 0</code></pre>
@@ -367,7 +367,7 @@ print(person.len);  # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get value with optional default. <code>.fetch()</code> raises an error if key not found and no default provided.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {Alice: 90, Bob: 85}
+<pre data-filename="Example"><code class="language-soli text-sm">scores = {Alice: 90, Bob: 85}
 
 # get with default
 print(scores.get("Alice"));        # 90
@@ -390,12 +390,12 @@ print(scores.fetch("Eve", 0));     # 0 (default)
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Retrieve a nested value from a hash or array using a sequence of keys/indices. Returns null if any key is not found. Works with both string keys for hashes and integer indices for arrays.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let data = {user: {profile: {name: "Alice"}}}
+<pre data-filename="Example"><code class="language-soli text-sm">data = {user: {profile: {name: "Alice"}}}
 
 print(data.dig("user", "profile", "name"));  # "Alice"
 print(data.dig("user", "settings", "theme"));  # null (path not found)
 
-let nested = {items: [10, 20, {value: 99}]}
+nested = {items: [10, 20, {value: 99}]}
 print(nested.dig("items", 2, "value"));  # 99
 print(nested.dig("items", 5));  # null (index out of bounds)</code></pre>
                 </div>
@@ -411,17 +411,17 @@ print(nested.dig("items", 5));  # null (index out of bounds)</code></pre>
                     </a>
                     <p class="text-gray-400 mb-3">Transform, filter, or iterate over hash entries. Functions receive (key, value)
 parameters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {Alice: 90, Bob: 85, Charlie: 95}
+<pre data-filename="Example"><code class="language-soli text-sm">scores = {Alice: 90, Bob: 85, Charlie: 95}
 
 # map - transform entries, return new hash
-let curved = scores.map(|k, v| [k, v + 5])
+curved = scores.map(|k, v| [k, v + 5])
 # {Alice: 95, Bob: 90, Charlie: 100}
 
 # Trailing block syntax (equivalent)
-let curved = scores.map |k, v| [k, v + 5] end
+curved = scores.map |k, v| [k, v + 5] end
 
 # filter - keep matching entries
-let high = scores.filter(|k, v| v >= 90)
+high = scores.filter(|k, v| v >= 90)
 # {Alice: 90, Charlie: 95}
 
 # each - iterate for side effects
@@ -441,17 +441,17 @@ scores.each |k, v| print(k + ": " + str(v)) end
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Transform all values or keys. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {Alice: 90, Bob: 85}
+<pre data-filename="Example"><code class="language-soli text-sm">scores = {Alice: 90, Bob: 85}
 
 # Transform values
-let doubled = scores.transform_values(|v| v * 2)
+doubled = scores.transform_values(|v| v * 2)
 # {Alice: 180, Bob: 170}
 
 # Trailing block syntax
-let doubled = scores.transform_values |v| v * 2 end
+doubled = scores.transform_values |v| v * 2 end
 
 # Transform keys
-let upper_keys = scores.transform_keys(|k| upcase(k))
+upper_keys = scores.transform_keys(|k| upcase(k))
 # {ALICE: 90, BOB: 85}</code></pre>
                 </div>
             </section>
@@ -466,18 +466,18 @@ let upper_keys = scores.transform_keys(|k| upcase(k))
                     </a>
                     <p class="text-gray-400 mb-3">Select or reject entries based on condition. Functions receive (key, value)
 parameters.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {Alice: 90, Bob: 85, Charlie: 95}
+<pre data-filename="Example"><code class="language-soli text-sm">scores = {Alice: 90, Bob: 85, Charlie: 95}
 
 # select - keep where function returns true
-let high = scores.select(|k, v| v >= 90)
+high = scores.select(|k, v| v >= 90)
 # {Alice: 90, Charlie: 95}
 
 # reject - remove where function returns true
-let not_high = scores.reject(|k, v| v >= 90)
+not_high = scores.reject(|k, v| v >= 90)
 # {Bob: 85}
 
 # Trailing block syntax
-let high = scores.select |k, v| v >= 90 end</code></pre>
+high = scores.select |k, v| v >= 90 end</code></pre>
                 </div>
             </section>
 
@@ -490,7 +490,7 @@ let high = scores.select |k, v| v >= 90 end</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Get subset with specified keys or without specified keys.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let user = {
+<pre data-filename="Example"><code class="language-soli text-sm">user = {
   name: "Alice",
   age: 30,
   email: "alice@example.com",
@@ -499,11 +499,11 @@ let high = scores.select |k, v| v >= 90 end</code></pre>
 }
 
 # slice - only these keys
-let basic = user.slice(["name", "email"])
+basic = user.slice(["name", "email"])
 # {name: "Alice", email: "alice@example.com"}
 
 # except - exclude these keys (good for removing sensitive data)
-let safe = user.except(["password"])
+safe = user.except(["password"])
 # {name: "Alice", age: 30, email: "alice@example.com", city: "NYC"}</code></pre>
                 </div>
             </section>
@@ -517,12 +517,12 @@ let safe = user.except(["password"])
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Swap keys and values. Returns a new hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let scores = {"Alice": 90, "Bob": 85}
-let inverted = scores.invert()
+<pre data-filename="Example"><code class="language-soli text-sm">scores = {"Alice": 90, "Bob": 85}
+inverted = scores.invert()
 print(inverted)  # {90: "Alice", 85: "Bob"}
 
 # Note: if values are not unique, later entries overwrite earlier ones
-let dupes = {"a": 1, "b": 1}
+dupes = {"a": 1, "b": 1}
 print(dupes.invert())  # {1: "b"}</code></pre>
                 </div>
             </section>
@@ -536,13 +536,13 @@ print(dupes.invert())  # {1: "b"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove entries with null values.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let user = {
+<pre data-filename="Example"><code class="language-soli text-sm">user = {
   "name": "Alice",
   "age": null,
   "email": "alice@example.com",
   "phone": null,
 }
-let cleaned = user.compact()
+cleaned = user.compact()
 print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                 </div>
             </section>
@@ -556,7 +556,7 @@ print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Navigate nested hashes safely. Returns null if any key is not found (no error raised).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let data = {
+<pre data-filename="Example"><code class="language-soli text-sm">data = {
   user: {
     profile: {
       name: "Alice",
@@ -597,10 +597,10 @@ print(data.dig("user", "nonexistent", "key"));        # null (safe, no error)
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">let words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+<pre data-filename="Example"><code class="language-soli text-sm">words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
 
 # Count occurrences with `??=` to seed missing keys, then `+=`
-let counts = {}
+counts = {}
 words.each do |w|
   counts[w] ??= 0
   counts[w] += 1
@@ -617,14 +617,14 @@ print(counts)  # {"apple": 3, "banana": 2, "cherry": 1}</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-<pre data-filename="Example"><code class="language-soli text-sm">let people = [
+<pre data-filename="Example"><code class="language-soli text-sm">people = [
   {"name": "Alice",   "department": "Engineering"},
   {"name": "Bob",     "department": "Sales"},
   {"name": "Charlie", "department": "Engineering"},
 ]
 
 # Group names by department — `??= []` seeds the bucket on first hit
-let by_dept = {}
+by_dept = {}
 people.each do |p|
   by_dept[p["department"]] ??= []
   by_dept[p["department"]].push(p["name"])
@@ -643,7 +643,7 @@ print(by_dept)
                         </svg>
                     </a>
 <pre data-filename="Example"><code class="language-soli text-sm"># Default configuration
-let defaults = {
+defaults = {
   host: "localhost",
   port: 3000,
   debug: false,
@@ -651,16 +651,16 @@ let defaults = {
 }
 
 # User-provided config (partial)
-let user_config = {port: 8080, debug: true}
+user_config = {port: 8080, debug: true}
 
 # Merge with defaults
-let config = defaults.merge(user_config)
+config = defaults.merge(user_config)
 # {host: "localhost", port: 8080, debug: true, timeout: 30}
 
 # Safe access with defaults — `.get(key)` returns null for missing keys,
 # so combine with `??` to fall back to a default.
-let timeout = config.get("timeout") ?? 60
-let retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre>
+timeout = config.get("timeout") ?? 60
+retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre>
                 </div>
             </section>
         </div>
@@ -690,7 +690,7 @@ let retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the hash. Called automatically in REPL.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = {name: "Alice", age: 30}
+<pre data-filename="Example"><code class="language-soli text-sm">h = {name: "Alice", age: 30}
 # In REPL, displays: {name => "Alice", age => 30}
 # Equivalent to: h.to_string()</code></pre>
                 </div>
@@ -705,10 +705,10 @@ let retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Serializes the hash to a JSON string.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = {name: "Alice", age: 30, active: true}
+<pre data-filename="Example"><code class="language-soli text-sm">h = {name: "Alice", age: 30, active: true}
 h.to_json  # '{"name":"Alice","age":30,"active":true}'
 
-let nested = {user: {name: "Bob"}, tags: [1, 2]}
+nested = {user: {name: "Bob"}, tags: [1, 2]}
 nested.to_json  # '{"user":{"name":"Bob"},"tags":[1,2]}'</code></pre>
                 </div>
             </section>
@@ -722,7 +722,7 @@ nested.to_json  # '{"user":{"name":"Bob"},"tags":[1,2]}'</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the number of key-value pairs in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+<pre data-filename="Example"><code class="language-soli text-sm">h = Hash.new
 h.set("a", 1)
 h.set("b", 2)
 h.length  # 2</code></pre>
@@ -738,7 +738,7 @@ h.length  # 2</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Gets or sets values by key using method calls.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new()h.set("name", "Alice")h.get("name");           # "Alice"
+<pre data-filename="Example"><code class="language-soli text-sm">h = Hash.new()h.set("name", "Alice")h.get("name");           # "Alice"
 h.set("age", 30)h.get("age");            # 30</code></pre>
                 </div>
             </section>
@@ -752,7 +752,7 @@ h.set("age", 30)h.get("age");            # 30</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns true if the hash contains the specified key.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new()h.set("key", "value")h.has_key("key");    # true
+<pre data-filename="Example"><code class="language-soli text-sm">h = Hash.new()h.set("key", "value")h.has_key("key");    # true
 h.has_key("missing"); # false</code></pre>
                 </div>
             </section>
@@ -766,11 +766,11 @@ h.has_key("missing"); # false</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns arrays of all keys or all values in the hash.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+<pre data-filename="Example"><code class="language-soli text-sm">h = Hash.new
 h.set("a", 1)
 h.set("b", 2)
-let k = h.keys     # ["a", "b"]
-let v = h.values   # [1, 2]</code></pre>
+k = h.keys     # ["a", "b"]
+v = h.values   # [1, 2]</code></pre>
                 </div>
             </section>
 
@@ -783,7 +783,7 @@ let v = h.values   # [1, 2]</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Creates a new empty Hash instance.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = Hash.new
+<pre data-filename="Example"><code class="language-soli text-sm">h = Hash.new
 h.length  # 0</code></pre>
                 </div>
             </section>
@@ -797,7 +797,7 @@ h.length  # 0</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Type introspection methods available on all types. Empty hashes are blank.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">let h = {name: "Alice"}
+<pre data-filename="Example"><code class="language-soli text-sm">h = {name: "Alice"}
 h.class          # "hash"
 h.inspect        # "{\"name\": \"Alice\"}"
 h.nil?           # false

@@ -203,13 +203,13 @@ describe("PostsController", fn() {
   test("creates post", fn() {
     login("user@example.com", "password");
 
-    let response = post("/posts", {
+    response = post("/posts", {
       "title": "New Post",
       "body": "Content"
       });
 
     assert_eq(res_status(response), 201);
-    let data = res_json(response);
+    data = res_json(response);
     assert_eq(data["title"], "New Post");
     });
   });
@@ -316,7 +316,7 @@ fn index(req: Any) {
 }
 
 fn show(req: Any) {
-  let id = req["params"]["id"];
+  id = req["params"]["id"];
   return {"status": 200, "body": "User " + id};
 }
 

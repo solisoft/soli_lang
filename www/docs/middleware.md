@@ -9,7 +9,7 @@ Create a file in `app/middleware/`:
 ```soli
 # app/middleware/auth.sl
 fn authenticate(req)
-  let token = req.headers["Authorization"];
+  token = req.headers["Authorization"];
 
   if token == null || token == ""
     return error(401, "Unauthorized");
@@ -29,7 +29,7 @@ Log all incoming requests:
 ```soli
 # app/middleware/logging.sl
 fn log_request(req)
-  let timestamp = datetime::now();
+  timestamp = datetime::now();
   println(timestamp + " " + req.method + " " + req.path);
   req
 end
@@ -42,7 +42,7 @@ Handle Cross-Origin Resource Sharing:
 ```soli
 # app/middleware/cors.sl
 fn cors(req)
-  let response = req;
+  response = req;
   response.headers["Access-Control-Allow-Origin"] = "*";
   response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
   response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
@@ -55,7 +55,7 @@ end
 ```soli
 # app/middleware/auth.sl
 fn auth(req)
-  let session = req.cookies["session"];
+  session = req.cookies["session"];
 
   if session == null
     return redirect("/login");
@@ -102,7 +102,7 @@ Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
 
 ```soli
 fn add_locale(req)
-  let lang = req.query["lang"] ?? "en";
+  lang = req.query["lang"] ?? "en";
   req.locale = lang;
   req
 end

@@ -52,7 +52,7 @@ If you run a model or controller file directly with `soli run path/to/file.sl`, 
 ### Creating Records
 
 ```soli
-let result = User.create({
+result = User.create({
   "email": "alice@example.com",
   "name": "Alice",
   "age": 30
@@ -65,18 +65,18 @@ let result = User.create({
 
 ```soli
 # Find by ID
-let user = User.find("user123");
+user = User.find("user123");
 
 # Find all
-let users = User.all();
+users = User.all();
 
 # Find with where clause (SDBQL filter syntax)
 # Note: where() returns a QueryBuilder - call .all() to get results
-let adults = User.where("doc.age >= @age", { "age": 18 }).all();
-let active = User.where("doc.status == @status", { "status": "active" }).all();
+adults = User.where("doc.age >= @age", { "age": 18 }).all();
+active = User.where("doc.status == @status", { "status": "active" }).all();
 
 # Complex conditions
-let results = User.where("doc.age >= @min_age AND doc.role == @role", {
+results = User.where("doc.age >= @min_age AND doc.role == @role", {
   "min_age": 21,
   "role": "admin"
 }).all();
@@ -92,14 +92,14 @@ User.update("user123", {
 });
 
 # Instance method: modify fields and save
-let user = User.find("user123");
+user = User.find("user123");
 user.name = "Alice Smith";
 user.age = 31;
 user.save();
 
 # Instance method with bulk-update hash (same merge-then-persist path,
 # one call instead of N assignments + save)
-let user = User.find("user123");
+user = User.find("user123");
 user.save({ "name": "Alice Smith", "age": 31 });
 
 # `.update(hash)` is equivalent on an existing record
@@ -115,7 +115,7 @@ User.delete("user123");
 ### Counting Records
 
 ```soli
-let total = User.count();
+total = User.count();
 ```
 
 ## Query Builder Chaining
@@ -123,7 +123,7 @@ let total = User.count();
 Chain methods to build complex queries:
 
 ```soli
-let results = User
+results = User
   .where("doc.age >= @age", { "age": 18 })
   .where("doc.active == @active", { "active": true })
   .order("created_at", "desc")
@@ -132,10 +132,10 @@ let results = User
   .all();
 
 # Get first result only
-let first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
+first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
 
 # Count with conditions
-let count = User.where("doc.role == @role", { "role": "admin" }).count();
+count = User.where("doc.role == @role", { "role": "admin" }).count();
 ```
 
 ## Static Methods Reference
@@ -242,7 +242,7 @@ database failure, the instance is **not persisted** and its `_errors` field
 holds an array of error entries. On success, `_errors` is `nil`.
 
 ```soli
-let user = User.create({ "email": "" });
+user = User.create({ "email": "" });
 
 if user._errors
   for error in user._errors
@@ -408,10 +408,10 @@ Preload related records to avoid N+1 queries. Uses LET subqueries with MERGE:
 
 ```soli
 # Load users with their posts and profiles in a single query
-let users = User.includes("posts", "profile").all()
+users = User.includes("posts", "profile").all()
 
 # Combine with where clauses
-let active = User.where("active = @a", { "a": true }).includes("posts").first()
+active = User.where("active = @a", { "a": true }).includes("posts").first()
 
 # Inspect the generated query
 print(User.includes("posts").to_query)
@@ -429,13 +429,13 @@ Filter records by the existence of related records. Unlike `includes`, `join` do
 
 ```soli
 # Find users who have at least one post
-let users_with_posts = User.join("posts").all()
+users_with_posts = User.join("posts").all()
 
 # Find users who have published posts
-let count = User.join("posts", "published = @p", { "p": true }).count()
+count = User.join("posts", "published = @p", { "p": true }).count()
 
 # Chain with other query methods
-let recent = User.join("posts").order("created_at", "desc").limit(10).all()
+recent = User.join("posts").order("created_at", "desc").limit(10).all()
 ```
 
 This is equivalent to ActiveRecord's `joins` — use `includes` when you need the related data, and `join` when you only need to filter by existence.
@@ -446,7 +446,7 @@ Filter included relations to load only matching related records:
 
 ```soli
 # Only load published posts for each user
-let users = User.includes("posts", "published = @p", { "p": true }).all()
+users = User.includes("posts", "published = @p", { "p": true }).all()
 
 # Inspect the generated query
 print(User.includes("posts", "published = @p", { "p": true }).to_query)
@@ -457,7 +457,7 @@ Combine a filter with field projection using the `"fields"` key in the bind hash
 
 ```soli
 # Only load title and body of published posts
-let users = User.includes("posts", "published = @p", {
+users = User.includes("posts", "published = @p", {
   "p": true,
   "fields": ["title", "body"]
 }).all()
@@ -470,7 +470,7 @@ Use a hash argument to select specific fields on included relations (without fil
 
 ```soli
 # Only load title and body from posts
-let users = User.includes({ "posts": ["title", "body"] }).all()
+users = User.includes({ "posts": ["title", "body"] }).all()
 # => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN {title: rel.title, body: rel.body}) ...
 ```
 
@@ -480,7 +480,7 @@ Chain `.includes()` calls to eagerly load multiple relations with different opti
 
 ```soli
 # Filtered posts + unfiltered profile
-let users = User.includes("posts", "published = @p", { "p": true })
+users = User.includes("posts", "published = @p", { "p": true })
   .includes("profile")
   .all()
 ```
@@ -491,12 +491,12 @@ When you only need the *count* of a relation (not the rows), `.includes_count()`
 
 ```soli
 # Each Category gets a `products_count` integer field, in one round-trip
-let cats = Category.includes_count("products").all()
+cats = Category.includes_count("products").all()
 print(cats[0].products_count)
 # => 3
 
 # Combine with .includes() and other chain steps
-let q = Author.where("active = @a", { "a": true })
+q = Author.where("active = @a", { "a": true })
   .includes("profile")
   .includes_count("posts")
   .order("name", "asc")
@@ -512,26 +512,26 @@ Use `.select()` (or its alias `.fields()`) to return only specific fields from t
 
 ```soli
 # Only return name and email
-let users = User.select("name", "email").all()
+users = User.select("name", "email").all()
 # => FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}
 
 # .fields() is an alias
-let users = User.fields("name", "email").all()
+users = User.fields("name", "email").all()
 # => same query
 
 # Combine with other query methods
-let users = User.where("active = @a", { "a": true })
+users = User.where("active = @a", { "a": true })
   .select("name", "email")
   .order("name")
   .limit(10)
   .all()
 
 # Combine with includes
-let users = User.select("name", "email").includes("posts").all()
+users = User.select("name", "email").includes("posts").all()
 # => ... RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})
 
 # Full combo: select + filtered includes with field projection
-let users = User.select("name")
+users = User.select("name")
   .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
   .all()
 ```
@@ -555,8 +555,8 @@ Both classes declare the relation. The default join table is the alphabetical co
 **Read** — `post.tags` returns an array of related `Tag` instances:
 
 ```soli
-let post = Post.find(post_id)
-let tags = post.tags  # => [Tag, Tag, ...]
+post = Post.find(post_id)
+tags = post.tags  # => [Tag, Tag, ...]
 ```
 
 **Add / remove** — auto-generated mutators insert/delete join-table rows. The method name is `add_<singular>` / `remove_<singular>` derived from the relation name:
@@ -580,7 +580,7 @@ post.tags << tag                # appends one tag, returns post.tags
 **Eager loading** uses a two-stage subquery through the join table:
 
 ```soli
-let posts = Post.includes("tags").all()
+posts = Post.includes("tags").all()
 # => ... LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key
 #                          FOR rel IN tags FILTER rel._key == jt.tag_id RETURN rel) ...
 ```
@@ -588,8 +588,8 @@ let posts = Post.includes("tags").all()
 **Existence filtering** with `.join()`:
 
 ```soli
-let tagged_posts = Post.join("tags").all()              # posts that have at least one tag
-let tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
+tagged_posts = Post.join("tags").all()              # posts that have at least one tag
+tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
 ```
 
 **Overrides** — supply an options hash to customize the join:
@@ -623,14 +623,14 @@ Find records by specific field values:
 
 ```soli
 # Find by exact field match
-let user = User.find_by("email", "alice@example.com");
+user = User.find_by("email", "alice@example.com");
 
 # Find with ordering (first by field value)
-let user = User.first_by("name", "Alice");
+user = User.first_by("name", "Alice");
 
 # Find or create - returns existing or creates new
-let user = User.find_or_create_by("email", "new@example.com");
-let user = User.find_or_create_by("email", "new@example.com", { "name": "New User" });
+user = User.find_or_create_by("email", "new@example.com");
+user = User.find_or_create_by("email", "new@example.com", { "name": "New User" });
 ```
 
 ### Dynamic Finder Methods
@@ -639,13 +639,13 @@ Automatically generated finders for any field combination:
 
 ```soli
 # Single field finder
-let user = User.find_by_email("alice@example.com");
+user = User.find_by_email("alice@example.com");
 
 # Two-field finder (AND logic)
-let user = User.find_by_email_and_active("alice@example.com", true);
+user = User.find_by_email_and_active("alice@example.com", true);
 
 # Three+ field combinations
-let post = Post.find_by_title_and_published_and_author_id("Hello", true, 123);
+post = Post.find_by_title_and_published_and_author_id("Hello", true, 123);
 ```
 
 These methods return the first matching record or `null` if not found.
@@ -656,19 +656,19 @@ Calculate sums, averages, min, max on query results:
 
 ```soli
 # Sum
-let total = User.where("age > @a", { "a": 18 }).sum("balance");
+total = User.where("age > @a", { "a": 18 }).sum("balance");
 
 # Average
-let avg = User.avg("score");
+avg = User.avg("score");
 
 # Minimum
-let min_score = User.min("score");
+min_score = User.min("score");
 
 # Maximum
-let max_score = User.max("views");
+max_score = User.max("views");
 
 # Group by aggregation
-let by_country = User.group_by("country", "sum", "balance");
+by_country = User.group_by("country", "sum", "balance");
 # Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]
 ```
 
@@ -678,15 +678,15 @@ Quick queries for specific data:
 
 ```soli
 # Get array of single field values
-let names = User.where("active = @a", { "a": true }).pluck("name");
+names = User.where("active = @a", { "a": true }).pluck("name");
 # Returns: ["Alice", "Bob", "Charlie"]
 
 # Get multiple fields as objects
-let users = User.pluck("name", "email");
+users = User.pluck("name", "email");
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
 
 # Check if records exist (returns boolean)
-let exists = User.where("role = @r", { "r": "admin" }).exists();
+exists = User.where("role = @r", { "r": "admin" }).exists();
 # Returns: true or false
 ```
 
@@ -695,7 +695,7 @@ let exists = User.where("role = @r", { "r": "admin" }).exists();
 Methods available on model instances:
 
 ```soli
-let user = User.find("user_id");
+user = User.find("user_id");
 
 # Update fields and persist
 user.name = "New Name";
@@ -740,12 +740,12 @@ errors surface on `.errors` the same way as individual field assignments:
 
 ```soli
 # Partial update — only `price` changes, `name` is preserved
-let p = Product.find(id);
+p = Product.find(id);
 p.update({ "price": 99.00 });
 
 # Mix field assignment with hash — pre-assigned fields fall back when hash
 # omits them, hash wins on conflict.
-let p = Product.new();
+p = Product.new();
 p.name = "Widget";            # will survive
 p.save({ "price": 12.50 });   # name stays "Widget", price becomes 12.50
 ```
@@ -770,8 +770,8 @@ class User extends Model
 end
 
 # Use scopes
-let active = User.scope("active").all();
-let recent = User.scope("active").limit(10).all();
+active = User.scope("active").all();
+recent = User.scope("active").limit(10).all();
 ```
 
 ## Soft Delete
@@ -790,13 +790,13 @@ post.delete();
 post.restore();
 
 # Query without deleted records (default behavior)
-let posts = Post.all();
+posts = Post.all();
 
 # Include soft-deleted records
-let all = Post.with_deleted.all();
+all = Post.with_deleted.all();
 
 # Query only deleted records
-let deleted = Post.only_deleted.all();
+deleted = Post.only_deleted.all();
 ```
 
 ## Relationship Accessors
@@ -804,18 +804,18 @@ let deleted = Post.only_deleted.all();
 Access related records directly from instances:
 
 ```soli
-let user = User.find("user_id");
+user = User.find("user_id");
 
 # has_many returns a chainable QueryBuilder, not an array.
 # Each terminal call (.all, .count, .delete_all, iteration, ...)
 # runs a query against the foreign-key filter at that moment.
-let posts = user.posts;
+posts = user.posts;
 
 # Access has_one relation
-let profile = user.profile;
+profile = user.profile;
 
 # Access belongs_to relation
-let author = post.user;
+author = post.user;
 ```
 
 ### has_many is Enumerable AND chainable
@@ -825,7 +825,7 @@ The `has_many` accessor behaves like an array (iteration, indexing, `len`,
 (`.where`, `.order`, `.limit`, `.count`, `.delete_all`, `.exists`, ...):
 
 ```soli
-let user = User.find("user_id");
+user = User.find("user_id");
 
 # Iterate — each iteration runs the FK-filtered query once
 for post in user.posts
@@ -833,27 +833,27 @@ for post in user.posts
 end
 
 # Indexing materializes the result set
-let first = user.posts[0];
+first = user.posts[0];
 
 # len() and .length / .size return the count
-let n = len(user.posts);
-let same = user.posts.length;
-let alt  = user.posts.size;
+n = len(user.posts);
+same = user.posts.length;
+alt = user.posts.size;
 
 # Array-style helpers materialize then delegate
 user.posts.each(fn(p) { print(p.title) });
-let titles = user.posts.map(fn(p) { p.title });
+titles = user.posts.map(fn(p) { p.title });
 
 # Chained query — composes onto the seed `user_id == @__rel_fk` filter
-let published = user.posts.where("published = @p", { "p": true }).all;
-let n_pub     = user.posts.where("published = @p", { "p": true }).count;
+published = user.posts.where("published = @p", { "p": true }).all;
+n_pub = user.posts.where("published = @p", { "p": true }).count;
 
 # Bulk delete — one REMOVE statement, no N+1
 user.posts.delete_all;
 user.posts.where("draft = @d", { "d": true }).delete_all;
 
 # Sort / paginate before materializing
-let recent = user.posts.order("created_at", "desc").limit(10).all;
+recent = user.posts.order("created_at", "desc").limit(10).all;
 ```
 
 Notes:
@@ -873,7 +873,7 @@ Insert or update multiple records:
 
 ```soli
 # Batch create
-let result = User.create_many([
+result = User.create_many([
   { "name": "Alice", "email": "alice@example.com" },
   { "name": "Bob", "email": "bob@example.com" },
   { "name": "Charlie", "email": "charlie@example.com" }
@@ -910,7 +910,7 @@ User.transaction {
 
 ```soli
 # Execute AQL in a transaction
-let result = User.transaction("
+result = User.transaction("
   INSERT { name: 'Alice', age: 30 } INTO users;
   INSERT { name: 'Bob', age: 25 } INTO users;
   RETURN users
@@ -921,7 +921,7 @@ let result = User.transaction("
 
 ```soli
 # Get transaction handle for manual control
-let tx = User.transaction();
+tx = User.transaction();
 tx.create({ name: "Alice" });
 tx.create({ name: "Bob" });
 tx.commit();
@@ -953,7 +953,7 @@ class User extends Model
 end
 
 # Usage
-let user = User.find("user123");
+user = User.find("user123");
 if user.is_admin()
   print("Welcome, admin " + user.full_name());
 end
@@ -1022,19 +1022,19 @@ end
 class UsersController extends Controller
   fn index(req)
     # Eager load posts and profiles to avoid N+1 queries
-    let users = User.includes("posts", "profile").all();
+    users = User.includes("posts", "profile").all();
     render("users/index", { "users": users })
   end
 
   fn show(req)
-    let id = req["params"]["id"];
-    let user = User.includes("posts").find(id);
+    id = req["params"]["id"];
+    user = User.includes("posts").find(id);
     render("users/show", { "user": user })
   end
 
   fn active(req)
     # Find active users who have at least one post
-    let users = User.join("posts")
+    users = User.join("posts")
       .where("active = @a", { "a": true })
       .order("created_at", "desc")
       .limit(10)
@@ -1043,7 +1043,7 @@ class UsersController extends Controller
   end
 
   fn create(req)
-    let user = User.create({
+    user = User.create({
       "name": req["params"]["name"],
       "email": req["params"]["email"],
       "age": req["params"]["age"]
@@ -1089,7 +1089,7 @@ describe("User queries", fn()
       ]
     )
     
-    let user = User.find("123")
+    user = User.find("123")
     expect(user.name).to_equal("Alice")
   end)
   
@@ -1119,8 +1119,8 @@ describe("User queries", fn()
       ]
     )
     
-    let contact = Contact.includes("organisation").first
-    let org = contact.organisation
+    contact = Contact.includes("organisation").first
+    org = contact.organisation
     
     # Verify the relation has the correct class (not Contact)
     expect(org.class_name).to_equal("Organisation")
@@ -1138,7 +1138,7 @@ Key points:
 ```soli
 describe("User model", fn()
   test("creates user with valid data", fn()
-    let user = User.create({
+    user = User.create({
       "email": "test@example.com",
       "name": "Test User"
     });
@@ -1147,7 +1147,7 @@ describe("User model", fn()
   end)
 
   test("fails validation for invalid data", fn()
-    let user = User.create({ "email": "" });
+    user = User.create({ "email": "" });
     expect(user._errors).not_to_equal(null);
   end)
 
@@ -1156,7 +1156,7 @@ describe("User model", fn()
     User.create({ "name": "Bob", "age": 17 });
 
     # where() returns QueryBuilder - chain .all() to get results
-    let adults = User.where("doc.age >= @age", { "age": 18 }).all();
+    adults = User.where("doc.age >= @age", { "age": 18 }).all();
     expect(len(adults)).to_equal(1);
   end)
 end)
@@ -1182,8 +1182,8 @@ In production (without `--dev`), `dev_queries()` always returns an empty array �
 
 ```soli
 fn index(req)
-  let users = User.where("doc.active == true").all();
-  let posts = Post.includes("author").all();
+  users = User.where("doc.active == true").all();
+  posts = Post.includes("author").all();
 
   return render("users/index", {
     "users":   users,

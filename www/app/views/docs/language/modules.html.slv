@@ -180,7 +180,7 @@ module Commerce
     end
 
     def total -> Float
-      let sum = 0.0
+      sum = 0.0
       for item in this.items
         sum = sum + item.price
       end
@@ -204,13 +204,13 @@ end</code></pre>
 import Commerce from "./commerce.sl"
 
 # Use classes from the module
-let book = new Commerce.Product("Soli Guide", 29.99, 10)
-let shirt = new Commerce.Product("T-Shirt", 19.99, 3)
+book = new Commerce.Product("Soli Guide", 29.99, 10)
+shirt = new Commerce.Product("T-Shirt", 19.99, 3)
 
 println(book.in_stock())          # true
 println(book.discounted(20.0))    # 23.992
 
-let cart = new Commerce.Cart()
+cart = new Commerce.Cart()
 cart.add(book)
 cart.add(shirt)
 println(cart.total())             # 49.98</code></pre>
@@ -238,17 +238,17 @@ print(factorial(5));     # 120
 
 # Named imports
 import { add, multiply } from "./math.sl"
-let sum = add(1, 2);          # 3
-let product = multiply(3, 4); # 12
+sum = add(1, 2);          # 3
+product = multiply(3, 4); # 12
 
 # Aliased imports
 import { add as sum, multiply as times } from "./math.sl"
-let result = sum(10, 20);  # 30
-let doubled = times(5, 6); # 30
+result = sum(10, 20);  # 30
+doubled = times(5, 6); # 30
 
 # Import everything with a namespace
 import "./utils.sl" as utils
-let formatted = utils.format_date(DateTime.utc());</code></pre>
+formatted = utils.format_date(DateTime.utc());</code></pre>
             </div>
         </section>
     </section>

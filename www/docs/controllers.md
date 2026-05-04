@@ -17,7 +17,7 @@ class UsersController extends Controller
   end
 
   fn show(req)
-    let user_id = req.params["id"];
+    user_id = req.params["id"];
     render("users/show", {
       "title": "User Details",
       "user_id": user_id
@@ -54,7 +54,7 @@ class ApplicationController extends Controller
 
     # Before action that runs for all actions
     this.before_action = fn(req) {
-      let user_id = req.session["user_id"];
+      user_id = req.session["user_id"];
       if user_id != null {
         req["current_user"] = User.find(user_id);
       }
@@ -104,7 +104,7 @@ class ApplicationController extends Controller
     # Run for all actions
     this.before_action = fn(req) {
       # Authentication check
-      let user_id = req.session["user_id"];
+      user_id = req.session["user_id"];
       if user_id == null {
         return redirect("/login");
       }
@@ -131,7 +131,7 @@ class PostsController extends ApplicationController
 
     # Run before_action only for specific actions
     this.before_action(:show, :edit, :update, :delete) = fn(req) {
-      let post = Post.find(req.params["id"]);
+      post = Post.find(req.params["id"]);
       if post == null {
         return halt(404, "Post not found");
       }
@@ -142,8 +142,8 @@ class PostsController extends ApplicationController
 
   fn index(req)
     # Can use inherited _current_user helper
-    let user = this._current_user(req);
-    let posts = Post.all();
+    user = this._current_user(req);
+    posts = Post.all();
     render("posts/index", {
       "posts": posts,
       "user": user
@@ -212,7 +212,7 @@ class PostsController extends Controller
 
     # Run only for specific actions
     this.before_action(:show, :edit, :delete) = fn(req) {
-      let post = Post.find(req.params["id"]);
+      post = Post.find(req.params["id"]);
       if post == null {
         return halt(404, "Post not found");
       }
@@ -267,28 +267,28 @@ Access request data through the `req` parameter:
 ```soli
 fn create(req)
   # Path parameters
-  let id = req.params["id"];
+  id = req.params["id"];
 
   # Query string parameters
-  let page = req.query["page"];
+  page = req.query["page"];
 
   # Form data
-  let name = req.form["name"];
+  name = req.form["name"];
 
   # JSON body (if Content-Type is application/json)
-  let data = req.json;
+  data = req.json;
 
   # HTTP headers
-  let auth = req.headers["Authorization"];
+  auth = req.headers["Authorization"];
 
   # HTTP method
-  let method = req.method;
+  method = req.method;
 
   # Original path
-  let path = req.path;
+  path = req.path;
 
   # Session data
-  let user_id = req.session["user_id"];
+  user_id = req.session["user_id"];
 
   # Store data for after_action or views
   req["my_data"] = some_value;
@@ -303,10 +303,10 @@ The request object is automatically injected into your controller:
 class PostsController extends Controller
   fn show(req)
     # Access params directly
-    let id = req.params["id"];
+    id = req.params["id"];
 
     # Or access via this (after injection)
-    let post = this.get_controller_field(req, "post");
+    post = this.get_controller_field(req, "post");
 
     render("posts/show", { "post": post })
   end
@@ -415,7 +415,7 @@ end
 
 fn update(req)
   # After update, redirect to show page
-  let user_id = req.params["id"];
+  user_id = req.params["id"];
   redirect("/users/" + user_id)
 end
 ```
@@ -486,11 +486,11 @@ respond_to(req, {
 
 ```soli
 fn show(req)
-  let id = req.params["id"];
+  id = req.params["id"];
   if id == "" {
     return halt(400, "Missing ID");
   }
-  let user = find_user(id);
+  user = find_user(id);
   if user == null {
     return halt(404, "User not found");
   }
@@ -515,7 +515,7 @@ class PostsController extends Controller
 
   fn show(req)
     # Access the post set by before_action
-    let post = req["post"];
+    post = req["post"];
 
     render("posts/show", { "post": post })
   end
@@ -533,8 +533,8 @@ Validate and sanitize input:
 
 ```soli
 fn create(req)
-  let params = req.form;
-  let clean_params = {
+  params = req.form;
+  clean_params = {
     "name": params["name"] ?? "",
     "email": params["email"] ?? "",
     "age": int(params["age"] ?? "0")

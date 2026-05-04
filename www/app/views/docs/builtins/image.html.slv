@@ -66,7 +66,7 @@
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Image instance</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let img = Image.new("photo.jpg")
+                <pre data-filename="Example"><code class="language-soli text-sm">img = Image.new("photo.jpg")
 println(img.width)   # 1920
 println(img.height)  # 1080</code></pre>
             </div>
@@ -87,7 +87,7 @@ println(img.height)  # 1080</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Image instance</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let img = Image.from_buffer(base64_data)
+                <pre data-filename="Example"><code class="language-soli text-sm">img = Image.from_buffer(base64_data)
 println(img.width)</code></pre>
             </div>
         </section>
@@ -115,7 +115,7 @@ println(img.width)</code></pre>
                 <p class="text-gray-400 mb-3">Returns the image dimensions in pixels.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Int</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let img = Image.new("photo.jpg")
+                <pre data-filename="Example"><code class="language-soli text-sm">img = Image.new("photo.jpg")
 println("Size: " + str(img.width) + "x" + str(img.height))</code></pre>
             </div>
         </section>
@@ -148,7 +148,7 @@ println("Size: " + str(img.width) + "x" + str(img.height))</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let resized = Image.new("photo.jpg").resize(800, 600)
+                <pre data-filename="Example"><code class="language-soli text-sm">resized = Image.new("photo.jpg").resize(800, 600)
 resized.to_file("photo_resized.jpg")</code></pre>
             </div>
         </section>
@@ -168,7 +168,7 @@ resized.to_file("photo_resized.jpg")</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let thumb = Image.new("photo.jpg").thumbnail(200)
+                <pre data-filename="Example"><code class="language-soli text-sm">thumb = Image.new("photo.jpg").thumbnail(200)
 thumb.to_file("thumb.jpg")</code></pre>
             </div>
         </section>
@@ -191,7 +191,7 @@ thumb.to_file("thumb.jpg")</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let cropped = Image.new("photo.jpg").crop(100, 50, 400, 300)
+                <pre data-filename="Example"><code class="language-soli text-sm">cropped = Image.new("photo.jpg").crop(100, 50, 400, 300)
 cropped.to_file("cropped.jpg")</code></pre>
             </div>
         </section>
@@ -261,7 +261,7 @@ cropped.to_file("cropped.jpg")</code></pre>
         </div>
 
         <p class="text-gray-400 text-sm mb-3">All transform methods return a new Image and can be chained:</p>
-        <pre data-filename="Chaining transforms"><code class="language-soli text-sm">let img = Image.new("photo.jpg")
+        <pre data-filename="Chaining transforms"><code class="language-soli text-sm">img = Image.new("photo.jpg")
   .grayscale()
   .flip_horizontal()
   .rotate90()
@@ -292,7 +292,7 @@ img.to_file("transformed.jpg")</code></pre>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
                     <div><code class="text-amber-400">sigma</code> : <code class="text-purple-400">Float</code> or <code class="text-purple-400">Int</code> - Blur intensity</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">let blurred = Image.new("photo.jpg").blur(3.5)</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">blurred = Image.new("photo.jpg").blur(3.5)</code></pre>
             </div>
         </section>
 
@@ -344,7 +344,7 @@ img.to_file("transformed.jpg")</code></pre>
             </div>
         </section>
 
-        <pre data-filename="Combining adjustments"><code class="language-soli text-sm">let adjusted = Image.new("photo.jpg")
+        <pre data-filename="Combining adjustments"><code class="language-soli text-sm">adjusted = Image.new("photo.jpg")
   .brightness(20)
   .contrast(1.5)
   .hue_rotate(90)
@@ -393,7 +393,7 @@ adjusted.to_file("adjusted.jpg")</code></pre>
                     <div><code class="text-amber-400">fmt</code> : <code class="text-purple-400">String</code> - One of: <code class="text-indigo-400">"jpeg"</code>, <code class="text-indigo-400">"png"</code>, <code class="text-indigo-400">"gif"</code>, <code class="text-indigo-400">"bmp"</code>, <code class="text-indigo-400">"ico"</code>, <code class="text-indigo-400">"tiff"</code>, <code class="text-indigo-400">"webp"</code></div>
                 </div>
                 <pre data-filename="Format conversion"><code class="language-soli text-sm"># Convert PNG to JPEG at 70% quality
-let img = Image.new("photo.png")
+img = Image.new("photo.png")
   .format("jpeg")
   .quality(70)
 img.to_file("photo.jpg")</code></pre>
@@ -442,8 +442,8 @@ img.to_file("photo.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Encodes the image to a base64 string. Useful for storing in databases, HTTP responses, or passing to S3.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">String - Base64-encoded image data</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">let img = Image.new("photo.jpg").thumbnail(100)
-let base64_data = img.to_buffer()
+                <pre data-filename="Example"><code class="language-soli text-sm">img = Image.new("photo.jpg").thumbnail(100)
+base64_data = img.to_buffer()
 
 # Store in S3
 S3.put_object("my-bucket", "thumb.jpg", base64_data, {
@@ -468,13 +468,13 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Thumbnail generation in a controller</h3>
                 <pre><code class="language-soli text-sm">fn upload(req)
-  let file = req.files["avatar"]
-  let img = Image.from_buffer(file.data)
+  file = req.files["avatar"]
+  img = Image.from_buffer(file.data)
 
   # Create multiple sizes
-  let large = img.resize(800, 800)
-  let medium = img.thumbnail(400)
-  let small = img.thumbnail(100)
+  large = img.resize(800, 800)
+  medium = img.thumbnail(400)
+  small = img.thumbnail(100)
 
   large.to_file("public/uploads/avatar_large.jpg")
   medium.to_file("public/uploads/avatar_medium.jpg")
@@ -488,7 +488,7 @@ end</code></pre>
         <section class="mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Image processing pipeline</h3>
-                <pre><code class="language-soli text-sm">let img = Image.new("raw_photo.jpg")
+                <pre><code class="language-soli text-sm">img = Image.new("raw_photo.jpg")
   .resize(1200, 900)
   .brightness(10)
   .contrast(1.2)
@@ -505,14 +505,14 @@ img.grayscale().thumbnail(200).to_file("thumb_gray.jpg")</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Format conversion with S3</h3>
                 <pre><code class="language-soli text-sm"># Convert all PNGs to WebP
-let files = S3.list_objects("images", "photos/")
+files = S3.list_objects("images", "photos/")
 for file in files
   if file.ends_with(".png")
-    let data = S3.get_object("images", file)
-    let img = Image.from_buffer(data)
+    data = S3.get_object("images", file)
+    img = Image.from_buffer(data)
       .format("webp")
       .quality(80)
-    let new_key = file.replace(".png", ".webp")
+    new_key = file.replace(".png", ".webp")
     S3.put_object("images", new_key, img.to_buffer(), {
       "content_type": "image/webp"
     })

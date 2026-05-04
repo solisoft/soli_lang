@@ -41,10 +41,10 @@ Load these with `getenv()` — never hardcode secrets.
 # app/controllers/auth_controller.sl
 
 def github_login(req)
-  let state = Crypto.random_hex(32)
+  state = Crypto.random_hex(32)
   req["session"]["oauth_state"] = state
 
-  let auth_url = "https://github.com/login/oauth/authorize?" +
+  auth_url = "https://github.com/login/oauth/authorize?" +
     "client_id=" + getenv("GITHUB_CLIENT_ID") +
     "&redirect_uri=" + getenv("GITHUB_REDIRECT_URI") +
     "&scope=read:user user:email" +
@@ -54,7 +54,7 @@ def github_login(req)
 end
 
 def github_callback(req)
-  let params = req["query_params"]
+  params = req["query_params"]
 
   # Verify state to prevent CSRF
   if params["state"] != req["session"]["oauth_state"]
@@ -66,28 +66,28 @@ def github_callback(req)
     return {"status": 401, "body": "Authorization denied: " + params["error_description"]}
   end
 
-  let code = params["code"]
+  code = params["code"]
 
   # Exchange code for access token
-  let token_data = github_exchange_code(code)
+  token_data = github_exchange_code(code)
 
   if token_data["error"] != null
     return {"status": 401, "body": "Token exchange failed: " + token_data["error_description"]}
   end
 
-  let access_token = token_data["access_token"]
+  access_token = token_data["access_token"]
 
   # Fetch user profile from GitHub
-  let github_user = github_get_user(access_token)
+  github_user = github_get_user(access_token)
 
   # If email is private, fetch from the emails endpoint
   if github_user["email"] == null
-    let emails = github_get_emails(access_token)
+    emails = github_get_emails(access_token)
     github_user["email"] = find_primary_email(emails)
   end
 
   # Find or create user in our database
-  let user = find_or_create_github_user(github_user)
+  user = find_or_create_github_user(github_user)
 
   # Create session
   session_regenerate()
@@ -169,7 +169,7 @@ class User extends Model
   created_at: DateTime
 
   def find_or_create_github_user(github_data)
-    let existing = User.find_by_github_id(github_data["id"])
+    existing = User.find_by_github_id(github_data["id"])
 
     return existing if existing != nil
 
@@ -250,9 +250,9 @@ If your app also has an API, you can issue a JWT after OAuth login instead of (o
 def github_callback_api(req)
   # ... same OAuth flow as above ...
 
-  let user = find_or_create_github_user(github_user)
+  user = find_or_create_github_user(github_user)
 
-  let token = jwt_sign(
+  token = jwt_sign(
     {"sub": user["id"], "username": user["username"]},
     getenv("JWT_SECRET"),
     {"expires_in": 86400}

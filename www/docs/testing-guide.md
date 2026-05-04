@@ -19,7 +19,7 @@ Every E2E test file follows the same structure using Soli's test DSL. The framew
 ```soli
 describe("HomeController", fn()
   test("GET /up returns UP status", fn()
-    let response = get("/up")
+    response = get("/up")
     assert_eq(res_status(response), 200)
     assert_eq(res_body(response), "UP")
   end)
@@ -57,9 +57,9 @@ The framework provides dedicated functions for each HTTP method. These functions
 The `get()` function retrieves resources without modifying server state. Use it for testing read-only endpoints, pages, and API endpoints that respond to GET requests:
 
 ```soli
-let response = get("/posts");
+response = get("/posts");
 assert_eq(res_status(response), 200);
-let posts = res_json(response);
+posts = res_json(response);
 assert_gt(len(posts), 0);
 ```
 
@@ -68,7 +68,7 @@ assert_gt(len(posts), 0);
 The `post()` function submits data to create new resources. Pass the request path and a body (typically a hash or JSON string):
 
 ```soli
-let response = post("/posts", {
+response = post("/posts", {
   "title": "New Post",
   "content": "Hello World"
 });
@@ -80,7 +80,7 @@ assert_eq(res_status(response), 201);
 The `put()` function replaces existing resources entirely. Provide the resource path and updated data:
 
 ```soli
-let response = put("/posts/42", {
+response = put("/posts/42", {
   "title": "Updated Title",
   "content": "Modified content"
 });
@@ -92,7 +92,7 @@ assert_eq(res_status(response), 200);
 The `patch()` function performs partial updates, modifying only specified fields:
 
 ```soli
-let response = patch("/posts/42", {
+response = patch("/posts/42", {
   "title": "Just the Title"
 });
 assert_eq(res_status(response), 200);
@@ -103,7 +103,7 @@ assert_eq(res_status(response), 200);
 The `delete()` function removes resources:
 
 ```soli
-let response = delete("/posts/42");
+response = delete("/posts/42");
 assert_eq(res_status(response), 204);
 ```
 
@@ -112,8 +112,8 @@ assert_eq(res_status(response), 204);
 For specialized testing scenarios, `head()` performs a HEAD request (same as GET but without body), and `options()` checks allowed methods:
 
 ```soli
-let head_response = head("/api/posts");
-let options_response = options("/api/posts");
+head_response = head("/api/posts");
+options_response = options("/api/posts");
 ```
 
 ### Generic Request Function
@@ -121,8 +121,8 @@ let options_response = options("/api/posts");
 The `request()` function provides flexibility for non-standard HTTP methods or when you need dynamic method selection:
 
 ```soli
-let response = request("TRACE", "/api/posts");
-let response = request("CONNECT", "/api/proxy");
+response = request("TRACE", "/api/posts");
+response = request("CONNECT", "/api/proxy");
 ```
 
 ### Custom Headers
@@ -133,7 +133,7 @@ Add custom headers to your requests using `set_header()` for individual headers 
 set_header("X-Request-ID", "test-123");
 set_header("X-Custom-Header", "custom-value");
 
-let response = get("/api/data");
+response = get("/api/data");
 clear_headers();
 ```
 
@@ -143,7 +143,7 @@ The `with_token()` function sets a Bearer token for authenticated requests, simu
 
 ```soli
 with_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...");
-let response = get("/api/protected");
+response = get("/api/protected");
 clear_authorization();
 ```
 
@@ -153,7 +153,7 @@ Manage cookies for session-based authentication testing:
 
 ```soli
 set_cookie("session_id", "abc123session");
-let response = get("/dashboard");
+response = get("/dashboard");
 clear_cookies();
 ```
 
@@ -166,8 +166,8 @@ Response helpers inspect HTTP responses returned by your controllers. These func
 **res_status(response)** extracts the HTTP status code as an integer:
 
 ```soli
-let response = get("/posts");
-let status = res_status(response);
+response = get("/posts");
+status = res_status(response);
 assert_eq(status, 200);
 ```
 
@@ -175,7 +175,7 @@ assert_eq(status, 200);
 
 ```soli
 if (res_ok(response))
-  let data = res_json(response)
+  data = res_json(response)
   # Process successful response
 end
 ```
@@ -206,15 +206,15 @@ res_unprocessable(response) # 422
 **res_body(response)** returns the raw response body as a string:
 
 ```soli
-let body = res_body(response);
+body = res_body(response);
 assert_contains(body, "expected text");
 ```
 
 **res_json(response)** parses the response body as JSON and returns a hash:
 
 ```soli
-let response = post("/users", {"name": "John"});
-let user = res_json(response);
+response = post("/users", {"name": "John"});
+user = res_json(response);
 assert_eq(user["name"], "John");
 assert_not_null(user["id"]);
 ```
@@ -224,14 +224,14 @@ assert_not_null(user["id"]);
 **res_header(response, name)** extracts a specific header value:
 
 ```soli
-let content_type = res_header(response, "Content-Type");
+content_type = res_header(response, "Content-Type");
 assert_contains(content_type, "application/json");
 ```
 
 **res_headers(response)** returns all headers as a hash for comprehensive inspection:
 
 ```soli
-let headers = res_headers(response);
+headers = res_headers(response);
 assert_hash_has_key(headers, "Content-Type");
 ```
 
@@ -246,7 +246,7 @@ assert(res_redirect(response));
 **res_location(response)** extracts the Location header for redirect destinations:
 
 ```soli
-let location = res_location(response);
+location = res_location(response);
 assert_eq(location, "/expected/path");
 ```
 
@@ -268,7 +268,7 @@ end)
 
 ```soli
 as_user(42);
-let response = get("/profile");
+response = get("/profile");
 assert_eq(res_status(response), 200);
 ```
 
@@ -276,7 +276,7 @@ assert_eq(res_status(response), 200);
 
 ```soli
 as_admin();
-let response = get("/admin/dashboard");
+response = get("/admin/dashboard");
 assert_eq(res_status(response), 200);
 ```
 
@@ -286,7 +286,7 @@ assert_eq(res_status(response), 200);
 
 ```soli
 login("user@example.com", "secretpassword");
-let response = get("/dashboard");
+response = get("/dashboard");
 assert_eq(res_status(response), 200);
 ```
 
@@ -295,7 +295,7 @@ assert_eq(res_status(response), 200);
 ```soli
 login("user@example.com", "password");
 logout();
-let response = get("/dashboard");
+response = get("/dashboard");
 assert_eq(res_status(response), 302); # Redirect to login
 ```
 
@@ -321,7 +321,7 @@ assert(signed_out())
 
 ```soli
 as_user(42);
-let user = current_user();
+user = current_user();
 # user contains user data hash
 ```
 
@@ -330,7 +330,7 @@ let user = current_user();
 **create_session(user_id)** creates a session cookie for the specified user:
 
 ```soli
-let session_id = create_session(42);
+session_id = create_session(42);
 assert_not_null(session_id);
 ```
 
@@ -351,7 +351,7 @@ with_session({
   "user_id": 42,
   "role": "editor"
 })
-let response = get("/dashboard")
+response = get("/dashboard")
 assert_eq(res_status(response), 200)
 ```
 
@@ -361,7 +361,7 @@ assert_eq(res_status(response), 200)
 
 ```soli
 with_token("your-jwt-token-here");
-let response = get("/api/protected");
+response = get("/api/protected");
 ```
 
 ## Assigns Helpers
@@ -373,8 +373,8 @@ Assigns helpers inspect data passed to views during template rendering. These he
 **assigns()** returns all assigns as a hash:
 
 ```soli
-let response = get("/users/1");
-let all_assigns = assigns();
+response = get("/users/1");
+all_assigns = assigns();
 assert_hash_has_key(all_assigns, "user");
 assert_hash_has_key(all_assigns, "page_title");
 ```
@@ -382,7 +382,7 @@ assert_hash_has_key(all_assigns, "page_title");
 **assign(key)** retrieves a specific assign value by key:
 
 ```soli
-let user = assign("user");
+user = assign("user");
 assert_eq(user["name"], "John Doe");
 ```
 
@@ -391,7 +391,7 @@ assert_eq(user["name"], "John Doe");
 **view_path()** returns the path of the rendered template:
 
 ```soli
-let path = view_path();
+path = view_path();
 assert_eq(path, "users/show.html");
 ```
 
@@ -399,7 +399,7 @@ assert_eq(path, "users/show.html");
 
 ```soli
 if (render_template())
-  let content = assigns()
+  content = assigns()
   # Inspect rendered content
 end
 ```
@@ -409,10 +409,10 @@ end
 Flash message helpers access temporary session data used for one-time notifications:
 
 ```soli
-let flash_data = flash();
+flash_data = flash();
 assert_hash_has_key(flash_data, "notice");
 
-let notice = flash("notice");
+notice = flash("notice");
 assert_eq(notice, "Operation successful");
 ```
 
@@ -430,29 +430,29 @@ describe("PostsController", fn()
 
   describe("GET /posts", fn()
     test("returns list of posts", fn()
-      let response = get("/posts")
+      response = get("/posts")
       assert_eq(res_status(response), 200)
-      let data = res_json(response)
+      data = res_json(response)
       assert_gt(len(data["posts"]), 0)
     end)
 
     test("includes pagination metadata", fn()
-      let response = get("/posts?page=1&per_page=10")
-      let data = res_json(response)
+      response = get("/posts?page=1&per_page=10")
+      data = res_json(response)
       assert_hash_has_key(data, "pagination")
     end)
   end)
 
   describe("GET /posts/:id", fn()
     test("shows single post", fn()
-      let response = get("/posts/1")
+      response = get("/posts/1")
       assert_eq(res_status(response), 200)
-      let post = res_json(response)
+      post = res_json(response)
       assert_eq(post["title"], "First Post")
     end)
 
     test("returns 404 for missing post", fn()
-      let response = get("/posts/99999")
+      response = get("/posts/99999")
       assert_eq(res_status(response), 404)
     end)
   end)
@@ -461,27 +461,27 @@ describe("PostsController", fn()
     test("creates post with valid data", fn()
       login("author@example.com", "password123")
       
-      let response = post("/posts", {
+      response = post("/posts", {
         "title": "New Post Title",
         "body": "Post content here"
       })
       
       assert_eq(res_status(response), 201)
-      let result = res_json(response)
+      result = res_json(response)
       assert_not_null(result["id"])
     end)
 
     test("rejects unauthenticated request", fn()
-      let response = post("/posts", {"title": "Test"})
+      response = post("/posts", {"title": "Test"})
       assert_eq(res_status(response), 302) # Redirect to login
     end)
 
     test("validates required fields", fn()
       login("author@example.com", "password123")
       
-      let response = post("/posts", {})
+      response = post("/posts", {})
       assert_eq(res_status(response), 422)
-      let errors = res_json(response)["errors"]
+      errors = res_json(response)["errors"]
       assert_hash_has_key(errors, "title")
     end)
   end)
@@ -490,7 +490,7 @@ describe("PostsController", fn()
     test("updates post with valid data", fn()
       login("author@example.com", "password123")
       
-      let response = put("/posts/1", {
+      response = put("/posts/1", {
         "title": "Updated Title"
       })
       
@@ -498,10 +498,10 @@ describe("PostsController", fn()
     end)
 
     test("prevents unauthorized updates", fn()
-      let other_user = create_user({"email": "other@example.com"})
+      other_user = create_user({"email": "other@example.com"})
       as_user(other_user["id"])
       
-      let response = put("/posts/1", {"title": "Hacked"})
+      response = put("/posts/1", {"title": "Hacked"})
       assert_eq(res_status(response), 403)
     end)
   end)
@@ -510,10 +510,10 @@ describe("PostsController", fn()
     test("deletes post", fn()
       login("author@example.com", "password123")
       
-      let response = delete("/posts/1")
+      response = delete("/posts/1")
       assert_eq(res_status(response), 204)
       
-      let check_response = get("/posts/1")
+      check_response = get("/posts/1")
       assert_eq(res_status(check_response), 404)
     end)
   end)
@@ -531,7 +531,7 @@ describe("Authentication Flow", fn()
   end)
 
   test("login with valid credentials succeeds", fn()
-    let response = post("/login", {
+    response = post("/login", {
       "email": "admin@example.com",
       "password": "secret123"
     })
@@ -541,7 +541,7 @@ describe("Authentication Flow", fn()
   end)
 
   test("login with invalid credentials fails", fn()
-    let response = post("/login", {
+    response = post("/login", {
       "email": "wrong@example.com",
       "password": "wrongpassword"
     })
@@ -551,7 +551,7 @@ describe("Authentication Flow", fn()
   end)
 
   test("profile requires authentication", fn()
-    let response = get("/users/profile")
+    response = get("/users/profile")
     assert_eq(res_status(response), 302)
     assert_eq(res_location(response), "/login")
   end)
@@ -559,7 +559,7 @@ describe("Authentication Flow", fn()
   test("profile accessible after login", fn()
     login("user@example.com", "password")
     
-    let response = get("/users/profile")
+    response = get("/users/profile")
     assert_eq(res_status(response), 200)
   end)
 
@@ -569,22 +569,22 @@ describe("Authentication Flow", fn()
     post("/logout")
     
     assert(signed_out())
-    let response = get("/users/profile")
+    response = get("/users/profile")
     assert_eq(res_status(response), 302)
   end)
 
   test("JWT token authentication works", fn()
     # Create a token
-    let token_response = post("/auth/token", {
+    token_response = post("/auth/token", {
       "user_id": "123",
       "role": "admin"
     })
-    let token_data = res_json(token_response)
-    let token = token_data["token"]
+    token_data = res_json(token_response)
+    token = token_data["token"]
     
     # Use token for authentication
     with_token(token)
-    let response = get("/api/admin")
+    response = get("/api/admin")
     assert_eq(res_status(response), 200)
   end)
 end)
@@ -600,8 +600,8 @@ describe("Request Headers", fn()
     set_header("X-Request-ID", "test-123-uuid")
     set_header("X-Custom-Header", "custom-value")
     
-    let response = get("/api/headers")
-    let headers = res_json(response)
+    response = get("/api/headers")
+    headers = res_json(response)
     
     assert_eq(headers["X-Request-ID"], "test-123-uuid")
     assert_eq(headers["X-Custom-Header"], "custom-value")
@@ -610,16 +610,16 @@ describe("Request Headers", fn()
   test("authorization header is processed", fn()
     with_token("Bearer eyJhbGciOiJIUzI1NiIs...")
     
-    let response = get("/api/protected")
-    let data = res_json(response)
+    response = get("/api/protected")
+    data = res_json(response)
     assert_eq(data["authenticated"], true)
   end)
 
   test("cookies persist across requests", fn()
     set_cookie("session_id", "session-abc-123")
     
-    let response = get("/dashboard")
-    let data = res_json(response)
+    response = get("/dashboard")
+    data = res_json(response)
     
     assert_eq(data["session_id"], "session-abc-123")
   end)
@@ -633,20 +633,20 @@ Examples of testing template rendering and assigns:
 ```soli
 describe("View Rendering", fn()
   test("index renders with correct assigns", fn()
-    let response = get("/users")
+    response = get("/users")
     
     assert(render_template())
     assert_eq(view_path(), "users/index.html")
     
-    let assigns_data = assigns()
+    assigns_data = assigns()
     assert_hash_has_key(assigns_data, "users")
     assert_hash_has_key(assigns_data, "page_title")
   end)
 
   test("show action passes correct user data", fn()
-    let response = get("/users/42")
+    response = get("/users/42")
     
-    let user_assign = assign("user")
+    user_assign = assign("user")
     assert_eq(user_assign["id"], 42)
     assert_eq(user_assign["name"], "John Doe")
   end)
@@ -654,8 +654,8 @@ describe("View Rendering", fn()
   test("flash messages are available", fn()
     post("/users/1/comments", {"body": "Test comment"})
     
-    let response = get("/users/1")
-    let flash_data = flash()
+    response = get("/users/1")
+    flash_data = flash()
     assert_hash_has_key(flash_data, "notice")
     assert_eq(flash("notice"), "Comment posted successfully")
   end)
@@ -705,10 +705,10 @@ Each test should be independent and not rely on the state created by other tests
 
 ```soli
 test("can update own post", fn()
-  let post = create_post({"title": "Test", "author_id": 1})
+  post = create_post({"title": "Test", "author_id": 1})
   as_user(1)
   
-  let response = put("/posts/" + post["id"], {
+  response = put("/posts/" + post["id"], {
     "title": "Updated"
   })
   
@@ -734,10 +734,10 @@ assert(response != null);
 Always verify both status codes and response content. A 200 status doesn't guarantee the correct data was returned:
 
 ```soli
-let response = get("/posts/1")
+response = get("/posts/1")
 assert_eq(res_status(response), 200)
 
-let post = res_json(response)
+post = res_json(response)
 assert_eq(post["id"], 1)
 assert_eq(post["title"], "Expected Title")
 ```
@@ -757,8 +757,8 @@ When testing controllers that interact with a database, ensure your test environ
 For complex test data, create fixture files in `tests/fixtures/` directory:
 
 ```soli
-let users = yaml_load("tests/fixtures/users.yaml");
-let posts = yaml_load("tests/fixtures/posts.yaml");
+users = yaml_load("tests/fixtures/users.yaml");
+posts = yaml_load("tests/fixtures/posts.yaml");
 ```
 
 ## Troubleshooting
@@ -780,9 +780,9 @@ If `res_json()` fails, verify the response body is valid JSON. Some responses ma
 
 ```soli
 # Check content type first
-let content_type = res_header(response, "Content-Type")
+content_type = res_header(response, "Content-Type")
 if (contains(content_type, "application/json"))
-  let data = res_json(response)
+  data = res_json(response)
 end
 ```
 

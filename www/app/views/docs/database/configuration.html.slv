@@ -243,9 +243,9 @@ All migrations are up to date.</code></pre>
 <pre><code class="language-soli text-sm">class User < Model end
 
 # These all use the configured database
-let users = User.all
-let user = User.create({ "name": "Alice" })
-let found = User.find(user["id"])</code></pre>
+users = User.all
+user = User.create({ "name": "Alice" })
+found = User.find(user["id"])</code></pre>
         </div>
     </div>
 
@@ -256,11 +256,11 @@ let found = User.find(user["id"])</code></pre>
     <p class="text-gray-400 mb-4">Construct a client with <code>Solidb(host, database)</code>, optionally <code>auth</code> it, then call <code>query</code> with <code>@param</code> placeholders and a hash of bind values:</p>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+<pre><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
 
 # Read with named parameters
-let results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
+results = db.query("FOR doc IN users FILTER doc.age >= @age RETURN doc", {
   "age": 18
 })
 
@@ -290,14 +290,14 @@ db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Simple query with interpolation
-let users = @sdbql{
+users = @sdbql{
   FOR u IN users
   FILTER u.age >= #{age}
   RETURN u
 }
 
 # Query with multiple interpolations
-let results = @sdbql{
+results = @sdbql{
   FOR u IN users
   FILTER u.age >= #{min_age} AND u.city == #{city}
   SORT u.name ASC

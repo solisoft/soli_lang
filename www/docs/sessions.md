@@ -31,8 +31,8 @@ end
 
 ```soli
 fn login(req)
-  let data = req["json"];
-  let username = data["username"];
+  data = req["json"];
+  username = data["username"];
 
   # Store user data in session
   session_set("user", username);
@@ -58,7 +58,7 @@ end
 
 ```soli
 fn remove_item(req)
-  let removed = session_delete("temporary_data");
+  removed = session_delete("temporary_data");
   print("Removed:", removed);
   {"status": 200}
 end
@@ -72,7 +72,7 @@ Always regenerate the session ID after successful authentication to prevent sess
 
 ```soli
 fn login(req)
-  let data = req["json"];
+  data = req["json"];
 
   if verify_credentials(data["username"], data["password"])
     # Regenerate session for security
@@ -119,12 +119,12 @@ fn require_auth(req)
 end
 
 fn require_role(req, required_role: String)
-  let result = require_auth(req);
+  result = require_auth(req);
   if result != null
     return result;  # Return auth error
   end
 
-  let user_role = session_get("role");
+  user_role = session_get("role");
   if user_role != required_role
     return {
       "status": 403,

@@ -636,7 +636,7 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 # Custom helper: Format a phone number
 fn format_phone(number)
-  let digits = replace(number, "[^0-9]", "")
+  digits = replace(number, "[^0-9]", "")
   if len(digits) == 10
     return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
   end

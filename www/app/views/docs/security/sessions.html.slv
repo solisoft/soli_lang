@@ -84,7 +84,7 @@ session_set("username", "alice_w")
 session_set("role", "admin")
 
 # 2. Read data (returns null if not found)
-let current_user = session_get("username")
+current_user = session_get("username")
 
 # 3. Check if key exists
 if session_has("user_id")
@@ -128,7 +128,7 @@ session_destroy()</code></pre>
             </div>
             <div class="p-6 overflow-x-auto">
                 <pre><code class="language-soli text-sm">def login(req: Any)
-  let credentials = req["body"]
+  credentials = req["body"]
   
   if verify_user(credentials)
     # CRITICAL: Regenerate session ID before setting sensitive data

@@ -115,7 +115,7 @@
                 Create a Controller
             </h3>
             <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req: Any)
-  let message = "Welcome to Soli!"
+  message = "Welcome to Soli!"
 
   render("home/index", {
     "title": "Home",

@@ -20,7 +20,7 @@
   }
 
   def index(req)
-    let posts = Post.all()
+    posts = Post.all()
     render("posts/index", {
       "title": "All Posts",
       "posts": posts
@@ -28,8 +28,8 @@
   end
 
   def show(req)
-    let id = req.params["id"]
-    let post = Post.find(id)
+    id = req.params["id"]
+    post = Post.find(id)
     if post == null
       return halt(404, "Post not found")
     end
@@ -74,7 +74,7 @@ end</code></pre>
 
     # Run before SPECIFIC actions only
     this.before_action(:show, :edit) = fn(req) {
-      let post = Post.find(req.params["id"]);
+      post = Post.find(req.params["id"]);
       return halt(404, "Not Found") if post == null;
       req["post"] = post;
       req
@@ -108,7 +108,7 @@ end</code></pre>
     this.layout = "application";
 
     this.before_action = fn(req) {
-      let user_id = req.session["user_id"];
+      user_id = req.session["user_id"];
       if user_id != null {
         req["current_user"] = User.find(user_id);
       }
@@ -127,7 +127,7 @@ class PostsController extends BaseController
   static {
     # Add controller-specific hook (runs after parent's before_action)
     this.before_action(:show, :edit) = fn(req) {
-      let post = Post.find(req.params["id"]);
+      post = Post.find(req.params["id"]);
       return halt(404, "Not Found") if post == null;
       req["post"] = post;
       req

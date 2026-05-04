@@ -99,7 +99,7 @@ def is_prime(n: Int) -> Bool
   if (n % 2 == 0)
     return false
   end
-  let i = 3
+  i = 3
   while (i * i <= n)
     if (n % i == 0)
       return false
@@ -131,20 +131,20 @@ def square(x: Int) -> Int
   x * x
 end
 
-let result = apply(5, double)   # 10
-let squared = apply(5, square)  # 25
+result = apply(5, double)   # 10
+squared = apply(5, square)  # 25
 
 # Passing anonymous functions
 def transform_array(arr: Int[], transformer: (Int) -> Int) -> Int[]
-  let result = []
+  result = []
   for item in arr
     push(result, transformer(item))
   end
   result
 end
 
-let numbers = [1, 2, 3, 4, 5]
-let doubled = transform_array(numbers, fn(x) x * 2)  # [2, 4, 6, 8, 10]</code></pre>
+numbers = [1, 2, 3, 4, 5]
+doubled = transform_array(numbers, fn(x) x * 2)  # [2, 4, 6, 8, 10]</code></pre>
             </div>
         </div>
     </section>
@@ -166,13 +166,13 @@ let doubled = transform_array(numbers, fn(x) x * 2)  # [2, 4, 6, 8, 10]</code></
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Inline expression body
-let doubled = [1, 2, 3].map(fn(x)
+doubled = [1, 2, 3].map(fn(x)
 x * 2)
 print(doubled);  # [2, 4, 6]
 
 # Multi-line body with end
-let process = fn(x)
-  let result = x * 2
+process = fn(x)
+  result = x * 2
   result + 1
 end
 
@@ -185,16 +185,16 @@ print(process(5));  # 11</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Single parameter
-let doubled = [1, 2, 3].map(|x| x * 2)
+doubled = [1, 2, 3].map(|x| x * 2)
 print(doubled);  # [2, 4, 6]
 
 # Multiple parameters
-let sum = [1, 2, 3].reduce(0, |acc, x| acc + x)
+sum = [1, 2, 3].reduce(0, |acc, x| acc + x)
 print(sum);  # 6
 
 # With collection methods
-let names = ["alice", "bob", "charlie"]
-let upper = names.map(|name| name.upcase())
+names = ["alice", "bob", "charlie"]
+upper = names.map(|name| name.upcase())
 print(upper);  # ["ALICE", "BOB", "CHARLIE"]</code></pre>
             </div>
         </div>
@@ -204,13 +204,13 @@ print(upper);  # ["ALICE", "BOB", "CHARLIE"]</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Zero-parameter lambda
-let greet = || "Hello, world!"
+greet = || "Hello, world!"
 print(greet())  # "Hello, world!"
 
 # Useful for deferred execution
-let lazy_value = || expensive_computation
+lazy_value = || expensive_computation
 # ... later ...
-let result = lazy_value()</code></pre>
+result = lazy_value()</code></pre>
             </div>
         </div>
 
@@ -219,12 +219,12 @@ let result = lazy_value()</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Arrow lambda (no parameters)
-let greet = -> "Hello, world!"
+greet = -> "Hello, world!"
 print(greet());  # "Hello, world!"
 
 # Equivalent to || syntax
-let a = || 42
-let b = -> 42
+a = || 42
+b = -> 42
 print(a());  # 42
 print(b());  # 42</code></pre>
             </div>
@@ -235,30 +235,30 @@ print(b());  # 42</code></pre>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># 1. Inline expression (single expression)
-let add = fn(a, b)
+add = fn(a, b)
 a + b
-let mul = |a, b| a * b
+mul = |a, b| a * b
 
 # 2. Brace-delimited block
-let add = fn(a, b) { a + b }
-let mul = |a, b| { a * b }
+add = fn(a, b) { a + b }
+mul = |a, b| { a * b }
 
 # 3. Multi-line with end
-let add = fn(a, b)
+add = fn(a, b)
   a + b
 end
 
-let mul = |a, b|
+mul = |a, b|
   a * b
 end
 
 # Multi-line lambdas as method arguments
-let doubled = [1, 2, 3].map(|x|
-  let result = x * 2
+doubled = [1, 2, 3].map(|x|
+  result = x * 2
   result
 end)
-let adults = users.filter(fn(u)
-  let age = u["age"]
+adults = users.filter(fn(u)
+  age = u["age"]
   age >= 18
 end);</code></pre>
             </div>
@@ -284,7 +284,7 @@ numbers.reduce(0) |acc, x| acc + x end
 
 # Multi-line trailing block
 [1, 2, 3].map |x|
-  let doubled = x * 2
+  doubled = x * 2
   doubled + 1
 end
 # [3, 5, 7]
@@ -300,24 +300,24 @@ end
         <p class="text-gray-400 mb-4">Lambdas shine when used with collection methods:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">let users = [
+<pre><code class="language-soli text-sm">users = [
   {"name": "Alice", "age": 30},
   {"name": "Bob", "age": 17},
   {"name": "Charlie", "age": 25}
 ]
 
 # Filter adults
-let adults = users.filter(|u| u["age"] >= 18)
+adults = users.filter(|u| u["age"] >= 18)
 # Extract names
-let names = adults.map(|u| u["name"])
+names = adults.map(|u| u["name"])
 print(names);  # ["Alice", "Charlie"]
 
 # Find first match
-let bob = users.find(|u| u["name"] == "Bob")
+bob = users.find(|u| u["name"] == "Bob")
 print(bob);  # {"name": "Bob", "age": 17}
 
 # Chaining
-let result = [1, 2, 3, 4, 5, 6]
+result = [1, 2, 3, 4, 5, 6]
   .filter(|x| x % 2 == 0)
   .map(|x| x * 10)
 print(result);  # [20, 40, 60]</code></pre>
@@ -333,7 +333,7 @@ print(result);  # [20, 40, 60]</code></pre>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Counter using closure
 def make_counter -> () -> Int
-  let count = 0
+  count = 0
   def counter -> Int
     count = count + 1
     count
@@ -341,8 +341,8 @@ def make_counter -> () -> Int
   counter
 end
 
-let counter1 = make_counter()
-let counter2 = make_counter
+counter1 = make_counter()
+counter2 = make_counter
 print(counter1());  # 1
 print(counter1());  # 2
 print(counter1());  # 3
@@ -358,8 +358,8 @@ def make_greeter(greeting: String) -> (String) -> String
   greet
 end
 
-let say_hello = make_greeter("Hello")
-let say_hola = make_greeter("Hola")
+say_hello = make_greeter("Hello")
+say_hola = make_greeter("Hola")
 print(say_hello("Alice"));  # "Hello, Alice!"
 print(say_hola("Bob"));     # "Hola, Bob!"</code></pre>
             </div>
@@ -381,16 +381,16 @@ print(greet("Charlie", "Welcome")); # "Welcome, Charlie!"
 
 # Optional parameters
 def create_user(name: String, email: String = null, role: String = "user") -> Hash
-  let user = {"name": name, "role": role}
+  user = {"name": name, "role": role}
   if (email != null)
     user["email"] = email
   end
   user
 end
 
-let user1 = create_user("Alice")
-let user2 = create_user("Bob", "bob@example.com")
-let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
+user1 = create_user("Alice")
+user2 = create_user("Bob", "bob@example.com")
+user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
             </div>
         </div>
     </section>
@@ -406,15 +406,15 @@ let user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
 end
 
 # All named parameters
-let config1 = configure(host: "example.com", port: 3000, debug: true)
+config1 = configure(host: "example.com", port: 3000, debug: true)
 # {"host": "example.com", "port": 3000, "debug": true}
 
 # Mixed positional and named
-let config2 = configure("api.example.com", debug: true)
+config2 = configure("api.example.com", debug: true)
 # {"host": "api.example.com", "port": 8080, "debug": true}
 
 # Only some named (defaults fill rest)
-let config3 = configure(port: 443)
+config3 = configure(port: 443)
 # {"host": "localhost", "port": 443, "debug": false}</code></pre>
             </div>
         </div>
@@ -465,9 +465,9 @@ puts "Hello world";</code></pre>
   end
 end
 
-let user1 = new User(name: "Alice", age: 30, role: "admin")
-let user2 = new User("Bob", age: 25)
-let user3 = new User(name: "Charlie", role: "moderator");</code></pre>
+user1 = new User(name: "Alice", age: 30, role: "admin")
+user2 = new User("Bob", age: 25)
+user3 = new User(name: "Charlie", role: "moderator");</code></pre>
             </div>
         </div>
     </section>
@@ -498,19 +498,19 @@ end
 print(abs(-5))  # 5
 
 # Works with lambdas
-let doubled = [1, 2, 3].map(fn(x) x * 2)
+doubled = [1, 2, 3].map(fn(x) x * 2)
 print(doubled)  # [2, 4, 6]
 
 # Works with closures
 def make_adder(n: Int) -> (Int) -> Int
   fn(x) x + n
 end
-let add5 = make_adder(5)
+add5 = make_adder(5)
 print(add5(3))  # 8
 
 # Note: `let` as last statement returns null
 def nothing
-  let x = 1
+  x = 1
 end
 print(nothing())  # null</code></pre>
             </div>
@@ -547,7 +547,7 @@ print(nothing())  # null</code></pre>
   -1  # Implicit return: not found
 end
 
-let result = find_first_even([1, 3, 5, 4, 7]);  # 4</code></pre>
+result = find_first_even([1, 3, 5, 4, 7]);  # 4</code></pre>
                 </div>
             </div>
         </section>
@@ -559,7 +559,7 @@ let result = find_first_even([1, 3, 5, 4, 7]);  # 4</code></pre>
         <p class="text-gray-400 mb-4">
             Functions are first-class values, and the same universal predicates available on every other type work on them too. Useful in defensive view partials where a local might resolve to a function, a string, or be undefined.
         </p>
-        <pre data-filename="example.sl"><code class="language-soli text-sm">let f = fn(x) { x + 1 }
+        <pre data-filename="example.sl"><code class="language-soli text-sm">f = fn(x) { x + 1 }
 
 f.nil?       # false &mdash; a function value is never null
 f.blank?     # false
