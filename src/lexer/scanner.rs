@@ -265,6 +265,8 @@ impl<'a> Scanner<'a> {
             // Backtick command substitution: `command`
             '`' => self.scan_backtick_string(),
 
+            '~' => Ok(self.make_token(TokenKind::Tilde)),
+
             // Numbers
             c if c.is_ascii_digit() => self.scan_number(c),
 

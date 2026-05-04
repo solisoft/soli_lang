@@ -232,3 +232,79 @@ describe("Interface Implementation", fn() {
         assert_eq(shapes[1].draw(), "Square");
     });
 });
+
+describe("Interface `~` Shorthand", fn() {
+    test("~ replaces `implements` for a single interface", fn() {
+        interface Greetable {
+            fn greet();
+        }
+
+        class Person ~ Greetable {
+            fn greet() {
+                return "Hello";
+            }
+        }
+
+        let p = new Person();
+        assert_eq(p.greet(), "Hello");
+    });
+
+    test("~ accepts a comma-separated list", fn() {
+        interface Drawable {
+            fn draw() -> String;
+        }
+        interface Resizable {
+            fn resize(factor: Float) -> Float;
+        }
+
+        class Box ~ Drawable, Resizable {
+            size: Float = 1.0;
+
+            fn draw() -> String { return "Box"; }
+            fn resize(factor: Float) -> Float {
+                this.size = this.size * factor;
+                return this.size;
+            }
+        }
+
+        let b = new Box();
+        assert_eq(b.draw(), "Box");
+        assert_eq(b.resize(3.0), 3.0);
+    });
+
+    test("extends combined with ~", fn() {
+        interface Greetable {
+            fn greet();
+        }
+
+        class Animal {
+            fn breathe() -> String { return "breathing"; }
+        }
+
+        class Dog extends Animal ~ Greetable {
+            fn greet() { return "woof"; }
+        }
+
+        let d = new Dog();
+        assert_eq(d.breathe(), "breathing");
+        assert_eq(d.greet(), "woof");
+    });
+
+    test("< combined with ~", fn() {
+        interface Greetable {
+            fn greet();
+        }
+
+        class Animal {
+            fn breathe() -> String { return "breathing"; }
+        }
+
+        class Cat < Animal ~ Greetable {
+            fn greet() { return "meow"; }
+        }
+
+        let c = new Cat();
+        assert_eq(c.breathe(), "breathing");
+        assert_eq(c.greet(), "meow");
+    });
+});

@@ -55,7 +55,7 @@
 
   def introduce -> String
     intro = "Hi, I'm " + this.name + " and I'm " + str(this.age) + " years old"
-    if (this.email != "")
+    if this.email != ""
       intro = intro + ". You can reach me at " + this.email
     end
     intro
@@ -136,7 +136,7 @@ for internal helper methods. The underscore convention is used throughout the co
   end
 
   public def deposit(amount: Float) -> Bool
-    if (this.validate_amount(amount))
+    if this.validate_amount(amount)
       this.balance = this.balance + amount
       return true
     end
@@ -177,17 +177,13 @@ print(account.get_balance())     # 1500.0</code></pre>
   end
 
   static def max(a: Float, b: Float) -> Float
-    if (a > b) then return a end
+    return a if a > b
     b
   end
 
   static def clamp(value: Float, min_val: Float, max_val: Float) -> Float
-    if (value < min_val)
-      return min_val
-    end
-    if (value > max_val)
-      return max_val
-    end
+    return min_val if value < min_val
+    return max_val if value > max_val
     value
   end
 end
@@ -354,7 +350,7 @@ end</code></pre>
             <strong class="text-white">In controllers:</strong> fields set on the controller instance during an action (via <code class="text-indigo-400">@foo = ...</code> or <code class="text-indigo-400">this.foo = ...</code>) are automatically exposed as view locals in the template that action renders — no data hash needed.
         </p>
 
-        <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends Controller
+        <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < Controller
   def show(req)
     @post = Post.find(req.params["id"])
     @comments = Comment.where({"post_id": @post.id}).all
@@ -393,7 +389,7 @@ end</code></pre>
   end
 end
 
-class Pet extends Animal
+class Pet < Animal
   owner: String
 
   new(name: String, owner: String)
@@ -406,7 +402,7 @@ class Pet extends Animal
   end
 end
 
-class Dog extends Pet
+class Dog < Pet
   def speak -> String
     "Woof!"
   end
@@ -429,13 +425,13 @@ print(dog.name)        # "Rex" (inherited from Animal)</code></pre>
   end
 end
 
-class B extends A
+class B < A
   def identify -> String
     super.identify() + " -> B"
   end
 end
 
-class C extends B
+class C < B
   def identify -> String
     super.identify() + " -> C"
   end
@@ -512,14 +508,14 @@ print(inner2.get_combined())   # 30</code></pre>
     end
 
     def insert(new_value: Int)
-      if (new_value < this.value)
-        if (this.left == null)
+      if new_value < this.value
+        if this.left == null
           this.left = new Tree::Node(new_value)
         else
           this.left.insert(new_value)
         end
       else
-        if (this.right == null)
+        if this.right == null
           this.right = new Tree::Node(new_value)
         else
           this.right.insert(new_value)
@@ -535,7 +531,7 @@ print(inner2.get_combined())   # 30</code></pre>
   end
 
   def insert(value: Int)
-    if (this.root == null)
+    if this.root == null
       this.root = new Tree::Node(value)
     else
       this.root.insert(value)
@@ -646,28 +642,28 @@ print(cache.get("session:123"))</code></pre>
 
         <section id="interface-basic" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Drawable {
-  fn draw() -> String;
-  fn get_color() -> String;
-}
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Drawable
+  def draw -> String
+  def get_color -> String
+end
 
-class Circle implements Drawable {
-  radius: Float;
-  color: String;
+class Circle implements Drawable
+  radius: Float
+  color: String
 
-  new(radius: Float, color: String) {
-    this.radius = radius;
-    this.color = color;
-  }
+  new(radius: Float, color: String)
+    this.radius = radius
+    this.color = color
+  end
 
-  fn draw() -> String {
+  def draw -> String
     "Circle with radius " + str(this.radius)
-  }
+  end
 
-  fn get_color() -> String {
+  def get_color -> String
     this.color
-  }
-}</code></pre>
+  end
+end</code></pre>
             </div>
         </section>
 
@@ -675,23 +671,53 @@ class Circle implements Drawable {
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Multiple Interfaces</h3>
                 <p class="text-gray-400 mb-3">A class can implement multiple interfaces.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable {
-  fn print();
-}
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable
+  def print
+end
 
-interface Exportable {
-  fn export() -> String;
-}
+interface Exportable
+  def export -> String
+end
 
-class Report implements Printable, Exportable {
-  fn print() {
-    print("Printing report...");
-  }
+class Report implements Printable, Exportable
+  def print
+    print("Printing report...")
+  end
 
-  fn export() -> String {
+  def export -> String
     "PDF"
-  }
-}</code></pre>
+  end
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="interface-tilde-shorthand" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#interface-tilde-shorthand" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">~</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    <code class="text-pink-400">~</code> is an alias for <code class="text-pink-400">implements</code> in class headers, in the same spirit as <code class="text-pink-400">&lt;</code> aliases <code class="text-pink-400">extends</code>. Composes with both forms — use whichever reads best.
+                </p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Shorthand on its own
+class Circle ~ Drawable, Resizable
+  # ...
+end
+
+# `&lt;` + `~`
+class Dog &lt; Animal ~ Greetable
+  def greet "woof" end
+end
+
+class Cat &lt; Animal ~ Greetable
+  def greet "meow" end
+end</code></pre>
+                <p class="text-gray-400 mt-3">
+                    The full <code class="text-pink-400">implements</code> keyword still works; pick whichever matches the style of the surrounding code.
+                </p>
             </div>
         </section>
     </section>

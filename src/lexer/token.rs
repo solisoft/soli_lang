@@ -124,6 +124,7 @@ pub enum TokenKind {
     NullishCoalescing, // ??
     SafeNavigation,    // &.
     Ampersand,         // &
+    Tilde,             // ~ (shorthand for `implements` in class headers)
     DoubleColon,       // ::
 
     // Delimiters
@@ -308,6 +309,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::NullishCoalescing => write!(f, "??"),
             TokenKind::SafeNavigation => write!(f, "&."),
             TokenKind::Ampersand => write!(f, "&"),
+            TokenKind::Tilde => write!(f, "~"),
             TokenKind::DoubleColon => write!(f, "::"),
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),

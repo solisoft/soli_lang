@@ -186,15 +186,16 @@ impl Parser {
                 None
             };
 
-        let interfaces = if self.match_token(&TokenKind::Implements) {
-            let mut interfaces = vec![self.expect_identifier()?];
-            while self.match_token(&TokenKind::Comma) {
-                interfaces.push(self.expect_identifier()?);
-            }
-            interfaces
-        } else {
-            Vec::new()
-        };
+        let interfaces =
+            if self.match_token(&TokenKind::Implements) || self.match_token(&TokenKind::Tilde) {
+                let mut interfaces = vec![self.expect_identifier()?];
+                while self.match_token(&TokenKind::Comma) {
+                    interfaces.push(self.expect_identifier()?);
+                }
+                interfaces
+            } else {
+                Vec::new()
+            };
 
         if self.match_token(&TokenKind::End) {
             let span = start_span.merge(&self.previous_span());

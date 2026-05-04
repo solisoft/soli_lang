@@ -2048,6 +2048,29 @@ for shape in shapes {
 }
 ```
 
+#### `~` shorthand for `implements`
+
+`~` is an alias for `implements` in class headers, in the same spirit as `<` aliases `extends`. It composes with both forms — use whichever reads best:
+
+```soli
+# Shorthand on its own
+class Circle ~ Drawable, Resizable
+  # ...
+end
+
+# `extends` + `~`
+class Dog extends Animal ~ Greetable
+  fn greet() "woof" end
+end
+
+# `<` + `~`
+class Cat < Animal ~ Greetable
+  fn greet() "meow" end
+end
+```
+
+The full `implements` keyword still works; pick whichever matches the style of the surrounding code.
+
 ### Visibility Modifiers
 
 ```soli
