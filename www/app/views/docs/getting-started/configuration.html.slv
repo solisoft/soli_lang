@@ -53,6 +53,24 @@ SOLIDB_DATABASE=myapp_development</code></pre>
     </section>
 
     <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Hardening</h2>
+        <p class="text-gray-400 mb-4">
+            Knobs that control how the request edge handles untrusted input. See the <a href="/docs/builtins/hardening" class="text-indigo-400 hover:text-indigo-300 transition-colors">Server Hardening</a> page for the full story.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_TRUST_PROXY</code></td><td class="py-3 px-4">Honors <code>X-Forwarded-Proto</code> / <code>X-Forwarded-Host</code> when set to <code>1</code>, <code>true</code>, or <code>yes</code>. Only enable when the deployment terminates these headers at a trusted proxy hop.</td><td class="py-3 px-4"><code>false</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_MAX_BODY_SIZE</code></td><td class="py-3 px-4">Maximum buffered request body, in bytes. Requests over the cap return <code>413 Payload Too Large</code>.</td><td class="py-3 px-4"><code>8388608</code> (8 MiB)</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
         <h2 class="text-2xl font-bold text-white mb-6">Database</h2>
         <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
             <table class="w-full text-left text-sm">
@@ -160,8 +178,8 @@ SOLIDB_DATABASE=myapp_development</code></pre>
     </section>
 
     <section class="mb-12">
-        <h2 class="text-2xl font-bold text-white mb-6">Runtime Configuration Functions</h2>
-        <p class="text-gray-400 mb-4">Some important server settings are configured in Soli code instead of environment variables:</p>
+        <h2 class="text-2xl font-bold text-white mb-6">Runtime Overrides</h2>
+        <p class="text-gray-400 mb-4">The hardening knobs above also have function equivalents that override the env-driven default at runtime — useful when a single action needs a different limit, or when test setup needs to flip the gate without re-reading the environment:</p>
         <pre data-filename="config/application.sl"><code class="language-soli text-sm"># Trust X-Forwarded-* only behind a trusted proxy.
 enable_trust_proxy()
 
