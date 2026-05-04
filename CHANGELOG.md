@@ -8,15 +8,12 @@
 * **feat(dev-bar):** add hierarchical flamegraph and per-template breakdown ([0119472](https://github.com/solisoft/soli_lang/commit/0119472))
 * **feat(model):** add `includes_count` and cache preloaded relations ([28e0d23](https://github.com/solisoft/soli_lang/commit/28e0d23))
 * **feat(testing):** add `with_session` builtin and expand session-helper docs ([3cfbbb7](https://github.com/solisoft/soli_lang/commit/3cfbbb7))
-
-### Bug Fixes
-
-* **fix(dev-bar):** make panel scrollable and pin header when expanded ([3c6449a](https://github.com/solisoft/soli_lang/commit/3c6449a))
-* **fix(solidb):** make `Solidb(host, db)` construct and dispatch instance methods ([02702ce](https://github.com/solisoft/soli_lang/commit/02702ce))
-* **fix(i18n):** correct `I18n.format_currency` carry bug — rounding to total cents first prevents `9.995` from formatting as `"9,100 €"` instead of `"10,00 €"` ([bec9c30](https://github.com/solisoft/soli_lang/commit/bec9c30))
-
-### Features
-
+* **feat:** named route helpers, LiveView ticks, integration tests ([234889f](https://github.com/solisoft/soli_lang/commit/234889f))
+* **feat(lang):** add Ruby-style `begin`/`rescue` aliases for `try`/`catch` ([fd16f5e](https://github.com/solisoft/soli_lang/commit/fd16f5e))
+* **feat(dev-bar):** instrument response-producing native builtins as Fn spans ([6c71e44](https://github.com/solisoft/soli_lang/commit/6c71e44))
+* **feat(dev-bar):** hierarchical view tree, render-id pairing, root request span ([e918af6](https://github.com/solisoft/soli_lang/commit/e918af6))
+* **feat(serve):** preload public CSS/JS into in-memory cache for atomic deploys ([5103aec](https://github.com/solisoft/soli_lang/commit/5103aec))
+* **feat(deploy):** add local rsync mode + read api key from env ([63efd30](https://github.com/solisoft/soli_lang/commit/63efd30))
 * **feat(lang):** add `url_encode(value)` and `url_decode(string)` builtins — strict RFC 3986 component encoding on the way out, form-style decode (`+` → space, `%xx` → byte) on the way in
 * **feat(lang):** add `index_of` and `each_with_index` methods on arrays ([efa42a5](https://github.com/solisoft/soli_lang/commit/efa42a5))
 * **feat(test):** per-worker progress UI and smart --jobs default ([932ebb8](https://github.com/solisoft/soli_lang/commit/932ebb8))
@@ -40,6 +37,13 @@
 * **feat(serve):** conditional-GET revalidation on `render()` HTML responses with ETag support
 * **feat(model):** `instance.save(hash?)` and `instance.update(hash?)` accept bulk-attribute hash
 
+### Bug Fixes
+
+* **fix(parser):** parse `|params|` in trailing brace blocks ([be792eb](https://github.com/solisoft/soli_lang/commit/be792eb))
+* **fix(dev-bar):** make panel scrollable and pin header when expanded ([3c6449a](https://github.com/solisoft/soli_lang/commit/3c6449a))
+* **fix(solidb):** make `Solidb(host, db)` construct and dispatch instance methods ([02702ce](https://github.com/solisoft/soli_lang/commit/02702ce))
+* **fix(i18n):** correct `I18n.format_currency` carry bug — rounding to total cents first prevents `9.995` from formatting as `"9,100 €"` instead of `"10,00 €"` ([bec9c30](https://github.com/solisoft/soli_lang/commit/bec9c30))
+
 ### Performance
 
 * **perf(model):** dedupe validation rule registration ([aa66cd1](https://github.com/solisoft/soli_lang/commit/aa66cd1))
@@ -48,12 +52,14 @@
 ### Tests
 
 * **test(http):** replace httpbin.org with in-process mock server — faster, non-flaky, works offline
-* **test: improved error formatting with box-drawing characters** ([41c14a6](https://github.com/solisoft/soli_lang/commit/41c14a6))
-* **test: added controller_spec tests for respond_to content negotiation** ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
-* **test: auto-display coverage when tests pass** ([9550941](https://github.com/solisoft/soli_lang/commit/9550941))
+* **test:** improved error formatting with box-drawing characters ([41c14a6](https://github.com/solisoft/soli_lang/commit/41c14a6))
+* **test:** added controller_spec tests for respond_to content negotiation ([82c61ab](https://github.com/solisoft/soli_lang/commit/82c61ab))
+* **test:** auto-display coverage when tests pass ([9550941](https://github.com/solisoft/soli_lang/commit/9550941))
 
 ### Documentation
 
+* **docs(scaffold):** rewrite generated CLAUDE.md for new-app conventions ([dfd28d5](https://github.com/solisoft/soli_lang/commit/dfd28d5))
+* **docs(www):** add dev-bar and competing-with-big-frameworks blog posts ([7d4b892](https://github.com/solisoft/soli_lang/commit/7d4b892))
 * **docs(middleware):** modernize syntax in middleware examples ([18bd5c3](https://github.com/solisoft/soli_lang/commit/18bd5c3))
 
 ## [0.80.1](https://github.com/solisoft/soli_lang/compare/0.80.0...0.80.1) (2026-04-23)
