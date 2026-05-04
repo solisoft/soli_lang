@@ -54,6 +54,15 @@ impl TypeEnvironment {
             },
         );
 
+        // puts(...) -> Void (alias for println)
+        self.functions.insert(
+            "puts".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
         // input(String?) -> String
         self.functions.insert(
             "input".to_string(),

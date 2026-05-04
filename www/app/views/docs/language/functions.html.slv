@@ -427,6 +427,28 @@ let config3 = configure(port: 443)
             <li>Unknown parameter names cause a runtime error</li>
         </ul>
 
+        <h3 class="text-lg font-semibold text-white mb-3">Ruby-Style Calls Without Parentheses</h3>
+        <p class="text-gray-400 mb-4">You can call methods on objects without parentheses, using Ruby-style syntax:</p>
+        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># With parentheses (standard)
+user.update(name: "Bob", age: 30);
+user.save();
+puts("Hello world");
+
+# Without parentheses (Ruby-style)
+user.update name: "Bob", age: 30;
+user.save;
+puts "Hello world";</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">This works for:</p>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+            <li>Method calls on objects with named arguments: <code class="text-indigo-400">obj.method arg: value</code></li>
+            <li>Method calls on objects without arguments: <code class="text-indigo-400">obj.method</code></li>
+            <li>Standalone function calls with named arguments: <code class="text-indigo-400">fn_name arg: value</code></li>
+        </ul>
+
         <h3 class="text-lg font-semibold text-white mb-3">Constructor Named Parameters</h3>
         <p class="text-gray-400 mb-4">Named parameters also work with class constructors:</p>
         <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">

@@ -252,6 +252,19 @@ print(MathUtils.max(2.0, 7.0)) # 7.0</code></pre>
   end
 end</code></pre>
 
+        <p class="text-gray-400 mb-3">
+            <code class="text-pink-400">self</code> is an alias for <code class="text-pink-400">this</code> — they refer to the same instance and are interchangeable everywhere (instance methods, constructors, <code class="text-pink-400">instance_eval</code> blocks). Pick whichever reads better; Ruby refugees can keep typing <code class="text-pink-400">self</code>.
+        </p>
+        <pre data-filename="self_alias.sl"><code class="language-soli text-sm">class User
+  new(name)
+    self.name = name        # same as this.name = name
+  end
+
+  def say_hello
+    println("Hello, " + self.name)
+  end
+end</code></pre>
+
         <p class="text-gray-400 mb-3">Inheritance with <code class="text-pink-400">super</code>.</p>
         <pre data-filename="inheritance.sl"><code class="language-soli text-sm">class Admin < User
   def say_hello

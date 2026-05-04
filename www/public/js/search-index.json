@@ -29,6 +29,21 @@
       ]
     },
     {
+      "title": "puts",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-puts",
+      "signature": "puts(value)",
+      "description": "Alias for println - prints a value to standard output with a newline",
+      "keywords": [
+        "output",
+        "console",
+        "io",
+        "display",
+        "ruby"
+      ]
+    },
+    {
       "title": "input",
       "type": "function",
       "category": "Core",

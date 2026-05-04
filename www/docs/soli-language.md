@@ -1099,9 +1099,30 @@ end
 configure();                              # Using all defaults
 configure(host: "example.com");           # Only specify host
 configure(port: 3000, debug: true);       # Named parameters in any order
-configure("example.com", port: 443);      # Mixed: positional then named
+configure("example.com", port: 443);     # Mixed: positional then named
 configure(host: "api.example.com", port: 443, debug: true);  # All named
 ```
+
+#### Ruby-Style Calls Without Parentheses
+
+You can also call methods on objects without parentheses, using Ruby-style syntax:
+
+```soli
+# With parentheses (standard)
+user.update(name: "Bob", age: 30);
+user.save();
+puts("Hello world");
+
+# Without parentheses (Ruby-style)
+user.update name: "Bob", age: 30;
+user.save;
+puts "Hello world";
+```
+
+This works for:
+- Method calls on objects with named arguments: `obj.method arg: value`
+- Method calls on objects without arguments: `obj.method`
+- Standalone function calls with named arguments: `fn_name arg: value`
 
 #### Rules
 
@@ -1701,6 +1722,22 @@ print(bob.introduce());    # "Hi, I'm Bob and I'm 25 years old. You can reach me
 
 alice.have_birthday();
 print(alice.age);          # 31
+```
+
+#### `this` and `self`
+
+`self` is an alias for `this` — they refer to the same instance and are interchangeable everywhere (instance methods, constructors, `instance_eval` blocks). Pick whichever reads better; Ruby refugees can keep typing `self`.
+
+```soli
+class User
+  new(name)
+    self.name = name        # same as this.name = name
+  end
+
+  def say_hello
+    println("Hello, " + self.name)
+  end
+end
 ```
 
 ### The `@` Sigil — Shorthand for `this.`

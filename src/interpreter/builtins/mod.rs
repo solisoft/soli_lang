@@ -147,21 +147,25 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         })),
     );
 
-    // println(...) - Same as print, alias
+    // println / puts — both print space-joined args followed by a newline.
+    fn println_impl(args: Vec<Value>) -> Result<Value, String> {
+        for (i, arg) in args.into_iter().enumerate() {
+            if i > 0 {
+                write_captured_or_stdout(" ");
+            }
+            let resolved = arg.resolve()?;
+            write_captured_or_stdout(&format!("{}", resolved));
+        }
+        write_captured_or_stdout("\n");
+        Ok(Value::Null)
+    }
     env.define(
         "println".to_string(),
-        Value::NativeFunction(NativeFunction::new("println", None, |args| {
-            for (i, arg) in args.into_iter().enumerate() {
-                if i > 0 {
-                    write_captured_or_stdout(" ");
-                }
-                // Auto-resolve futures before printing
-                let resolved = arg.resolve()?;
-                write_captured_or_stdout(&format!("{}", resolved));
-            }
-            write_captured_or_stdout("\n");
-            Ok(Value::Null)
-        })),
+        Value::NativeFunction(NativeFunction::new("println", None, println_impl)),
+    );
+    env.define(
+        "puts".to_string(),
+        Value::NativeFunction(NativeFunction::new("puts", None, println_impl)),
     );
 
     // break() - Trigger a breakpoint for debugging (opens dev page with REPL)

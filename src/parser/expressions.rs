@@ -137,6 +137,29 @@ impl Parser {
                     ));
                 }
 
+                // Command-style calls with named args: greet name: "Alice"
+                // Same-line requirement matches the positional command-call branch below
+                // and prevents swallowing `name: ...` from the next line.
+                if let TokenKind::Identifier(_) = &self.peek().kind {
+                    let next = self.peek();
+                    if next.span.line == start_span.line
+                        && self.peek_nth(1).kind == TokenKind::Colon
+                    {
+                        let arguments = self.parse_named_arguments_without_parens()?;
+                        let span = start_span.merge(&self.previous_span());
+                        return Ok(Expr::new(
+                            ExprKind::Call {
+                                callee: Box::new(Expr::new(
+                                    ExprKind::Variable(name.clone()),
+                                    start_span,
+                                )),
+                                arguments,
+                            },
+                            span,
+                        ));
+                    }
+                }
+
                 // Command-style calls: identifier followed by argument on the SAME LINE
                 // e.g., print x, print "hello", puts result
                 // Same-line requirement prevents ambiguity with multi-line bodies:
@@ -866,7 +889,8 @@ impl Parser {
             // Member access
             TokenKind::Dot => {
                 let name = self.expect_identifier()?;
-                let member_span = start_span.merge(&self.previous_span());
+                let name_span = self.previous_span();
+                let member_span = start_span.merge(&name_span);
 
                 // Check for trailing block: obj.method |params| body end
                 if self.check(&TokenKind::Pipe) {
@@ -907,6 +931,38 @@ impl Parser {
                         },
                         span,
                     ))
+                // Check for named args without parens: obj.method name: "Bob", age: 30
+                // Same-line requirement: don't swallow tokens from the next statement.
+                } else if let TokenKind::Identifier(_) = &self.peek().kind {
+                    let peeked_line = self.peek().span.line;
+                    if peeked_line == name_span.line
+                        && self.peek_nth(1).kind == TokenKind::Colon
+                    {
+                        let arguments = self.parse_named_arguments_without_parens()?;
+                        let span = start_span.merge(&self.previous_span());
+                        let member = Expr::new(
+                            ExprKind::Member {
+                                object: Box::new(left),
+                                name,
+                            },
+                            member_span,
+                        );
+                        Ok(Expr::new(
+                            ExprKind::Call {
+                                callee: Box::new(member),
+                                arguments,
+                            },
+                            span,
+                        ))
+                    } else {
+                        Ok(Expr::new(
+                            ExprKind::Member {
+                                object: Box::new(left),
+                                name,
+                            },
+                            member_span,
+                        ))
+                    }
                 // Check for trailing do block: obj.method do body end
                 } else if self.check(&TokenKind::Do) {
                     let block = self.parse_trailing_do_block()?;
@@ -1164,6 +1220,34 @@ impl Parser {
                 if !self.match_token(&TokenKind::Comma) {
                     break;
                 }
+            }
+        }
+
+        Ok(arguments)
+    }
+
+    /// Parse named arguments without parentheses, for Ruby-style method calls.
+    /// Caller must have already verified the lookahead is `Ident :`. Each iteration
+    /// requires the same shape; anything else ends the list.
+    fn parse_named_arguments_without_parens(&mut self) -> ParseResult<Vec<Argument>> {
+        let mut arguments = Vec::new();
+
+        loop {
+            let start_span = self.current_span();
+            let TokenKind::Identifier(name) = &self.peek().kind else {
+                break;
+            };
+            if self.peek_nth(1).kind != TokenKind::Colon {
+                break;
+            }
+            let name = name.clone();
+            self.advance(); // identifier
+            self.advance(); // colon
+            let value = self.expression()?;
+            let span = start_span.merge(&value.span);
+            arguments.push(Argument::Named(NamedArgument { name, value, span }));
+            if !self.match_token(&TokenKind::Comma) {
+                break;
             }
         }
 
