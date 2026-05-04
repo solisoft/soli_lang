@@ -42,25 +42,28 @@ deleted = Post.only_deleted.all</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Scopes</h2>
-    <p class="text-gray-400 mb-6">Define reusable query scopes in your model class to encapsulate common filters:</p>
+    <p class="text-gray-400 mb-6">Define reusable query scopes in your model class. The closure receives a fresh <code>QueryBuilder</code> and returns a (possibly refined) <code>QueryBuilder</code>; accessing the scope name on the class invokes the closure.</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">class User < Model
-  scope("active", "active = @a", { "a": true })
-  scope("recent", "1 = 1", {})  # no filter, just for chaining
+            <pre><code class="language-soli text-sm">class User &lt; Model
+  scope("active", fn(qb) { qb.where({ "active": true }) })
+  scope("recent", fn(qb) { qb.order("created_at", "desc").limit(10) })
 end
 
-# Use scopes
-active = User.scope("active").all
-recent = User.scope("active").limit(10).all</code></pre>
+# Use scopes — `User.active` invokes the closure and returns a QueryBuilder:
+let active_users = User.active.all
+let top_ten     = User.recent.where({ "verified": true }).all
+
+# Scopes compose:
+let recent_active = User.active.recent.all</code></pre>
         </div>
     </div>
 
     <div class="my-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-12">
         <p class="text-green-300 text-sm">
-            <strong>Chainable:</strong> Scopes return a query builder, so you can chain them with <code>.where()</code>, <code>.order()</code>, <code>.limit()</code>, <code>.includes()</code>, and any other query builder method.
+            <strong>Chainable:</strong> Each scope returns a <code>QueryBuilder</code>, so you can chain with <code>.where()</code>, <code>.order()</code>, <code>.limit()</code>, <code>.includes()</code>, and any other query-builder method — and chain scopes together (<code>User.active.recent</code>).
         </p>
     </div>
 

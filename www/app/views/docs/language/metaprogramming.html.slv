@@ -199,20 +199,94 @@ foo2.greet()  # => "Hello!"</code></pre>
             <p class="text-gray-400 text-sm mb-3">
                 Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code>:
             </p>
-            <pre><code class="language-rust text-sm">// define_method adds to Class.methods (now using RefCell for interior mutability)
-// The Function comes from a lambda passed as argument
-// Methods are stored in the class's methods HashMap
-
-// Note: Class-level define_method (Foo.define_method) is not yet implemented</code></pre>
+            <pre><code class="language-rust text-sm">// define_method writes to Class.methods (RefCell for interior mutability).
+// Class-level form (Foo.define_method) is supported alongside the
+// instance-level form (foo.define_method).
+//
+// For primitive-tagged classes (Int, Float, String, Array, Hash, etc.)
+// writes are routed to a per-type user-method overlay instead, since
+// primitive dispatch in member.rs / vm.rs does not consult Class.methods.
+// See `src/interpreter/executor/calls/user_methods.rs`.</code></pre>
         </div>
     </section>
-inst.class.methods.insert(method_name, function_rc);
 
-// Class/static method:
-class.methods.insert(method_name, function_rc);
+    <!-- Extending primitive types -->
+    <section id="section-extend-primitives" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Extending primitive types
+        </h2>
 
-// Important: Invalidate the all_methods_cache when adding methods
-// See Class::ensure_methods_cached() - it rebuilds lazily on next access</code></pre>
+        <p class="text-gray-400 mb-4">
+            <code class="text-pink-400">Int</code>, <code class="text-pink-400">Float</code>, <code class="text-pink-400">Bool</code>, <code class="text-pink-400">Decimal</code>, <code class="text-pink-400">String</code>, <code class="text-pink-400">Array</code>, <code class="text-pink-400">Hash</code>, <code class="text-pink-400">Symbol</code>, and <code class="text-pink-400">Null</code> can be reopened with <code class="text-pink-400">define_method</code> / <code class="text-pink-400">alias_method</code>. User methods are checked before built-ins and shadow them on collision.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">Int.define_method("doubled", fn() { this * 2 })
+Int.define_method("times_n", fn(n) { this * n })
+
+3.doubled        # => 6   (zero-arg auto-invokes without parens)
+3.doubled()      # => 6
+4.times_n(5)     # => 20
+
+String.define_method("shout", fn() { this + "!!!" })
+"hi".shout()     # => "hi!!!"
+
+Array.define_method("second", fn() { this[1] })
+[10, 20, 30].second()   # => 20
+
+# alias_method works intra-type:
+String.define_method("yell", fn() { this + "!" })
+String.alias_method("shout", "yell")</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Precedence and performance</h3>
+            <p class="text-gray-400 text-sm mb-3">
+                Lookup order on a primitive value: user methods → built-in methods → (for Hash) literal hash-key fallback. A user method on Hash shadows the literal-key access, matching Ruby's monkey-patching semantics.
+            </p>
+            <p class="text-gray-400 text-sm">
+                Dispatch is gated by a single Relaxed atomic load. When no user methods have been registered for any primitive type, every call short-circuits in one cycle — no measurable overhead on the hot path. Storage is <code class="text-pink-400">thread_local!</code>; each worker thread registers its own copy when models load.
+            </p>
+        </div>
+    </section>
+
+    <!-- Named scopes -->
+    <section id="section-scope" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10m0 0l4-4m-4 4l4 4M20 17V7m0 0l-4 4m4-4l-4-4" />
+                </svg>
+            </span>
+            Named scopes: scope(name, fn)
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            <code class="text-pink-400">scope</code> is a class-body DSL — same shape as <code class="text-pink-400">validates</code>, <code class="text-pink-400">has_many</code>, <code class="text-pink-400">before_save</code>. The class is auto-prepended to the call, so your code reads naturally.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">class Post &lt; Model
+  scope("published", fn(qb) { qb.where({ "status": "published" }) })
+  scope("recent",    fn(qb) { qb.order("created_at", "desc").limit(10) })
+end
+
+# Accessing the scope name returns a QueryBuilder:
+let posts = Post.published.where({ "author_id": 42 }).all</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
+            <p class="text-gray-400 text-sm">
+                The closure receives a fresh <code class="text-pink-400">QueryBuilder</code> for the model and returns a (possibly refined) <code class="text-pink-400">QueryBuilder</code>. Scope storage is per-thread (<code class="text-pink-400">Rc&lt;Function&gt;</code> is <code class="text-pink-400">!Send</code> and can't go in the process-global <code class="text-pink-400">MODEL_REGISTRY</code>); each worker registers scopes when it loads model files. See <code class="text-pink-400">src/interpreter/builtins/model/scopes.rs</code>.
+            </p>
         </div>
     </section>
 

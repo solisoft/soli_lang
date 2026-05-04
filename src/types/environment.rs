@@ -32,6 +32,17 @@ impl TypeEnvironment {
         // Built-in globals injected at request time by the server (see call_handler).
         env.define("params".to_string(), Type::Any);
 
+        // Class-object globals for primitive types — used for metaprogramming
+        // (e.g. `Int.class_eval do define_method(:double) { ... } end`). Typed
+        // as Any here so that `.method_name` access doesn't fail type-checking;
+        // the runtime resolves the actual Class object via `register_builtins`
+        // / `register_primitive_classes`.
+        for name in [
+            "Int", "Float", "Bool", "Decimal", "String", "Array", "Hash", "Null", "Symbol",
+        ] {
+            env.define(name.to_string(), Type::Any);
+        }
+
         env
     }
 
@@ -1316,6 +1327,26 @@ impl TypeEnvironment {
                     ("options".to_string(), Type::Any),
                 ],
                 return_type: Type::Future(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "get_all".to_string(),
+            MethodInfo {
+                name: "get_all".to_string(),
+                params: vec![("urls".to_string(), Type::Array(Box::new(Type::String)))],
+                return_type: Type::Array(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
+        http_class.methods.insert(
+            "get_all_json".to_string(),
+            MethodInfo {
+                name: "get_all_json".to_string(),
+                params: vec![("urls".to_string(), Type::Array(Box::new(Type::String)))],
+                return_type: Type::Array(Box::new(Type::Any)),
                 is_private: false,
                 is_static: true,
             },

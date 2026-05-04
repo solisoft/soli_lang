@@ -158,7 +158,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.transaction { }` | Execute block in a database transaction |
 | `Model.transaction("aql")` | Execute AQL in a database transaction |
 | `Model.transaction()` | Get transaction handle for manual control |
-| `Model.scope(name)` | Execute a named scope (returns QueryBuilder) |
+| `Model.<scope_name>` | Invoke a named scope declared with `scope(name, fn)` (returns QueryBuilder) |
 | `Model.with_deleted()` | Include soft-deleted records (QueryBuilder) |
 | `Model.only_deleted()` | Query only deleted records (QueryBuilder) |
 | `Model.includes(rel, ...)` | Eager load relations (returns QueryBuilder) |
@@ -761,18 +761,21 @@ write path.
 
 ## Scopes
 
-Define reusable query scopes:
+Define reusable query scopes. The closure receives a fresh `QueryBuilder` for the model and returns a (possibly refined) `QueryBuilder`. Accessing the scope name on the class invokes the closure:
 
 ```soli
-class User extends Model
-  scope("active", "active = @a", { "a": true })
-  scope("recent", "1 = 1", {})  # no filter, just for chaining
+class User < Model
+  scope("active", fn(qb) { qb.where({ "active": true }) })
+  scope("recent", fn(qb) { qb.order("created_at", "desc").limit(10) })
 end
 
-# Use scopes
-active = User.scope("active").all();
-recent = User.scope("active").limit(10).all();
+# Use scopes — `User.active` invokes the closure and returns a QueryBuilder
+# you can chain further:
+let active_users = User.active.all
+let top_ten     = User.recent.where({ "verified": true }).all
 ```
+
+Scopes compose: `User.active.recent` chains both closures' refinements. See [Metaprogramming](metaprogramming.md#named-scopes) for the underlying mechanism.
 
 ## Soft Delete
 

@@ -1602,6 +1602,30 @@ pub fn known_methods(type_name: &str) -> &'static [MethodDef] {
 
 /// Is this method a zero-arg built-in for the given receiver value?
 pub fn is_zero_arg_method(method_name: &str, receiver: &Value) -> bool {
+    use super::user_methods::{has_user_methods, lookup_user_method, PrimType};
+
+    // User-defined methods on primitives may also be zero-arg. Gated by the
+    // same atomic flag so this is a no-op when no user methods exist.
+    let user_prim = match receiver {
+        Value::Int(_) => Some(PrimType::Int),
+        Value::Float(_) => Some(PrimType::Float),
+        Value::Bool(_) => Some(PrimType::Bool),
+        Value::Null => Some(PrimType::Null),
+        Value::Decimal(_) => Some(PrimType::Decimal),
+        Value::String(_) => Some(PrimType::String),
+        Value::Symbol(_) => Some(PrimType::Symbol),
+        Value::Array(_) => Some(PrimType::Array),
+        Value::Hash(_) => Some(PrimType::Hash),
+        _ => None,
+    };
+    if let Some(t) = user_prim {
+        if has_user_methods(t) {
+            if let Some(f) = lookup_user_method(t, method_name) {
+                return f.params.is_empty();
+            }
+        }
+    }
+
     let type_name = match receiver {
         Value::Int(_) => "int",
         Value::Float(_) => "float",

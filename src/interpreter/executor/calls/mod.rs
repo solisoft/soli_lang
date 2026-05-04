@@ -12,3 +12,4 @@ mod null_methods;
 mod pipeline;
 mod query_builder_methods;
 mod string_methods;
+pub mod user_methods;

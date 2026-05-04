@@ -324,6 +324,7 @@ impl Parser {
                 "belongs_to",
                 "has_and_belongs_to_many",
                 "uploader",
+                "scope",
             ];
             // Bare class-level macros (no parentheses needed)
             let bare_class_level_names = ["soft_delete"];

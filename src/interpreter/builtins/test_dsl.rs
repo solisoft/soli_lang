@@ -439,6 +439,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         static_const_fields: HashSet::new(),
         all_methods_cache: RefCell::new(None),
         all_native_methods_cache: RefCell::new(None),
+        primitive: None,
     };
 
     let expectation_class_rc = Rc::new(expectation_class);

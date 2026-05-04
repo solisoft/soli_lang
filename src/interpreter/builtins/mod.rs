@@ -40,6 +40,7 @@ pub mod math;
 pub mod mock_http;
 pub mod model;
 pub mod named_routes;
+pub mod primitives;
 pub mod rate_limit;
 pub mod regex;
 pub mod request_helpers;
@@ -403,6 +404,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register collection classes (String, Array, Hash, Set, Range, Base64)
     collections::register_collection_classes(env);
+
+    // Register value-type primitive classes (Int, Float, Bool, Null, Decimal, Symbol)
+    primitives::register_primitive_classes(env);
 
     // Register system builtins (System.run, System.run_sync)
     system::register_system_builtins(env);

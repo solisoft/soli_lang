@@ -19,6 +19,50 @@ use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
+/// Wrap a user-defined Soli function as a NativeFunction bound to a receiver
+/// value. Used to dispatch `Int.class_eval do define_method(:foo) { ... } end`-
+/// style methods on primitive types: when `3.foo` is evaluated, the per-type
+/// accessor in this file looks up the method in the user-method overlay and
+/// returns one of these wrappers so the existing call pipeline can invoke it.
+///
+/// The wrapper builds a fresh environment parented to the function's closure,
+/// binds `this` and `self` to the receiver, binds positional args to params,
+/// then runs the body via a default `Interpreter`.
+pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) -> Value {
+    let name = format!("primitive::{}", func.name);
+    // Arity is set from the user function's param count so the auto-invoke
+    // logic (`is_zero_arg_builtin_method` / `try_auto_invoke`) treats a 0-arg
+    // user method as "callable without parens" — matching the existing builtin
+    // auto-invoke semantics for `.upcase`, `.length`, etc.
+    let arity = Some(func.params.len());
+    Value::NativeFunction(NativeFunction::new(
+        name,
+        arity,
+        move |args: Vec<Value>| -> Result<Value, String> {
+            let call_env = Environment::with_enclosing(func.closure.clone());
+            let mut env_inner = call_env;
+            env_inner.define("this".to_string(), receiver.clone());
+            env_inner.define("self".to_string(), receiver.clone());
+            for (param, value) in func.params.iter().zip(args) {
+                env_inner.define(param.name.clone(), value);
+            }
+            let env_rc = Rc::new(RefCell::new(env_inner));
+            let env_clone = env_rc.borrow().clone();
+
+            let mut interp = Interpreter::default();
+            match interp.execute_block(&func.body, env_clone) {
+                Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
+                Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
+                Ok(crate::interpreter::executor::ControlFlow::Continue) => Ok(Value::Null),
+                Ok(crate::interpreter::executor::ControlFlow::Throw(e)) => {
+                    Err(format!("Exception in user method: {}", e))
+                }
+                Err(e) => Err(format!("Error in user method: {}", e)),
+            }
+        },
+    ))
+}
+
 /// Auto-generated method on a model with `uploader(field, ...)`. Maps a
 /// member name like `attach_photo` to `(UploaderMethod::Attach, "photo")`,
 /// `photo_url` to `(UploaderMethod::Url, "photo")`, etc. Returns `None` if
@@ -1157,6 +1201,25 @@ impl Interpreter {
             }));
         }
 
+        // Named scope on a model class. Registered via `Model.add_scope` (or
+        // the `scope(...)` DSL). The scope closure takes a QueryBuilder and
+        // returns one — we hand it a fresh QB for this class.
+        if class.is_model_subclass() {
+            if let Some(scope_fn) =
+                crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
+            {
+                let collection =
+                    crate::interpreter::builtins::model::class_name_to_collection(&class.name);
+                let qb = crate::interpreter::builtins::model::query::QueryBuilder::new_with_class(
+                    class.name.clone(),
+                    collection,
+                    Rc::new(class.clone()),
+                );
+                let qb_val = Value::QueryBuilder(Rc::new(RefCell::new(qb)));
+                return Ok(bind_user_method_to_receiver(qb_val, scope_fn));
+            }
+        }
+
         // Static method access - search up superclass chain
         if let Some(method) = class.find_static_method(name) {
             return Ok(Value::Function(method));
@@ -1338,6 +1401,98 @@ impl Interpreter {
                     },
                 )));
             }
+            // Metaprogramming: define_method on a class. Primitive-tagged classes
+            // (Int, Float, etc.) route writes to the per-type USER_METHODS overlay
+            // since their dispatch in `member.rs` and the VM doesn't consult
+            // `Class.methods`. Regular classes write to `class.methods` and
+            // invalidate the flattened cache.
+            "define_method" => {
+                let class_clone = class.clone();
+                let class_name = class.name.clone();
+                let prim = class.primitive;
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "define_method",
+                    Some(2),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let method_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err("define_method expects method name as first argument"
+                                    .to_string())
+                            }
+                        };
+                        let func = match args.get(1) {
+                            Some(Value::Function(f)) => f.clone(),
+                            _ => {
+                                return Err("define_method expects a function as second argument"
+                                    .to_string())
+                            }
+                        };
+                        if let Some(prim_type) = prim {
+                            crate::interpreter::executor::calls::user_methods::register_user_method(
+                                prim_type,
+                                method_name,
+                                func,
+                            );
+                        } else {
+                            class_clone.methods.borrow_mut().insert(method_name, func);
+                            class_clone.all_methods_cache.borrow_mut().take();
+                        }
+                        let _ = class_name;
+                        Ok(Value::Null)
+                    },
+                )));
+            }
+            // Metaprogramming: alias_method on a class. Primitive aliases live
+            // intra-type in USER_METHODS; regular-class aliases copy within
+            // `class.methods`.
+            "alias_method" => {
+                let class_clone = class.clone();
+                let prim = class.primitive;
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    "alias_method",
+                    Some(2),
+                    move |args: Vec<Value>| -> Result<Value, String> {
+                        let new_name = match args.first() {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "alias_method expects new name as first argument".to_string()
+                                )
+                            }
+                        };
+                        let old_name = match args.get(1) {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone(),
+                            _ => {
+                                return Err(
+                                    "alias_method expects old name as second argument".to_string()
+                                )
+                            }
+                        };
+                        if let Some(prim_type) = prim {
+                            if crate::interpreter::executor::calls::user_methods::alias_user_method(
+                                prim_type, new_name, &old_name,
+                            ) {
+                                Ok(Value::Null)
+                            } else {
+                                Err(format!("alias_method: method '{}' not found", old_name))
+                            }
+                        } else {
+                            let old_method = class_clone.methods.borrow().get(&old_name).cloned();
+                            if let Some(method) = old_method {
+                                class_clone.methods.borrow_mut().insert(new_name, method);
+                                class_clone.all_methods_cache.borrow_mut().take();
+                                Ok(Value::Null)
+                            } else {
+                                Err(format!("alias_method: method '{}' not found", old_name))
+                            }
+                        }
+                    },
+                )));
+            }
             // Metaprogramming: class_eval - execute block with self bound to class
             // Usage: MyClass.class_eval { self.some_method }
             "class_eval" => {
@@ -1484,6 +1639,14 @@ impl Interpreter {
     }
 
     fn array_member_access(&self, name: &str, span: Span, obj_val: Value) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Array) {
+            if let Some(f) = lookup_user_method(PrimType::Array, name) {
+                return Ok(bind_user_method_to_receiver(obj_val, f));
+            }
+        }
         // Universal methods
         match name {
             "class" => return Ok(Value::String("array".to_string())),
@@ -1530,6 +1693,18 @@ impl Interpreter {
         _span: Span,
         obj_val: Value,
     ) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        // User-defined methods on Hash win over both builtins and the
+        // hash-key fallback (i.e. `h.foo` first checks user methods, then
+        // builtin methods, then the literal key "foo"). This matches Ruby's
+        // monkey-patching precedence.
+        if has_user_methods(PrimType::Hash) {
+            if let Some(f) = lookup_user_method(PrimType::Hash, name) {
+                return Ok(bind_user_method_to_receiver(obj_val, f));
+            }
+        }
         // Universal methods
         match name {
             "class" => return Ok(Value::String("hash".to_string())),
@@ -1611,6 +1786,14 @@ impl Interpreter {
     }
 
     fn string_member_access(&self, name: &str, span: Span, obj_val: Value) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::String) {
+            if let Some(f) = lookup_user_method(PrimType::String, name) {
+                return Ok(bind_user_method_to_receiver(obj_val, f));
+            }
+        }
         // Handle string methods and properties
         match name {
             // Universal methods
@@ -1663,6 +1846,17 @@ impl Interpreter {
     }
 
     fn int_member_access(n: i64, name: &str, span: Span) -> RuntimeResult<Value> {
+        // User-defined methods registered via `Int.class_eval { define_method ... }`
+        // win over builtins. Gated by an atomic bit so this is a no-op when no
+        // user methods exist anywhere in the process.
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Int) {
+            if let Some(f) = lookup_user_method(PrimType::Int, name) {
+                return Ok(bind_user_method_to_receiver(Value::Int(n), f));
+            }
+        }
         match name {
             // Zero-arg methods (return value directly)
             "class" => Ok(Value::String("int".to_string())),
@@ -1711,6 +1905,14 @@ impl Interpreter {
     }
 
     fn float_member_access(n: f64, name: &str, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Float) {
+            if let Some(f) = lookup_user_method(PrimType::Float, name) {
+                return Ok(bind_user_method_to_receiver(Value::Float(n), f));
+            }
+        }
         match name {
             // Zero-arg methods (returned directly)
             "class" => Ok(Value::String("float".to_string())),
@@ -1753,6 +1955,14 @@ impl Interpreter {
     }
 
     fn bool_member_access(b: bool, name: &str, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Bool) {
+            if let Some(f) = lookup_user_method(PrimType::Bool, name) {
+                return Ok(bind_user_method_to_receiver(Value::Bool(b), f));
+            }
+        }
         match name {
             "class" => Ok(Value::String("bool".to_string())),
             "nil?" => Ok(Value::Bool(false)),
@@ -1775,6 +1985,14 @@ impl Interpreter {
     }
 
     fn null_member_access(name: &str, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Null) {
+            if let Some(f) = lookup_user_method(PrimType::Null, name) {
+                return Ok(bind_user_method_to_receiver(Value::Null, f));
+            }
+        }
         match name {
             "class" => Ok(Value::String("null".to_string())),
             "nil?" => Ok(Value::Bool(true)),
@@ -1799,6 +2017,17 @@ impl Interpreter {
     }
 
     fn symbol_member_access(s: &str, name: &str, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Symbol) {
+            if let Some(f) = lookup_user_method(PrimType::Symbol, name) {
+                return Ok(bind_user_method_to_receiver(
+                    Value::Symbol(s.to_string()),
+                    f,
+                ));
+            }
+        }
         match name {
             "class" => Ok(Value::String("symbol".to_string())),
             "nil?" => Ok(Value::Bool(false)),
@@ -1823,6 +2052,14 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        if has_user_methods(PrimType::Decimal) {
+            if let Some(f) = lookup_user_method(PrimType::Decimal, name) {
+                return Ok(bind_user_method_to_receiver(Value::Decimal(d.clone()), f));
+            }
+        }
         use rust_decimal::prelude::*;
         let val = d.0;
         match name {

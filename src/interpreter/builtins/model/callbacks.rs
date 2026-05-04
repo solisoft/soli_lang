@@ -1,6 +1,39 @@
 //! Lifecycle callbacks for models.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::interpreter::value::Function;
+
 use super::core::MODEL_REGISTRY;
+
+// Closure-based callbacks. Stored thread-local because Rc<Function> is !Send
+// and the global MODEL_REGISTRY (a RwLock) requires Send+Sync contents. Each
+// worker populates this independently. Keyed by (class_name, event_name).
+type ClosureCallbackMap = HashMap<(String, String), Vec<Rc<Function>>>;
+thread_local! {
+    static CALLBACK_CLOSURES: RefCell<ClosureCallbackMap> = RefCell::new(HashMap::new());
+}
+
+pub fn register_callback_fn(class_name: &str, event: &str, func: Rc<Function>) {
+    CALLBACK_CLOSURES.with(|c| {
+        c.borrow_mut()
+            .entry((class_name.to_string(), event.to_string()))
+            .or_default()
+            .push(func);
+    });
+}
+
+/// Get all closure-based callbacks for a (class, event) pair. Empty if none.
+pub fn closure_callbacks_for(class_name: &str, event: &str) -> Vec<Rc<Function>> {
+    CALLBACK_CLOSURES.with(|c| {
+        c.borrow()
+            .get(&(class_name.to_string(), event.to_string()))
+            .cloned()
+            .unwrap_or_default()
+    })
+}
 
 /// Lifecycle callbacks for a model.
 #[derive(Debug, Clone, Default)]

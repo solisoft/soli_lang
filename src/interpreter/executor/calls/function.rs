@@ -13,6 +13,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Check whether any closure-based callbacks are registered for any of `events`
+/// on `class_name`. Used to decide whether to enter the after-callback block
+/// even when no method-name callbacks exist.
+fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
+    events.iter().any(|ev| {
+        !crate::interpreter::builtins::model::callbacks::closure_callbacks_for(class_name, ev)
+            .is_empty()
+    })
+}
+
 impl Interpreter {
     /// Evaluate a function call expression.
     pub(crate) fn evaluate_call(
@@ -170,7 +180,14 @@ impl Interpreter {
                 .cloned()
                 .collect()
         };
-        if callback_names.is_empty() {
+        let before_events: &[&str] = if method_name == "create" {
+            &["before_save", "before_create"]
+        } else {
+            &["before_save", "before_update"]
+        };
+        // If neither method-name callbacks nor closure callbacks are
+        // registered, fall through to normal dispatch (no-op interception).
+        if callback_names.is_empty() && !has_closure_callbacks(&class.name, before_events) {
             return Ok(None);
         }
 
@@ -226,6 +243,33 @@ impl Interpreter {
             self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
         }
 
+        // Closure-based callbacks registered via `Model.add_callback`.
+        // Mirrors the method-name callback ordering above.
+        for ev in before_events {
+            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
+                &class.name,
+                ev,
+            ) {
+                let mut bound_env = Environment::with_enclosing(closure.closure.clone());
+                bound_env.define("this".to_string(), Value::Instance(inst_rc.clone()));
+                bound_env.define("self".to_string(), Value::Instance(inst_rc.clone()));
+                let bound = crate::interpreter::value::Function {
+                    name: closure.name.clone(),
+                    params: closure.params.clone(),
+                    body: closure.body.clone(),
+                    closure: Rc::new(RefCell::new(bound_env)),
+                    is_method: true,
+                    span: closure.span,
+                    source_path: closure.source_path.clone(),
+                    defining_superclass: None,
+                    return_type: closure.return_type.clone(),
+                    cached_env: RefCell::new(None),
+                    jit_cache: RefCell::new(None),
+                };
+                self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+            }
+        }
+
         // Copy the instance's fields back into a new hash — preserving any
         // extra fields callbacks added, and picking up the mutations.
         let inst_ref = inst_rc.borrow();
@@ -262,7 +306,12 @@ impl Interpreter {
                 .cloned()
                 .collect()
         };
-        if !after_names.is_empty() {
+        let after_events: &[&str] = if method_name == "create" {
+            &["after_create", "after_save"]
+        } else {
+            &["after_update", "after_save"]
+        };
+        if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
             if let Value::Hash(result_hash) = &result {
                 let valid = result_hash
                     .borrow()
@@ -298,6 +347,39 @@ impl Interpreter {
                                 Vec::new(),
                                 span,
                             )?;
+                        }
+                        // Closure-based after callbacks.
+                        for ev in after_events {
+                            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(&class.name, ev) {
+                                let mut bound_env =
+                                    Environment::with_enclosing(closure.closure.clone());
+                                bound_env.define(
+                                    "this".to_string(),
+                                    Value::Instance(inst.clone()),
+                                );
+                                bound_env.define(
+                                    "self".to_string(),
+                                    Value::Instance(inst.clone()),
+                                );
+                                let bound = crate::interpreter::value::Function {
+                                    name: closure.name.clone(),
+                                    params: closure.params.clone(),
+                                    body: closure.body.clone(),
+                                    closure: Rc::new(RefCell::new(bound_env)),
+                                    is_method: true,
+                                    span: closure.span,
+                                    source_path: closure.source_path.clone(),
+                                    defining_superclass: None,
+                                    return_type: closure.return_type.clone(),
+                                    cached_env: RefCell::new(None),
+                                    jit_cache: RefCell::new(None),
+                                };
+                                self.call_value(
+                                    Value::Function(Rc::new(bound)),
+                                    Vec::new(),
+                                    span,
+                                )?;
+                            }
                         }
                     }
                 }

@@ -1868,11 +1868,42 @@ impl Model {
             })),
         );
 
-        // Model.scope(name, query_fn) - Register named scope (stores on class)
+        // Model.scope(name, query_fn) - Register a named scope on the model.
+        //
+        // In a class body the class is auto-prepended as args[0] (see
+        // execute_class in `executor/statements.rs`), so user code reads
+        // naturally as Ruby:
+        //
+        //   class User < Model
+        //     scope :published, fn(qb) { qb.where({ "status": "published" }) }
+        //   end
+        //
+        // The closure receives a fresh QueryBuilder for the model and should
+        // return a (possibly refined) QueryBuilder. Accessing `User.published`
+        // invokes the closure (see scope dispatch in
+        // `executor/access/member.rs`).
         native_static_methods.insert(
             "scope".to_string(),
-            Rc::new(NativeFunction::new("Model.scope", Some(3), |_args| {
-                // Scopes are a more advanced feature — just register for now
+            Rc::new(NativeFunction::new("Model.scope", Some(3), |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let name = match args.get(1) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::Symbol(s)) => s.clone(),
+                    _ => {
+                        return Err(
+                            "scope(name, fn) expects a string or symbol scope name".to_string()
+                        )
+                    }
+                };
+                let func = match args.get(2) {
+                    Some(Value::Function(f)) => f.clone(),
+                    _ => {
+                        return Err(
+                            "scope(name, fn) expects a function as second argument".to_string()
+                        )
+                    }
+                };
+                super::scopes::register_scope(&class_name, &name, func);
                 Ok(Value::Null)
             })),
         );
@@ -2808,6 +2839,37 @@ pub fn register_model_builtins(env: &mut Environment) {
             let mut metadata = get_or_create_metadata(&class_name);
             metadata.soft_delete = true;
             update_metadata(&class_name, metadata);
+            Ok(Value::Null)
+        })),
+    );
+
+    // scope(name, fn) - Register a named scope on a model. The class is
+    // auto-prepended in class bodies (see `executor/statements.rs`), so user
+    // code reads naturally:
+    //
+    //   class User < Model
+    //     scope :published, fn(qb) { qb.where({ "status": "published" }) }
+    //   end
+    //
+    // Calling `User.published` invokes the closure with a fresh QueryBuilder.
+    env.define(
+        "scope".to_string(),
+        Value::NativeFunction(NativeFunction::new("scope", Some(3), |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let name = match args.get(1) {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Symbol(s)) => s.clone(),
+                _ => {
+                    return Err("scope(name, fn) expects a string or symbol scope name".to_string())
+                }
+            };
+            let func = match args.get(2) {
+                Some(Value::Function(f)) => f.clone(),
+                _ => {
+                    return Err("scope(name, fn) expects a function as second argument".to_string())
+                }
+            };
+            super::scopes::register_scope(&class_name, &name, func);
             Ok(Value::Null)
         })),
     );

@@ -19,6 +19,7 @@ pub fn register_array_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
+        primitive: Some(crate::interpreter::value::PrimType::Array),
         ..Default::default()
     });
 
@@ -614,6 +615,7 @@ pub fn register_array_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
+        primitive: Some(crate::interpreter::value::PrimType::Array),
         ..Default::default()
     };
 

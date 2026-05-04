@@ -257,6 +257,7 @@ pub mod query;
 pub mod query_log;
 mod registry;
 pub mod relations;
+pub mod scopes;
 pub mod uploaders;
 pub mod validation;
 

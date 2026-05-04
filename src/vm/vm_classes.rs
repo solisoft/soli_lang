@@ -17,6 +17,32 @@ impl Vm {
         name: &str,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // User-defined methods on primitives win over builtins. Gated by a
+        // single Relaxed atomic load: zero overhead when no user methods
+        // have ever been registered.
+        use crate::interpreter::executor::access::member::bind_user_method_to_receiver;
+        use crate::interpreter::executor::calls::user_methods::{
+            has_user_methods, lookup_user_method, PrimType,
+        };
+        let prim = match object {
+            Value::Int(_) => Some(PrimType::Int),
+            Value::Float(_) => Some(PrimType::Float),
+            Value::Bool(_) => Some(PrimType::Bool),
+            Value::Null => Some(PrimType::Null),
+            Value::Decimal(_) => Some(PrimType::Decimal),
+            Value::String(_) => Some(PrimType::String),
+            Value::Array(_) => Some(PrimType::Array),
+            Value::Hash(_) => Some(PrimType::Hash),
+            Value::Symbol(_) => Some(PrimType::Symbol),
+            _ => None,
+        };
+        if let Some(t) = prim {
+            if has_user_methods(t) {
+                if let Some(f) = lookup_user_method(t, name) {
+                    return Ok(bind_user_method_to_receiver(object.clone(), f));
+                }
+            }
+        }
         match object {
             Value::Instance(inst) => {
                 let inst = inst.borrow();

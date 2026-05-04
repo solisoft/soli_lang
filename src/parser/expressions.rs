@@ -357,6 +357,29 @@ impl Parser {
                 start_span,
             )),
 
+            // Primitive type keywords (Int, Float, Bool, Decimal, String) double
+            // as expressions referencing the registered class globals, so users
+            // can do `Int.class_eval do define_method(:double) { ... } end` or
+            // call class methods on them. `Void` is intentionally excluded —
+            // it's a return-type marker, not a runtime value.
+            TokenKind::Int => Ok(Expr::new(ExprKind::Variable("Int".to_string()), start_span)),
+            TokenKind::Float => Ok(Expr::new(
+                ExprKind::Variable("Float".to_string()),
+                start_span,
+            )),
+            TokenKind::Bool => Ok(Expr::new(
+                ExprKind::Variable("Bool".to_string()),
+                start_span,
+            )),
+            TokenKind::Decimal => Ok(Expr::new(
+                ExprKind::Variable("Decimal".to_string()),
+                start_span,
+            )),
+            TokenKind::String => Ok(Expr::new(
+                ExprKind::Variable("String".to_string()),
+                start_span,
+            )),
+
             _ => Err(ParserError::unexpected_token(
                 "expression",
                 format!("{}", token.kind),

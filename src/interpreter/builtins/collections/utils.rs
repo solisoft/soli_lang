@@ -37,6 +37,7 @@ fn register_string_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
+        primitive: Some(crate::interpreter::value::PrimType::String),
         ..Default::default()
     });
 
@@ -496,6 +497,7 @@ fn register_string_class(env: &mut Environment) {
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
+        primitive: Some(crate::interpreter::value::PrimType::String),
         ..Default::default()
     };
 

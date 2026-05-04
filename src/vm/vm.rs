@@ -528,6 +528,47 @@ impl Vm {
                     // the entire execution of this frame. We never mutate constants.
                     let name: &str = unsafe { &*name };
 
+                    // User-method fast-path guard: gate on the per-type bit in
+                    // USER_METHOD_FLAGS. Zero overhead when no user methods exist.
+                    use crate::interpreter::executor::calls::user_methods::{
+                        has_user_methods as _has_um, lookup_user_method as _lookup_um, PrimType,
+                    };
+                    let user_prim = if _has_um(PrimType::Int)
+                        || _has_um(PrimType::Float)
+                        || _has_um(PrimType::Bool)
+                        || _has_um(PrimType::Null)
+                        || _has_um(PrimType::Decimal)
+                        || _has_um(PrimType::String)
+                        || _has_um(PrimType::Array)
+                        || _has_um(PrimType::Hash)
+                        || _has_um(PrimType::Symbol)
+                    {
+                        match &self.stack[receiver_idx] {
+                            Value::Int(_) => Some(PrimType::Int),
+                            Value::Float(_) => Some(PrimType::Float),
+                            Value::Bool(_) => Some(PrimType::Bool),
+                            Value::Null => Some(PrimType::Null),
+                            Value::Decimal(_) => Some(PrimType::Decimal),
+                            Value::String(_) => Some(PrimType::String),
+                            Value::Array(_) => Some(PrimType::Array),
+                            Value::Hash(_) => Some(PrimType::Hash),
+                            Value::Symbol(_) => Some(PrimType::Symbol),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(t) = user_prim {
+                        if let Some(f) = _lookup_um(t, name) {
+                            let span = self.current_span();
+                            let object = self.stack[receiver_idx].clone();
+                            let bound = crate::interpreter::executor::access::member::bind_user_method_to_receiver(object, f);
+                            self.stack[receiver_idx] = bound;
+                            self.call_value(argc, span)?;
+                            continue;
+                        }
+                    }
+
                     // Fast path: dispatch on receiver type without cloning
                     match &self.stack[receiver_idx] {
                         Value::String(_) => {

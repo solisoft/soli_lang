@@ -966,6 +966,26 @@ pub enum ArrayMethodKind {
     Each,
 }
 
+/// Tag identifying one of Soli's primitive types. Used on `Class.primitive`
+/// so `class_eval` / `define_method` can route writes to the per-type user-method
+/// overlay (`executor::calls::user_methods::USER_METHODS`) instead of the
+/// `Class.methods` map, which is irrelevant for primitive dispatch.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PrimType {
+    Int = 0,
+    Float = 1,
+    Bool = 2,
+    Null = 3,
+    Decimal = 4,
+    String = 5,
+    Array = 6,
+    Hash = 7,
+    Symbol = 8,
+}
+
+pub const PRIM_TYPE_COUNT: usize = 9;
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -992,6 +1012,11 @@ pub struct Class {
     /// Flattened native method cache for O(1) lookups.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>>>>,
+    /// `Some` when this Class represents a Soli primitive type (Int, Float, etc.).
+    /// `class_eval` / `define_method` on a primitive-tagged class route writes
+    /// to the per-type user-method overlay rather than `methods`, since primitive
+    /// dispatch in `member.rs` and the VM does not consult `Class.methods`.
+    pub primitive: Option<PrimType>,
 }
 
 impl Default for Class {
@@ -1011,6 +1036,7 @@ impl Default for Class {
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
+            primitive: None,
         }
     }
 }
@@ -1045,6 +1071,7 @@ impl Class {
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
+            primitive: None,
         }
     }
 

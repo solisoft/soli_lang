@@ -1,12 +1,71 @@
 //! Validation types and execution logic.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::value::{HashKey, HashPairs, Value};
+use crate::interpreter::environment::Environment;
+use crate::interpreter::executor::{ControlFlow, Interpreter};
+use crate::interpreter::value::{Function, HashKey, HashPairs, Value};
 
 use super::core::{class_name_to_collection, MODEL_REGISTRY};
 use super::crud::exec_with_auto_collection;
+
+/// A closure-based custom validator. Keyed `(class_name, field_name)`. Stored
+/// thread-local because `Rc<Function>` is `!Send` and the global
+/// `MODEL_REGISTRY` (a process-wide `RwLock`) requires `Send + Sync` contents.
+/// Each worker thread populates this registry independently when it loads the
+/// model files; the same closures are functionally equivalent across threads.
+#[derive(Clone)]
+pub struct CustomValidator {
+    pub field: String,
+    pub func: Rc<Function>,
+    /// Human-readable error message used when the closure returns false.
+    pub message: String,
+}
+
+thread_local! {
+    static CUSTOM_VALIDATORS: RefCell<HashMap<String, Vec<CustomValidator>>> =
+        RefCell::new(HashMap::new());
+}
+
+pub fn register_custom_validator(class_name: &str, validator: CustomValidator) {
+    CUSTOM_VALIDATORS.with(|c| {
+        c.borrow_mut()
+            .entry(class_name.to_string())
+            .or_default()
+            .push(validator);
+    });
+}
+
+fn custom_validators_for(class_name: &str) -> Vec<CustomValidator> {
+    CUSTOM_VALIDATORS.with(|c| c.borrow().get(class_name).cloned().unwrap_or_default())
+}
+
+/// Invoke a user closure as a validator. Receives the field value and the
+/// full record hash; returns true on pass, false on fail. Any error inside
+/// the closure short-circuits validation with that error message.
+fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Result<bool, String> {
+    let call_env = Environment::with_enclosing(func.closure.clone());
+    let mut env_inner = call_env;
+    // Bind positional params: (value), (value, record), or fewer.
+    let mut params = func.params.iter();
+    if let Some(p) = params.next() {
+        env_inner.define(p.name.clone(), field_value.clone());
+    }
+    if let Some(p) = params.next() {
+        env_inner.define(p.name.clone(), record.clone());
+    }
+    let env_rc = Rc::new(RefCell::new(env_inner));
+    let env_clone = env_rc.borrow().clone();
+    let mut interp = Interpreter::default();
+    match interp.execute_block(&func.body, env_clone) {
+        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
+        Ok(ControlFlow::Continue) => Ok(true),
+        Ok(ControlFlow::Throw(e)) => Err(format!("custom validator threw: {}", e)),
+        Err(e) => Err(format!("custom validator error: {}", e)),
+    }
+}
 
 /// A single validation rule for a field.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -241,6 +300,32 @@ pub fn run_validations(
                     ));
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // Drop the metadata read lock before invoking user closures — closures
+    // may transitively call back into MODEL_REGISTRY (e.g. a uniqueness check
+    // implemented in user code) and we must not be holding it.
+    drop(registry);
+
+    // Closure-based custom validators registered via `Model.add_validator`.
+    let custom = custom_validators_for(class_name);
+    if !custom.is_empty() {
+        // Re-borrow the data hash so we can look up field values. We dropped
+        // the original `hash` borrow when we dropped `registry`? Actually we
+        // didn't — `hash` is a borrow on `data`, not on the registry. It's
+        // still live below.
+        for v in &custom {
+            let field_value = hash
+                .iter()
+                .find(|(k, _)| matches!(k, HashKey::String(s) if s == &v.field))
+                .map(|(_, val)| val.clone())
+                .unwrap_or(Value::Null);
+            match invoke_validator(&v.func, &field_value, data) {
+                Ok(true) => {}
+                Ok(false) => errors.push(ValidationError::new(&v.field, v.message.clone())),
+                Err(e) => return Err(e),
             }
         }
     }
