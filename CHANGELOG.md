@@ -4,6 +4,7 @@
 
 ### Features
 
+* **feat(parser):** `~` shorthand for `implements`; Ruby-style classes-oop docs ([6d157bb](https://github.com/solisoft/soli_lang/commit/6d157bb))
 * **feat(dev-bar):** break down render time per middleware ([e2509af](https://github.com/solisoft/soli_lang/commit/e2509af))
 * **feat(dev-bar):** add hierarchical flamegraph and per-template breakdown ([0119472](https://github.com/solisoft/soli_lang/commit/0119472))
 * **feat(model):** add `includes_count` and cache preloaded relations ([28e0d23](https://github.com/solisoft/soli_lang/commit/28e0d23))

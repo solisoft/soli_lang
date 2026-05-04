@@ -278,7 +278,7 @@ let tax_rate: Decimal(4) = 0.0800D
 let quantity: Int = 3
 
 let subtotal: Decimal(2) = price * quantity
-let tax: Decimal(2) = round(subtotal * tax_rate, 2)
+let tax: Decimal(2) = (subtotal * tax_rate).round(2)
 let total: Decimal(2) = subtotal + tax
 
 print("Subtotal: $" + str(subtotal));   # $299.97
