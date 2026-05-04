@@ -453,6 +453,112 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
         </section>
     </section>
 
+    <!-- Parallel Processing -->
+    <section id="section-parallel" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Parallel Processing
+        </h2>
+
+        <p class="text-gray-400 mb-4">Image transforms are CPU-bound. To process several images concurrently, build a <strong class="text-white">plan</strong> with <code class="text-indigo-400">Image.plan(path)</code>, chain the same transform methods you would on a regular image, and pass an array of plans to <code class="text-indigo-400">Image.process_all(...)</code>. Each plan runs on its own thread; the call returns when every plan finishes.</p>
+
+        <p class="text-gray-400 mb-4">A plan is <em>lazy</em> — methods just record operations. Nothing decodes, transforms, or writes until you call <code class="text-indigo-400">plan.run()</code> (one plan, current thread) or <code class="text-indigo-400">Image.process_all([...])</code> (many plans, in parallel).</p>
+
+        <section id="def-image-plan" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-image-plan" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Image.plan(path)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Creates a new lazy plan that will read its source from <code class="text-amber-400">path</code> when executed.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Path to the image file (read at execution time)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">ImagePlan instance</p>
+            </div>
+        </section>
+
+        <section id="def-plan-methods" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Plan instance methods</h3>
+                <p class="text-gray-400 mb-3">A plan supports the same transform methods as <code class="text-indigo-400">Image</code>:</p>
+                <p class="text-gray-400 text-sm mb-4"><code class="text-indigo-400">resize(w, h)</code>, <code class="text-indigo-400">thumbnail(size)</code>, <code class="text-indigo-400">crop(x, y, w, h)</code>, <code class="text-indigo-400">grayscale()</code>, <code class="text-indigo-400">flip_horizontal()</code>, <code class="text-indigo-400">flip_vertical()</code>, <code class="text-indigo-400">rotate90()</code>, <code class="text-indigo-400">rotate180()</code>, <code class="text-indigo-400">rotate270()</code>, <code class="text-indigo-400">blur(sigma)</code>, <code class="text-indigo-400">brightness(n)</code>, <code class="text-indigo-400">contrast(n)</code>, <code class="text-indigo-400">invert()</code>, <code class="text-indigo-400">hue_rotate(degrees)</code>, <code class="text-indigo-400">format(fmt)</code>, <code class="text-indigo-400">quality(n)</code>.</p>
+                <p class="text-gray-400 mb-4">Each call returns a <strong class="text-white">new ImagePlan instance</strong> with the operation appended.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Plan-only methods</h4>
+                <ul class="text-sm text-gray-400 space-y-2 mb-3 list-disc pl-5">
+                    <li><code class="text-indigo-400">save_to(path)</code> — terminal; the plan will save to <code class="text-amber-400">path</code> when executed.</li>
+                    <li><code class="text-indigo-400">run()</code> — executes the plan synchronously on the current thread. Returns <code class="text-purple-400">true</code> if <code class="text-indigo-400">save_to</code> was set, otherwise an <code class="text-purple-400">Image</code> instance.</li>
+                    <li><code class="text-indigo-400">src()</code> — returns the source path.</li>
+                    <li><code class="text-indigo-400">ops_count()</code> — returns the number of recorded operations.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="def-image-process-all" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-image-process-all" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Image.process_all(plans)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Runs an array of plans in parallel (one OS thread per plan) and returns an array of results in the same order.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 mb-3 space-y-1">
+                    <div><code class="text-amber-400">plans</code> : <code class="text-purple-400">Array&lt;ImagePlan&gt;</code> - Plans to execute concurrently</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <p class="text-gray-400 text-sm mb-3">Array, where each entry is:</p>
+                <ul class="text-sm text-gray-400 space-y-1 mb-3 list-disc pl-5">
+                    <li><code class="text-purple-400">true</code> if the plan had <code class="text-indigo-400">save_to(path)</code> and the file was written</li>
+                    <li>An <code class="text-purple-400">Image</code> instance if the plan had no <code class="text-indigo-400">save_to</code></li>
+                    <li>A hash <code class="text-purple-400">{"error": "..."}</code> if that plan failed (other plans still complete)</li>
+                </ul>
+                <pre data-filename="Fan out thumbnails"><code class="language-soli text-sm"># Generate three thumbnail variants in parallel
+results = Image.process_all([
+  Image.plan("uploads/raw.jpg").thumbnail(800).save_to("public/large.jpg"),
+  Image.plan("uploads/raw.jpg").thumbnail(400).save_to("public/medium.jpg"),
+  Image.plan("uploads/raw.jpg").thumbnail(100).save_to("public/small.jpg"),
+])
+
+# results == [true, true, true] on success</code></pre>
+            </div>
+        </section>
+
+        <section class="mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Process many files</h3>
+                <pre><code class="language-soli text-sm">let plans = files.map(fn(f) {
+  Image.plan(f).resize(1200, 900).quality(80).save_to("processed/" + basename(f))
+})
+let results = Image.process_all(plans)
+
+# Inspect failures
+for r in results
+  println("error: " + r.error) if r.error != null
+end</code></pre>
+            </div>
+        </section>
+
+        <section class="mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Collect transformed images without saving</h3>
+                <pre><code class="language-soli text-sm">let images = Image.process_all([
+  Image.plan("a.jpg").grayscale(),
+  Image.plan("b.jpg").rotate90().resize(200, 200),
+])
+println(images[0].width)
+let buf = images[1].to_buffer()</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-4 text-sm text-gray-300">
+            A single chain on <code class="text-indigo-400">Image.new(...)</code> is fully synchronous and runs on one thread. Use <code class="text-indigo-400">Image.plan(...)</code> + <code class="text-indigo-400">Image.process_all([...])</code> only when you have multiple images and want them to run concurrently.
+        </div>
+    </section>
+
     <!-- Complete Examples -->
     <section id="section-examples" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

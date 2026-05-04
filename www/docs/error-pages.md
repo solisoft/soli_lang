@@ -15,6 +15,14 @@ When running in development mode, Soli displays detailed error pages that includ
 
 This helps developers quickly identify and fix bugs during development.
 
+The interactive REPL is protected with a per-server token and is limited to loopback clients by default. If you access a local development server from another machine, explicitly opt in to remote REPL access:
+
+```bash
+SOLI_DEV_REPL_ALLOW_REMOTE=1 soli serve . --dev
+```
+
+Only use this on trusted local networks. The debug page embeds the required token automatically; requests without it are rejected.
+
 ### Production Mode (`--no-dev`)
 
 In production mode, error pages are minimal and user-friendly:

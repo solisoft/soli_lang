@@ -331,6 +331,7 @@ impl Interpreter {
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
             Value::Symbol(s) => format!("\"{}\"", s),
             Value::Image(_) => "\"<Image>\"".to_string(),
+            Value::ImagePlan(_) => "\"<ImagePlan>\"".to_string(),
         }
     }
 

@@ -616,6 +616,7 @@ pub(super) fn render_dev_error_page(
         const preloadedFiles = {preloaded_sources_js};
         const currentRequestData = {request_data_json};
         const breakpointEnv = {breakpoint_env_js};
+        const devReplToken = {dev_repl_token_js};
         function showRequestTab(tabName) {{
             document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.request-tab').forEach(el => el.classList.remove('active'));
@@ -679,7 +680,7 @@ pub(super) fn render_dev_error_page(
             try {{
                 const response = await fetch('/__dev/repl', {{
                     method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
+                    headers: {{ 'Content-Type': 'application/json', 'X-Soli-Dev-Token': devReplToken }},
                     body: JSON.stringify({{ code: code, request_data: currentRequestData, breakpoint_env: breakpointEnv }})
                 }});
                 const result = await response.json();
@@ -788,6 +789,10 @@ pub(super) fn render_dev_error_page(
         stack_frames = stack_frames.join("\n"),
         request_data_json = escape_for_script_tag(request_data_json),
         breakpoint_env_js = escape_for_script_tag(breakpoint_env_json.unwrap_or("null")),
+        dev_repl_token_js = escape_for_script_tag(
+            &serde_json::to_string(super::dev_repl_auth_token())
+                .unwrap_or_else(|_| "\"\"".to_string())
+        ),
         preloaded_sources_js = escape_for_script_tag(&preloaded_sources_js),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),

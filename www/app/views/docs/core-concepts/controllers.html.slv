@@ -286,9 +286,11 @@ render_text("Not allowed", 403)</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 text-sm mb-3">Create a redirect response (302 Found) to the specified URL.</p>
+                <p class="text-gray-400 text-sm mb-3">Create a redirect response (302 Found) to a local absolute path. External URLs are rejected to prevent open redirects.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">redirect("/login")
 redirect("/posts/" + post["id"])</code></pre>
+                <p class="text-gray-400 text-sm mt-3 mb-3">Use <code class="text-indigo-400">redirect_external(url)</code> only for trusted external destinations such as OAuth providers.</p>
+                <pre data-filename="External Redirect"><code class="language-soli text-sm">redirect_external("https://github.com/login/oauth/authorize")</code></pre>
             </div>
         </section>
 

@@ -420,6 +420,16 @@ fn update(req)
 end
 ```
 
+`redirect()` only accepts local absolute paths such as `/login` or `/users/123`. This prevents accidentally turning user-controlled input into an open redirect.
+
+For trusted external destinations, use `redirect_external()` explicitly:
+
+```soli
+fn oauth_start(req)
+  redirect_external("https://github.com/login/oauth/authorize")
+end
+```
+
 ### JSON Response
 
 ```soli

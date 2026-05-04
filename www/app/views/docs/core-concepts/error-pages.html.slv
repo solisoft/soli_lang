@@ -68,6 +68,9 @@
                 <div class="mt-4 pt-4 border-t border-white/5">
                     <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve</code>
                 </div>
+                <p class="text-gray-500 text-xs mt-3">
+                    The interactive REPL is token-protected and loopback-only by default. For a trusted local server accessed from another machine, opt in with <code class="text-amber-400">SOLI_DEV_REPL_ALLOW_REMOTE=1</code>.
+                </p>
             </div>
 
             <div class="bg-white/5 rounded-xl p-6 border border-white/5">

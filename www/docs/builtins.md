@@ -1427,7 +1427,7 @@ The `Markdown` class converts Markdown text to HTML. It supports standard Markdo
 
 ### Markdown.to_html(markdown)
 
-Converts a Markdown string to HTML.
+Converts a Markdown string to HTML. Use this for trusted Markdown authored by your application or developers. It preserves raw HTML allowed by Markdown.
 
 **Parameters:**
 - `markdown` (String) - Markdown source text
@@ -1438,6 +1438,20 @@ Converts a Markdown string to HTML.
 ```soli
 html = Markdown.to_html("# Hello World")
 println(html)  # <h1>Hello World</h1>
+```
+
+### Markdown.to_safe_html(markdown)
+
+Converts a Markdown string to HTML for user-generated content. Raw HTML is escaped, and unsafe link or image URLs such as `javascript:` are neutralized.
+
+**Parameters:**
+- `markdown` (String) - Markdown source text
+
+**Returns:** String - The rendered safe HTML
+
+**Example:**
+```soli
+html = Markdown.to_safe_html(user.bio)
 ```
 
 **Supported syntax:**
@@ -1473,7 +1487,7 @@ Markdown.to_html("> This is a quote")
 ```soli
 # From a database field
 post = Post.find(1)
-html = Markdown.to_html(post.body)
+html = Markdown.to_safe_html(post.body)
 
 # With string interpolation
 title = "My Post"
@@ -4173,6 +4187,85 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
   "content_type": "image/jpeg"
 })
 ```
+
+### Parallel Processing
+
+Image transforms are CPU-bound. To process several images concurrently, build a **plan** with `Image.plan(path)`, chain the same transform methods you would on a regular image, and pass an array of plans to `Image.process_all(...)`. Each plan runs on its own thread; the call returns when every plan finishes.
+
+A plan is *lazy* — methods just record operations. Nothing decodes, transforms, or writes until you call `plan.run()` (one plan, current thread) or `Image.process_all([...])` (many plans, in parallel).
+
+#### Image.plan(path)
+
+Creates a new lazy plan that will read its source from `path` when executed.
+
+**Parameters:**
+- `path` (String) - Path to the image file (read at execution time)
+
+**Returns:** ImagePlan instance
+
+#### Plan instance methods
+
+A plan supports the same transform methods as `Image`:
+
+`resize(w, h)`, `thumbnail(size)`, `crop(x, y, w, h)`, `grayscale()`, `flip_horizontal()`, `flip_vertical()`, `rotate90()`, `rotate180()`, `rotate270()`, `blur(sigma)`, `brightness(n)`, `contrast(n)`, `invert()`, `hue_rotate(degrees)`, `format(fmt)`, `quality(n)`.
+
+Each call returns a **new ImagePlan instance** with the operation appended.
+
+Plan-only methods:
+
+- `save_to(path)` — terminal; the plan will save to `path` when executed.
+- `run()` — executes the plan synchronously on the current thread. Returns `true` if `save_to` was set, otherwise an `Image` instance.
+- `src()` — returns the source path.
+- `ops_count()` — returns the number of recorded operations.
+
+#### Image.process_all(plans)
+
+Runs an array of plans in parallel (one OS thread per plan) and returns an array of results in the same order.
+
+**Parameters:**
+- `plans` (Array of ImagePlan) - Plans to execute concurrently
+
+**Returns:** Array, where each entry is:
+- `true` if the plan had `save_to(path)` and the file was written
+- An `Image` instance if the plan had no `save_to`
+- A hash `{"error": "..."}` if that plan failed (other plans still complete)
+
+**Example — fan out thumbnails:**
+```soli
+# Generate three thumbnail variants in parallel
+results = Image.process_all([
+  Image.plan("uploads/raw.jpg").thumbnail(800).save_to("public/large.jpg"),
+  Image.plan("uploads/raw.jpg").thumbnail(400).save_to("public/medium.jpg"),
+  Image.plan("uploads/raw.jpg").thumbnail(100).save_to("public/small.jpg"),
+])
+
+# results == [true, true, true] on success
+```
+
+**Example — process many files:**
+```soli
+let plans = files.map(fn(f) {
+  Image.plan(f).resize(1200, 900).quality(80).save_to("processed/" + basename(f))
+})
+let results = Image.process_all(plans)
+
+# Inspect failures
+for r in results
+  println("error: " + r.error) if r.error != null
+end
+```
+
+**Example — collect transformed images without saving:**
+```soli
+let images = Image.process_all([
+  Image.plan("a.jpg").grayscale(),
+  Image.plan("b.jpg").rotate90().resize(200, 200),
+])
+println(images[0].width)
+let buf = images[1].to_buffer()
+```
+
+> A single chain on `Image.new(...)` is fully synchronous and runs on one thread. Use `Image.plan(...)` + `Image.process_all([...])` only when you have multiple images and want them to run concurrently.
 
 ### Complete Examples
 

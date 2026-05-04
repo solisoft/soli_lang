@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-sky-400 to-cyan-400 bg-clip-text text-transparent">Markdown Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Convert Markdown text to HTML. Render content from databases, APIs, or user input.
+            Convert Markdown text to HTML, with a safe helper for user-generated content.
         </p>
     </div>
 
@@ -35,7 +35,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Convert a Markdown string to HTML. Supports standard Markdown plus tables, strikethrough, and task lists.</p>
+                <p class="text-gray-400 mb-3">Convert a Markdown string to HTML. Supports standard Markdown plus tables, strikethrough, and task lists. Use this for trusted Markdown; raw HTML in the Markdown is preserved.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">markdown</code> : <code class="text-purple-400">String</code> - Markdown source text
@@ -46,6 +46,27 @@
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">html = Markdown.to_html("# Hello World")
 println(html)  # &lt;h1&gt;Hello World&lt;/h1&gt;</code></pre>
+            </div>
+        </section>
+
+        <section id="def-markdown-to-safe-html" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-markdown-to-safe-html" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Markdown.to_safe_html(markdown)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Convert user-generated Markdown to HTML. Raw HTML is escaped, and unsafe link or image URLs such as <code class="text-amber-400">javascript:</code> are neutralized.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">markdown</code> : <code class="text-purple-400">String</code> - Markdown source text
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - The rendered safe HTML
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">html = Markdown.to_safe_html(user.bio)</code></pre>
             </div>
         </section>
     </section>
@@ -120,7 +141,7 @@ html = Markdown.to_html(md)
                 <pre data-filename="Example"><code class="language-soli text-sm"># In a controller action
 def show(req)
   post = Post.find(req.params["id"])
-  html_body = Markdown.to_html(post.body)
+  html_body = Markdown.to_safe_html(post.body)
 
   render("posts/show", { post: post, html_body: html_body })
 end</code></pre>
@@ -232,7 +253,7 @@ end</code></pre>
             <h4 class="text-sm font-semibold text-sky-300 mb-2">When to use view files vs Markdown.to_html()</h4>
             <div class="text-sm text-gray-400 space-y-2">
                 <p>Use <strong class="text-white">.md view files</strong> for pages where the content structure is known at design time &mdash; documentation pages, about pages, static content with a few dynamic variables.</p>
-                <p>Use <strong class="text-white">Markdown.to_html()</strong> for content that comes from external sources at runtime &mdash; database fields, API responses, user-submitted text.</p>
+                <p>Use <strong class="text-white">Markdown.to_safe_html()</strong> for content that comes from users or external sources at runtime &mdash; database fields, API responses, user-submitted text.</p>
             </div>
         </div>
     </section>

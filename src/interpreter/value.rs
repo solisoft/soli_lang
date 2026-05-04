@@ -316,6 +316,8 @@ pub enum Value {
     VmClosure(Rc<VmClosure>),
     /// Image value (holds DynamicImage and metadata)
     Image(Rc<RefCell<crate::interpreter::builtins::image::ImageData>>),
+    /// Image plan value (lazy, recorded ops to be executed in parallel)
+    ImagePlan(Rc<RefCell<crate::interpreter::builtins::image::ImagePlan>>),
 }
 
 /// The type of HTTP future result
@@ -389,6 +391,7 @@ impl Value {
             Value::Super(_) => "Super".to_string(),
             Value::VmClosure(_) => "Function".to_string(),
             Value::Image(_) => "Image".to_string(),
+            Value::ImagePlan(_) => "ImagePlan".to_string(),
         }
     }
 
@@ -568,6 +571,7 @@ impl Value {
             Value::Super(_) => 7,
             Value::VmClosure(func) => func.proto.name.len() + 5,
             Value::Image(_) => 7,
+            Value::ImagePlan(_) => 11,
         }
     }
 
@@ -641,6 +645,7 @@ impl Value {
                 s.push('>');
             }
             Value::Image(_) => s.push_str("<Image>"),
+            Value::ImagePlan(_) => s.push_str("<ImagePlan>"),
         }
     }
 }
@@ -778,6 +783,10 @@ impl fmt::Display for Value {
             Value::Super(class) => write!(f, "<super of {}>", class.name),
             Value::VmClosure(c) => write!(f, "<fn {}>", c.proto.name),
             Value::Image(_) => write!(f, "<Image>"),
+            Value::ImagePlan(p) => {
+                let p = p.borrow();
+                write!(f, "<ImagePlan src=\"{}\" ops={}>", p.src, p.ops.len())
+            }
         }
     }
 }

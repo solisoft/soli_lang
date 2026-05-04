@@ -182,6 +182,12 @@ Click on any frame to see the source code.</code></pre>
             The debug page includes an interactive REPL that runs in the context of your breakpoint. You can execute any soli code to inspect and manipulate data.
         </p>
 
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mb-6">
+            <p class="text-sm text-gray-300">
+                The REPL endpoint is token-protected and accepts loopback clients by default. If your <code class="text-amber-300">*.test</code> domains point to a trusted local server on another machine, start dev mode with <code class="text-amber-300">SOLI_DEV_REPL_ALLOW_REMOTE=1</code>.
+            </p>
+        </div>
+
         <h3 class="text-xl font-semibold text-white mb-4">Available Variables</h3>
         <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
@@ -429,6 +435,9 @@ end</code></pre>
 <pre><code class="language-bash text-sm"># Start development server with hot reload
 soli serve
 
+# Allow the debug REPL from another trusted local machine
+SOLI_DEV_REPL_ALLOW_REMOTE=1 soli serve . --dev
+
 # The server will automatically reload when files change
 # Breakpoints and debug page work in this mode</code></pre>
             </div>
@@ -462,7 +471,7 @@ soli serve
                 <div>
                     <h4 class="text-red-400 font-semibold mb-1">Security Warning</h4>
                     <p class="text-sm text-gray-300">
-                        Never run in development mode in production. The debug page exposes sensitive information including request data, environment variables, and source code.
+                        Never run in development mode in production. The debug page exposes sensitive information including request data, environment variables, and source code. Only set <code>SOLI_DEV_REPL_ALLOW_REMOTE=1</code> on trusted local networks.
                     </p>
                 </div>
             </div>

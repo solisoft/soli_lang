@@ -45,7 +45,7 @@
                 <tr>
                     <td class="px-4 py-3 font-mono text-indigo-300">&lt;%- expr %&gt;</td>
                     <td class="px-4 py-3">Raw, unescaped output</td>
-                    <td class="px-4 py-3">Trusted HTML you've already produced — partials, rendered Markdown.</td>
+                    <td class="px-4 py-3">Trusted HTML you've already produced — partials, <code>Markdown.to_safe_html(...)</code> output.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 font-mono text-indigo-300">&lt;%== expr %&gt;</td>
@@ -928,7 +928,7 @@ end</code></pre>
         </h4>
         <p class="text-yellow-200/80 text-sm">
             Always use <code>h()</code> or <code>html_escape()</code> when outputting user-generated content to prevent XSS attacks. 
-            Soli escapes output in <code>&lt;%= %&gt;</code> by default, but be cautious with raw output.
+            Soli escapes output in <code>&lt;%= %&gt;</code> by default, but be cautious with raw output. For user-generated Markdown, use <code>Markdown.to_safe_html(...)</code> before rendering with <code>&lt;%- %&gt;</code>.
         </p>
     </div>
 

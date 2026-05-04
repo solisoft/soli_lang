@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
-use crate::template::markdown_to_html;
+use crate::template::{markdown_to_html, markdown_to_safe_html};
 
 /// Register the `Markdown` class with its static methods.
 pub fn register_markdown_builtins(env: &mut Environment) {
@@ -39,6 +39,28 @@ pub fn register_markdown_builtins(env: &mut Environment) {
         })),
     );
 
+    // Markdown.to_safe_html(string) -> string
+    // Converts Markdown source text to HTML, escaping raw HTML and neutralizing unsafe URLs.
+    static_methods.insert(
+        "to_safe_html".to_string(),
+        Rc::new(NativeFunction::new(
+            "Markdown.to_safe_html",
+            Some(1),
+            |args| {
+                let md = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "Markdown.to_safe_html() expects string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                Ok(Value::String(markdown_to_safe_html(&md)))
+            },
+        )),
+    );
+
     let markdown_class = Class {
         name: "Markdown".to_string(),
         native_static_methods: static_methods,
@@ -57,17 +79,25 @@ mod tests {
     use crate::interpreter::environment::Environment;
     use crate::interpreter::value::Value;
 
-    fn call_to_html(input: &str) -> Result<Value, String> {
+    fn call_markdown_method(method_name: &str, input: &str) -> Result<Value, String> {
         let mut env = Environment::new();
         register_markdown_builtins(&mut env);
 
         let class = env.get("Markdown").unwrap();
         if let Value::Class(cls) = class {
-            let method = cls.native_static_methods.get("to_html").unwrap();
+            let method = cls.native_static_methods.get(method_name).unwrap();
             (method.func)(vec![Value::String(input.to_string())])
         } else {
             panic!("Markdown is not a class");
         }
+    }
+
+    fn call_to_html(input: &str) -> Result<Value, String> {
+        call_markdown_method("to_html", input)
+    }
+
+    fn call_to_safe_html(input: &str) -> Result<Value, String> {
+        call_markdown_method("to_safe_html", input)
     }
 
     #[test]
@@ -145,6 +175,28 @@ mod tests {
         let result = call_to_html("[click](https://example.com)").unwrap();
         if let Value::String(s) = result {
             assert!(s.contains("<a href=\"https://example.com\">click</a>"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn test_safe_html_escapes_raw_html() {
+        let result = call_to_safe_html("Hello <script>alert(1)</script>").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+            assert!(!s.contains("<script>"));
+        } else {
+            panic!("expected string");
+        }
+    }
+
+    #[test]
+    fn test_safe_html_neutralizes_javascript_links() {
+        let result = call_to_safe_html("[click](javascript:alert(1))").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("<a href=\"#\">click</a>"));
+            assert!(!s.contains("javascript:"));
         } else {
             panic!("expected string");
         }

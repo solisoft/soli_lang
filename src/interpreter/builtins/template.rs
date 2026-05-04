@@ -948,6 +948,63 @@ pub fn register_static_template_helpers(env: &mut Environment) {
     );
 }
 
+fn redirect_response(location: String) -> Value {
+    let mut headers_map: HashPairs = HashPairs::default();
+    headers_map.insert(
+        HashKey::String("Location".to_string()),
+        Value::String(location),
+    );
+    let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
+
+    let mut response_map: HashPairs = HashPairs::default();
+    response_map.insert(HashKey::String("status".to_string()), Value::Int(302));
+    response_map.insert(HashKey::String("headers".to_string()), headers);
+    response_map.insert(
+        HashKey::String("body".to_string()),
+        Value::String(String::new()),
+    );
+
+    Value::Hash(Rc::new(RefCell::new(response_map)))
+}
+
+fn has_redirect_control_chars(url: &str) -> bool {
+    url.chars().any(char::is_control)
+}
+
+fn validate_local_redirect_url(url: &str) -> Result<(), String> {
+    if url.is_empty() || has_redirect_control_chars(url) {
+        return Err("redirect() expects a non-empty local path".to_string());
+    }
+    if !url.starts_with('/') || url.starts_with("//") || url.contains('\\') {
+        return Err(
+            "redirect() only accepts local absolute paths like '/dashboard'; use redirect_external() for trusted external URLs"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_external_redirect_url(url: &str) -> Result<(), String> {
+    if url.is_empty() || has_redirect_control_chars(url) {
+        return Err("redirect_external() expects a non-empty URL".to_string());
+    }
+
+    let lower = url.to_ascii_lowercase();
+    let Some(rest) = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))
+    else {
+        return Err("redirect_external() only accepts http:// or https:// URLs".to_string());
+    };
+
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return Err("redirect_external() expects an absolute URL with a host".to_string());
+    }
+
+    Ok(())
+}
+
 /// Register template-related builtin functions.
 pub fn register_template_builtins(env: &mut Environment) {
     // render(template, data, options?) - Render a template with data
@@ -1248,7 +1305,7 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
-    // redirect(url) - Create a redirect response (302 Found)
+    // redirect(path) - Create a local redirect response (302 Found)
     env.define(
         "redirect".to_string(),
         Value::NativeFunction(NativeFunction::new("redirect", Some(1), |args| {
@@ -1262,19 +1319,27 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             };
 
-            let mut headers_map: HashPairs = HashPairs::default();
-            headers_map.insert(HashKey::String("Location".to_string()), Value::String(url));
-            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
+            validate_local_redirect_url(&url)?;
+            Ok(redirect_response(url))
+        })),
+    );
 
-            let mut response_map: HashPairs = HashPairs::default();
-            response_map.insert(HashKey::String("status".to_string()), Value::Int(302));
-            response_map.insert(HashKey::String("headers".to_string()), headers);
-            response_map.insert(
-                HashKey::String("body".to_string()),
-                Value::String(String::new()),
-            );
+    // redirect_external(url) - Explicit escape hatch for trusted external redirects.
+    env.define(
+        "redirect_external".to_string(),
+        Value::NativeFunction(NativeFunction::new("redirect_external", Some(1), |args| {
+            let url = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "redirect_external() expects string URL, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
 
-            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
+            validate_external_redirect_url(&url)?;
+            Ok(redirect_response(url))
         })),
     );
 
@@ -1426,6 +1491,36 @@ mod tests {
         Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
     }
 
+    fn call_builtin(name: &str, args: Vec<Value>) -> Result<Value, String> {
+        let mut env = Environment::new();
+        register_template_builtins(&mut env);
+        let Value::NativeFunction(function) = env.get(name).unwrap() else {
+            panic!("expected native function");
+        };
+        (function.func)(args)
+    }
+
+    fn response_location(response: &Value) -> Option<String> {
+        let Value::Hash(response_hash) = response else {
+            return None;
+        };
+        let headers = response_hash
+            .borrow()
+            .get(&HashKey::String("headers".to_string()))?
+            .clone();
+        let Value::Hash(headers_hash) = headers else {
+            return None;
+        };
+        let location = headers_hash
+            .borrow()
+            .get(&HashKey::String("Location".to_string()))
+            .and_then(|value| match value {
+                Value::String(location) => Some(location.clone()),
+                _ => None,
+            });
+        location
+    }
+
     fn get_str(data: &Value, key: &str) -> Option<String> {
         let Value::Hash(h) = data else { return None };
         h.borrow()
@@ -1434,6 +1529,59 @@ mod tests {
                 Value::String(s) => Some(s.clone()),
                 _ => None,
             })
+    }
+
+    #[test]
+    fn redirect_accepts_local_absolute_path() {
+        let response = call_builtin("redirect", vec![Value::String("/dashboard".to_string())])
+            .expect("local redirect should succeed");
+
+        assert_eq!(response_location(&response).as_deref(), Some("/dashboard"));
+    }
+
+    #[test]
+    fn redirect_rejects_external_or_malformed_locations() {
+        for url in [
+            "https://example.com",
+            "http://example.com",
+            "//example.com",
+            "dashboard",
+            "/\\evil.com",
+            "/ok\r\nX-Injected: yes",
+        ] {
+            let err = call_builtin("redirect", vec![Value::String(url.to_string())])
+                .expect_err("redirect should reject unsafe location");
+            assert!(
+                err.contains("local") || err.contains("non-empty"),
+                "unexpected error for {url:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn redirect_external_requires_explicit_http_url() {
+        let response = call_builtin(
+            "redirect_external",
+            vec![Value::String("https://example.com/login".to_string())],
+        )
+        .expect("external redirect should succeed");
+
+        assert_eq!(
+            response_location(&response).as_deref(),
+            Some("https://example.com/login")
+        );
+
+        for url in [
+            "javascript:alert(1)",
+            "//example.com",
+            "https://",
+            "https://user@example.com",
+        ] {
+            assert!(
+                call_builtin("redirect_external", vec![Value::String(url.to_string())]).is_err(),
+                "expected redirect_external to reject {url:?}"
+            );
+        }
     }
 
     #[test]
