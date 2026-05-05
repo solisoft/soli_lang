@@ -70,17 +70,34 @@ user = User.find("user123");
 # Find all
 users = User.all();
 
-# Find with where clause (SDBQL filter syntax)
-# Note: where() returns a QueryBuilder - call .all() to get results
-adults = User.where("doc.age >= @age", { "age": 18 }).all();
-active = User.where("doc.status == @status", { "status": "active" }).all();
+# Find with where clause — Hash form (recommended for user input)
+# Each key is validated as an AQL identifier and values flow through
+# bind parameters, so attacker-controlled values can never reach the
+# query template. Equality semantics: every pair joins with AND.
+admins = User.where({ "role": "admin", "active": true }).all();
+alice  = User.where({ "email": "alice@example.com" }).first();
 
-# Complex conditions
+# Find with where clause — string form (developer-trusted only)
+# Use this when you need operators (>=, IN, etc.) or boolean expressions.
+# The string MUST NOT come from untrusted input — see Security note below.
+adults = User.where("doc.age >= @age", { "age": 18 }).all();
 results = User.where("doc.age >= @min_age AND doc.role == @role", {
   "min_age": 21,
   "role": "admin"
 }).all();
 ```
+
+> **Security — `where(...)` filter forms.** The Hash form
+> (`where({field: value, ...})`) is safe for user input: keys are
+> validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers and values are
+> bound, so nothing from `req["params"]` can become AQL syntax. The
+> string form (`where("doc.foo == @foo", {...})`) splices the filter
+> argument verbatim into the AQL FILTER clause — treat it as
+> developer-trusted only, like a `format!()` template. Building a
+> filter string from request data **will leak full AQL injection**.
+> When the operators you need go beyond equality, prefer composing
+> small string-form clauses around literal strings rather than
+> concatenating user input into them.
 
 ### Updating Records
 
@@ -148,7 +165,8 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.find_by(field, value)` | Find first record by field value. Returns `null` when missing. |
 | `Model.first_by(field, value)` | Find first record by field with ordering |
 | `Model.find_or_create_by(field, value, data?)` | Find by field, or create if not found |
-| `Model.where(filter, bind_vars)` | Query with SDBQL filter (returns QueryBuilder) |
+| `Model.where(hash)` | Hash filter — safe for user input (keys validated, values bound). Returns QueryBuilder |
+| `Model.where(string, bind_vars)` | SDBQL filter string — **developer-trusted only**, never feed `req[...]` into the string. Returns QueryBuilder |
 | `Model.all()` | Get all documents |
 | `Model.update(id, data)` | Update a document |
 | `Model.upsert(id, data)` | Insert or update document by ID |

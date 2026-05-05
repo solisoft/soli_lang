@@ -73,39 +73,64 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if arguments.len() != 2 {
-            return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+        // Two shapes (mirrors `Model.where`):
+        //   1. Hash form (safe):     where({field: value, ...})
+        //   2. String form (raw):    where("doc.foo == @foo", {foo: ...})
+        // Plus the legacy 1-arg string form (no binds), which still works.
+        if arguments.is_empty() || arguments.len() > 2 {
+            return Err(RuntimeError::type_error(
+                "where() expects 1 or 2 arguments: a Hash filter, or a string filter (with optional bind-vars hash)",
+                span,
+            ));
         }
-        let filter = match &arguments[0] {
-            Value::String(s) => s.clone(),
-            _ => {
-                return Err(RuntimeError::type_error(
-                    "where() expects string filter expression",
-                    span,
-                ))
-            }
-        };
-        let bind_vars = match &arguments[1] {
-            Value::Hash(hash) => {
-                let mut map = std::collections::HashMap::new();
-                for (k, v) in hash.borrow().iter() {
-                    if let crate::interpreter::value::HashKey::String(key) = k {
-                        map.insert(
-                            key.clone(),
-                            crate::interpreter::builtins::model::value_to_json(v)
-                                .map_err(|e| RuntimeError::General { message: e, span })?,
-                        );
+        let (filter, bind_vars): (String, std::collections::HashMap<String, serde_json::Value>) =
+            match &arguments[0] {
+                Value::Hash(hash) => {
+                    if arguments.len() != 1 {
+                        return Err(RuntimeError::type_error(
+                            "where(Hash) takes a single argument; the bind-vars hash is only valid with the string filter form",
+                            span,
+                        ));
                     }
+                    crate::interpreter::builtins::model::build_safe_filter_from_hash(hash, "where")
+                        .map_err(|e| RuntimeError::General { message: e, span })?
                 }
-                map
-            }
-            _ => {
-                return Err(RuntimeError::type_error(
-                    "where() expects hash for bind variables",
-                    span,
-                ))
-            }
-        };
+                Value::String(s) => {
+                    let filter = s.clone();
+                    let binds = match arguments.get(1) {
+                        Some(Value::Hash(hash)) => {
+                            let mut map = std::collections::HashMap::new();
+                            for (k, v) in hash.borrow().iter() {
+                                if let crate::interpreter::value::HashKey::String(key) = k {
+                                    map.insert(
+                                        key.clone(),
+                                        crate::interpreter::builtins::model::value_to_json(v)
+                                            .map_err(|e| RuntimeError::General {
+                                                message: e,
+                                                span,
+                                            })?,
+                                    );
+                                }
+                            }
+                            map
+                        }
+                        Some(_) => {
+                            return Err(RuntimeError::type_error(
+                                "where() expects hash for bind variables",
+                                span,
+                            ))
+                        }
+                        None => std::collections::HashMap::new(),
+                    };
+                    (filter, binds)
+                }
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        "where() expects a Hash filter or a string filter expression",
+                        span,
+                    ))
+                }
+            };
 
         let mut new_qb = qb.borrow().clone();
         if let Some(existing_filter) = &new_qb.filter {

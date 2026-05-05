@@ -357,6 +357,46 @@ pub fn validate_order_direction(direction: &str, method: &str) -> Result<(), Str
     }
 }
 
+/// Build a safe `FILTER` clause from a `{field: value, ...}` Hash. Each
+/// key is validated through `validate_field_name`, and each value is
+/// pushed into the AQL bind map (so attacker-controlled values can never
+/// reach the query template). The returned tuple is
+/// `(filter_string, bind_map)` ready to be set on a `QueryBuilder`.
+///
+/// This is the safe alternative to the raw-string form
+/// `where("doc.foo == @foo", {foo: ...})`, which the docs flag as
+/// developer-trusted.
+pub fn build_safe_filter_from_hash(
+    hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+    method: &str,
+) -> Result<(String, std::collections::HashMap<String, serde_json::Value>), String> {
+    use crate::interpreter::value::{value_to_json, HashKey};
+    let pairs = hash.borrow();
+    if pairs.is_empty() {
+        return Err(format!(
+            "{}() Hash filter must contain at least one field/value pair",
+            method
+        ));
+    }
+    let mut clauses = Vec::with_capacity(pairs.len());
+    let mut binds = std::collections::HashMap::new();
+    for (k, v) in pairs.iter() {
+        let key = match k {
+            HashKey::String(s) => s.clone(),
+            _ => return Err(format!("{}() Hash filter keys must be strings", method)),
+        };
+        validate_field_name(&key, method)?;
+        // Bind name shadows the field name (`@email` for key `"email"`).
+        // Field names are already sanitized to safe identifiers, so they
+        // make valid bind names too. Callers that supply the legacy raw
+        // string form take a separate code path, so there's no risk of
+        // colliding bind namespaces between the two forms.
+        clauses.push(format!("doc.{0} == @{0}", key));
+        binds.insert(key, value_to_json(v).map_err(|e| e.to_string())?);
+    }
+    Ok((clauses.join(" AND "), binds))
+}
+
 /// Validate that a string is a safe AQL identifier before it's
 /// `format!`-interpolated into a query template such as
 /// `FOR doc IN ... FILTER doc.{field} == @val` or
@@ -1435,7 +1475,21 @@ impl Model {
             })),
         );
 
-        // Model.where(filter, bind_vars) - Returns a QueryBuilder for chaining
+        // Model.where(...) - Returns a QueryBuilder for chaining.
+        //
+        // Two forms:
+        //   1. Hash form (safe — recommended for user input):
+        //        Model.where({"email": "alice@x", "active": true})
+        //      Each key is validated as an AQL identifier; values flow
+        //      through bind parameters, so attacker-controlled data
+        //      cannot reach the query template.
+        //
+        //   2. String form (developer-trusted — see docs/models.md for
+        //      the security note):
+        //        Model.where("doc.age >= @age", {"age": 18})
+        //      Filter is concatenated verbatim into the AQL FILTER
+        //      clause, so the *string itself* must never come from
+        //      untrusted input.
         use std::collections::HashMap as StdHashMap;
         native_static_methods.insert(
             "where".to_string(),
@@ -1444,37 +1498,51 @@ impl Model {
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
-                let filter = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    Some(other) => {
-                        return Err(format!(
-                            "Model.where() expects string filter expression, got {}",
-                            other.type_name()
-                        ))
-                    }
-                    None => return Err("Model.where() requires filter expression".to_string()),
-                };
-
-                let bind_vars = match args.get(2) {
-                    Some(Value::Hash(hash)) => {
-                        let mut map = StdHashMap::new();
-                        for (k, v) in hash.borrow().iter() {
-                            if let HashKey::String(key) = k {
-                                map.insert(key.clone(), value_to_json(v)?);
+                let (filter, bind_vars): (String, StdHashMap<String, serde_json::Value>) =
+                    match args.get(1) {
+                        Some(Value::Hash(hash)) => {
+                            // Safe hash form. A second argument (bind_vars
+                            // for the string form) is meaningless here and
+                            // is rejected up-front so callers don't think
+                            // they can mix forms.
+                            if args.get(2).is_some() {
+                                return Err("Model.where(Hash) takes a single argument; \
+                                    the bind-vars hash is only valid with the string filter form"
+                                    .to_string());
                             }
+                            build_safe_filter_from_hash(hash, "where")?
                         }
-                        map
-                    }
-                    Some(other) => {
-                        return Err(format!(
-                            "Model.where() expects hash for bind variables, got {}",
-                            other.type_name()
-                        ))
-                    }
-                    None => StdHashMap::new(),
-                };
+                        Some(Value::String(s)) => {
+                            let filter = s.clone();
+                            let binds = match args.get(2) {
+                                Some(Value::Hash(hash)) => {
+                                    let mut map = StdHashMap::new();
+                                    for (k, v) in hash.borrow().iter() {
+                                        if let HashKey::String(key) = k {
+                                            map.insert(key.clone(), value_to_json(v)?);
+                                        }
+                                    }
+                                    map
+                                }
+                                Some(other) => {
+                                    return Err(format!(
+                                        "Model.where() expects hash for bind variables, got {}",
+                                        other.type_name()
+                                    ))
+                                }
+                                None => StdHashMap::new(),
+                            };
+                            (filter, binds)
+                        }
+                        Some(other) => {
+                            return Err(format!(
+                                "Model.where() expects a Hash filter or a string filter expression, got {}",
+                                other.type_name()
+                            ))
+                        }
+                        None => return Err("Model.where() requires a filter argument".to_string()),
+                    };
 
-                // Create a QueryBuilder and set the filter
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_filter(filter, bind_vars);
 

@@ -107,10 +107,16 @@ user.name  # => "Alice"
 users = User.all
 users.first.name  # => "Alice"
 
-# Find with filter - returns array of User instances
-adults = User.where("age >= @age", { "age": 18 }).all
+# Find with filter — Hash form (recommended for user input).
+# Each key is validated as an AQL identifier and values flow through
+# bind parameters; equality semantics, all pairs joined with AND.
+admins = User.where({ "role": "admin", "active": true }).all
+alice  = User.where({ "email": "alice@example.com" }).first
 
-# Complex conditions
+# Find with filter — string form (developer-trusted only). Use this when
+# you need operators (>=, IN, etc.). The filter string MUST NOT come
+# from untrusted input — see the Security note below.
+adults = User.where("age >= @age", { "age": 18 }).all
 results = User.where("age >= @min AND role == @role", {
   "min": 21,
   "role": "admin"
@@ -119,6 +125,13 @@ results = User.where("age >= @min AND role == @role", {
 # Dynamic finder methods — automatically generated
 user = User.find_by_email("alice@example.com")
 user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
+
+            <div class="my-6 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                <p class="text-rose-200/80 text-sm">
+                    <strong>Security &mdash; <code>where(...)</code> filter forms.</strong>
+                    The Hash form (<code>where({field: value, ...})</code>) is safe for user input: keys are validated as <code>[A-Za-z_][A-Za-z0-9_]*</code> identifiers and values are bound, so nothing from <code>req["params"]</code> can become AQL syntax. The string form (<code>where("doc.foo == @foo", {...})</code>) splices the filter argument verbatim into the AQL FILTER clause &mdash; treat it as <strong>developer-trusted only</strong>, like a <code>format!()</code> template. Building a filter string from request data <strong>will leak full AQL injection</strong>. When the operators you need go beyond equality, prefer composing small string-form clauses around literal strings rather than concatenating user input into them.
+                </p>
+            </div>
         </div>
 
         <div>
@@ -325,8 +338,12 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Dynamic finder: find_by_field, find_by_field1_and_field2(...), etc.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(filter, bind_vars)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Query with SDBQL filter</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(hash)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Hash filter — safe for user input (keys validated, values bound)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(string, bind_vars)</code></td>
+                    <td class="py-3 px-4 text-gray-400">SDBQL filter string — developer-trusted only (do not pass user input)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.order(field, direction)</code></td>
