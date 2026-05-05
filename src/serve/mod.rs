@@ -4957,10 +4957,12 @@ async fn handle_dev_source(
         }
     };
 
-    let canonical_path_str = canonical_path.to_string_lossy();
-    let canonical_root_str = canonical_root.to_string_lossy();
-
-    if !canonical_path_str.starts_with(&*canonical_root_str) {
+    // SEC-010: use `Path::starts_with` (segment-aware), not the string
+    // form. Plain string `starts_with` would treat
+    // `/home/me/app-secrets/x` as inside `/home/me/app` because the
+    // prefix matches character-by-character — exactly the leak this
+    // task was filed for. `resolve_static_file` already uses this idiom.
+    if !canonical_path.starts_with(&canonical_root) {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
