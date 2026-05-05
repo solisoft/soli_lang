@@ -668,9 +668,7 @@ fn is_safe_markdown_url(url: &str) -> bool {
         return true;
     }
 
-    let first_separator = lower
-        .find(|c| matches!(c, '/' | '?' | '#'))
-        .unwrap_or(lower.len());
+    let first_separator = lower.find(['/', '?', '#']).unwrap_or(lower.len());
     !lower[..first_separator].contains(':')
 }
 
