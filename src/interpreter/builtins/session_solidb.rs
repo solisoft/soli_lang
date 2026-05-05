@@ -69,6 +69,14 @@ impl SolidbSessionStore {
         self
     }
 
+    /// SEC-038: thread `SOLI_SESSION_TTL` into the SoliDB store so the
+    /// document-age expiry matches the operator-configured TTL instead
+    /// of falling back to 24h.
+    pub fn with_max_age(mut self, max_age: Duration) -> Self {
+        self.max_age = max_age;
+        self
+    }
+
     /// SEC-025: install auth credentials. Pass `(Some(key), None, None)`
     /// for API-key auth or `(None, Some(user), Some(pass))` for basic
     /// auth. Other combinations leave the request unauthenticated and

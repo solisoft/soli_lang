@@ -75,6 +75,13 @@ impl DiskSessionStore {
         })
     }
 
+    /// SEC-038: thread `SOLI_SESSION_TTL` into the disk store so files
+    /// expire on the operator-configured schedule, not the 24h default.
+    pub fn with_max_age(mut self, max_age: Duration) -> Self {
+        self.max_age = max_age;
+        self
+    }
+
     fn session_path(&self, session_id: &str) -> Option<PathBuf> {
         if !is_safe_session_id(session_id) {
             return None;

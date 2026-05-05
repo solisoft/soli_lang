@@ -201,8 +201,14 @@ impl Default for SessionConfig {
 
 impl SessionConfig {
     pub fn create_store(&self) -> Result<Arc<dyn SessionStore>, String> {
+        // SEC-038: every store honors `SOLI_SESSION_TTL`. Previously
+        // each backend hardcoded 24h, so operators who set
+        // SOLI_SESSION_TTL=300 silently got 24h sessions.
+        let max_age = Duration::from_secs(self.ttl);
         match self.driver {
-            SessionDriver::InMemory => Ok(Arc::new(InMemorySessionStore::new())),
+            SessionDriver::InMemory => {
+                Ok(Arc::new(InMemorySessionStore::new().with_max_age(max_age)))
+            }
             SessionDriver::Disk => {
                 let path = self
                     .path
@@ -211,7 +217,8 @@ impl SessionConfig {
                 let store = crate::interpreter::builtins::session_disk::DiskSessionStore::new(
                     std::path::PathBuf::from(path),
                 )
-                .map_err(|e| format!("Failed to create disk session store: {}", e))?;
+                .map_err(|e| format!("Failed to create disk session store: {}", e))?
+                .with_max_age(max_age);
                 Ok(Arc::new(store))
             }
             SessionDriver::Solidb => {
@@ -256,11 +263,13 @@ impl SessionConfig {
                 if let Some(collection) = self.solidb_collection.clone() {
                     store = store.with_collection(collection);
                 }
-                let store = store.with_auth(
-                    self.solidb_api_key.clone(),
-                    self.solidb_username.clone(),
-                    self.solidb_password.clone(),
-                );
+                let store = store
+                    .with_auth(
+                        self.solidb_api_key.clone(),
+                        self.solidb_username.clone(),
+                        self.solidb_password.clone(),
+                    )
+                    .with_max_age(max_age);
                 Ok(Arc::new(store))
             }
             SessionDriver::Solikv => {
@@ -290,7 +299,8 @@ impl SessionConfig {
                     host,
                     port,
                     self.solikv_token.clone(),
-                );
+                )
+                .with_ttl(self.ttl);
                 Ok(Arc::new(store))
             }
         }
@@ -338,8 +348,17 @@ fn is_loopback_session_host(host: &str) -> bool {
 
 lazy_static! {
     static ref SESSION_CONFIG: RwLock<SessionConfig> = RwLock::new(SessionConfig::default());
-    static ref CURRENT_STORE: RwLock<Arc<dyn SessionStore>> =
-        RwLock::new(Arc::new(InMemorySessionStore::new()));
+    // SEC-038: build the startup store from the env-derived config so
+    // SOLI_SESSION_TTL is honored from the first request, not just after
+    // an explicit `session_configure` call. Falls back to a TTL-aware
+    // in-memory store if the configured backend errors at boot.
+    static ref CURRENT_STORE: RwLock<Arc<dyn SessionStore>> = {
+        let cfg = SessionConfig::default();
+        let store = cfg.create_store().unwrap_or_else(|_| {
+            Arc::new(InMemorySessionStore::new().with_max_age(Duration::from_secs(cfg.ttl)))
+        });
+        RwLock::new(store)
+    };
 }
 
 pub fn get_session_config() -> SessionConfig {
@@ -402,6 +421,13 @@ impl InMemorySessionStore {
             max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
         }
+    }
+
+    /// SEC-038: thread `SOLI_SESSION_TTL` into the in-memory store so
+    /// short-session apps don't silently fall back to 24h.
+    pub fn with_max_age(mut self, max_age: Duration) -> Self {
+        self.max_age = max_age;
+        self
     }
 }
 
@@ -534,13 +560,20 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
 }
 
 /// Create Set-Cookie header value for session.
+///
+/// SEC-038: `Max-Age` reflects the configured `SOLI_SESSION_TTL` so the
+/// browser drops the cookie on the same schedule the server expires the
+/// stored session. The previous hardcoded 86400 silently kept cookies
+/// alive for 24h regardless of the operator's TTL setting.
 pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
     let secure_flag = if secure { "; Secure" } else { "" };
+    let max_age = SESSION_CONFIG
+        .read()
+        .map(|cfg| cfg.ttl)
+        .unwrap_or(24 * 60 * 60);
     format!(
         "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
-        session_id,
-        24 * 60 * 60, // 24 hours
-        secure_flag
+        session_id, max_age, secure_flag
     )
 }
 
@@ -1110,6 +1143,43 @@ mod tests {
             session_cookie_if_changed(Some(&resolved), cookie_session_id.as_deref(), false)
                 .expect("Set-Cookie must be emitted when the cookie ID was replaced");
         assert!(cookie.contains(&format!("session_id={resolved}")));
+    }
+
+    /// SEC-038: SOLI_SESSION_TTL must drive Set-Cookie's Max-Age and the
+    /// in-memory store's expiry, not silently fall back to 24h.
+    #[test]
+    fn session_ttl_threads_through_to_cookie_and_store() {
+        // Snapshot and replace SESSION_CONFIG.ttl so we don't depend on env.
+        let prev = SESSION_CONFIG.read().unwrap().clone();
+        {
+            let mut cfg = SESSION_CONFIG.write().unwrap();
+            cfg.ttl = 300;
+        }
+        let cookie = create_session_cookie("abc", false);
+        assert!(
+            cookie.contains("Max-Age=300"),
+            "expected Max-Age=300 from configured TTL, got: {}",
+            cookie
+        );
+
+        // The in-memory store created via SessionConfig::create_store
+        // must honor the TTL — verify by constructing a short-TTL config
+        // and checking is_expired sees a near-zero max_age.
+        let mut short = prev.clone();
+        short.ttl = 0;
+        let store = short.create_store().expect("in-memory store");
+        // Drive a get_or_create + immediate cleanup; with ttl=0 every
+        // session is immediately expired and pruned.
+        let id = store.create_session();
+        store.cleanup();
+        assert!(
+            store.get(&id, "anything").is_none(),
+            "ttl=0 must expire newly created session on cleanup"
+        );
+
+        // Restore.
+        let mut cfg = SESSION_CONFIG.write().unwrap();
+        *cfg = prev;
     }
 
     #[test]

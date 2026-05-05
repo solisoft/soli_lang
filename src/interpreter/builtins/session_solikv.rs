@@ -50,6 +50,14 @@ impl SolikvSessionStore {
         }
     }
 
+    /// SEC-038: thread `SOLI_SESSION_TTL` into the SoliKV store so the
+    /// `EX` argument on `SET` and the local age check match the
+    /// operator-configured TTL instead of the hardcoded 24h default.
+    pub fn with_ttl(mut self, ttl_secs: u64) -> Self {
+        self.ttl = ttl_secs;
+        self
+    }
+
     fn session_key(&self, session_id: &str) -> String {
         format!("{}{}", self.prefix, session_id)
     }
