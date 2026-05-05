@@ -24,6 +24,43 @@
 //! - img.to_file(path) - Save to file
 
 use image::{DynamicImage, ImageFormat, ImageReader};
+use std::sync::OnceLock;
+
+/// SEC-019: decompression-bomb defense for the image builtins. A 100 KB
+/// PNG declaring 65535×65535 pixels would otherwise allocate ~16 GB of
+/// RGBA scratch and OOM the worker. Apply `image::Limits` on every
+/// reader / load_from_memory entry point.
+///
+/// Defaults:
+/// * `SOLI_IMAGE_MAX_ALLOC_BYTES` — total allocation cap, default 256 MiB.
+/// * `SOLI_IMAGE_MAX_DIMENSION_PX` — per-axis pixel cap, default 16384.
+fn image_max_alloc_bytes() -> u64 {
+    static CAP: OnceLock<u64> = OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(256 * 1024 * 1024)
+    })
+}
+
+fn image_max_dimension_px() -> u32 {
+    static CAP: OnceLock<u32> = OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(16_384)
+    })
+}
+
+fn safe_image_limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(image_max_alloc_bytes());
+    limits.max_image_width = Some(image_max_dimension_px());
+    limits.max_image_height = Some(image_max_dimension_px());
+    limits
+}
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -183,9 +220,13 @@ fn apply_plan_op(img: DynamicImage, op: &PlanOp) -> DynamicImage {
 }
 
 fn execute_plan(plan: &ImagePlan) -> Result<PlanResult, String> {
-    let reader =
+    let mut reader =
         ImageReader::open(&plan.src).map_err(|e| format!("Failed to open image: {}", e))?;
     let detected_format = reader.format();
+    // SEC-019: refuse to allocate more than `image_max_alloc_bytes` for a
+    // single decode; refuse images whose declared dimensions exceed the
+    // per-axis pixel cap.
+    reader.limits(safe_image_limits());
     let mut img = reader
         .decode()
         .map_err(|e| format!("Failed to decode image: {}", e))?;
@@ -587,9 +628,11 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.new requires string path".to_string()),
             };
-            let reader =
+            let mut reader =
                 ImageReader::open(&path).map_err(|e| format!("Failed to open image: {}", e))?;
             let format = reader.format();
+            // SEC-019: decompression-bomb defense.
+            reader.limits(safe_image_limits());
             let img = reader
                 .decode()
                 .map_err(|e| format!("Failed to decode image: {}", e))?;
@@ -674,7 +717,18 @@ fn build_image_class() -> Rc<Class> {
             .map_err(|e| format!("Failed to decode base64 buffer: {}", e))?;
 
             let format = image::guess_format(&bytes).ok();
-            let img = image::load_from_memory(&bytes)
+            // SEC-019: `image::load_from_memory` has no limits hook — use
+            // an `ImageReader` over a `Cursor` so we can apply the same
+            // decompression-bomb caps as the path-based readers.
+            let mut reader = ImageReader::new(std::io::Cursor::new(&bytes));
+            // Re-detect the format on the reader (faster than walking
+            // bytes again, and image needs it set before decode).
+            reader = reader
+                .with_guessed_format()
+                .map_err(|e| format!("Failed to detect image format: {}", e))?;
+            reader.limits(safe_image_limits());
+            let img = reader
+                .decode()
                 .map_err(|e| format!("Failed to load image from buffer: {}", e))?;
 
             Ok(image_data_to_value(ImageData {
@@ -917,4 +971,39 @@ fn build_image_plan_class() -> Rc<Class> {
     };
 
     Rc::new(plan_class)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_image_limits_carries_defaults() {
+        let limits = safe_image_limits();
+        assert_eq!(limits.max_alloc, Some(image_max_alloc_bytes()));
+        assert_eq!(limits.max_image_width, Some(image_max_dimension_px()));
+        assert_eq!(limits.max_image_height, Some(image_max_dimension_px()));
+    }
+
+    #[test]
+    fn image_max_alloc_bytes_default_256_mib() {
+        // Once-locked, so the value reflects whatever was first read in
+        // this test run. Match against the parser's default rather than
+        // a constant so the test still passes if a peer test sets the
+        // env first — same logic, same outcome.
+        let expected = std::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(256 * 1024 * 1024);
+        assert_eq!(image_max_alloc_bytes(), expected);
+    }
+
+    #[test]
+    fn image_max_dimension_px_default_16384() {
+        let expected = std::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(16_384);
+        assert_eq!(image_max_dimension_px(), expected);
+    }
 }

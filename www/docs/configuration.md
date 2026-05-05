@@ -38,6 +38,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MAX_BODY_SIZE` | Maximum buffered request body, in bytes. Requests over the cap return `413 Payload Too Large`. | `8388608` (8 MiB) |
 | `SOLI_DISABLE_CSRF` | Disables the same-origin CSRF check entirely when set to `true`. For API-only deployments where no cookie session is in play. Per-route opt-out via `skip_csrf("/path")` in `config/routes.sl` is preferred — see [Routing → CSRF Protection](/docs/routing#csrf-protection). | unset |
 | `SOLI_HTTP_MAX_RESPONSE_BYTES` | Maximum bytes Soli will buffer from a single outbound HTTP response (`HTTP.*`, `SOAP.*`). A malicious or compromised upstream returning a multi-GB body would otherwise OOM the worker. | `52428800` (50 MiB) |
+| `SOLI_IMAGE_MAX_ALLOC_BYTES` | Maximum bytes the image decoder will allocate for a single image (`Image.*`, plan execution). Defends against decompression bombs — a 100 KB PNG declaring 65535×65535 pixels would otherwise allocate ~16 GB of RGBA pixels. | `268435456` (256 MiB) |
+| `SOLI_IMAGE_MAX_DIMENSION_PX` | Maximum pixel dimension on either axis for any decoded image. Images declaring more are rejected before allocation. | `16384` |
 
 ## Database
 
