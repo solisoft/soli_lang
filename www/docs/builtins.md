@@ -4316,7 +4316,10 @@ let buf = images[1].to_buffer()
 ```soli
 def upload(req)
   file = req.files["avatar"]
-  img = Image.from_buffer(file.data)
+  # `file["data"]` is a base64-encoded string. Image.from_buffer expects
+  # base64, so pass it through directly. Use `file["size"]` for the raw
+  # byte count instead of `file["data"].length()`.
+  img = Image.from_buffer(file["data"])
 
   # Create multiple sizes
   large = img.resize(800, 800)

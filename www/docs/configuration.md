@@ -43,6 +43,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_IMAGE_MAX_DIMENSION_PX` | Maximum pixel dimension on either axis for any decoded image. Images declaring more are rejected before allocation. | `16384` |
 | `SOLI_PARALLEL_MAX_ITEMS` | Maximum input list length accepted by `HTTP.get_all`, `HTTP.get_all_json`, `HTTP.parallel`, and `Image.process_all`. Calls with longer arrays are rejected before any thread is spawned. | `256` |
 | `SOLI_PARALLEL_MAX_CONCURRENCY` | Maximum OS threads alive at one time inside a parallel fan-out call. The runner consumes the input list in chunks of this size. | `16` |
+| `SOLI_MAX_UPLOAD_FILES` | Maximum number of file parts accepted per multipart request. A body packed with thousands of tiny parts would otherwise allocate a per-file Soli hash for each one and OOM the worker. | `32` |
 
 ## Database
 

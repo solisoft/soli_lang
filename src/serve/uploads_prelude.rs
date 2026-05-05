@@ -67,15 +67,19 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         model._errors = [{ "message": "Unsupported file type for #{field_name}." }]
         return false
     end
-    if file["data"].length() > config["max_size"]
+    # SEC-031: `file["data"]` is now a base64-encoded string (was a
+    # Vec<Int> array). Use the explicit `size` field for the size cap so
+    # the comparison stays in raw-byte units, and pass `data` straight
+    # to `solidb_store_blob` since it's already the base64 form the
+    # blob store expects.
+    if file["size"] > config["max_size"]
         max_mb = (config["max_size"] / 1000000).to_s
         model._errors = [{ "message": "#{field_name} must be under #{max_mb} MB." }]
         return false
     end
 
     client = __soli_resolve_solidb_client()
-    b64 = Base64.encode(file["data"])
-    blob_id = solidb_store_blob(client, config["collection"], b64,
+    blob_id = solidb_store_blob(client, config["collection"], file["data"],
                                 file["filename"], file["content_type"])
     if blob_id.nil?
         model._errors = [{ "message": "Failed to store #{field_name}." }]

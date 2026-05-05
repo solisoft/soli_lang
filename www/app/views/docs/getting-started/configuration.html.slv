@@ -72,6 +72,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLI_IMAGE_MAX_DIMENSION_PX</code></td><td class="py-3 px-4">Maximum pixel dimension on either axis for any decoded image. Images declaring more are rejected before allocation.</td><td class="py-3 px-4"><code>16384</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PARALLEL_MAX_ITEMS</code></td><td class="py-3 px-4">Maximum input list length accepted by <code>HTTP.get_all</code>, <code>HTTP.get_all_json</code>, <code>HTTP.parallel</code>, and <code>Image.process_all</code>. Calls with longer arrays are rejected before any thread is spawned.</td><td class="py-3 px-4"><code>256</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PARALLEL_MAX_CONCURRENCY</code></td><td class="py-3 px-4">Maximum OS threads alive at one time inside a parallel fan-out call. The runner consumes the input list in chunks of this size.</td><td class="py-3 px-4"><code>16</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_MAX_UPLOAD_FILES</code></td><td class="py-3 px-4">Maximum number of file parts accepted per multipart request. A body packed with thousands of tiny parts would otherwise allocate a per-file Soli hash for each one and OOM the worker.</td><td class="py-3 px-4"><code>32</code></td></tr>
                 </tbody>
             </table>
         </div>
