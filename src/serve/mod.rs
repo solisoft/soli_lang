@@ -106,7 +106,7 @@ use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{header, Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
 use tokio_tungstenite::WebSocketStream;
@@ -686,12 +686,23 @@ fn run_hyper_server_worker_pool(
                         }
                     });
 
-                    // Use with_upgrades() to support WebSocket upgrades
-                    if let Err(_e) = http1::Builder::new()
-                        .serve_connection(io, service)
-                        .with_upgrades()
-                        .await
-                    {
+                    // SEC-045: bound the time hyper will wait for a client
+                    // to finish sending request headers, closing slow-header
+                    // (slowloris) attackers before they pin an accept slot.
+                    // Hyper's default is 30 s but only fires when a `Timer`
+                    // is wired up — without `.timer(TokioTimer::new())` the
+                    // default is effectively unenforced. 10 s is well above
+                    // any legitimate browser/proxy and far short of what an
+                    // attacker needs to drip-feed a request. Hyper has no
+                    // HTTP/1 keep-alive idle timeout; wrapping the whole
+                    // connection future in `tokio::time::timeout` would
+                    // truncate legitimate long-poll endpoints (SSE, LiveView)
+                    // so that's intentionally not added here.
+                    let mut builder = http1::Builder::new();
+                    builder
+                        .timer(TokioTimer::new())
+                        .header_read_timeout(Duration::from_secs(10));
+                    if let Err(_e) = builder.serve_connection(io, service).with_upgrades().await {
                         // Silently ignore connection errors
                     }
                 });
