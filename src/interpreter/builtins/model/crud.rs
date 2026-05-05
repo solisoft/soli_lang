@@ -427,7 +427,14 @@ pub fn exec_async_query(sdbql: String) -> Value {
 pub fn exec_async_query_raw(sdbql: String) -> Value {
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
-    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\"#));
+    // SEC-036: build the JSON body with serde_json so the SDBQL value is
+    // escaped correctly. The previous `format!` used a `r#"\"#` replacement
+    // (a single backslash), which produced malformed JSON for any quoted
+    // SDBQL and let a `"` in the input inject sibling fields into the body.
+    let body = match serde_json::to_string(&serde_json::json!({ "query": sdbql })) {
+        Ok(b) => b,
+        Err(e) => return Value::String(format!("Error: {}", e)),
+    };
 
     let log_enabled = super::query_log::is_enabled();
     let log_query = if log_enabled {
@@ -496,7 +503,13 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
         eprintln!("WARNING: SOLIDB_API_KEY not set, database queries will fail");
         String::new()
     });
-    let body = format!(r#"{{"query":"{}"}}"#, sdbql.replace('"', r#"\""#));
+    // SEC-036: same hand-rolled-JSON anti-pattern as exec_async_query_raw —
+    // build the body with serde_json so backslashes, control chars, and
+    // unicode in the SDBQL are escaped correctly.
+    let body = match serde_json::to_string(&serde_json::json!({ "query": sdbql })) {
+        Ok(b) => b,
+        Err(e) => return Value::String(format!("Error: {}", e)),
+    };
 
     let client = get_http_client().clone();
     let db_name = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solipay".to_string());
