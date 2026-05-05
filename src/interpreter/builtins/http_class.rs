@@ -192,16 +192,54 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
-/// Get the shared async HTTP client (used by HTTP class, Model queries, and SoliDB)
+/// Get the shared async HTTP client (used by HTTP class, Model queries, and SoliDB).
+///
+/// SEC-007: the redirect policy is `Policy::custom`, not the default
+/// follow-up-to-10. Each redirect target is re-validated against
+/// `validate_url_for_ssrf` so an attacker who controls the first hop
+/// can't bounce the request to `http://169.254.169.254/...` (cloud
+/// metadata) or any other private/loopback address. The 10-hop cap is
+/// preserved.
 pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
+        let policy = reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 10 {
+                return attempt.error(std::io::Error::other("too many redirects (max 10)"));
+            }
+            if let Err(e) = validate_url_for_ssrf(attempt.url().as_str()) {
+                return attempt.error(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("SSRF: redirect target rejected: {}", e),
+                ));
+            }
+            attempt.follow()
+        });
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
+            .redirect(policy)
             .build()
             .expect("Failed to create HTTP client")
+    })
+}
+
+/// Shared `ureq::Agent` for the HTTP class. SEC-007: redirects are
+/// disabled (`redirects(0)`) — ureq has no per-redirect callback hook,
+/// so the only safe option is to refuse the auto-follow and surface the
+/// 3xx response to the caller. Apps that need transparent redirect
+/// support should use the reqwest-backed paths (Model queries / async
+/// futures), which install a custom policy that re-runs
+/// `validate_url_for_ssrf` on each hop.
+static UREQ_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+
+pub fn ureq_agent() -> &'static ureq::Agent {
+    UREQ_AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(30))
+            .redirects(0)
+            .build()
     })
 }
 
@@ -327,7 +365,7 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::get(&url).call() {
+                    move || match ureq_agent().get(&url).call() {
                         Ok(response) => response
                             .into_string()
                             .map_err(|e| format!("Failed to read response body: {}", e)),
@@ -398,7 +436,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::post(&url)
+                    move || match ureq_agent()
+                        .post(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
@@ -472,7 +511,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::put(&url)
+                    move || match ureq_agent()
+                        .put(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
@@ -546,7 +586,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::patch(&url)
+                    move || match ureq_agent()
+                        .patch(&url)
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
@@ -599,7 +640,7 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::delete(&url).call() {
+                    move || match ureq_agent().delete(&url).call() {
                         Ok(response) => response
                             .into_string()
                             .map_err(|e| format!("Failed to read response body: {}", e)),
@@ -647,7 +688,7 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::head(&url).call() {
+                    move || match ureq_agent().head(&url).call() {
                         Ok(response) => {
                             let status = response.status();
                             Ok(format!("{} {}", status, response.status_text()))
@@ -699,7 +740,11 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::get(&url).set("Accept", "application/json").call() {
+                    move || match ureq_agent()
+                        .get(&url)
+                        .set("Accept", "application/json")
+                        .call()
+                    {
                         Ok(response) => response
                             .into_string()
                             .map_err(|e| format!("Failed to read response body: {}", e)),
@@ -759,7 +804,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::post(&url)
+                    move || match ureq_agent()
+                        .post(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
@@ -822,7 +868,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::put(&url)
+                    move || match ureq_agent()
+                        .put(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
@@ -885,7 +932,8 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq::patch(&url)
+                    move || match ureq_agent()
+                        .patch(&url)
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
@@ -1017,12 +1065,12 @@ pub fn register_http_class(env: &mut Environment) {
                     Ok(spawn_http_future(
                         move || {
                             let mut request = match method_clone.as_str() {
-                                "GET" => ureq::get(&url),
-                                "POST" => ureq::post(&url),
-                                "PUT" => ureq::put(&url),
-                                "DELETE" => ureq::delete(&url),
-                                "PATCH" => ureq::patch(&url),
-                                "HEAD" => ureq::head(&url),
+                                "GET" => ureq_agent().get(&url),
+                                "POST" => ureq_agent().post(&url),
+                                "PUT" => ureq_agent().put(&url),
+                                "DELETE" => ureq_agent().delete(&url),
+                                "PATCH" => ureq_agent().patch(&url),
+                                "HEAD" => ureq_agent().head(&url),
                                 _ => {
                                     return Err(format!(
                                         "Unsupported HTTP method: {}",
@@ -1414,7 +1462,7 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
         .map(|url| {
             thread::spawn(move || {
                 let start = std::time::Instant::now();
-                let (status, body) = match ureq::get(&url).call() {
+                let (status, body) = match ureq_agent().get(&url).call() {
                     Ok(response) => {
                         let status = response.status();
                         let body = response
@@ -1475,7 +1523,10 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
         .map(|url| {
             thread::spawn(move || {
                 let start = std::time::Instant::now();
-                let (status, body) = match ureq::get(&url).set("Accept", "application/json").call()
+                let (status, body) = match ureq_agent()
+                    .get(&url)
+                    .set("Accept", "application/json")
+                    .call()
                 {
                     Ok(response) => {
                         let status = response.status();
@@ -1590,12 +1641,12 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
 
 fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
     let mut request = match config.method.as_str() {
-        "GET" => ureq::get(&config.url),
-        "POST" => ureq::post(&config.url),
-        "PUT" => ureq::put(&config.url),
-        "DELETE" => ureq::delete(&config.url),
-        "PATCH" => ureq::patch(&config.url),
-        "HEAD" => ureq::head(&config.url),
+        "GET" => ureq_agent().get(&config.url),
+        "POST" => ureq_agent().post(&config.url),
+        "PUT" => ureq_agent().put(&config.url),
+        "DELETE" => ureq_agent().delete(&config.url),
+        "PATCH" => ureq_agent().patch(&config.url),
+        "HEAD" => ureq_agent().head(&config.url),
         _ => return Err(format!("Unsupported HTTP method: {}", config.method)),
     };
 

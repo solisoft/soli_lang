@@ -32,6 +32,22 @@ response = HTTP.post("https://api.example.com/users", { "name": "Alice" })
 response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre>
     </section>
 
+    <!-- Security: SSRF blocklist & redirects -->
+    <section id="section-ssrf" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-rose-500/10 border border-rose-500/20 p-5">
+            <h2 class="text-xl font-bold text-rose-200 mb-2">SSRF blocklist &amp; redirects</h2>
+            <p class="text-gray-300 mb-3 text-sm">
+                Every URL passed to <code class="text-amber-400">HTTP.*</code> is validated up-front: schemes other than <code class="text-amber-400">http</code>/<code class="text-amber-400">https</code> are rejected, as are hosts that resolve to loopback / private / link-local IP ranges. A request to <code class="text-amber-400">http://169.254.169.254/...</code> (cloud metadata) or <code class="text-amber-400">http://10.0.0.1/</code> fails immediately.
+            </p>
+            <p class="text-gray-300 mb-3 text-sm">
+                Auto-redirects are <strong>not</strong> followed by the synchronous <code class="text-amber-400">HTTP.get</code> / <code class="text-amber-400">HTTP.post</code> / <code class="text-amber-400">HTTP.request</code> paths &mdash; a 3xx response is returned as-is so a redirect-controlled <code class="text-amber-400">Location</code> cannot bypass the blocklist. Asynchronous and Model-driven HTTP (the reqwest-backed paths) follow redirects with a custom policy that re-runs the SSRF check on every hop.
+            </p>
+            <p class="text-gray-300 text-sm">
+                Apps that need to follow a 3xx from <code class="text-amber-400">HTTP.get</code> should inspect <code class="text-amber-400">response["status"]</code> and <code class="text-amber-400">response["headers"]["location"]</code> and re-issue the request manually.
+            </p>
+        </div>
+    </section>
+
     <!-- Basic HTTP Requests -->
     <section id="section-basic-requests" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

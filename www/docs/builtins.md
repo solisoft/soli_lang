@@ -645,6 +645,18 @@ All HTTP request functions are exposed on the `HTTP` class. The standalone
 `http_get` / `http_post` / `http_request` etc. helpers were removed in favor of
 this class-based API.
 
+> **Security — SSRF blocklist & redirects.** Every URL passed to `HTTP.*` is
+> validated up-front: schemes other than `http`/`https` are rejected, as are
+> hosts that resolve to loopback/private/link-local IP ranges (so a request to
+> `http://169.254.169.254/...` for cloud metadata, or `http://10.0.0.1/`, fails
+> immediately). Auto-redirects are **not** followed by the synchronous
+> `HTTP.get` / `HTTP.post` / `HTTP.request` paths — a 3xx response is returned
+> as-is so a redirect-controlled `Location` cannot bypass the blocklist.
+> Asynchronous and Model-driven HTTP (the reqwest-backed paths) follow redirects
+> with a custom policy that re-runs the SSRF check on every hop. Apps that need
+> to follow a 3xx from `HTTP.get` should inspect `response["status"]` and
+> `response["headers"]["location"]` and re-issue the request manually.
+
 ### HTTP.get(url, options?)
 
 Performs an HTTP GET request.
