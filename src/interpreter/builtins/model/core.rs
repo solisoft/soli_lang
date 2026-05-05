@@ -370,7 +370,7 @@ pub fn validate_order_direction(direction: &str, method: &str) -> Result<(), Str
 ///
 /// `method` is the user-facing call name (e.g. `"find_by"`) so the error
 /// message points the developer at the right line.
-fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
+pub fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
     let mut chars = field.chars();
     let first_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_');
     if !first_ok {

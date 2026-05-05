@@ -124,3 +124,28 @@ describe("Order direction validator — QueryBuilder.order chain", fn() {
         });
     });
 });
+
+// ============================================================================
+// SEC-004b: the chain form `Model.where(...).order(field, dir)` shares the
+// SORT-clause sink with the static `Model.order` entry, so the field-name
+// validator from SEC-004 must apply on the chain side too.
+// ============================================================================
+
+describe("Field-name validator — QueryBuilder.order chain (SEC-004b)", fn() {
+    test("rejects an injected field name in the chain form", fn() {
+        assert_throws("qb.order injected field", fn() {
+            FieldGuardItem.order("name").order("name; REMOVE doc IN x", "asc");
+        });
+    });
+
+    test("rejects a dotted field name in the chain form", fn() {
+        assert_throws("qb.order dotted field", fn() {
+            FieldGuardItem.order("name").order("user.email", "asc");
+        });
+    });
+
+    test("accepts a well-formed field name in the chain form", fn() {
+        let qb = FieldGuardItem.order("name").order("created_at", "desc");
+        assert(!qb.nil?);
+    });
+});

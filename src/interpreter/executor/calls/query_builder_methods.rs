@@ -142,6 +142,11 @@ impl Interpreter {
                 ))
             }
         };
+        // SEC-004b: chain form `Model.where(...).order(field, dir)` was the
+        // counterpart that escaped SEC-004's static-method gate. Same sink
+        // (`SORT doc.{field}`), same validator.
+        crate::interpreter::builtins::model::validate_field_name(&field, "order")
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let direction = if arguments.len() == 2 {
             match &arguments[1] {
                 Value::String(s) => s.clone(),
