@@ -416,6 +416,62 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         </table>
     </div>
 
+    <h2 id="mass-assignment" class="text-2xl font-bold text-white mb-6">Mass Assignment Protection</h2>
+    <p class="text-gray-400 mb-4">
+        By default, <code>Model.create(hash)</code> and <code>instance.update(hash)</code> write <strong>every</strong> key in the supplied hash straight to the document. If <code>hash</code> came from a request body, that includes any field a client decides to send &mdash; <code>role</code>, <code>is_admin</code>, <code>password_digest</code>, etc. Declare <code>attr_accessible(...)</code> on the model to lock down which keys mass-assign accepts.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User &lt; Model
+  # Variadic form
+  attr_accessible("name", "email", "bio")
+
+  # …or a single array — equivalent
+  # attr_accessible(["name", "email", "bio"])
+end
+
+User.create({
+  "name":  "Alice",
+  "email": "alice@example.com",
+  "role":  "admin"   # silently dropped — not in the whitelist
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        Filtering applies to every mass-assign path: <code>Model.create(hash)</code>, <code>Model.update(id, hash)</code>, <code>instance.update(hash)</code>, <code>instance.save(hash)</code>. Non-permitted keys are dropped <strong>before</strong> validation runs and <strong>before</strong> the document is written, so they cannot be probed via validation errors either.
+    </p>
+
+    <div class="my-6 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 mb-6">
+        <p class="text-rose-200/80 text-sm">
+            <strong>Empty list = full lock-down.</strong> <code>attr_accessible([])</code> declares that the model accepts no mass-assigned attributes; everything must be set by trusted server code via direct field assignment (e.g. <code>user.role = "admin"</code>).
+        </p>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-6">
+        <p class="text-yellow-200/80 text-sm">
+            <strong>Models without a declaration keep the legacy "all keys accepted" behaviour</strong> for backwards compatibility. New models that take request data should always declare <code>attr_accessible</code>; audit every <code>Model.create</code>/<code>Model.update</code> call site against an explicit whitelist.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        For controller-side filtering (when you'd rather hand-pick keys at the boundary), <code>hash.slice(["a", "b"])</code> returns a new hash with only the listed keys &mdash; useful when you need a different whitelist per action:
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">fn update(req)
+  let user = User.find(req["params"]["id"])
+  let safe = req["json"].slice(["name", "bio"])
+  user.update(safe)
+  redirect("/users/" + user._key)
+end</code></pre>
+        </div>
+    </div>
+
     <h2 id="uploaders" class="text-2xl font-bold text-white mb-6">Uploaders</h2>
     <p class="text-gray-400 mb-4">
         Declare a blob attachment on a model with <code>uploader(name, options)</code>. Soli registers the field, validates incoming files against the rules you supply, and stores the blob in SoliDB. The DSL also auto-generates instance methods so the controller is a one-liner.

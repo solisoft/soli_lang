@@ -20,6 +20,10 @@ pub struct ModelMetadata {
     pub soft_delete: bool,
     pub translated_fields: Vec<String>,
     pub uploaders: Vec<UploaderConfig>,
+    /// `attr_accessible` whitelist. `None` = not declared (legacy/unsafe
+    /// passthrough); `Some([])` = nothing is mass-assignable; `Some(list)` =
+    /// only listed keys are accepted in mass-assign paths.
+    pub accessible_attributes: Option<Vec<String>>,
 }
 
 lazy_static! {
@@ -65,6 +69,27 @@ pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
 pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     registry.insert(class_name.to_string(), metadata);
+}
+
+/// Declare the whitelist of attributes accepted by mass-assign on this
+/// model. Each call replaces the previous list (re-declaring is OK; the
+/// last declaration wins). Pass an empty list to lock down the model
+/// completely (`Model.create({...})` will then drop every key).
+pub fn register_accessible_attributes(class_name: &str, fields: Vec<String>) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.accessible_attributes = Some(fields);
+}
+
+/// `None` means the model never called `attr_accessible(...)` and falls
+/// back to the legacy "all fields writable" behaviour. Returning the cloned
+/// list is fine — it's typically a handful of strings, so cloning beats
+/// keeping a long-lived read lock across the filter loop.
+pub fn get_accessible_attributes(class_name: &str) -> Option<Vec<String>> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .and_then(|m| m.accessible_attributes.clone())
 }
 
 pub fn is_soft_delete(class_name: &str) -> bool {

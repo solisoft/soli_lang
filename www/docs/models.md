@@ -208,6 +208,43 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.group_by(field, func, agg_field)` | Execute grouping aggregation |
 | `.to_query` | Return the generated SDBQL string (for debugging) |
 
+## Mass Assignment Protection
+
+By default, `Model.create(hash)` and `instance.update(hash)` write **every** key in the supplied hash straight to the document. If `hash` came from a request body, that includes any field a client decides to send — `role`, `is_admin`, `password_digest`, etc. Declare `attr_accessible(...)` on the model to lock down which keys mass-assign accepts.
+
+```soli
+class User extends Model
+  # Variadic form
+  attr_accessible("name", "email", "bio")
+
+  # …or pass a single array — equivalent
+  # attr_accessible(["name", "email", "bio"])
+end
+
+User.create({
+  "name":  "Alice",
+  "email": "alice@example.com",
+  "role":  "admin"   # silently dropped — not in the whitelist
+});
+```
+
+Filtering applies to every mass-assign path: `Model.create(hash)`, `Model.update(id, hash)`, `instance.update(hash)`, `instance.save(hash)`. Non-permitted keys are dropped before validation runs and before the document is written, so they cannot be probed via validation errors either.
+
+**Empty list = full lock-down.** `attr_accessible([])` declares that the model accepts no mass-assigned attributes; everything must be set by trusted server code via direct field assignment (`user.role = "admin"`).
+
+**Models without a declaration keep the legacy "all keys accepted" behaviour** for backwards compatibility. New models that take request data should always declare `attr_accessible`. The CLAUDE.md security guidance recommends auditing every `Model.create`/`Model.update` call site against an explicit whitelist.
+
+For controller-side filtering (when you'd rather hand-pick keys at the boundary), the existing `hash.slice(["a", "b"])` returns a new hash with only the listed keys — handy when you need different whitelists per action:
+
+```soli
+fn update(req)
+  let user = User.find(req["params"]["id"]);
+  let safe = req["json"].slice(["name", "bio"]);
+  user.update(safe);
+  return redirect("/users/" + user._key);
+end
+```
+
 ## Validations
 
 Define validation rules in your model class:

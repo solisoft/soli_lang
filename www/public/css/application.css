@@ -2386,6 +2386,10 @@ video {
   border-color: rgb(239 68 68 / 0.2);
 }
 
+.border-rose-500\/20 {
+  border-color: rgb(244 63 94 / 0.2);
+}
+
 .border-sky-500\/20 {
   border-color: rgb(14 165 233 / 0.2);
 }
@@ -2729,6 +2733,10 @@ video {
 .bg-rose-500 {
   --tw-bg-opacity: 1;
   background-color: rgb(244 63 94 / var(--tw-bg-opacity, 1));
+}
+
+.bg-rose-500\/10 {
+  background-color: rgb(244 63 94 / 0.1);
 }
 
 .bg-rose-500\/20 {
@@ -3777,6 +3785,10 @@ video {
 .text-red-400 {
   --tw-text-opacity: 1;
   color: rgb(248 113 113 / var(--tw-text-opacity, 1));
+}
+
+.text-rose-200\/80 {
+  color: rgb(254 205 211 / 0.8);
 }
 
 .text-rose-400 {

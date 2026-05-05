@@ -15,8 +15,9 @@ pub use super::engine_context::{
     get_model_engine_context, set_model_engine_context, EngineContextGuard,
 };
 pub use super::registry::{
-    get_or_create_metadata, get_translated_fields, is_soft_delete, is_translated_field,
-    register_translation, update_metadata, ModelMetadata, MODEL_REGISTRY,
+    get_accessible_attributes, get_or_create_metadata, get_translated_fields, is_soft_delete,
+    is_translated_field, register_accessible_attributes, register_translation, update_metadata,
+    ModelMetadata, MODEL_REGISTRY,
 };
 
 use super::callbacks::register_callback;
@@ -339,6 +340,45 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
     }
 }
 
+/// Collect field names from `attr_accessible(...)` arguments. Accepts
+/// either a single Array of strings (`attr_accessible(["a", "b"])`) or a
+/// variadic string list (`attr_accessible("a", "b")`) — both forms read
+/// naturally in Soli code. Empty (`attr_accessible()`) is allowed and
+/// means "no field is mass-assignable", which is a useful lock-down.
+fn collect_accessible_fields(args: &[Value]) -> Result<Vec<String>, String> {
+    if args.len() == 1 {
+        if let Value::Array(arr) = &args[0] {
+            let arr = arr.borrow();
+            let mut out = Vec::with_capacity(arr.len());
+            for v in arr.iter() {
+                match v {
+                    Value::String(s) => out.push(s.clone()),
+                    other => {
+                        return Err(format!(
+                            "attr_accessible() expects string field names, got {} in array",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+            return Ok(out);
+        }
+    }
+    let mut out = Vec::with_capacity(args.len());
+    for v in args {
+        match v {
+            Value::String(s) => out.push(s.clone()),
+            other => {
+                return Err(format!(
+                    "attr_accessible() expects string field names, got {}",
+                    other.type_name()
+                ))
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Build an `UploaderConfig` from `uploader(class, name, options_hash)` args.
 /// The class is `args[0]`, the field name is `args[1]`, the options hash is
 /// `args[2]`.
@@ -494,10 +534,58 @@ fn instance_fields_to_hash(
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
 
+/// Filter a `Value::Hash` to the model's `attr_accessible` whitelist for
+/// mass-assign paths (`Model.create`, `Model.update(id, hash)`,
+/// `instance.update(hash)`, `instance.save(hash)`).
+///
+/// - When the model never declared `attr_accessible(...)`, the hash is
+///   returned unchanged. This keeps every existing app working — the
+///   filter is opt-in per model.
+/// - When `attr_accessible([...])` was declared, any key not in the list
+///   is silently dropped. `_`-prefixed framework keys are dropped too,
+///   independent of the whitelist, so they can never be smuggled in via
+///   the request body.
+/// - Non-Hash inputs are passed through untouched; the caller already
+///   handles the type error elsewhere with a more specific message.
+///
+/// We always allocate a fresh `Value::Hash` rather than mutating in place
+/// so the caller's original input is preserved (validation and error
+/// reporting still see the request's full shape if they want it).
+fn filter_mass_assign(class_name: &str, data: &Value) -> Value {
+    use crate::interpreter::value::{HashKey, HashPairs};
+    let pairs = match data {
+        Value::Hash(p) => p,
+        _ => return data.clone(),
+    };
+    let whitelist = match get_accessible_attributes(class_name) {
+        Some(list) => list,
+        None => return data.clone(),
+    };
+    // Tiny lists stay as Vec; HashSet would be overkill here (typical
+    // attr_accessible call lists 5–15 fields).
+    let mut filtered: HashPairs = HashPairs::default();
+    for (k, v) in pairs.borrow().iter() {
+        if let HashKey::String(field) = k {
+            if field.starts_with('_') {
+                continue;
+            }
+            if whitelist.iter().any(|w| w == field) {
+                filtered.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(filtered)))
+}
+
 /// Apply every entry of a `Value::Hash` onto an instance's fields,
 /// matching direct assignment (`inst.field = ...`). Framework-internal
 /// `_`-prefixed keys (`_key`, `_errors`, `_pending_translations`) are
 /// skipped — callers must never overwrite those via bulk update.
+///
+/// If the instance's class declared `attr_accessible(...)`, the hash is
+/// filtered to the whitelist *before* assignment so a passing client
+/// can't smuggle in `role`/`is_admin`/etc. via `instance.update(req)` or
+/// `instance.save(req)`.
 ///
 /// Non-Hash argument returns an error; non-String hash keys are silently
 /// skipped (instances only have string-keyed fields).
@@ -506,14 +594,19 @@ fn apply_hash_to_instance(
     hash: &Value,
 ) -> Result<(), String> {
     use crate::interpreter::value::HashKey;
-    let pairs = match hash {
+    if !matches!(hash, Value::Hash(_)) {
+        return Err(format!(
+            "expected a Hash of attributes, got {}",
+            hash.type_name()
+        ));
+    }
+    let class_name = inst.borrow().class.name.clone();
+    let filtered = filter_mass_assign(&class_name, hash);
+    let pairs = match &filtered {
         Value::Hash(p) => p,
-        other => {
-            return Err(format!(
-                "expected a Hash of attributes, got {}",
-                other.type_name()
-            ))
-        }
+        // filter_mass_assign returns the input unchanged for non-Hash;
+        // we already early-returned above for that case.
+        _ => unreachable!(),
     };
     let mut inst_mut = inst.borrow_mut();
     for (k, v) in pairs.borrow().iter() {
@@ -714,6 +807,24 @@ impl Model {
                 })),
             );
         }
+
+        // attr_accessible(field1, field2, ...) or attr_accessible([field1, field2, ...])
+        // Declares the whitelist of attributes that may be assigned via
+        // mass-assignment paths (`Model.create(hash)`,
+        // `Model.update(id, hash)`, `instance.update(hash)`,
+        // `instance.save(hash)`). Any key not in the list is silently
+        // dropped before validation, before instance population, and
+        // before the DB write. Without a declaration the model accepts
+        // every key (legacy behaviour) — see docs/models.md.
+        native_static_methods.insert(
+            "attr_accessible".to_string(),
+            Rc::new(NativeFunction::new("Model.attr_accessible", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let fields = collect_accessible_fields(&args[1..])?;
+                register_accessible_attributes(&class_name, fields);
+                Ok(Value::Null)
+            })),
+        );
 
         // ====================================================================
         // Relation DSL Methods
@@ -1162,19 +1273,30 @@ impl Model {
                 let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
-                let data = args
+                let raw_data = args
                     .get(1)
                     .cloned()
                     .ok_or_else(|| "Model.create() requires data argument".to_string())?;
 
-                // Build a base instance from the input attributes so the
-                // returned object carries the user's data even on failure.
+                // Strong-params filter: when the model declared
+                // `attr_accessible(...)`, drop any non-whitelisted keys
+                // before they reach validation, the in-memory instance,
+                // or the DB write. Models without a declaration get the
+                // raw hash through unchanged (back-compat).
+                let data = filter_mass_assign(&class_name, &raw_data);
+
+                // Build a base instance from the (filtered) attributes so
+                // the returned object carries the data we'd actually
+                // persist, even on failure.
                 let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
                     class.clone(),
                 )));
                 apply_hash_to_instance(&instance, &data)?;
 
-                // Run validations against the raw input
+                // Run validations against the filtered input — non-permitted
+                // fields are gone, so callers can't satisfy a validation
+                // (or trigger one) by smuggling fields the model never
+                // intended to accept.
                 let errors = run_validations(&class_name, &data, None)?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
@@ -1449,7 +1571,8 @@ impl Model {
         native_static_methods.insert(
             "update".to_string(),
             Rc::new(NativeFunction::new("Model.update", Some(3), |args| {
-                let collection = get_collection_from_class(&args)?;
+                let class_name = get_class_name_from_class(&args)?;
+                let collection = class_name_to_collection(&class_name);
 
                 let id = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
@@ -1463,9 +1586,21 @@ impl Model {
                 };
 
                 let data_value: Result<serde_json::Value, String> = match args.get(2) {
-                    Some(Value::Hash(hash)) => {
+                    Some(hash_val @ Value::Hash(_)) => {
+                        // Strong-params filter for Hash-shaped input. The
+                        // Instance branch below skips this on purpose:
+                        // instance fields are populated by `Model.find` /
+                        // queries, so they're already server-controlled —
+                        // applying the whitelist there would corrupt
+                        // legitimate persistence rather than block an
+                        // attacker.
+                        let filtered = filter_mass_assign(&class_name, hash_val);
+                        let pairs = match &filtered {
+                            Value::Hash(p) => p,
+                            _ => unreachable!(),
+                        };
                         let mut map = serde_json::Map::new();
-                        for (k, v) in hash.borrow().iter() {
+                        for (k, v) in pairs.borrow().iter() {
                             if let HashKey::String(key) = k {
                                 map.insert(key.clone(), value_to_json(v)?);
                             }
@@ -1745,11 +1880,20 @@ impl Model {
                         _ => {}
                     }
 
-                    // Not found — create with defaults
+                    // Not found — create with defaults. Run the same
+                    // strong-params filter as `Model.create`: when the
+                    // model declared `attr_accessible(...)`, drop any
+                    // non-whitelisted keys from the defaults hash before
+                    // they reach the insert.
                     let defaults = match args.get(3) {
-                        Some(Value::Hash(hash)) => {
+                        Some(hash_val @ Value::Hash(_)) => {
+                            let filtered = filter_mass_assign(&class_name, hash_val);
+                            let pairs = match &filtered {
+                                Value::Hash(p) => p,
+                                _ => unreachable!(),
+                            };
                             let mut map = serde_json::Map::new();
-                            for (k, v) in hash.borrow().iter() {
+                            for (k, v) in pairs.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(key) = k {
                                     if let Ok(jv) = super::value_to_json(v) {
                                         map.insert(key.clone(), jv);
@@ -1786,9 +1930,16 @@ impl Model {
                     _ => return Err("upsert() expects string key".to_string()),
                 };
                 let data = match args.get(2) {
-                    Some(Value::Hash(hash)) => {
+                    Some(hash_val @ Value::Hash(_)) => {
+                        // Strong-params filter — `upsert` is just as exposed
+                        // to mass-assignment as `create`/`update`.
+                        let filtered = filter_mass_assign(&class_name, hash_val);
+                        let pairs = match &filtered {
+                            Value::Hash(p) => p,
+                            _ => unreachable!(),
+                        };
                         let mut map = serde_json::Map::new();
-                        for (k, v) in hash.borrow().iter() {
+                        for (k, v) in pairs.borrow().iter() {
                             if let crate::interpreter::value::HashKey::String(k_str) = k {
                                 if let Ok(jv) = super::value_to_json(v) {
                                     map.insert(k_str.clone(), jv);
@@ -1841,9 +1992,19 @@ impl Model {
                 let mut created = 0;
                 for item in &items {
                     let doc = match item {
-                        Value::Hash(hash) => {
+                        hash_val @ Value::Hash(_) => {
+                            // Strong-params filter applied per-item — bulk
+                            // inserts are otherwise a perfect bypass for
+                            // `attr_accessible` (one trip through
+                            // `create_many` writes any attribute on every
+                            // document at once).
+                            let filtered = filter_mass_assign(&class_name, hash_val);
+                            let pairs = match &filtered {
+                                Value::Hash(p) => p,
+                                _ => unreachable!(),
+                            };
                             let mut map = serde_json::Map::new();
-                            for (k, v) in hash.borrow().iter() {
+                            for (k, v) in pairs.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(k_str) = k {
                                     if let Ok(jv) = super::value_to_json(v) {
                                         map.insert(k_str.clone(), jv);
@@ -2784,6 +2945,19 @@ pub fn register_model_builtins(env: &mut Environment) {
             }
 
             register_validation(&class_name, rule);
+            Ok(Value::Null)
+        })),
+    );
+
+    // attr_accessible(class, fields...) — global form mirrors the class-body
+    // DSL (`attr_accessible("name", "email")`). See the static-method copy
+    // above for filter semantics.
+    env.define(
+        "attr_accessible".to_string(),
+        Value::NativeFunction(NativeFunction::new("attr_accessible", None, |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let fields = collect_accessible_fields(&args[1..])?;
+            register_accessible_attributes(&class_name, fields);
             Ok(Value::Null)
         })),
     );
