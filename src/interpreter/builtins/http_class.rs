@@ -358,6 +358,12 @@ pub fn get_http_client() -> &'static Client {
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
+            // SEC-042: pin a hard floor of TLS 1.2. The `rustls-tls`
+            // backend already refuses TLS 1.0/1.1 today, but the
+            // explicit setting is defense in depth — if reqwest's
+            // default ever broadens, or someone swaps the backend,
+            // we don't silently regain a downgrade-prone handshake.
+            .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .expect("Failed to create internal HTTP client")
     })
@@ -435,6 +441,9 @@ pub fn get_user_http_client() -> &'static Client {
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
             .dns_resolver(std::sync::Arc::new(SsrfBlockingResolver))
+            // SEC-042: same TLS-1.2 floor as the internal client (see
+            // `get_http_client`).
+            .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .expect("Failed to create user HTTP client")
     })
@@ -447,6 +456,13 @@ pub fn get_user_http_client() -> &'static Client {
 /// support should use the reqwest-backed paths (Model queries / async
 /// futures), which install a custom policy that re-runs
 /// `validate_url_for_ssrf` on each hop.
+///
+/// SEC-042: TLS minimum is governed by ureq's default `tls` feature,
+/// which uses rustls — and rustls only implements TLS 1.2 and 1.3, so a
+/// downgrade to 1.0/1.1 isn't reachable from this agent today.
+/// `AgentBuilder` has no `.min_tls_version` knob; if the feature flag
+/// were ever swapped to `native-tls`, the floor would need to be
+/// re-asserted via a custom `tls_connector`.
 static UREQ_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
 
 pub fn ureq_agent() -> &'static ureq::Agent {
