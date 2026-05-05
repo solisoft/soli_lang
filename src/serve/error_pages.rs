@@ -789,10 +789,7 @@ pub(super) fn render_dev_error_page(
         stack_frames = stack_frames.join("\n"),
         request_data_json = escape_for_script_tag(request_data_json),
         breakpoint_env_js = escape_for_script_tag(breakpoint_env_json.unwrap_or("null")),
-        dev_repl_token_js = escape_for_script_tag(
-            &serde_json::to_string(super::dev_repl_auth_token())
-                .unwrap_or_else(|_| "\"\"".to_string())
-        ),
+        dev_repl_token_js = escape_for_script_tag(&dev_repl_token_for_html()),
         preloaded_sources_js = escape_for_script_tag(&preloaded_sources_js),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
@@ -820,6 +817,20 @@ fn escape_for_script_tag(s: &str) -> String {
     s.replace("</", "<\\/")
         .replace("<!--", "<\\!--")
         .replace("]]>", "]]\\>")
+}
+
+/// SEC-051: in remote-allowed dev mode, refuse to embed the REPL token
+/// into the HTML error page. ALLOW_REMOTE pairs full server-side code
+/// execution with an HTML token leak — anyone who can render a
+/// dev-mode error response would otherwise scrape the credential. The
+/// operator must paste their `SOLI_DEV_REPL_SECRET` manually (e.g. via
+/// browser console) to use the in-page REPL when remote is on.
+fn dev_repl_token_for_html() -> String {
+    if super::dev_repl_allows_remote() {
+        "\"\"".to_string()
+    } else {
+        serde_json::to_string(super::dev_repl_auth_token()).unwrap_or_else(|_| "\"\"".to_string())
+    }
 }
 
 #[allow(dead_code)]

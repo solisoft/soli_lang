@@ -69,7 +69,20 @@ static DEV_REPL_AUTH_TOKEN: OnceLock<String> = OnceLock::new();
 
 fn dev_repl_auth_token() -> &'static str {
     DEV_REPL_AUTH_TOKEN
-        .get_or_init(|| Uuid::new_v4().to_string())
+        .get_or_init(|| {
+            // SEC-051: in remote-allowed mode the operator must supply
+            // an explicit shared secret via SOLI_DEV_REPL_SECRET so the
+            // auto-generated UUID never lands in an HTML error page
+            // someone on the LAN can scrape. The startup check in
+            // serve_folder_with_options_and_workers refuses to launch
+            // with ALLOW_REMOTE+no SECRET, so by the time anything
+            // calls this we either have a SECRET (remote mode) or a
+            // generated UUID (loopback-only mode).
+            std::env::var("SOLI_DEV_REPL_SECRET")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| Uuid::new_v4().to_string())
+        })
         .as_str()
 }
 
@@ -77,6 +90,12 @@ fn dev_repl_allows_remote() -> bool {
     std::env::var("SOLI_DEV_REPL_ALLOW_REMOTE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "yes"))
         .unwrap_or(false)
+}
+
+fn dev_repl_secret_set() -> bool {
+    std::env::var("SOLI_DEV_REPL_SECRET")
+        .ok()
+        .is_some_and(|s| !s.is_empty())
 }
 
 fn boot_trace(phase: &str) {
@@ -236,6 +255,26 @@ pub fn serve_folder_with_options_and_workers(
     workers: usize,
 ) -> Result<(), RuntimeError> {
     boot_trace("serve_folder enter");
+
+    // SEC-051: refuse to start with --dev + ALLOW_REMOTE unless an
+    // explicit shared secret is also pinned. The /__dev/repl endpoint
+    // is full server-side code execution; in loopback-only mode the
+    // auto-generated UUID is fine because attackers can't reach the
+    // port, but ALLOW_REMOTE pairs that auto-token with HTML error
+    // pages anyone on the LAN can render — one error response would
+    // leak the token. Forcing SOLI_DEV_REPL_SECRET makes the operator
+    // pick (and not embed) the credential.
+    if dev_mode && dev_repl_allows_remote() && !dev_repl_secret_set() {
+        return Err(RuntimeError::General {
+            message: "[SEC-051] --dev with SOLI_DEV_REPL_ALLOW_REMOTE=1 \
+                refuses to start without SOLI_DEV_REPL_SECRET. The \
+                remote-allowed dev REPL is full code execution; pin it \
+                to an explicit non-empty secret so the token isn't \
+                leaked via every dev-mode error page."
+                .to_string(),
+            span: Span::default(),
+        });
+    }
 
     // Resolve to an absolute path — notify emits absolute event paths, so
     // storing watch dirs as relative would break the `starts_with` checks
@@ -5672,6 +5711,47 @@ mod tests {
         let peer_addr: SocketAddr = "192.0.2.10:5011".parse().unwrap();
 
         assert!(is_authorized_dev_repl_request(&headers, peer_addr));
+        std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+    }
+
+    #[test]
+    fn dev_repl_secret_set_reflects_env_state() {
+        // SEC-051: dev_repl_secret_set is the gate the startup check
+        // consults — exercise the env reads.
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        std::env::remove_var("SOLI_DEV_REPL_SECRET");
+        assert!(!dev_repl_secret_set(), "unset → false");
+
+        std::env::set_var("SOLI_DEV_REPL_SECRET", "");
+        assert!(
+            !dev_repl_secret_set(),
+            "empty → false (won't satisfy startup gate)"
+        );
+
+        std::env::set_var("SOLI_DEV_REPL_SECRET", "s3cret");
+        assert!(dev_repl_secret_set(), "non-empty → true");
+
+        std::env::remove_var("SOLI_DEV_REPL_SECRET");
+    }
+
+    #[test]
+    fn serve_folder_refuses_dev_remote_without_secret() {
+        // SEC-051: --dev + ALLOW_REMOTE without SOLI_DEV_REPL_SECRET must
+        // fail at startup so the auto-generated token never lands in HTML.
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_DEV_REPL_ALLOW_REMOTE", "1");
+        std::env::remove_var("SOLI_DEV_REPL_SECRET");
+
+        // Use a tempdir without an `app/controllers/` so the folder
+        // validation would also fail — but the SEC-051 check runs first.
+        let dir = tempfile::tempdir().unwrap();
+        let err = serve_folder_with_options_and_workers(dir.path(), 0, true, 1).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("SEC-051"),
+            "expected SEC-051 startup refusal, got: {msg}"
+        );
+
         std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
     }
 

@@ -184,7 +184,7 @@ Click on any frame to see the source code.</code></pre>
 
         <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mb-6">
             <p class="text-sm text-gray-300">
-                The REPL endpoint is token-protected and accepts loopback clients by default. If your <code class="text-amber-300">*.test</code> domains point to a trusted local server on another machine, start dev mode with <code class="text-amber-300">SOLI_DEV_REPL_ALLOW_REMOTE=1</code>.
+                The REPL endpoint is token-protected and accepts loopback clients by default. If your <code class="text-amber-300">*.test</code> domains point to a trusted local server on another machine, start dev mode with <code class="text-amber-300">SOLI_DEV_REPL_ALLOW_REMOTE=1</code> <em>and</em> pin the token to a secret you control via <code class="text-amber-300">SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt;</code>. The server refuses to start in remote-allowed mode without the secret (SEC-051) so the credential is never embedded in HTML error pages.
             </p>
         </div>
 
@@ -436,7 +436,8 @@ end</code></pre>
 soli serve
 
 # Allow the debug REPL from another trusted local machine
-SOLI_DEV_REPL_ALLOW_REMOTE=1 soli serve . --dev
+# (SEC-051: the secret is required — startup refuses without it)
+SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; soli serve . --dev
 
 # The server will automatically reload when files change
 # Breakpoints and debug page work in this mode</code></pre>
@@ -471,7 +472,7 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 soli serve . --dev
                 <div>
                     <h4 class="text-red-400 font-semibold mb-1">Security Warning</h4>
                     <p class="text-sm text-gray-300">
-                        Never run in development mode in production. The debug page exposes sensitive information including request data, environment variables, and source code. Only set <code>SOLI_DEV_REPL_ALLOW_REMOTE=1</code> on trusted local networks.
+                        Never run in development mode in production. The debug page exposes sensitive information including request data, environment variables, and source code. Only set <code>SOLI_DEV_REPL_ALLOW_REMOTE=1</code> on trusted local networks, and always pair it with <code>SOLI_DEV_REPL_SECRET</code> so the REPL credential isn't embedded in HTML error pages (SEC-051).
                     </p>
                 </div>
             </div>

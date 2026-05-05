@@ -15,13 +15,15 @@ When running in development mode, Soli displays detailed error pages that includ
 
 This helps developers quickly identify and fix bugs during development.
 
-The interactive REPL is protected with a per-server token and is limited to loopback clients by default. If you access a local development server from another machine, explicitly opt in to remote REPL access:
+The interactive REPL is protected with a per-server token and is limited to loopback clients by default. If you access a local development server from another machine, explicitly opt in to remote REPL access — and pin the token to a secret you control so it isn't embedded in HTML error pages:
 
 ```bash
-SOLI_DEV_REPL_ALLOW_REMOTE=1 soli serve . --dev
+SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=<long-random-string> soli serve . --dev
 ```
 
-Only use this on trusted local networks. The debug page embeds the required token automatically; requests without it are rejected.
+The server refuses to start with `--dev + ALLOW_REMOTE` unless `SOLI_DEV_REPL_SECRET` is set (SEC-051). With the secret in effect, the dev-mode error page no longer leaks the credential — paste it manually (e.g. via your browser console: `devReplToken = "<your-secret>"`) when you need the in-page REPL.
+
+In loopback-only mode no extra setup is needed; the auto-generated token is embedded in the error page and the REPL works as expected. Only use remote-allowed mode on trusted local networks.
 
 ### Production Mode (`--no-dev`)
 

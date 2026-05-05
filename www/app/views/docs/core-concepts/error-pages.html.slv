@@ -69,7 +69,7 @@
                     <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve</code>
                 </div>
                 <p class="text-gray-500 text-xs mt-3">
-                    The interactive REPL is token-protected and loopback-only by default. For a trusted local server accessed from another machine, opt in with <code class="text-amber-400">SOLI_DEV_REPL_ALLOW_REMOTE=1</code>.
+                    The interactive REPL is token-protected and loopback-only by default. For a trusted local server accessed from another machine, opt in with <code class="text-amber-400">SOLI_DEV_REPL_ALLOW_REMOTE=1</code> and a pinned <code class="text-amber-400">SOLI_DEV_REPL_SECRET</code> — the server refuses to start otherwise (SEC-051), and the secret is never embedded in the HTML error page.
                 </p>
             </div>
 
