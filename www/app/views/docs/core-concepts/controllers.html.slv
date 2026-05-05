@@ -266,6 +266,20 @@ render_json({ "error": "Not found" }, 404)</code></pre>
                         <strong>Security — instance serialisation.</strong>
                         <code class="text-amber-400">render_json(instance)</code> (and any code path that JSON-stringifies a model record) <strong>omits sensitive fields by default</strong>. Names matching <code class="text-amber-400">password*</code>, <code class="text-amber-400">*_token</code>, <code class="text-amber-400">*_digest</code>, <code class="text-amber-400">*_secret</code>, or <code class="text-amber-400">*_hash</code> are dropped, as are <code class="text-amber-400">_</code>-prefixed framework internals (<code class="text-amber-400">_errors</code>, <code class="text-amber-400">_text</code>, …). Standard model metadata (<code class="text-amber-400">_key</code>, <code class="text-amber-400">_id</code>, <code class="text-amber-400">_rev</code>, <code class="text-amber-400">_created_at</code>, <code class="text-amber-400">_updated_at</code>) is still included. To expose a field whose name matches a pattern, build the response shape explicitly: <code class="text-amber-400">render_json({ "id": user._key, "email": user.email })</code>.
                     </p>
+                    <p class="text-rose-200/80 text-sm mt-3">
+                        For a reusable model-side shape, define an <code class="text-amber-400">as_json</code> method on the Model subclass and call it explicitly &mdash; same convention as Rails' <code class="text-amber-400">ActiveModel::Serializers#as_json</code>:
+                    </p>
+                    <pre class="mt-2"><code class="language-soli text-sm">class User &lt; Model
+  def as_json
+    return { "id": this._key, "email": this.email, "name": this.name }
+  end
+end
+
+# controller:
+render_json(user.as_json())</code></pre>
+                    <p class="text-rose-200/80 text-sm mt-3">
+                        The framework does not auto-dispatch the method from the implicit <code class="text-amber-400">render_json(user)</code> path (that still applies the default-deny filter). Defining <code class="text-amber-400">as_json</code> on each model that has a public API shape gives you a single declarative place to change it.
+                    </p>
                 </div>
             </div>
         </section>

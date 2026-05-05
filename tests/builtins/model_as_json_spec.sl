@@ -1,0 +1,39 @@
+# SEC-013a regression coverage: a user-defined `as_json` (or any
+# similarly-named method) on a Model subclass dispatches normally and
+# can return a custom-shape Hash that callers serialise via
+# `render_json(user.as_json())`. This is the explicit-override hook
+# the task md requested. Default-deny serialisation already covers
+# bare `render_json(user)` callers via SEC-013's
+# `is_safe_serialised_field` filter.
+
+class AsJsonOverrideItem extends Model
+    def as_json
+        # Custom shape — explicit allowlist; ignores the SEC-013
+        # default filter entirely. Apps use this when they need a
+        # field whose name matches a sensitive pattern (e.g.
+        # `*_token`) to be exposed under a non-pattern-matching key.
+        return { "id": this._key, "label": this.name }
+    end
+end
+
+describe("Model subclass-defined as_json (SEC-013a)", fn() {
+    test("user override produces the custom Hash shape", fn() {
+        let item = AsJsonOverrideItem.new();
+        item.name = "Custom";
+        item.password_hash = "would-leak-without-explicit-shape";
+        let h = item.as_json();
+        # The override built `{ "id": this._key, "label": this.name }`.
+        # `_key` is null on a new (un-persisted) instance — but the
+        # shape itself is what we're verifying:
+        assert_eq(h["label"], "Custom");
+        assert_null(h["password_hash"]);  # not in the override
+        assert_null(h["name"]);            # only `label` was emitted
+    });
+
+    test("returns a Hash (not the instance itself)", fn() {
+        let item = AsJsonOverrideItem.new();
+        item.name = "x";
+        let h = item.as_json();
+        assert(h.is_a?("hash"));
+    });
+});

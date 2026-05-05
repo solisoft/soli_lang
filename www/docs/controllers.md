@@ -445,6 +445,21 @@ end
 
 > **Security — instance serialisation.** `render_json(instance)` (and any code path that JSON-stringifies a `Value::Instance`, including `to_json` on a Model record) **omits sensitive fields by default**. Names matching `password*`, `*_token`, `*_digest`, `*_secret`, or `*_hash` are dropped, as are `_`-prefixed framework internals (`_errors`, `_text`, `_pending_translations`, …). The standard Model metadata (`_key`, `_id`, `_rev`, `_created_at`, `_updated_at`) is still included. If you need to expose a field whose name matches one of the patterns, build the response shape explicitly: `render_json({ "id": user._key, "email": user.email, "auth_token_count": user.auth_token_count })` instead of `render_json(user)`.
 
+For a reusable model-side shape, define an `as_json` method on the Model subclass and call it explicitly:
+>
+> ```soli
+> class User < Model
+>   def as_json
+>     return { "id": this._key, "email": this.email, "name": this.name }
+>   end
+> end
+>
+> # controller:
+> render_json(user.as_json())
+> ```
+>
+> This is the same convention as Rails' `ActiveModel::Serializers#as_json`. The framework does not auto-dispatch the method from the serialiser (the implicit `render_json(user)` path still uses the default-deny filter described above), but defining `as_json` on each model that has a public API shape gives you a single declarative place to change it.
+
 ### Plain Text
 
 ```soli
