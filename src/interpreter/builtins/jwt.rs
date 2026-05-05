@@ -222,15 +222,25 @@ pub fn register_jwt_builtins(env: &mut Environment) {
         })),
     );
 
-    // jwt_decode(token) -> payload hash (without verification)
+    // SEC-029: `jwt_decode_unsafe` — decode WITHOUT verification.
+    //
+    // Returns `{unverified: true, claims: {...}}` so the caller cannot
+    // pattern-match on `result["sub"]` and accidentally trust an
+    // attacker-forged claim. The previous `jwt_decode` returned the same
+    // shape as a verified `jwt_verify`, which is a silent footgun: any
+    // controller that did `let claims = jwt_decode(token); user_id =
+    // claims["sub"]` was fully bypassable.
+    //
+    // Use this only for inspection / debugging. For auth, use
+    // `jwt_verify(token, secret)`.
     env.define(
-        "jwt_decode".to_string(),
-        Value::NativeFunction(NativeFunction::new("jwt_decode", Some(1), |args| {
+        "jwt_decode_unsafe".to_string(),
+        Value::NativeFunction(NativeFunction::new("jwt_decode_unsafe", Some(1), |args| {
             let token = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
                     return Err(format!(
-                        "jwt_decode() expects string token, got {}",
+                        "jwt_decode_unsafe() expects string token, got {}",
                         other.type_name()
                     ))
                 }
@@ -240,6 +250,12 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let mut validation = Validation::default();
             validation.insecure_disable_signature_validation();
             validation.validate_exp = false;
+            // SEC-029: `Validation::default()` requires `exp` to be present
+            // even when `validate_exp = false`. For an inspection helper we
+            // accept tokens without `exp` too — otherwise tokens minted by
+            // `jwt_sign(..., {expires_in: 0})` or by other libraries would
+            // be unreadable here.
+            validation.required_spec_claims.clear();
 
             match decode::<Claims>(
                 &token,
@@ -248,22 +264,33 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             ) {
                 Ok(token_data) => {
                     let claims = token_data.claims;
-                    let mut pairs: HashPairs = HashPairs::default();
+                    let mut claims_pairs: HashPairs = HashPairs::default();
 
                     if let Some(sub) = claims.sub {
-                        pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
+                        claims_pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
                     }
                     if let Some(exp) = claims.exp {
-                        pairs.insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
+                        claims_pairs
+                            .insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
                     }
                     if let Some(iat) = claims.iat {
-                        pairs.insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
+                        claims_pairs
+                            .insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
                     }
 
                     for (key, value) in claims.data {
-                        pairs.insert(HashKey::String(key), json_to_value(value)?);
+                        claims_pairs.insert(HashKey::String(key), json_to_value(value)?);
                     }
 
+                    // Wrap the claims in an outer hash that names them as
+                    // unverified. Code that mistakenly does
+                    // `result["sub"]` now reads `null`, not a forged claim.
+                    let mut pairs: HashPairs = HashPairs::default();
+                    pairs.insert(HashKey::String("unverified".to_string()), Value::Bool(true));
+                    pairs.insert(
+                        HashKey::String("claims".to_string()),
+                        Value::Hash(Rc::new(RefCell::new(claims_pairs))),
+                    );
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
@@ -276,6 +303,24 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
             }
+        })),
+    );
+
+    // SEC-029: `jwt_decode` is removed. The old shape was identical to a
+    // verified `jwt_verify` result, which made `let claims =
+    // jwt_decode(token); user_id = claims["sub"]` a silent
+    // authentication bypass. Existing callers must migrate to
+    // `jwt_verify(token, secret)` (verified path) or
+    // `jwt_decode_unsafe(token)` (returns `{unverified: true, claims}`).
+    env.define(
+        "jwt_decode".to_string(),
+        Value::NativeFunction(NativeFunction::new("jwt_decode", None, |_args| {
+            Err(
+                "jwt_decode() has been removed (SEC-029). It returned the same shape as a verified jwt_verify(), \
+                 making `claims[\"sub\"]` a silent auth bypass. Use jwt_verify(token, secret) for authenticated reads, \
+                 or jwt_decode_unsafe(token) for inspection (returns `{unverified: true, claims: {...}}`)."
+                    .to_string(),
+            )
         })),
     );
 }
@@ -294,4 +339,96 @@ fn extract_string_claim(payload: &Value, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn jwt_fn(env: &Environment, name: &str) -> NativeFunction {
+        match env.get(name) {
+            Some(Value::NativeFunction(f)) => f.clone(),
+            other => panic!("expected NativeFunction for {name}, got {other:?}"),
+        }
+    }
+
+    fn fresh_env() -> Environment {
+        let mut env = Environment::new();
+        register_jwt_builtins(&mut env);
+        env
+    }
+
+    /// SEC-029: a token signed with a known secret can be inspected via
+    /// `jwt_decode_unsafe` and the result is wrapped as
+    /// `{unverified: true, claims: {...}}` — distinct from `jwt_verify`.
+    #[test]
+    fn jwt_decode_unsafe_returns_wrapped_shape() {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        let decode = jwt_fn(&env, "jwt_decode_unsafe");
+
+        // Build a payload {sub: "alice", role: "admin"} and sign it.
+        let mut payload: HashPairs = HashPairs::default();
+        payload.insert(
+            HashKey::String("sub".to_string()),
+            Value::String("alice".to_string()),
+        );
+        payload.insert(
+            HashKey::String("role".to_string()),
+            Value::String("admin".to_string()),
+        );
+        let payload_hash = Value::Hash(Rc::new(RefCell::new(payload)));
+        let token = (sign.func)(vec![
+            payload_hash,
+            Value::String("a-very-long-secret-here".to_string()),
+        ])
+        .unwrap();
+        let token_str = match token {
+            Value::String(s) => s,
+            other => panic!("expected token string, got {other:?}"),
+        };
+
+        let result = (decode.func)(vec![Value::String(token_str)]).unwrap();
+        let outer = match result {
+            Value::Hash(h) => h,
+            other => panic!("expected hash result, got {other:?}"),
+        };
+        let outer_borrow = outer.borrow();
+
+        // Outer shape is `{unverified: true, claims: {...}}`.
+        assert!(matches!(
+            outer_borrow.get(&HashKey::String("unverified".to_string())),
+            Some(Value::Bool(true))
+        ));
+        let claims = match outer_borrow.get(&HashKey::String("claims".to_string())) {
+            Some(Value::Hash(c)) => c.clone(),
+            other => panic!("expected nested claims hash, got {other:?}"),
+        };
+        let claims_borrow = claims.borrow();
+        // Claims are reachable via the wrapper but NOT at the top level.
+        assert!(matches!(
+            claims_borrow.get(&HashKey::String("sub".to_string())),
+            Some(Value::String(s)) if s == "alice"
+        ));
+        assert!(outer_borrow
+            .get(&HashKey::String("sub".to_string()))
+            .is_none());
+    }
+
+    /// SEC-029: the bare `jwt_decode` builtin is removed and points
+    /// callers at the safe alternatives.
+    #[test]
+    fn jwt_decode_returns_migration_error() {
+        let env = fresh_env();
+        let decode = jwt_fn(&env, "jwt_decode");
+
+        let err = (decode.func)(vec![Value::String("anything".to_string())]).unwrap_err();
+        assert!(
+            err.contains("SEC-029")
+                && err.contains("jwt_decode_unsafe")
+                && err.contains("jwt_verify"),
+            "expected SEC-029 migration error pointing at both alternatives, got: {}",
+            err
+        );
+    }
 }

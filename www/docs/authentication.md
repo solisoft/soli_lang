@@ -60,21 +60,23 @@ fn authenticate_middleware(req)
 end
 ```
 
-## Decoding Tokens
+## Decoding Tokens (Unsafe — Inspection Only)
 
-Use `jwt_decode()` to read token claims without verification:
+`jwt_decode_unsafe()` reads token claims **without** verification. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `jwt_verify` response. **Never trust these claims for authentication** — use `jwt_verify(token, secret)` for that.
 
 ```soli
 fn get_token_info(req)
   token = req["headers"]["Authorization"];
   token = Regex.replace("^Bearer ", token, "");
 
-  # Decode without verification (for reading only)
-  claims = jwt_decode(token);
+  # SEC-029: explicit "I am NOT verifying" — inspection only.
+  let result = jwt_decode_unsafe(token);
+  let claims = result["claims"];
 
   {
     "status": 200,
     "body": json_stringify({
+      "unverified": true,
       "subject": claims["sub"],
       "issued_at": claims["iat"],
       "expires": claims["exp"]
@@ -82,6 +84,8 @@ fn get_token_info(req)
   }
 end
 ```
+
+The previous `jwt_decode(token)` builtin returned the same shape as `jwt_verify`, which made `claims["sub"]` a silent auth bypass when the caller forgot the verification step. It was removed in SEC-029; calling it raises a migration error.
 
 ## API Reference
 
@@ -107,13 +111,15 @@ jwt_verify(token, secret)
 
 Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid.
 
-### jwt_decode
+### jwt_decode_unsafe
 
 ```soli
-jwt_decode(token)
+jwt_decode_unsafe(token)
 ```
 
-Returns claims without verification. Useful for reading token data without a secret.
+Returns `{unverified: true, claims: {...}}` without verifying signature or expiration. Use only for inspection or debugging; never for authentication. The result wrapper makes it impossible to do `result["sub"]` and silently trust an attacker-forged claim — use `result["claims"]["sub"]` and accept it only if you've verified the token elsewhere.
+
+The legacy `jwt_decode(token)` was removed in SEC-029 because it returned the same shape as `jwt_verify`, making accidental misuse a one-character bug.
 
 ## Best Practices
 

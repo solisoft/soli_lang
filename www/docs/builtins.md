@@ -1244,19 +1244,21 @@ else
 end
 ```
 
-### jwt_decode(token)
+### jwt_decode_unsafe(token)
 
-Decodes a JWT token without verification (unsafe for authentication).
+Decode a JWT **without** verifying its signature or expiration. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `jwt_verify` result. **Never trust these claims for authentication** — use `jwt_verify(token, secret)` for that.
+
+The previous `jwt_decode(token)` returned the same shape as `jwt_verify`, which made `claims["sub"]` a silent auth bypass. It has been removed (SEC-029); calling it now raises a migration error pointing at this function.
 
 **Parameters:**
 - `token` (String) - The JWT token
 
-**Returns:** Hash - Decoded payload
+**Returns:** Hash — `{unverified: true, claims: {...}}` on success, `{error: true, message: ...}` on a malformed token.
 
 **Example:**
 ```soli
-payload = jwt_decode(token)
-println(payload["sub"])  # Inspect claims without verification
+let result = jwt_decode_unsafe(token)
+println(result["claims"]["sub"])  # Inspection only — DO NOT use for auth
 ```
 
 ---

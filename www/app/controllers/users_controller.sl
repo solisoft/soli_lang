@@ -280,12 +280,12 @@ fn decode_token(req)
         }
     end
 
-    let claims = jwt_decode(token)
+    let result = jwt_decode_unsafe(token)
 
     {
         "status": 200,
         "body": json_stringify({
-            "claims": claims
+            "claims": result
         })
     }
 end
