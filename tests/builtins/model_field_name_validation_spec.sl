@@ -89,3 +89,38 @@ describe("Field-name validator — well-formed names still work", fn() {
         assert(!qb.nil?);
     });
 });
+
+// ============================================================================
+// SEC-004a: Model.order direction argument is also restricted to
+// asc/desc/ascending/descending. Same guard applies to the chain form
+// `Model.where(...).order(field, dir)`.
+// ============================================================================
+
+describe("Order direction validator — Model.order entry", fn() {
+    test("rejects an injected direction", fn() {
+        assert_throws("order injected dir", fn() {
+            FieldGuardItem.order("name", "ASC; REMOVE doc IN x");
+        });
+    });
+
+    test("rejects an arbitrary unknown direction", fn() {
+        assert_throws("order weird dir", fn() {
+            FieldGuardItem.order("name", "sideways");
+        });
+    });
+
+    test("accepts asc/desc/ASC/DESC and the long forms", fn() {
+        assert(!FieldGuardItem.order("name", "asc").nil?);
+        assert(!FieldGuardItem.order("name", "DESC").nil?);
+        assert(!FieldGuardItem.order("name", "Ascending").nil?);
+        assert(!FieldGuardItem.order("name", "descending").nil?);
+    });
+});
+
+describe("Order direction validator — QueryBuilder.order chain", fn() {
+    test("rejects an injected direction in the chain form", fn() {
+        assert_throws("qb.order injected dir", fn() {
+            FieldGuardItem.order("name").order("name", "; REMOVE doc");
+        });
+    });
+});

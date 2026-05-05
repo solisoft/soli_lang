@@ -155,6 +155,12 @@ impl Interpreter {
         } else {
             "asc".to_string()
         };
+        // Same direction whitelist as `Model.order(...)` (SEC-004a) — the
+        // QueryBuilder chain (`User.where(...).order(field, dir)`) lands
+        // on the identical SORT-clause builder, so the input must clear
+        // the same gate regardless of which entry point is used.
+        crate::interpreter::builtins::model::validate_order_direction(&direction, "order")
+            .map_err(|e| RuntimeError::type_error(e, span))?;
 
         let mut new_qb = qb.borrow().clone();
         new_qb.set_order(field, direction);

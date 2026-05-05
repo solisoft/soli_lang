@@ -340,6 +340,23 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
     }
 }
 
+/// Validate the `order(field, direction)` direction argument. Accepts
+/// only `asc`/`desc`/`ascending`/`descending` (case-insensitive); any
+/// other value is rejected before it reaches the QueryBuilder. Today
+/// the SORT-clause builder already coerces unknown directions to
+/// `ASC`, so this is fail-fast / defense-in-depth rather than a
+/// runtime exploit fix — it ensures a refactor of the downstream match
+/// can't silently re-introduce direction injection.
+pub fn validate_order_direction(direction: &str, method: &str) -> Result<(), String> {
+    match direction.to_ascii_lowercase().as_str() {
+        "asc" | "desc" | "ascending" | "descending" => Ok(()),
+        _ => Err(format!(
+            "{}() direction must be one of asc/desc/ascending/descending — got {:?}",
+            method, direction
+        )),
+    }
+}
+
 /// Validate that a string is a safe AQL identifier before it's
 /// `format!`-interpolated into a query template such as
 /// `FOR doc IN ... FILTER doc.{field} == @val` or
@@ -1566,6 +1583,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => "asc".to_string(),
                 };
+                validate_order_direction(&direction, "order")?;
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
                 qb.set_order(field, direction);
