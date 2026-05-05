@@ -114,9 +114,15 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             Ok(serde_json::Value::Object(map))
         }
         Value::Instance(inst) => {
+            // SEC-013: same filter as the `serde::Serialize` path —
+            // `value_to_json(user)` must not leak `password_hash` /
+            // `*_token` / framework-internal fields.
             let borrow = inst.borrow();
             let mut map = serde_json::Map::with_capacity(borrow.fields.len());
             for (k, v) in borrow.fields.iter() {
+                if !crate::interpreter::value::is_safe_serialised_field(k) {
+                    continue;
+                }
                 map.insert(k.clone(), value_to_json(v)?);
             }
             Ok(serde_json::Value::Object(map))

@@ -1305,6 +1305,48 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
     crate::interpreter::value_json::value_to_json(value)
 }
 
+/// SEC-013: which fields of a `Value::Instance` are safe to include
+/// when the runtime serialises an instance via `render_json` /
+/// `to_json`. Anything matching a common-sensitive name pattern is
+/// skipped; framework-internal `_`-prefixed fields are skipped too,
+/// except for the small set of Model metadata fields that
+/// applications routinely expose (`_key`, `_id`, `_rev`,
+/// `_created_at`, `_updated_at`).
+///
+/// This is the default; SEC-013a will add an explicit `to_json`
+/// override hook so apps can customise their serialisation shape
+/// without working around the filter.
+pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
+    // Always-exposed Model metadata.
+    const PUBLIC_META: &[&str] = &["_key", "_id", "_rev", "_created_at", "_updated_at"];
+    if PUBLIC_META.contains(&name) {
+        return true;
+    }
+    // All other `_`-prefixed fields are framework internals
+    // (`_errors`, `_text`, `_pending_translations`, …).
+    if name.starts_with('_') {
+        return false;
+    }
+    // Sensitive name patterns. Case-insensitive on the suffix/prefix to
+    // catch `Password`, `Password_Digest`, etc. Matching is done in
+    // lowercase so "PasswordHash" is filtered out too.
+    let lower = name.to_ascii_lowercase();
+    // Catches `password`, `password_digest`, `password_hash`,
+    // `password_reset_token`, `passwordHash` (lowercased to
+    // `passwordhash`), etc.
+    if lower.starts_with("password") {
+        return false;
+    }
+    if lower.ends_with("_token")
+        || lower.ends_with("_digest")
+        || lower.ends_with("_secret")
+        || lower.ends_with("_hash")
+    {
+        return false;
+    }
+    true
+}
+
 /// Implement serde::Serialize for Value to leverage serde_json's optimized writer.
 impl serde::Serialize for Value {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -1338,9 +1380,20 @@ impl serde::Serialize for Value {
                 map.end()
             }
             Value::Instance(inst) => {
+                // SEC-013: a bare `render_json(user)` used to walk every
+                // field of the class, leaking `password_hash`,
+                // `reset_token`, etc. Default to skipping fields whose
+                // names match common-sensitive patterns and most
+                // `_`-prefixed framework internals; apps that need the
+                // raw shape can serialise explicitly via a Hash literal.
                 let borrow = inst.borrow();
-                let mut map = serializer.serialize_map(Some(borrow.fields.len()))?;
-                for (k, v) in borrow.fields.iter() {
+                let visible: Vec<(&String, &Value)> = borrow
+                    .fields
+                    .iter()
+                    .filter(|(k, _)| is_safe_serialised_field(k))
+                    .collect();
+                let mut map = serializer.serialize_map(Some(visible.len()))?;
+                for (k, v) in visible {
                     map.serialize_entry(k, v)?;
                 }
                 map.end()
@@ -2345,5 +2398,62 @@ mod value_misc_tests {
         assert_eq!(Value::Int(3), Value::Float(3.0));
         assert_eq!(Value::Float(3.0), Value::Int(3));
         assert_ne!(Value::Int(3), Value::Float(3.5));
+    }
+
+    // SEC-013 — `is_safe_serialised_field` regression coverage.
+
+    #[test]
+    fn safe_serialised_field_allows_normal_attributes() {
+        assert!(super::is_safe_serialised_field("name"));
+        assert!(super::is_safe_serialised_field("email"));
+        assert!(super::is_safe_serialised_field("title"));
+        assert!(super::is_safe_serialised_field("created_count"));
+    }
+
+    #[test]
+    fn safe_serialised_field_allows_public_model_metadata() {
+        for f in &["_key", "_id", "_rev", "_created_at", "_updated_at"] {
+            assert!(
+                super::is_safe_serialised_field(f),
+                "{} should remain serialised",
+                f
+            );
+        }
+    }
+
+    #[test]
+    fn safe_serialised_field_blocks_other_underscore_fields() {
+        assert!(!super::is_safe_serialised_field("_errors"));
+        assert!(!super::is_safe_serialised_field("_text"));
+        assert!(!super::is_safe_serialised_field("_pending_translations"));
+        assert!(!super::is_safe_serialised_field("_anything_else"));
+    }
+
+    #[test]
+    fn safe_serialised_field_blocks_password_variants() {
+        assert!(!super::is_safe_serialised_field("password"));
+        assert!(!super::is_safe_serialised_field("Password"));
+        assert!(!super::is_safe_serialised_field("password_digest"));
+        assert!(!super::is_safe_serialised_field("password_hash"));
+        assert!(!super::is_safe_serialised_field("PasswordHash"));
+        assert!(!super::is_safe_serialised_field("password_reset_token"));
+    }
+
+    #[test]
+    fn safe_serialised_field_blocks_token_digest_secret_hash_suffixes() {
+        assert!(!super::is_safe_serialised_field("reset_token"));
+        assert!(!super::is_safe_serialised_field("api_secret"));
+        assert!(!super::is_safe_serialised_field("auth_digest"));
+        assert!(!super::is_safe_serialised_field("session_hash"));
+        assert!(!super::is_safe_serialised_field("Reset_Token")); // case-insensitive
+    }
+
+    #[test]
+    fn safe_serialised_field_keeps_innocent_lookalikes() {
+        // `token_count` doesn't end in `_token`; `digest_format` doesn't end in `_digest`.
+        // The suffix match is anchored, so legitimate fields aren't false-positives.
+        assert!(super::is_safe_serialised_field("token_count"));
+        assert!(super::is_safe_serialised_field("digest_format"));
+        assert!(super::is_safe_serialised_field("hash_algorithm"));
     }
 }
