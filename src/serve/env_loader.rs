@@ -57,6 +57,34 @@ pub fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
         let key = key.trim();
         let value = value.trim().trim_matches('"').trim_matches('\'');
 
+        // SEC-052: validate the key against `[A-Za-z_][A-Za-z0-9_]*`.
+        // A malformed key (spaces, `=`, shell metacharacters) is almost
+        // always a typo or a probe; passing it through to `set_var`
+        // would either silently fail or — depending on platform — set a
+        // weird env entry that downstream code can't read back cleanly.
+        if !is_valid_env_key(key) {
+            eprintln!(
+                "[env_loader] skipping {} entry with invalid key {:?} (must match [A-Za-z_][A-Za-z0-9_]*)",
+                filename, key
+            );
+            continue;
+        }
+
+        // SEC-052: reject values containing NUL / CR / LF. `str::lines`
+        // already strips trailing CRLF and NL, but a bare `\r` in the
+        // middle of a line (or a `\0`) survives and would later become
+        // a header-split / log-injection vector when the value flows
+        // into HTTP responses, structured logs, or shell-mode
+        // System.run. Reject loudly rather than strip — silent
+        // sanitization hides the upstream bug.
+        if value.bytes().any(|b| matches!(b, b'\0' | b'\r' | b'\n')) {
+            eprintln!(
+                "[env_loader] skipping {} entry {:?}: value contains NUL / CR / LF",
+                filename, key
+            );
+            continue;
+        }
+
         let is_protected = protected.iter().any(|p| p == key);
         let already_set = std::env::var(key).is_ok();
 
@@ -70,5 +98,81 @@ pub fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
             // this call from worker code were removed in SEC-033.
             unsafe { std::env::set_var(key, value) };
         }
+    }
+}
+
+/// SEC-052: an env var name must match `[A-Za-z_][A-Za-z0-9_]*`. POSIX
+/// permits more than this, but the .env files we parse are
+/// developer-authored config — anything outside this conservative shape
+/// is almost always a typo, a stray `=`, or a probe attempt.
+fn is_valid_env_key(key: &str) -> bool {
+    let mut bytes = key.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == b'_') {
+        return false;
+    }
+    bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_env_keys_accepted() {
+        for k in ["FOO", "FOO_BAR", "_PRIVATE", "API_KEY_2", "a", "_", "X9"] {
+            assert!(is_valid_env_key(k), "expected accepted: {k:?}");
+        }
+    }
+
+    #[test]
+    fn invalid_env_keys_rejected() {
+        // SEC-052: spaces, `=`, leading digits, dashes, shell metas,
+        // empty — all rejected.
+        for k in [
+            "", "FOO BAR", "FOO=BAR", "1ST", "a-b", "$FOO", "FOO;rm", "FOO\rBAR", "FOO\nBAR",
+        ] {
+            assert!(!is_valid_env_key(k), "expected rejected: {k:?}");
+        }
+    }
+
+    #[test]
+    fn loader_skips_value_with_embedded_cr_or_lf() {
+        // SEC-052: a `.env` line whose value contains a bare CR (or NL,
+        // when constructed in-process) must not be exported to the env;
+        // it would become an HTTP-header-split / log-injection vector
+        // downstream.
+        let dir = tempfile::tempdir().unwrap();
+        let key = "SEC052_TEST_CR_LF_VALUE";
+        // Pre-clear in case a stale value is still set in this proc.
+        unsafe { std::env::remove_var(key) };
+
+        // Write a .env containing a value with an embedded CR.
+        let content = format!("{key}=bar\\rLD_PRELOAD=/tmp/x\n").replace("\\r", "\r");
+        std::fs::write(dir.path().join(".env"), content).unwrap();
+
+        load_env_file(dir.path(), ".env", true);
+        assert!(
+            std::env::var(key).is_err(),
+            "expected {key} to remain unset (was {:?})",
+            std::env::var(key)
+        );
+    }
+
+    #[test]
+    fn loader_skips_invalid_key() {
+        // SEC-052: a `.env` line with a malformed key must be skipped.
+        // Use an in-process unique key root to avoid collisions across
+        // parallel tests.
+        let dir = tempfile::tempdir().unwrap();
+        // Embed a leading digit (invalid) and confirm nothing is set.
+        let probe = "1SEC052_TEST_BAD_KEY";
+        unsafe { std::env::remove_var(probe) };
+        std::fs::write(dir.path().join(".env"), format!("{probe}=value\n")).unwrap();
+
+        load_env_file(dir.path(), ".env", true);
+        assert!(std::env::var(probe).is_err());
     }
 }

@@ -16,6 +16,9 @@
         <pre data-filename=".env"><code class="language-bash text-sm">APP_ENV=development
 SOLIDB_HOST=http://localhost:6745
 SOLIDB_DATABASE=myapp_development</code></pre>
+        <p class="text-gray-400 mt-4">
+            Keys must match <code>[A-Za-z_][A-Za-z0-9_]*</code>. Values cannot contain <code>\0</code>, <code>\r</code>, or <code>\n</code> &mdash; entries with control characters are skipped at load time with a warning on stderr. This avoids HTTP-header-split / log-injection vectors when an env value flows downstream into responses or structured logs.
+        </p>
     </section>
 
     <section class="mb-12">

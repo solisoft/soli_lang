@@ -9,6 +9,8 @@ SOLIDB_HOST=http://localhost:6745
 SOLIDB_DATABASE=myapp_development
 ```
 
+Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `\n` — entries with control characters are skipped at load time with a warning on stderr. This avoids HTTP-header-split / log-injection vectors when an env value flows downstream into responses or structured logs.
+
 ## Application Environment
 
 | Variable | Purpose | Default |
