@@ -129,17 +129,16 @@ impl DbConfig {
 
         let host =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        // Strip http:// or https:// prefix for TCP connection
-        let host_for_tcp = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .to_string();
+        // SEC-027: pass the URL through to `SoliDBClient::connect` with
+        // its scheme intact. The previous strip + reconnect made TLS
+        // impossible — `connect` would re-add `http://` regardless of
+        // the operator's https:// configuration.
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let username = std::env::var("SOLIDB_USERNAME").ok();
         let password = std::env::var("SOLIDB_PASSWORD").ok();
 
         Self {
-            host: host_for_tcp,
+            host,
             database,
             username,
             password,

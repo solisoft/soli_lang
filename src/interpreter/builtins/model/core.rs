@@ -8,8 +8,8 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Function, NativeFunction, Value};
 
 pub use super::db_config::{
-    get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token, init_db_config,
-    init_jwt_token, DbConfig, DB_CONFIG,
+    db_url, get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token,
+    init_db_config, init_jwt_token, DbConfig, DB_CONFIG,
 };
 pub use super::engine_context::{
     get_model_engine_context, set_model_engine_context, EngineContextGuard,

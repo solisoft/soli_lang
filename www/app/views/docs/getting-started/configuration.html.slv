@@ -84,7 +84,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SOLIDB_HOST</code></td><td class="py-3 px-4">SoliDB server URL.</td><td class="py-3 px-4"><code>http://localhost:6745</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLIDB_HOST</code></td><td class="py-3 px-4">SoliDB server URL. An explicit <code>http://</code> / <code>https://</code> prefix is preserved. When the scheme is omitted, the host defaults to <code>https://</code> for remote DBs and <code>http://</code> for loopback (<code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code>) so the dev loop stays plaintext while remote DBs are TLS by default.</td><td class="py-3 px-4"><code>http://localhost:6745</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLIDB_DATABASE</code></td><td class="py-3 px-4">Database name used by models, migrations, uploads, and jobs fallback.</td><td class="py-3 px-4"><code>default</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLIDB_API_KEY</code></td><td class="py-3 px-4">API-key auth for SoliDB where supported.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLIDB_USERNAME</code></td><td class="py-3 px-4">Username for SolidB login/basic auth.</td><td class="py-3 px-4">unset</td></tr>

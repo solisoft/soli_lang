@@ -7,7 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::core::{get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token};
+use super::core::{
+    db_url, get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token,
+};
 #[allow(unused_imports)]
 use super::registry::{clear_model_classes, get_model_class, register_model_class};
 
@@ -104,10 +106,8 @@ pub fn get_current_tx_id() -> Option<String> {
 pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
     let host = super::core::DB_CONFIG.host.clone();
     let database = get_database_name().to_string();
-    let url = format!(
-        "http://{}/_api/database/{}/transaction/begin",
-        host, database
-    );
+    // SEC-027: use the configured scheme; was forcing http:// regardless.
+    let url = db_url(&format!("/_api/database/{}/transaction/begin", database));
 
     let body = serde_json::json!({
         "database": database,
@@ -165,12 +165,12 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
 pub fn commit_transaction() -> Result<(), String> {
     let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
 
-    let host = super::core::DB_CONFIG.host.clone();
     let database = get_database_name().to_string();
-    let url = format!(
-        "http://{}/_api/database/{}/transaction/{}/commit",
-        host, database, tx_id
-    );
+    // SEC-027: use the configured scheme.
+    let url = db_url(&format!(
+        "/_api/database/{}/transaction/{}/commit",
+        database, tx_id
+    ));
 
     run_db_future(async move {
         let client = get_http_client().clone();
@@ -199,12 +199,12 @@ pub fn commit_transaction() -> Result<(), String> {
 pub fn rollback_transaction() -> Result<(), String> {
     let tx_id = get_current_tx_id().ok_or_else(|| "No active transaction".to_string())?;
 
-    let host = super::core::DB_CONFIG.host.clone();
     let database = get_database_name().to_string();
-    let url = format!(
-        "http://{}/_api/database/{}/transaction/{}/rollback",
-        host, database, tx_id
-    );
+    // SEC-027: use the configured scheme.
+    let url = db_url(&format!(
+        "/_api/database/{}/transaction/{}/rollback",
+        database, tx_id
+    ));
 
     run_db_future(async move {
         let client = get_http_client().clone();
@@ -532,13 +532,12 @@ fn is_collection_not_found_error(error: &str) -> bool {
 }
 
 fn create_collection_sync(name: &str) -> Result<(), String> {
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let host = host
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .to_string();
+    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    // SEC-027: preserve the operator-set scheme (or pick https for
+    // remote, http for loopback) instead of forcing http://.
+    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
     let database = get_database_name();
-    let url = format!("http://{}/_api/database/{}/collection", host, database);
+    let url = format!("{}{}/_api/database/{}/collection", scheme, host, database);
 
     let body = serde_json::json!({ "name": name }).to_string();
 
@@ -632,25 +631,23 @@ pub fn exec_auto_collection_with_binds(
     }
 }
 
-use crate::interpreter::builtins::model::core::DB_CONFIG;
-
-/// Build the base URL for document operations: http://{host}/_api/database/{db}/document/{collection}
+/// Build the base URL for document operations: {scheme}{host}/_api/database/{db}/document/{collection}.
+/// SEC-027: use the configured scheme; was forcing http:// regardless.
 fn document_base_url(collection: &str) -> String {
-    format!(
-        "http://{}/_api/database/{}/document/{}",
-        DB_CONFIG.host,
+    db_url(&format!(
+        "/_api/database/{}/document/{}",
         get_database_name(),
         collection
-    )
+    ))
 }
 
 /// Execute a database transaction with SDBQL queries.
 /// The action is a string containing SDBQL statements to execute within the transaction.
 pub fn exec_transaction(action: &str) -> Result<serde_json::Value, String> {
     let client = get_http_client().clone();
-    let host = DB_CONFIG.host.clone();
     let _database = get_database_name();
-    let url = format!("http://{}/_api/transaction", host);
+    // SEC-027: use the configured scheme.
+    let url = db_url("/_api/transaction");
 
     let body = serde_json::json!({
         "collections": {
@@ -824,12 +821,12 @@ pub fn exec_insert_tx(
     }
 
     if let Some(tx_id) = get_current_tx_id() {
-        let host = super::core::DB_CONFIG.host.clone();
         let database = get_database_name().to_string();
-        let url = format!(
-            "http://{}/_api/database/{}/transaction/{}/document/{}",
-            host, database, tx_id, collection
-        );
+        // SEC-027: use the configured scheme.
+        let url = db_url(&format!(
+            "/_api/database/{}/transaction/{}/document/{}",
+            database, tx_id, collection
+        ));
         exec_document_request(reqwest::Method::POST, url, Some(document))
     } else {
         exec_insert(collection, key, document)
@@ -840,16 +837,15 @@ pub fn exec_insert_tx(
 /// If a transaction is active, uses the transaction endpoint.
 pub fn exec_get_tx(collection: &str, key: &str) -> Result<serde_json::Value, String> {
     if let Some(tx_id) = get_current_tx_id() {
-        let host = super::core::DB_CONFIG.host.clone();
         let database = get_database_name().to_string();
-        let url = format!(
-            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
-            host,
+        // SEC-027: use the configured scheme.
+        let url = db_url(&format!(
+            "/_api/database/{}/transaction/{}/document/{}/{}",
             database,
             tx_id,
             collection,
             normalize_key(key)
-        );
+        ));
         exec_document_request(reqwest::Method::GET, url, None)
     } else {
         exec_get(collection, key)
@@ -864,16 +860,15 @@ pub fn exec_update_tx(
     document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     if let Some(tx_id) = get_current_tx_id() {
-        let host = super::core::DB_CONFIG.host.clone();
         let database = get_database_name().to_string();
-        let url = format!(
-            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
-            host,
+        // SEC-027: use the configured scheme.
+        let url = db_url(&format!(
+            "/_api/database/{}/transaction/{}/document/{}/{}",
             database,
             tx_id,
             collection,
             normalize_key(key)
-        );
+        ));
         exec_document_request(reqwest::Method::PUT, url, Some(document))
     } else {
         exec_update(collection, key, document, false)
@@ -884,16 +879,15 @@ pub fn exec_update_tx(
 /// If a transaction is active, uses the transaction endpoint.
 pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, String> {
     if let Some(tx_id) = get_current_tx_id() {
-        let host = super::core::DB_CONFIG.host.clone();
         let database = get_database_name().to_string();
-        let url = format!(
-            "http://{}/_api/database/{}/transaction/{}/document/{}/{}",
-            host,
+        // SEC-027: use the configured scheme.
+        let url = db_url(&format!(
+            "/_api/database/{}/transaction/{}/document/{}/{}",
             database,
             tx_id,
             collection,
             normalize_key(key)
-        );
+        ));
         exec_document_request(reqwest::Method::DELETE, url, None)
     } else {
         exec_delete(collection, key)

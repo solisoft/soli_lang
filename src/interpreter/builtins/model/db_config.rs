@@ -28,19 +28,65 @@ fn override_database() -> Option<String> {
 
 /// Cached database configuration to avoid repeated env::var() lookups.
 pub struct DbConfig {
+    /// Scheme to use when building DB URLs. SEC-027: preserved from
+    /// `SOLIDB_HOST` if explicit; otherwise defaults to `https://` for
+    /// remote hosts and `http://` for loopback. Previously the scheme
+    /// was stripped and forced to `http://` regardless of operator
+    /// intent, making TLS impossible for the model layer.
+    pub scheme: String,
     pub host: String,
 }
 
 impl DbConfig {
     fn from_env() -> Self {
-        let host =
+        let raw =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        let host = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .to_string();
-        Self { host }
+        let (scheme, host) = parse_solidb_host(&raw);
+        Self { scheme, host }
     }
+}
+
+/// SEC-027: split `SOLIDB_HOST` into `(scheme, host)`. Preserves an
+/// explicit `http://` / `https://` prefix; for unscheme'd values picks
+/// `http://` for loopback and `https://` for everything else so a
+/// remote DB is TLS by default.
+pub(super) fn parse_solidb_host(raw: &str) -> (String, String) {
+    let raw = raw.trim();
+    let trimmed = raw.trim_end_matches('/');
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        return ("https://".to_string(), rest.to_string());
+    }
+    if let Some(rest) = trimmed.strip_prefix("http://") {
+        return ("http://".to_string(), rest.to_string());
+    }
+    let scheme = if is_loopback_db_host(trimmed) {
+        "http://"
+    } else {
+        "https://"
+    };
+    (scheme.to_string(), trimmed.to_string())
+}
+
+/// SEC-027: detect loopback hosts so `parse_solidb_host` can default an
+/// unscheme'd `localhost:6745` to `http://` instead of breaking the
+/// common `soli new` / dev-loop deployment.
+fn is_loopback_db_host(host: &str) -> bool {
+    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
+    let hostname = if let Some(rest) = host.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else if host.matches(':').count() >= 2 {
+        host
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    let lower = hostname.to_ascii_lowercase();
+    if lower == "localhost" || lower.starts_with("localhost.") {
+        return true;
+    }
+    if let Ok(ip) = lower.parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+    false
 }
 
 /// Cached JWT token obtained by logging in with Basic auth credentials.
@@ -118,14 +164,14 @@ pub fn init_db_config() {
 
 fn get_db_config() -> &'static CachedDbConfig {
     CACHED_DB_CONFIG.get_or_init(|| {
-        let host =
+        let raw =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        let host = host
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .to_string();
+        let (scheme, host) = parse_solidb_host(&raw);
         let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
-        let cursor_url = format!("http://{}/_api/database/{}/cursor", host, database);
+        // SEC-027: build the cursor URL with the scheme `parse_solidb_host`
+        // chose (preserves operator-set https://, defaults remote hosts
+        // to https). Was forced to http:// regardless of intent.
+        let cursor_url = format!("{}{}/_api/database/{}/cursor", scheme, host, database);
         let api_key = std::env::var("SOLIDB_API_KEY").ok();
         let basic_auth = match (
             std::env::var("SOLIDB_USERNAME").ok(),
@@ -158,7 +204,12 @@ pub fn get_database_name() -> String {
 
 pub fn get_cursor_url() -> String {
     if let Some(name) = override_database() {
-        return format!("http://{}/_api/database/{}/cursor", DB_CONFIG.host, name);
+        // SEC-027: per-thread DB-name override still uses the same
+        // scheme `DbConfig::from_env` picked, not a hard-coded http://.
+        return format!(
+            "{}{}/_api/database/{}/cursor",
+            DB_CONFIG.scheme, DB_CONFIG.host, name
+        );
     }
     get_db_config().cursor_url.clone()
 }
@@ -169,4 +220,75 @@ pub fn get_api_key() -> Option<&'static str> {
 
 pub fn get_basic_auth() -> Option<&'static str> {
     get_db_config().basic_auth.as_deref()
+}
+
+/// SEC-027: build a SoliDB URL using the configured scheme + host.
+/// `path` is appended verbatim (e.g. `/_api/database/{db}/cursor`).
+/// Use this instead of `format!("http://{}{}", DB_CONFIG.host, path)`,
+/// which forces plaintext HTTP regardless of the operator's intent.
+pub fn db_url(path: &str) -> String {
+    format!("{}{}{}", DB_CONFIG.scheme, DB_CONFIG.host, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SEC-027: explicit schemes survive the parse round-trip.
+    #[test]
+    fn parse_solidb_host_preserves_explicit_scheme() {
+        assert_eq!(
+            parse_solidb_host("https://db.example.com:8080"),
+            ("https://".to_string(), "db.example.com:8080".to_string())
+        );
+        assert_eq!(
+            parse_solidb_host("http://db.example.com:8080"),
+            ("http://".to_string(), "db.example.com:8080".to_string())
+        );
+        // Trailing slash trimmed.
+        assert_eq!(
+            parse_solidb_host("https://db.example.com/"),
+            ("https://".to_string(), "db.example.com".to_string())
+        );
+    }
+
+    /// SEC-027: unscheme'd hosts default to https for remote and http
+    /// for loopback so the dev loop stays plaintext while remote DBs
+    /// upgrade to TLS.
+    #[test]
+    fn parse_solidb_host_defaults_unscheme_d() {
+        // Remote → https.
+        assert_eq!(
+            parse_solidb_host("db.internal:8080"),
+            ("https://".to_string(), "db.internal:8080".to_string())
+        );
+        assert_eq!(
+            parse_solidb_host("10.0.0.1:6745"),
+            ("https://".to_string(), "10.0.0.1:6745".to_string())
+        );
+        // Loopback → http.
+        assert_eq!(
+            parse_solidb_host("localhost:6745"),
+            ("http://".to_string(), "localhost:6745".to_string())
+        );
+        assert_eq!(
+            parse_solidb_host("127.0.0.1:6745"),
+            ("http://".to_string(), "127.0.0.1:6745".to_string())
+        );
+        assert_eq!(
+            parse_solidb_host("[::1]:6745"),
+            ("http://".to_string(), "[::1]:6745".to_string())
+        );
+    }
+
+    #[test]
+    fn loopback_db_host_basics() {
+        assert!(is_loopback_db_host("localhost"));
+        assert!(is_loopback_db_host("localhost:6745"));
+        assert!(is_loopback_db_host("127.0.0.1"));
+        assert!(is_loopback_db_host("127.1.2.3:6745"));
+        assert!(is_loopback_db_host("[::1]:6745"));
+        assert!(!is_loopback_db_host("db.internal"));
+        assert!(!is_loopback_db_host("10.0.0.1:6745"));
+    }
 }

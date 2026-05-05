@@ -81,13 +81,43 @@ impl From<reqwest::Error> for SoliDBError {
     }
 }
 
+/// SEC-027: detect loopback DB hosts so `SoliDBClient::connect` can
+/// keep defaulting them to plaintext `http://` while remote hosts
+/// upgrade to `https://`. Mirrors the loopback detector in the
+/// session layer (handles IPv4/IPv6/userinfo/`localhost.*`).
+fn is_loopback_solidb_host(host: &str) -> bool {
+    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
+    let hostname = if let Some(rest) = host.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else if host.matches(':').count() >= 2 {
+        host
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    let lower = hostname.to_ascii_lowercase();
+    if lower == "localhost" || lower.starts_with("localhost.") {
+        return true;
+    }
+    if let Ok(ip) = lower.parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+    false
+}
+
 impl SoliDBClient {
     pub fn connect(host: &str) -> Result<Self, SoliDBError> {
-        // Add http:// scheme if missing
-        let base_url = if host.starts_with("http://") || host.starts_with("https://") {
-            host.trim_end_matches('/').to_string()
+        let trimmed = host.trim().trim_end_matches('/');
+        // SEC-027: preserve an explicit `http://` / `https://` prefix.
+        // If unscheme'd, default to `https://` for remote hosts and
+        // `http://` for loopback so the dev loop (localhost SoliDB)
+        // keeps working without forcing TLS, but a remote DB is TLS by
+        // default. Was unconditionally `http://` regardless of intent.
+        let base_url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            trimmed.to_string()
+        } else if is_loopback_solidb_host(trimmed) {
+            format!("http://{}", trimmed)
         } else {
-            format!("http://{}", host.trim_end_matches('/'))
+            format!("https://{}", trimmed)
         };
 
         Ok(Self {
@@ -815,4 +845,37 @@ fn extract_id(response: &Value) -> String {
         return s.to_string();
     }
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SEC-027: explicit `https://` survives `connect()` round-trip.
+    #[test]
+    fn connect_preserves_explicit_scheme() {
+        let c = SoliDBClient::connect("https://db.example.com:8080").unwrap();
+        assert_eq!(c.base_url, "https://db.example.com:8080");
+        let c = SoliDBClient::connect("http://db.example.com:8080").unwrap();
+        assert_eq!(c.base_url, "http://db.example.com:8080");
+    }
+
+    /// SEC-027: unscheme'd remote host upgrades to `https://`.
+    #[test]
+    fn connect_defaults_remote_to_https() {
+        let c = SoliDBClient::connect("db.internal:8080").unwrap();
+        assert_eq!(c.base_url, "https://db.internal:8080");
+        let c = SoliDBClient::connect("10.0.0.1:6745").unwrap();
+        assert_eq!(c.base_url, "https://10.0.0.1:6745");
+    }
+
+    /// SEC-027: unscheme'd loopback stays on `http://` so the dev loop
+    /// (`localhost` SoliDB) still works without TLS.
+    #[test]
+    fn connect_defaults_loopback_to_http() {
+        let c = SoliDBClient::connect("localhost:6745").unwrap();
+        assert_eq!(c.base_url, "http://localhost:6745");
+        let c = SoliDBClient::connect("127.0.0.1:6745").unwrap();
+        assert_eq!(c.base_url, "http://127.0.0.1:6745");
+    }
 }

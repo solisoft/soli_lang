@@ -47,7 +47,7 @@ These knobs control how the request edge handles untrusted input. See the
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLIDB_HOST` | SoliDB server URL. | `http://localhost:6745` |
+| `SOLIDB_HOST` | SoliDB server URL. An explicit `http://` / `https://` prefix is preserved. When the scheme is omitted, the host defaults to `https://` for remote DBs and `http://` for loopback (`localhost`, `127.0.0.1`, `::1`) so the dev loop stays plaintext while remote DBs are TLS by default. | `http://localhost:6745` |
 | `SOLIDB_DATABASE` | Database name used by models, migrations, uploads, and jobs fallback. | `default` |
 | `SOLIDB_API_KEY` | API-key auth for SoliDB where supported. | unset |
 | `SOLIDB_USERNAME` | Username for SolidB login/basic auth. | unset |
