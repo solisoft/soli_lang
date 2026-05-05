@@ -40,6 +40,16 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            // SEC-013b: `render_json(instance)` auto-dispatches through a
+            // user-defined `def as_json` on the instance's class. Without
+            // this interceptor, the native `render_json` closure has no
+            // interpreter handle and can't call user methods, so the
+            // override only worked for `render_json(user.as_json())`.
+            if name == "render_json" {
+                if let Some(result) = self.try_evaluate_render_json_with_as_json(arguments, span)? {
+                    return Ok(result);
+                }
+            }
         }
 
         // All three fast paths below require the callee to be a Member/SafeMember
@@ -492,6 +502,80 @@ impl Interpreter {
             }
             None => Ok(Some(not_acceptable_response())),
         }
+    }
+
+    /// SEC-013b: when `render_json` is called with an `Instance` whose class
+    /// declares its own `def as_json`, dispatch the user method first and
+    /// forward the resulting Hash to `render_json` instead of the raw
+    /// instance. This is the auto-dispatch the SEC-013a documented
+    /// convention couldn't deliver — the native `render_json` closure has
+    /// no `&mut Interpreter` handle, so this interception lives at the
+    /// call-evaluation layer where one is in scope.
+    ///
+    /// Returns `Ok(None)` to fall through to the default builtin in three
+    /// cases: no arguments, first arg isn't a Soli `Value::Instance`, or
+    /// the instance's class doesn't define `as_json`. Existing
+    /// `render_json(hash_or_array)` callers and `render_json(user)`
+    /// callers on classes without an override are untouched.
+    fn try_evaluate_render_json_with_as_json(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        if arguments.is_empty() {
+            return Ok(None);
+        }
+        // Only positional first arg — named/spread args fall through.
+        let first_expr = match &arguments[0] {
+            Argument::Positional(e) => e,
+            _ => return Ok(None),
+        };
+        let data = self.evaluate(first_expr)?;
+        let instance = match &data {
+            Value::Instance(inst) => inst.clone(),
+            _ => return Ok(None),
+        };
+        let inst_ref = instance.borrow();
+        let as_json_method = match inst_ref.class.find_method("as_json") {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+        drop(inst_ref);
+
+        // Bind `this` to the instance and execute the user method.
+        let mut bound_env = Environment::with_enclosing(as_json_method.closure.clone());
+        bound_env.define("this".to_string(), Value::Instance(instance.clone()));
+        let bound = crate::interpreter::value::Function {
+            name: as_json_method.name.clone(),
+            params: as_json_method.params.clone(),
+            body: as_json_method.body.clone(),
+            closure: Rc::new(RefCell::new(bound_env)),
+            is_method: true,
+            span: as_json_method.span,
+            ..Default::default()
+        };
+        let serialised = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+
+        // Forward to the original `render_json` builtin with the override
+        // result substituted for the first argument. Any further arguments
+        // (status code, options) are evaluated and passed through unchanged.
+        let render_json_val = self
+            .environment
+            .borrow()
+            .get("render_json")
+            .ok_or_else(|| RuntimeError::General {
+                message: "render_json builtin missing from environment".to_string(),
+                span,
+            })?;
+        let mut new_args = Vec::with_capacity(arguments.len());
+        new_args.push(serialised);
+        for arg in arguments.iter().skip(1) {
+            if let Argument::Positional(e) = arg {
+                new_args.push(self.evaluate(e)?);
+            }
+        }
+        let result = self.call_value(render_json_val, new_args, span)?;
+        Ok(Some(result))
     }
 
     fn try_evaluate_hash_string_key_call(

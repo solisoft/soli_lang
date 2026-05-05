@@ -445,7 +445,7 @@ end
 
 > **Security — instance serialisation.** `render_json(instance)` (and any code path that JSON-stringifies a `Value::Instance`, including `to_json` on a Model record) **omits sensitive fields by default**. Names matching `password*`, `*_token`, `*_digest`, `*_secret`, or `*_hash` are dropped, as are `_`-prefixed framework internals (`_errors`, `_text`, `_pending_translations`, …). The standard Model metadata (`_key`, `_id`, `_rev`, `_created_at`, `_updated_at`) is still included. If you need to expose a field whose name matches one of the patterns, build the response shape explicitly: `render_json({ "id": user._key, "email": user.email, "auth_token_count": user.auth_token_count })` instead of `render_json(user)`.
 
-For a reusable model-side shape, define an `as_json` method on the Model subclass and call it explicitly:
+For a reusable model-side shape, define an `as_json` method on the Model subclass:
 >
 > ```soli
 > class User < Model
@@ -454,11 +454,12 @@ For a reusable model-side shape, define an `as_json` method on the Model subclas
 >   end
 > end
 >
-> # controller:
-> render_json(user.as_json())
+> # controller — render_json auto-dispatches through the user method:
+> render_json(user)
+> # equivalent to: render_json(user.as_json())
 > ```
 >
-> This is the same convention as Rails' `ActiveModel::Serializers#as_json`. The framework does not auto-dispatch the method from the serialiser (the implicit `render_json(user)` path still uses the default-deny filter described above), but defining `as_json` on each model that has a public API shape gives you a single declarative place to change it.
+> Same convention as Rails' `ActiveModel::Serializers#as_json`. When `render_json` receives an `Instance` whose class declares `def as_json`, the framework calls the method first and forwards the resulting Hash to `render_json`. Models without an `as_json` method fall back to the default-deny filter described above. Defining `as_json` gives you a single declarative place to evolve a model's public API shape.
 
 ### Plain Text
 
