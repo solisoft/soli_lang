@@ -237,12 +237,13 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
         Ok(r) => {
             let code = r.status();
             let cookies: Vec<String> = r.all("Set-Cookie").iter().map(|s| s.to_string()).collect();
-            let text = r.into_string().map_err(|e| e.to_string())?;
+            let text = crate::interpreter::builtins::http_class::read_capped_text_sync(r)?;
             (code, cookies, text)
         }
         Err(ureq::Error::Status(code, r)) => {
             let cookies: Vec<String> = r.all("Set-Cookie").iter().map(|s| s.to_string()).collect();
-            let text = r.into_string().unwrap_or_default();
+            let text = crate::interpreter::builtins::http_class::read_capped_text_sync(r)
+                .unwrap_or_default();
             (code, cookies, text)
         }
         Err(e) => return Err(e.to_string()),

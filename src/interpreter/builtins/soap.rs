@@ -14,7 +14,8 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::interpreter::builtins::http_class::{
-    get_user_http_client, ureq_agent, validate_url_for_ssrf,
+    get_user_http_client, read_capped_text_async, read_capped_text_sync, ureq_agent,
+    validate_url_for_ssrf,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
@@ -120,7 +121,7 @@ pub fn register_soap_class(env: &mut Environment) {
                             }
                         }
 
-                        let body = resp.text().await.map_err(|e| e.to_string())?;
+                        let body = read_capped_text_async(resp).await?;
 
                         let parsed_xml = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
@@ -297,7 +298,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
         let result = match request.send_string(&envelope) {
             Ok(resp) => {
                 let status = resp.status();
-                let body = resp.into_string().unwrap_or_default();
+                let body = read_capped_text_sync(resp).unwrap_or_default();
                 let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
                 let mut result: HashPairs = HashPairs::default();
@@ -319,7 +320,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                 build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
             }
             Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
+                let body = read_capped_text_sync(resp).unwrap_or_default();
                 let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
                 let mut result: HashPairs = HashPairs::default();

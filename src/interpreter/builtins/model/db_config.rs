@@ -91,16 +91,18 @@ pub fn get_jwt_token() -> Option<&'static str> {
                 .set("Content-Type", "application/json")
                 .send_string(&payload.to_string())
             {
-                Ok(resp) => match resp.into_string() {
-                    Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
-                        Ok(json) => json
-                            .get("token")
-                            .and_then(|t| t.as_str())
-                            .map(|t| t.to_string()),
+                Ok(resp) => {
+                    match crate::interpreter::builtins::http_class::read_capped_text_sync(resp) {
+                        Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
+                            Ok(json) => json
+                                .get("token")
+                                .and_then(|t| t.as_str())
+                                .map(|t| t.to_string()),
+                            Err(_) => None,
+                        },
                         Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
+                    }
+                }
                 Err(e) => {
                     eprintln!("Warning: JWT login failed ({}), falling back", e);
                     None

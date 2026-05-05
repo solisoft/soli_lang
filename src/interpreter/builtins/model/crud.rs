@@ -129,7 +129,9 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
             .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
+                .await
+                .unwrap_or_default();
             return Err(format!("Begin transaction failed: {} - {}", status, body));
         }
 
@@ -180,7 +182,9 @@ pub fn commit_transaction() -> Result<(), String> {
             .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
+                .await
+                .unwrap_or_default();
             return Err(format!("Commit transaction failed: {} - {}", status, body));
         }
 
@@ -212,7 +216,9 @@ pub fn rollback_transaction() -> Result<(), String> {
             .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
+                .await
+                .unwrap_or_default();
             return Err(format!(
                 "Rollback transaction failed: {} - {}",
                 status, body
@@ -368,7 +374,9 @@ pub fn exec_async_query_with_binds(
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
             return Err(format!("Query failed: {} - {}", status, body));
         }
 
@@ -449,11 +457,15 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
             return Err(format!("Query failed: {} - {}", status, body));
         }
 
-        resp.text().await.map_err(|e| format!("Read error: {}", e))
+        crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+            .await
+            .map_err(|e| format!("Read error: {}", e))
     }) {
         Ok(text) => Value::String(text),
         Err(e) => Value::String(format!("Error: {}", e)),
@@ -501,7 +513,9 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
             .body(body);
 
         let resp = request.send().await.map_err(|e| e.to_string())?;
-        resp.text().await.map_err(|e| e.to_string())
+        crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+            .await
+            .map_err(|e| e.to_string())
     }) {
         Ok(text) => Value::String(text),
         Err(e) => Value::String(format!("Error: {}", e)),
@@ -552,7 +566,9 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
             if status == reqwest::StatusCode::CONFLICT {
                 return Ok(());
             }
-            let body = resp.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
             return Err(format!("Create collection failed: {} - {}", status, body));
         }
 
@@ -657,7 +673,10 @@ pub fn exec_transaction(action: &str) -> Result<serde_json::Value, String> {
 
         let status = response.status();
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
+            let error_text =
+                crate::interpreter::builtins::http_class::read_capped_text_async(response)
+                    .await
+                    .unwrap_or_default();
             return Err(format!("Transaction failed: {} - {}", status, error_text));
         }
 
@@ -698,7 +717,9 @@ fn exec_document_request(
 
         let status = resp.status();
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
             return Err(format!("HTTP {} {}: {}", status, url, body));
         }
 

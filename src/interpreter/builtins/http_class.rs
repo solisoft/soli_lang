@@ -333,6 +333,63 @@ pub fn get_http_client() -> &'static Client {
     })
 }
 
+/// SEC-018: maximum bytes Soli will buffer from a single outbound HTTP
+/// response body. The defaults of `reqwest::Response::text()` and
+/// `ureq::Response::into_string()` are unbounded — a malicious or
+/// compromised upstream returning a multi-GB body would OOM the worker.
+/// Configurable via `SOLI_HTTP_MAX_RESPONSE_BYTES`; default 50 MiB,
+/// which is generous for legitimate JSON / HTML / file payloads.
+fn http_max_response_bytes() -> usize {
+    static CAP: OnceLock<usize> = OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(50 * 1024 * 1024)
+    })
+}
+
+/// Read a reqwest response body into a `String`, aborting once the
+/// accumulated bytes exceed [`http_max_response_bytes`]. Used in place
+/// of the unbounded `Response::text().await`.
+pub async fn read_capped_text_async(resp: reqwest::Response) -> Result<String, String> {
+    use futures_util::StreamExt;
+    let cap = http_max_response_bytes();
+    let mut buf: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        if buf.len().saturating_add(chunk.len()) > cap {
+            return Err(format!(
+                "HTTP response exceeded {} bytes (SOLI_HTTP_MAX_RESPONSE_BYTES)",
+                cap
+            ));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    String::from_utf8(buf).map_err(|e| format!("invalid UTF-8 in response body: {}", e))
+}
+
+/// Read a ureq response body into a `String`, aborting once the
+/// accumulated bytes exceed [`http_max_response_bytes`]. Used in place
+/// of the unbounded `Response::into_string()`.
+pub fn read_capped_text_sync(resp: ureq::Response) -> Result<String, String> {
+    use std::io::Read;
+    let cap = http_max_response_bytes();
+    let mut buf: Vec<u8> = Vec::new();
+    resp.into_reader()
+        .take((cap as u64).saturating_add(1))
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    if buf.len() > cap {
+        return Err(format!(
+            "HTTP response exceeded {} bytes (SOLI_HTTP_MAX_RESPONSE_BYTES)",
+            cap
+        ));
+    }
+    String::from_utf8(buf).map_err(|e| format!("invalid UTF-8 in response body: {}", e))
+}
+
 /// User-facing HTTP client — used by `HTTP.*` builtins and SOAP. URL
 /// comes from user Soli code, so DNS rebinding is a real threat:
 /// `SsrfBlockingResolver` filters resolved IPs through `is_blocked_ip`
@@ -482,11 +539,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        resp.text().await.map_err(|e| e.to_string())
+                        read_capped_text_async(resp).await
                     }) {
                         Ok(text) => Ok(Value::String(text)),
                         Err(e) => Err(e),
@@ -494,11 +551,10 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || match ureq_agent().get(&url).call() {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -553,11 +609,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        resp.text().await.map_err(|e| e.to_string())
+                        read_capped_text_async(resp).await
                     }) {
                         Ok(text) => Ok(Value::String(text)),
                         Err(e) => Err(e),
@@ -569,11 +625,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -628,11 +683,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        resp.text().await.map_err(|e| e.to_string())
+                        read_capped_text_async(resp).await
                     }) {
                         Ok(text) => Ok(Value::String(text)),
                         Err(e) => Err(e),
@@ -644,11 +699,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -703,11 +757,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        resp.text().await.map_err(|e| e.to_string())
+                        read_capped_text_async(resp).await
                     }) {
                         Ok(text) => Ok(Value::String(text)),
                         Err(e) => Err(e),
@@ -719,11 +773,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", &content_type)
                         .send_string(&body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -757,11 +810,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        resp.text().await.map_err(|e| e.to_string())
+                        read_capped_text_async(resp).await
                     }) {
                         Ok(text) => Ok(Value::String(text)),
                         Err(e) => Err(e),
@@ -769,11 +822,10 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || match ureq_agent().delete(&url).call() {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -853,11 +905,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        let text = read_capped_text_async(resp).await?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
                             Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
@@ -873,11 +925,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Accept", "application/json")
                         .call()
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -917,11 +968,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        let text = read_capped_text_async(resp).await?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
                             Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
@@ -937,11 +988,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -981,11 +1031,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        let text = read_capped_text_async(resp).await?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
                             Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
@@ -1001,11 +1051,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -1045,11 +1094,11 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let status = resp.status();
                         if !status.is_success() {
-                            let body = resp.text().await.unwrap_or_default();
+                            let body = read_capped_text_async(resp).await.unwrap_or_default();
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = resp.text().await.map_err(|e| e.to_string())?;
+                        let text = read_capped_text_async(resp).await?;
                         match serde_json::from_str::<serde_json::Value>(&text) {
                             Ok(json) => json_to_value(json),
                             Err(e) => Err(format!("Failed to parse JSON: {}", e)),
@@ -1065,11 +1114,10 @@ pub fn register_http_class(env: &mut Environment) {
                         .set("Content-Type", "application/json")
                         .send_string(&json_body)
                     {
-                        Ok(response) => response
-                            .into_string()
+                        Ok(response) => read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response body: {}", e)),
                         Err(ureq::Error::Status(code, response)) => {
-                            let body = response.into_string().unwrap_or_default();
+                            let body = read_capped_text_sync(response).unwrap_or_default();
                             Err(format!("HTTP {} error: {}", code, body))
                         }
                         Err(e) => Err(format!("HTTP request failed: {}", e)),
@@ -1178,7 +1226,7 @@ pub fn register_http_class(env: &mut Environment) {
                             }
                         }
 
-                        let body = resp.text().await.map_err(|e| e.to_string())?;
+                        let body = read_capped_text_async(resp).await?;
 
                         create_http_response(status, status_text, headers_map, body)
                     }) {
@@ -1232,7 +1280,7 @@ pub fn register_http_class(env: &mut Environment) {
                                         }
                                     }
 
-                                    let body = resp.into_string().map_err(|e| {
+                                    let body = read_capped_text_sync(resp).map_err(|e| {
                                         format!("Failed to read response body: {}", e)
                                     })?;
 
@@ -1247,7 +1295,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 }
                                 Err(ureq::Error::Status(code, resp)) => {
                                     let status_text = resp.status_text().to_string();
-                                    let body = resp.into_string().unwrap_or_default();
+                                    let body = read_capped_text_sync(resp).unwrap_or_default();
 
                                     let result = serde_json::json!({
                                         "status": code,
@@ -1593,13 +1641,12 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
                 let (status, body) = match ureq_agent().get(&url).call() {
                     Ok(response) => {
                         let status = response.status();
-                        let body = response
-                            .into_string()
+                        let body = read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response: {}", e));
                         (status, body)
                     }
                     Err(ureq::Error::Status(code, response)) => {
-                        let body = response.into_string().unwrap_or_default();
+                        let body = read_capped_text_sync(response).unwrap_or_default();
                         (code, Err(format!("HTTP {} error: {}", code, body)))
                     }
                     Err(e) => (0, Err(format!("Request failed: {}", e))),
@@ -1658,13 +1705,12 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
                 {
                     Ok(response) => {
                         let status = response.status();
-                        let body = response
-                            .into_string()
+                        let body = read_capped_text_sync(response)
                             .map_err(|e| format!("Failed to read response: {}", e));
                         (status, body)
                     }
                     Err(ureq::Error::Status(code, response)) => {
-                        let body = response.into_string().unwrap_or_default();
+                        let body = read_capped_text_sync(response).unwrap_or_default();
                         (code, Err(format!("HTTP {} error: {}", code, body)))
                     }
                     Err(e) => (0, Err(format!("Request failed: {}", e))),
@@ -1798,8 +1844,7 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
                     headers.push((name, value.to_string()));
                 }
             }
-            let body = resp
-                .into_string()
+            let body = read_capped_text_sync(resp)
                 .map_err(|e| format!("Failed to read response: {}", e))?;
 
             Ok(HttpResponse {
@@ -1811,7 +1856,7 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
         }
         Err(ureq::Error::Status(code, resp)) => {
             let status_text = resp.status_text().to_string();
-            let body = resp.into_string().unwrap_or_default();
+            let body = read_capped_text_sync(resp).unwrap_or_default();
             Ok(HttpResponse {
                 status: code,
                 status_text,
@@ -2144,6 +2189,19 @@ mod parallel_logging_tests {
     // SEC-017 — `validate_url_for_ssrf` honors only the in-process
     // `SSRF_TEST_MODE` flag, not `APP_ENV=test`.
     static SSRF_FLAG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    // SEC-018 — `http_max_response_bytes` honours the env override.
+    #[test]
+    fn http_max_response_bytes_default_50_mib() {
+        // The OnceLock caches the first read. We can't safely set an env
+        // and then expect it to be read by the global helper, but we can
+        // assert the parser logic by reading directly.
+        let from_env = std::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(50 * 1024 * 1024);
+        assert_eq!(super::http_max_response_bytes(), from_env);
+    }
 
     #[test]
     fn ssrf_validate_ignores_app_env_test() {
