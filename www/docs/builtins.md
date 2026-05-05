@@ -1516,6 +1516,8 @@ html = Markdown.to_html("# #{title}\n\nSome content here.")
 
 The `SOAP` class provides methods for making SOAP (Simple Object Access Protocol) calls and working with XML data.
 
+> **Security — XML hardening.** The XML parser used by `SOAP.call` and `SOAP.parse` rejects DOCTYPE declarations outright (XXE / billion-laughs vector), caps element-nesting depth at 64, and caps accumulated text per element at 1 MiB. Legitimate SOAP responses are well below these limits; payloads that hit any cap return a parser error rather than risk runaway memory.
+
 ### SOAP.call(url, action, envelope, headers?)
 
 Makes a SOAP request by performing an HTTP POST with the SOAP envelope.

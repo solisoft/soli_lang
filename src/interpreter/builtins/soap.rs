@@ -385,6 +385,18 @@ fn build_json_from_value(value: &Value) -> String {
     }
 }
 
+/// Maximum element-nesting depth the SOAP parser will accept. A
+/// billion-laughs / deeply-nested XML body is the classic XML DoS
+/// vector — well past 64 levels we're not parsing real-world SOAP
+/// anyway. Picked to match common defaults in defensive XML libraries.
+const SOAP_MAX_DEPTH: usize = 64;
+
+/// Maximum total bytes of unencoded text content this parser will
+/// accumulate per element. Stops a single `<x>AAAA…</x>` payload from
+/// growing the in-memory buffer without bound. 1 MiB is well above any
+/// legitimate SOAP body field.
+const SOAP_MAX_TEXT_BYTES: usize = 1024 * 1024;
+
 fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text_end = true;
@@ -396,6 +408,18 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
 
     loop {
         match reader.read_event_into(&mut buf) {
+            // SEC-008: an XML document with a DOCTYPE may declare
+            // entities (XXE) or expand recursively (billion laughs).
+            // quick_xml does not honour entity definitions, but the
+            // mere presence of a DOCTYPE in untrusted input is a
+            // strong "this isn't normal SOAP" signal — refuse rather
+            // than let it through silently.
+            Ok(Event::DocType(_)) => {
+                return Err(
+                    "XML parsing error: DOCTYPE declarations are not allowed in SOAP payloads"
+                        .to_string(),
+                );
+            }
             Ok(Event::Start(e)) => {
                 if !current_text.trim().is_empty() && !stack.is_empty() {
                     if let Some((_, parent)) = stack.last_mut() {
@@ -408,10 +432,22 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 }
 
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if stack.len() >= SOAP_MAX_DEPTH {
+                    return Err(format!(
+                        "XML parsing error: nesting depth exceeded {} levels (likely DoS payload)",
+                        SOAP_MAX_DEPTH
+                    ));
+                }
                 stack.push((name, HashPairs::default()));
             }
             Ok(Event::Text(e)) => {
                 if let Ok(text) = e.unescape() {
+                    if current_text.len().saturating_add(text.len()) > SOAP_MAX_TEXT_BYTES {
+                        return Err(format!(
+                            "XML parsing error: element text exceeded {} bytes (likely DoS payload)",
+                            SOAP_MAX_TEXT_BYTES
+                        ));
+                    }
                     current_text.push_str(&text);
                 }
             }
@@ -633,4 +669,76 @@ fn xml_escape_attribute(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression coverage for the SEC-008 SOAP-XML hardening:
+    //! DOCTYPE rejection, depth cap, text-size cap.
+    use super::*;
+
+    #[test]
+    fn rejects_doctype_declarations() {
+        let xml = r#"<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY a "hello">]>
+<root><body>&a;</body></root>"#;
+        let err = parse_xml_to_value(xml).unwrap_err();
+        assert!(
+            err.contains("DOCTYPE"),
+            "expected DOCTYPE rejection, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_excessive_nesting() {
+        // Build an XML payload with nesting just past the cap.
+        let mut xml = String::from("<?xml version=\"1.0\"?>");
+        let depth = SOAP_MAX_DEPTH + 5;
+        for i in 0..depth {
+            xml.push_str(&format!("<n{}>", i));
+        }
+        for i in (0..depth).rev() {
+            xml.push_str(&format!("</n{}>", i));
+        }
+        let err = parse_xml_to_value(&xml).unwrap_err();
+        assert!(
+            err.contains("nesting depth exceeded"),
+            "expected depth-cap rejection, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_text_payload_over_cap() {
+        let mut xml = String::from("<root>");
+        // Push enough to clearly exceed SOAP_MAX_TEXT_BYTES across one or
+        // more text events.
+        let chunk = "A".repeat(64 * 1024);
+        for _ in 0..((SOAP_MAX_TEXT_BYTES / chunk.len()) + 2) {
+            xml.push_str(&chunk);
+        }
+        xml.push_str("</root>");
+        let err = parse_xml_to_value(&xml).unwrap_err();
+        assert!(
+            err.contains("element text exceeded"),
+            "expected text-cap rejection, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn accepts_normal_soap_envelope() {
+        let xml = r#"<?xml version="1.0"?>
+<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+    <Body>
+        <GetUser>
+            <id>42</id>
+            <name>Alice</name>
+        </GetUser>
+    </Body>
+</Envelope>"#;
+        let v = parse_xml_to_value(xml).expect("normal SOAP body must parse");
+        assert!(matches!(v, Value::Hash(_)));
+    }
 }
