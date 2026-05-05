@@ -670,9 +670,22 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("  Downloading {}...", tarball);
 
-    let temp_dir = std::env::temp_dir();
-    let tarball_path = temp_dir.join(&tarball);
-    let binary_path = temp_dir.join("soli");
+    // SEC-041: stage the tarball + extracted binary in a fresh, mode-0700,
+    // randomly-named directory. The previous flow used `/tmp/<tarball>`
+    // and `/tmp/soli`, both predictable shared-tmp paths — a co-tenant
+    // could pre-create `/tmp/soli` as a symlink to `~/.cargo/bin/soli`
+    // (or any privileged file) and the `tar::unpack` + `fs::rename` +
+    // `chmod 0755` sequence would clobber the target. `tempfile::tempdir`
+    // returns a unique directory whose name no other user can predict
+    // and whose mode is 0700 on Unix. The dir is dropped (and its
+    // contents wiped) when `_temp_dir` goes out of scope at the end of
+    // this function, so cleanup is automatic on every exit path.
+    let temp_dir = tempfile::Builder::new()
+        .prefix("soli-update-")
+        .tempdir()
+        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    let tarball_path = temp_dir.path().join(&tarball);
+    let binary_path = temp_dir.path().join("soli");
 
     let response = client
         .get(&download_url)
@@ -706,12 +719,66 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         .copy_to(&mut file)
         .map_err(|e| format!("Failed to write download: {}", e))
         .expect("Failed to write download");
+    drop(file);
+
+    // SEC-041: verify the tarball against the published SHA256 before any
+    // extraction or privileged install step. Releases publish a
+    // `<tarball>.sha256` sibling asset. If the asset is missing we warn
+    // and continue (older releases predating this requirement won't have
+    // it); a present-but-mismatched checksum hard-fails so a tampered
+    // download cannot reach `tar::unpack` or `chmod 0755`.
+    let actual_sha = match sha256_of_file(&tarball_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m hashing download: {}", e);
+            process::exit(1);
+        }
+    };
+    let sha_url = format!("{}.sha256", download_url);
+    match client.get(&sha_url).send() {
+        Ok(resp) if resp.status().is_success() => {
+            let body = resp
+                .text()
+                .map_err(|e| format!("Failed to read .sha256: {}", e))?;
+            let expected = body.split_whitespace().next().unwrap_or("").to_lowercase();
+            if expected.is_empty() {
+                eprintln!("  \x1b[31mError:\x1b[0m empty .sha256 file at {}", sha_url);
+                process::exit(1);
+            }
+            if expected != actual_sha {
+                eprintln!(
+                    "  \x1b[31mError:\x1b[0m checksum mismatch: expected {}, got {}",
+                    expected, actual_sha
+                );
+                process::exit(1);
+            }
+            println!("  Checksum verified.");
+        }
+        Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+            eprintln!(
+                "  \x1b[33mWarning:\x1b[0m no .sha256 published for v{} — \
+                 skipping checksum verification.",
+                latest_tag
+            );
+        }
+        Ok(resp) => {
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m fetching .sha256: HTTP {}",
+                resp.status()
+            );
+            process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("  \x1b[31mError:\x1b[0m fetching .sha256: {}", e);
+            process::exit(1);
+        }
+    }
 
     println!("  Extracting...");
     let tf = std::fs::File::open(&tarball_path).expect("Failed to open tarball");
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tf));
     archive
-        .unpack(&temp_dir)
+        .unpack(temp_dir.path())
         .expect("Failed to extract tarball");
 
     let current_exe = std::env::current_exe().expect("Failed to get current executable path");
@@ -740,13 +807,39 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
             .expect("Failed to set executable permissions");
     }
 
-    std::fs::remove_file(&tarball_path).ok();
     std::fs::remove_file(&backup_path).ok();
+    // `temp_dir` (and its contents — tarball + any extras) is removed when
+    // the `TempDir` handle drops at the end of this scope.
+    drop(temp_dir);
 
     println!();
     println!("  \x1b[32m\x1b[1m✓\x1b[0m Updated to v{}", latest_tag);
     println!();
     Ok(())
+}
+
+/// SEC-041: stream-hash a file with SHA-256, returning the lowercase hex
+/// digest. Used to verify the downloaded release tarball against the
+/// `.sha256` sibling asset before any extraction or `chmod 0755` step.
+fn sha256_of_file(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = File::open(path).map_err(|e| format!("open {}: {}", path.display(), e))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect())
 }
 
 pub fn run_login(registry: Option<&str>, token: Option<&str>) {

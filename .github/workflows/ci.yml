@@ -168,11 +168,18 @@ jobs:
         run: |
           ls -la target/${{ matrix.target }}/release/soli
           tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release soli
+          # SEC-041: publish a `.sha256` sibling so `soli update` can
+          # verify the downloaded tarball before extracting / chmod-ing.
+          # `shasum -a 256` is portable across the matrix (macos-latest
+          # ships shasum but not coreutils' `sha256sum`).
+          shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz
+        run: |
+          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz
+          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz.sha256
 
   publish-release:
     needs: [build-binaries]
