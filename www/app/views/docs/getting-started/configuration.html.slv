@@ -64,6 +64,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
                     <tr><td class="py-3 px-4"><code>SOLI_TRUST_PROXY</code></td><td class="py-3 px-4">Honors <code>X-Forwarded-Proto</code> / <code>X-Forwarded-Host</code> when set to <code>1</code>, <code>true</code>, or <code>yes</code>. Only enable when the deployment terminates these headers at a trusted proxy hop.</td><td class="py-3 px-4"><code>false</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_FORCE_SECURE_COOKIES</code></td><td class="py-3 px-4">Set to <code>1</code>/<code>true</code>/<code>yes</code> to add <code>Secure</code> to every session cookie regardless of detected scheme. Use when the deployment is always on TLS but the proxy doesn't forward <code>X-Forwarded-Proto: https</code> (or <code>enable_trust_proxy()</code> isn't on). Equivalent runtime call: <code>enable_force_secure_cookies()</code>.</td><td class="py-3 px-4"><code>false</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_MAX_BODY_SIZE</code></td><td class="py-3 px-4">Maximum buffered request body, in bytes. Requests over the cap return <code>413 Payload Too Large</code>.</td><td class="py-3 px-4"><code>8388608</code> (8 MiB)</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_DISABLE_CSRF</code></td><td class="py-3 px-4">Disables the same-origin CSRF check entirely when set to <code>true</code>. For API-only deployments where no cookie session is in play. Per-route opt-out via <code>skip_csrf("/path")</code> in <code>config/routes.sl</code> is preferred &mdash; see <a href="/docs/routing#csrf-protection" class="text-indigo-400 hover:text-indigo-300 transition-colors">Routing &rarr; CSRF Protection</a>.</td><td class="py-3 px-4">unset</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_HTTP_MAX_RESPONSE_BYTES</code></td><td class="py-3 px-4">Maximum bytes Soli will buffer from a single outbound HTTP response (<code>HTTP.*</code>, <code>SOAP.*</code>). A malicious or compromised upstream returning a multi-GB body would otherwise OOM the worker.</td><td class="py-3 px-4"><code>52428800</code> (50 MiB)</td></tr>
@@ -193,6 +194,10 @@ SOLIDB_DATABASE=myapp_development</code></pre>
         <p class="text-gray-400 mb-4">Soli loads <code>config/application.sl</code> once at boot, before <code>config/routes.sl</code>, which makes it the natural place for app-wide startup config:</p>
         <pre data-filename="config/application.sl"><code class="language-soli text-sm"># Trust X-Forwarded-* only behind a trusted proxy.
 enable_trust_proxy()
+
+# Always emit Secure session cookies — appropriate when the deployment
+# is always on TLS but the proxy doesn't forward X-Forwarded-Proto.
+enable_force_secure_cookies()
 
 # Raise the default 8 MiB body cap when an app needs larger uploads.
 set_max_body_size(32 * 1024 * 1024)</code></pre>

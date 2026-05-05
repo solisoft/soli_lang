@@ -49,6 +49,7 @@ pub mod respond_to;
 pub mod response_helpers;
 pub mod router;
 pub mod s3;
+pub mod secure_cookies;
 pub mod security_headers;
 pub mod server;
 pub mod session;
@@ -400,6 +401,12 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register trust-proxy gate (off by default; opt in only when the
     // deployment terminates X-Forwarded-* at a trusted proxy hop)
     trust_proxy::register_trust_proxy_builtins(env);
+
+    // SEC-028: register the force-Secure-cookies gate. Off by default;
+    // opt in via SOLI_FORCE_SECURE_COOKIES=1 or `enable_force_secure_cookies()`
+    // when the deployment is always on TLS but the proxy doesn't forward
+    // `X-Forwarded-Proto: https` (or the operator hasn't enabled trust_proxy).
+    secure_cookies::register_secure_cookies_builtins(env);
 
     // Register body-size limit (default 8 MiB; raise via set_max_body_size
     // when accepting larger file uploads)

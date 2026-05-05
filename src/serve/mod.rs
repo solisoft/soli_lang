@@ -4463,6 +4463,12 @@ fn handle_request(
             } else {
                 false
             };
+            // SEC-028: cookie Secure flag also fires when the operator has
+            // explicitly opted into "always Secure" via
+            // `SOLI_FORCE_SECURE_COOKIES=1` or `enable_force_secure_cookies()`,
+            // covering the TLS-without-trust_proxy / TLS-without-XFP-header case.
+            let cookie_secure = is_https
+                || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
             return ResponseData {
                 status: 404,
                 headers: if is_new_session {
@@ -4470,7 +4476,7 @@ fn handle_request(
                         vec![
                             (
                                 "Set-Cookie".to_string(),
-                                create_session_cookie(sid, is_https),
+                                create_session_cookie(sid, cookie_secure),
                             ),
                             (
                                 "Content-Type".to_string(),
@@ -4557,6 +4563,12 @@ fn handle_request(
     } else {
         false
     };
+    // SEC-028: cookie Secure flag uses `is_https || force_secure_cookies()`
+    // so a TLS deployment without `enable_trust_proxy()` (or without an
+    // X-Forwarded-Proto: https header) still emits Secure cookies once the
+    // operator opts in.
+    let cookie_secure =
+        is_https || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
     let req_host = if trust_proxy {
         data.headers
             .get("x-forwarded-host")
@@ -4597,7 +4609,7 @@ fn handle_request(
         if let Some(cookie_value) = session_cookie_if_changed(
             get_current_session_id().as_deref(),
             cookie_session_id.as_deref(),
-            is_https,
+            cookie_secure,
         ) {
             resp.headers.push(("Set-Cookie".to_string(), cookie_value));
         }
