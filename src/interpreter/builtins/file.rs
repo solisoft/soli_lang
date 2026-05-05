@@ -199,6 +199,14 @@ fn open_for_write_truncate(path: &Path, follow_symlinks: bool) -> std::io::Resul
 }
 
 /// Open for create+append (the `File.append` builtin path).
+///
+/// SEC-050: append is the most footgun-y of the writes — without
+/// `O_NOFOLLOW` an attacker who can plant a symlink at the target
+/// (e.g. `app/log/app.log -> /etc/passwd`) turns a benign-looking
+/// `File.append("log/app.log", line)` into a write to whatever the
+/// link resolves to. The `apply_nofollow` call here is what closes
+/// that path; `Trusted.append` deliberately keeps following so log
+/// shippers can append to a `current` symlink.
 fn open_for_append(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.create(true).append(true);
@@ -955,6 +963,50 @@ mod tests {
     }
 
     // ----- SEC-006a: O_NOFOLLOW / symlink_metadata behaviour ---------------
+
+    #[cfg(unix)]
+    #[test]
+    fn nofollow_append_rejects_symlink() {
+        // SEC-050: open_for_append must refuse to follow a symlink under
+        // the jailed policy. Without O_NOFOLLOW, a planted
+        // `app/log/app.log -> /etc/passwd` symlink would let
+        // `File.append("log/app.log", line)` write into whatever the
+        // link points at.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.log");
+        std::fs::write(&target, "ok\n").unwrap();
+        let link = dir.path().join("link.log");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            return;
+        }
+        let err = open_for_append(&link, /* follow */ false).unwrap_err();
+        assert_eq!(
+            err.raw_os_error(),
+            Some(libc::ELOOP),
+            "expected ELOOP, got {:?}",
+            err
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn follow_append_succeeds_through_symlink_for_trusted() {
+        // Trusted.append deliberately follows symlinks so log shippers
+        // can target a `current` link. Sanity check the escape hatch.
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.log");
+        std::fs::write(&target, "header\n").unwrap();
+        let link = dir.path().join("link.log");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            return;
+        }
+        let mut f = open_for_append(&link, /* follow */ true).unwrap();
+        f.write_all(b"more\n").unwrap();
+        drop(f);
+        let body = std::fs::read_to_string(&target).unwrap();
+        assert_eq!(body, "header\nmore\n");
+    }
 
     #[cfg(unix)]
     #[test]
