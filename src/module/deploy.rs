@@ -608,8 +608,12 @@ fn trigger_proxy_deploy(proxy_url: &str, api_key: &str, app_name: &str) -> Resul
         app_name
     );
 
+    // SEC-042a: same TLS-1.2 floor as the shared runtime clients in
+    // `http_class.rs`. `proxy_url` is operator-configured and reaches
+    // out over HTTPS in real deployments.
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
         .build()
         .map_err(|e| format!("HTTP client failed: {}", e))?;
 

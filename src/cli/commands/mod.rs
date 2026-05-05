@@ -613,8 +613,13 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let tag_url = format!("https://api.github.com/repos/{}/releases/latest", repo);
+    // SEC-042a: same TLS-1.2 floor as the shared runtime clients in
+    // `http_class.rs`. The `rustls-tls` backend already refuses 1.0/1.1
+    // today; the explicit setting prevents a silent regain of a
+    // downgrade-prone handshake on a future backend swap.
     let client = reqwest::blocking::Client::builder()
         .user_agent("soli-lang-cli")
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
         .build()
         .expect("Failed to create HTTP client");
 
