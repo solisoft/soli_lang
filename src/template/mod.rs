@@ -657,6 +657,22 @@ fn safe_markdown_url(url: pulldown_cmark::CowStr<'_>) -> pulldown_cmark::CowStr<
 }
 
 fn is_safe_markdown_url(url: &str) -> bool {
+    // SEC-022: reject backslash-based protocol-relative bypasses.
+    // Browsers normalize `\` to `/` in special schemes, so `\\evil`,
+    // `/\evil`, and `\/evil` all parse as `//evil` — a redirect off
+    // the current origin. Reject:
+    //   1. `//` prefix (the canonical protocol-relative form),
+    //   2. `/\` prefix (browser-normalized to `//`),
+    //   3. any `\` in the scheme/authority section (before the first
+    //      `/?#` separator) — covers `\\evil`, `\/evil`, `\foo`, etc.
+    if url.starts_with("//") || url.starts_with("/\\") {
+        return false;
+    }
+    let pre_separator_end = url.find(['/', '?', '#']).unwrap_or(url.len());
+    if url[..pre_separator_end].contains('\\') {
+        return false;
+    }
+
     let lower = url.to_ascii_lowercase();
     if lower.starts_with("http://")
         || lower.starts_with("https://")
@@ -732,6 +748,64 @@ mod tests {
         let html = markdown_to_html(md);
         assert!(html.contains("<code"));
         assert!(html.contains("fn main() {}"));
+    }
+
+    /// SEC-022: backslash-based protocol-relative URL bypasses.
+    /// Each input is expected to be neutralized to `#` in the safe
+    /// rendered HTML so the link cannot redirect off-origin. Tests
+    /// `markdown_to_safe_html` since that's the variant that runs
+    /// `is_safe_markdown_url`.
+    ///
+    /// Note: pulldown_cmark itself unescapes `\\` to `\` and `\/` to `/`
+    /// per CommonMark before the URL reaches our hook, so:
+    ///   `\\evil.com` arrives as `\evil.com` (still a leading backslash),
+    ///   `\/evil.com` arrives as `/evil.com` (same-origin path — safe).
+    /// We test the cases that survive pulldown_cmark's own pass.
+    #[test]
+    fn markdown_rejects_backslash_protocol_relative() {
+        for bad in ["//evil.com", "/\\evil.com", "\\\\evil.com", "\\evil.com"] {
+            let md = format!("[click]({})", bad);
+            let html = markdown_to_safe_html(&md);
+            assert!(
+                html.contains("href=\"#\""),
+                "expected `{}` to be neutralized to `#`, got: {}",
+                bad,
+                html
+            );
+            assert!(
+                !html.contains("evil.com"),
+                "expected `evil.com` to not appear in href for `{}`, got: {}",
+                bad,
+                html
+            );
+        }
+    }
+
+    /// SEC-022 negative cases: legitimate same-origin and absolute URLs
+    /// must still pass through unchanged in the safe variant.
+    #[test]
+    fn markdown_accepts_legitimate_urls() {
+        let cases = [
+            ("[click](/foo)", "/foo"),
+            ("[click](/foo/bar)", "/foo/bar"),
+            ("[click](http://example.com)", "http://example.com"),
+            (
+                "[click](https://example.com/path)",
+                "https://example.com/path",
+            ),
+            ("[click](#anchor)", "#anchor"),
+            ("[click](?q=x)", "?q=x"),
+            ("[click](mailto:a@b.c)", "mailto:a@b.c"),
+        ];
+        for (md, expected_href) in cases {
+            let html = markdown_to_safe_html(md);
+            assert!(
+                html.contains(&format!("href=\"{}\"", expected_href)),
+                "expected href `{}` to survive, got: {}",
+                expected_href,
+                html
+            );
+        }
     }
 
     #[test]
