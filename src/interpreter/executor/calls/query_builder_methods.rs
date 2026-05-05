@@ -430,7 +430,11 @@ impl Interpreter {
         let mut fields = Vec::new();
         for arg in &arguments {
             match arg {
-                Value::String(s) => fields.push(s.clone()),
+                Value::String(s) => {
+                    crate::interpreter::builtins::model::validate_field_name(s, "select")
+                        .map_err(|e| RuntimeError::type_error(e, span))?;
+                    fields.push(s.clone());
+                }
                 _ => {
                     return Err(RuntimeError::type_error(
                         "select() expects string field names",
@@ -620,7 +624,11 @@ impl Interpreter {
         let mut fields = Vec::new();
         for arg in &arguments {
             match arg {
-                Value::String(s) => fields.push(s.clone()),
+                Value::String(s) => {
+                    crate::interpreter::builtins::model::validate_field_name(s, "pluck")
+                        .map_err(|e| RuntimeError::type_error(e, span))?;
+                    fields.push(s.clone());
+                }
                 _other => {
                     return Err(RuntimeError::type_error(
                         "pluck() expects string field names",
@@ -655,6 +663,8 @@ impl Interpreter {
                 ))
             }
         };
+        crate::interpreter::builtins::model::validate_field_name(&field, "aggregate")
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let mut new_qb = qb.borrow().clone();
         new_qb.aggregation = Some((func, field));
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
@@ -679,6 +689,8 @@ impl Interpreter {
                 ))
             }
         };
+        crate::interpreter::builtins::model::validate_field_name(&group_field, "group_by")
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let func_name = match &arguments[1] {
             Value::String(s) => s.clone().to_lowercase(),
             _ => {
@@ -697,6 +709,8 @@ impl Interpreter {
                 ))
             }
         };
+        crate::interpreter::builtins::model::validate_field_name(&agg_field, "group_by")
+            .map_err(|e| RuntimeError::type_error(e, span))?;
         let func = match func_name.as_str() {
             "sum" => AggregationFunc::Sum,
             "avg" => AggregationFunc::Avg,

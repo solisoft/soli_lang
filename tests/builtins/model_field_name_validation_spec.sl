@@ -149,3 +149,70 @@ describe("Field-name validator — QueryBuilder.order chain (SEC-004b)", fn() {
         assert(!qb.nil?);
     });
 });
+
+// ============================================================================
+// SEC-004c: the remaining QueryBuilder chain methods that take field names
+// (select/pluck/aggregate/group_by) share AQL sinks with the static
+// counterparts, so the same validator must apply on the chain side too.
+// ============================================================================
+
+describe("Field-name validator — QueryBuilder.select chain (SEC-004c)", fn() {
+    test("rejects an injected field name in the chain form", fn() {
+        assert_throws("qb.select injected", fn() {
+            FieldGuardItem.order("name").select("name; REMOVE doc");
+        });
+    });
+
+    test("accepts a well-formed name in the chain form", fn() {
+        let qb = FieldGuardItem.order("name").select("user_id", "email");
+        assert(!qb.nil?);
+    });
+});
+
+describe("Field-name validator — QueryBuilder.pluck chain (SEC-004c)", fn() {
+    test("rejects an injected field name in the chain form", fn() {
+        assert_throws("qb.pluck injected", fn() {
+            FieldGuardItem.order("name").pluck("a; REMOVE doc IN x");
+        });
+    });
+});
+
+describe("Field-name validator — QueryBuilder.{sum,avg,min,max} chain (SEC-004c)", fn() {
+    test("sum rejects an injected field", fn() {
+        assert_throws("qb.sum injected", fn() {
+            FieldGuardItem.order("name").sum("amount; REMOVE doc");
+        });
+    });
+
+    test("avg rejects an injected field", fn() {
+        assert_throws("qb.avg injected", fn() {
+            FieldGuardItem.order("name").avg("a-b");
+        });
+    });
+
+    test("min rejects an injected field", fn() {
+        assert_throws("qb.min injected", fn() {
+            FieldGuardItem.order("name").min("a b");
+        });
+    });
+
+    test("max rejects an injected field", fn() {
+        assert_throws("qb.max injected", fn() {
+            FieldGuardItem.order("name").max("a)");
+        });
+    });
+});
+
+describe("Field-name validator — QueryBuilder.group_by chain (SEC-004c)", fn() {
+    test("rejects an injected group field in the chain form", fn() {
+        assert_throws("qb.group_by group injected", fn() {
+            FieldGuardItem.order("name").group_by("status; REMOVE doc", "sum", "amount");
+        });
+    });
+
+    test("rejects an injected agg field in the chain form", fn() {
+        assert_throws("qb.group_by agg injected", fn() {
+            FieldGuardItem.order("name").group_by("status", "sum", "amount; REMOVE doc");
+        });
+    });
+});
