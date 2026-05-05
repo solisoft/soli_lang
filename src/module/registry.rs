@@ -27,6 +27,10 @@ pub fn resolve_version(
 ) -> Result<VersionInfo, String> {
     let api_url = format!("{}/api/packages/{}/{}", registry_url, name, version);
 
+    // SEC-007a carve-out: package registries may redirect to a CDN, and
+    // this code path runs only from the developer-driven `soli install`
+    // CLI command (no request-level SSRF surface). Use raw `ureq::get`
+    // so redirect-following keeps working.
     let response = ureq::get(&api_url)
         .set("User-Agent", "soli-package-manager")
         .call()
@@ -61,6 +65,8 @@ pub fn resolve_version(
 pub fn download_package(url: &str, dest: &Path) -> Result<(), String> {
     use flate2::read::GzDecoder;
 
+    // See `resolve_version` for the rationale: registry CDNs redirect,
+    // CLI-trust context, no request-level SSRF surface.
     let response = ureq::get(url)
         .set("User-Agent", "soli-package-manager")
         .call()

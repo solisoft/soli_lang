@@ -974,7 +974,11 @@ pub fn run_test(
                 for env in &worker_envs {
                     let Some(port) = env.port else { continue };
                     let url = format!("http://127.0.0.1:{}/__coverage__", port);
-                    let Ok(resp) = ureq::get(&url).timeout(Duration::from_secs(5)).call() else {
+                    let Ok(resp) = solilang::interpreter::builtins::http_class::ureq_agent()
+                        .get(&url)
+                        .timeout(Duration::from_secs(5))
+                        .call()
+                    else {
                         continue;
                     };
                     let Ok(text) = resp.into_string() else {
@@ -1144,7 +1148,8 @@ fn ensure_test_databases(db_names: &[String]) {
             let auth_header = &auth_header;
             s.spawn(move || {
                 let drop_url = format!("{}/_api/database/{}", host, database);
-                let mut drop_req = ureq::delete(&drop_url);
+                let mut drop_req =
+                    solilang::interpreter::builtins::http_class::ureq_agent().delete(&drop_url);
                 if let Some(auth) = auth_header {
                     drop_req = drop_req.set("Authorization", auth);
                 }
@@ -1152,8 +1157,9 @@ fn ensure_test_databases(db_names: &[String]) {
 
                 let create_url = format!("{}/_api/database", host);
                 let payload = format!(r#"{{"name":"{}"}}"#, database);
-                let mut create_req =
-                    ureq::post(&create_url).set("Content-Type", "application/json");
+                let mut create_req = solilang::interpreter::builtins::http_class::ureq_agent()
+                    .post(&create_url)
+                    .set("Content-Type", "application/json");
                 if let Some(auth) = auth_header {
                     create_req = create_req.set("Authorization", auth);
                 }

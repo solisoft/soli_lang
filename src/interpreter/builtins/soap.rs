@@ -13,7 +13,9 @@ use std::rc::Rc;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::interpreter::builtins::http_class::{get_http_client, validate_url_for_ssrf};
+use crate::interpreter::builtins::http_class::{
+    get_http_client, ureq_agent, validate_url_for_ssrf,
+};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 use crate::serve::get_tokio_handle;
@@ -283,7 +285,10 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let mut request = ureq::post(&url);
+        // SEC-007a: route through the redirect-disabled shared agent so a
+        // SOAP endpoint can't bounce the request to a private/loopback
+        // address after passing the up-front validate_url_for_ssrf check.
+        let mut request = ureq_agent().post(&url);
 
         for (key, value) in &headers {
             request = request.set(key, value);

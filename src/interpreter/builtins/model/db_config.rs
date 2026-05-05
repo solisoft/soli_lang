@@ -82,7 +82,12 @@ pub fn get_jwt_token() -> Option<&'static str> {
                 "username": username,
                 "password": password,
             });
-            match ureq::post(&login_url)
+            // SEC-007a: route through the redirect-disabled shared agent
+            // for consistency with the rest of the HTTP layer. SOLIDB_HOST
+            // is operator-configured (not user input) so this is hardening,
+            // not closing an exploit.
+            match crate::interpreter::builtins::http_class::ureq_agent()
+                .post(&login_url)
                 .set("Content-Type", "application/json")
                 .send_string(&payload.to_string())
             {

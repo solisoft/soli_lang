@@ -72,6 +72,12 @@ fn resolve_ref(host: &GitHost, git_ref: &str) -> Result<String, String> {
                 "https://api.github.com/repos/{}/{}/commits/{}",
                 owner, repo, git_ref
             );
+            // CLI-only path: the URL is explicitly trusted (the developer
+            // ran `soli install <package>`), and GitHub's API can redirect
+            // (moved repos, archive download paths). The redirect-disabled
+            // shared agent would break those flows, so use the default
+            // ureq behaviour here. SSRF protection lives at the request
+            // boundary inside the server, not at the developer-tool layer.
             let response = ureq::get(&api_url)
                 .set("Accept", "application/vnd.github.v3+json")
                 .set("User-Agent", "soli-package-manager")
@@ -93,6 +99,7 @@ fn resolve_ref(host: &GitHost, git_ref: &str) -> Result<String, String> {
                 "https://gitlab.com/api/v4/projects/{}/repository/commits/{}",
                 encoded_project, git_ref
             );
+            // See note above: CLI-only path, redirects allowed by design.
             let response = ureq::get(&api_url)
                 .set("User-Agent", "soli-package-manager")
                 .call()
@@ -133,6 +140,10 @@ fn archive_url(host: &GitHost, sha: &str) -> String {
 fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
     use flate2::read::GzDecoder;
 
+    // GitHub/GitLab archive URLs redirect to a CDN — the redirect-disabled
+    // shared agent would fail every package install. CLI-trust context
+    // (developer-driven, no request-level SSRF surface), so allow default
+    // redirect behaviour here.
     let response = ureq::get(url)
         .set("User-Agent", "soli-package-manager")
         .call()
