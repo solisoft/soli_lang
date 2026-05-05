@@ -11,3 +11,4 @@ node_modules
 !.env.sample
 !.env.example
 tasks
+.claude/settings.local.json
