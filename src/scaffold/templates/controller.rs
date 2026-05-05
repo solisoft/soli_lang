@@ -11,81 +11,81 @@ pub fn controller_template(
     format!(
         r#"// {controller_name} controller - auto-generated scaffold
 
-class {controller_name} extends Controller {{
-    static {{
-        this.layout = "application";
-    }}
+class {controller_name} < Controller
+  static
+    this.layout = "application"
+  end
 
-    // GET /{resource}
-    fn index(req) {{
-        let {model_var}s = {model_name}.all();
-        return render("{resource}/index", {{
-            "{model_var}s": {model_var}s,
-            "title": "{controller_name}"
-        }});
-    }}
+  // GET /{resource}
+  def index(req)
+    {model_var}s = {model_name}.all()
+    render("{resource}/index", {{
+      "{model_var}s": {model_var}s,
+      "title": "{controller_name}"
+    }})
+  end
 
-    // GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
-    fn show(req) {{
-        let {model_var} = {model_name}.find(req.params["id"]);
-        return render("{resource}/show", {{
-            "{model_var}": {model_var},
-            "title": "View {model_name}"
-        }});
-    }}
+  // GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
+  def show(req)
+    {model_var} = {model_name}.find(params["id"])
+    render("{resource}/show", {{
+      "{model_var}": {model_var},
+      "title": "View {model_name}"
+    }})
+  end
 
-    // GET /{resource}/new
-    fn new(req) {{
-        return render("{resource}/new", {{
-            "{model_var}": {{}},
-            "title": "New {model_name}"
-        }});
-    }}
+  // GET /{resource}/new
+  def new(req)
+    render("{resource}/new", {{
+      "{model_var}": {{}},
+      "title": "New {model_name}"
+    }})
+  end
 
-    // GET /{resource}/:id/edit — Model.find raises on miss, framework maps to 404.
-    fn edit(req) {{
-        let {model_var} = {model_name}.find(req.params["id"]);
-        return render("{resource}/edit", {{
-            "{model_var}": {model_var},
-            "title": "Edit {model_name}"
-        }});
-    }}
+  // GET /{resource}/:id/edit — Model.find raises on miss, framework maps to 404.
+  def edit(req)
+    {model_var} = {model_name}.find(params["id"])
+    render("{resource}/edit", {{
+      "{model_var}": {model_var},
+      "title": "Edit {model_name}"
+    }})
+  end
 
-    // POST /{resource}
-    fn create(req) {{
-        let permitted = this._permit_params(req.params);
-        let {model_var} = {model_name}.create(permitted);
-        if {model_var}._errors {{
-            return render("{resource}/new", {{
-                "{model_var}": {model_var},
-                "title": "New {model_name}"
-            }});
-        }}
-        return redirect("/{resource}");
-    }}
+  // POST /{resource}
+  def create(req)
+    permitted = this._permit_params(params)
+    {model_var} = {model_name}.create(permitted)
+    if {model_var}._errors
+      return render("{resource}/new", {{
+        "{model_var}": {model_var},
+        "title": "New {model_name}"
+      }})
+    end
+    return redirect("/{resource}")
+  end
 
-    // PATCH/PUT /{resource}/:id
-    fn update(req) {{
-        let id = req.params["id"];
-        let permitted = this._permit_params(req.params);
-        {model_name}.update(id, permitted);
-        return redirect("/{resource}");
-    }}
+  // PATCH/PUT /{resource}/:id
+  def update(req)
+    id = params["id"]
+    permitted = this._permit_params(params)
+    {model_name}.update(id, permitted)
+    return redirect("/{resource}")
+  end
 
-    // DELETE /{resource}/:id
-    fn delete(req) {{
-        let id = req.params["id"];
-        {model_name}.delete(id);
-        return redirect("/{resource}");
-    }}
+  // DELETE /{resource}/:id
+  def delete(req)
+    id = params["id"]
+    {model_name}.delete(id)
+    return redirect("/{resource}")
+  end
 
-    // Mass assignment protection: whitelist allowed parameters
-    fn _permit_params(params: Any) -> Any {{
-        return {{
+  // Mass assignment protection: whitelist allowed parameters
+  def _permit_params(params: Any) -> Any
+    return {{
 {permitted_params}
-        }};
     }}
-}}
+  end
+end
 "#,
         controller_name = controller_name,
         resource = resource_name,
@@ -103,98 +103,98 @@ pub fn controller_test_template(controller_name: &str, resource_path: &str) -> S
 // This file uses the E2E testing framework with real HTTP requests
 // to test controller actions. See www/docs/testing-e2e.md for details.
 
-describe("{0}Controller", fn() {{
-    before_each(fn() {{
-        as_guest();
-    }})
+describe("{0}Controller", fn do
+  before_each(fn do
+    as_guest()
+  end)
 
-    describe("GET /{1}", fn() {{
-        test("returns list of {2}", fn() {{
-            let response = get("/{1}");
-            assert_eq(res_status(response), 200);
-        }})
+  describe("GET /{1}", fn do
+    test("returns list of {2}", fn do
+      response = get("/{1}")
+      assert_eq(res_status(response), 200)
+    end)
 
-        test("renders with correct view assigns", fn() {{
-            let response = get("/{1}");
-            assert(render_template());
-            assert_eq(view_path(), "{1}/index.html");
-            let data = assigns();
-            assert_hash_has_key(data, "{1}");
-        }})
-    }})
+    test("renders with correct view assigns", fn do
+      response = get("/{1}")
+      assert(render_template())
+      assert_eq(view_path(), "{1}/index.html")
+      data = assigns()
+      assert_hash_has_key(data, "{1}")
+    end)
+  end)
 
-    describe("GET /{1}/new", fn() {{
-        test("renders new form", fn() {{
-            let response = get("/{1}/new");
-            assert_eq(res_status(response), 200);
-            assert(render_template());
-        }})
-    }})
+  describe("GET /{1}/new", fn do
+    test("renders new form", fn do
+      response = get("/{1}/new")
+      assert_eq(res_status(response), 200)
+      assert(render_template())
+    end)
+  end)
 
-    describe("GET /{1}/:id", fn() {{
-        test("shows single {2}", fn() {{
-            let response = get("/{1}/1");
-            assert_eq(res_status(response), 200);
-            let data = assigns();
-            assert_hash_has_key(data, "{2}");
-        }})
+  describe("GET /{1}/:id", fn do
+    test("shows single {2}", fn do
+      response = get("/{1}/1")
+      assert_eq(res_status(response), 200)
+      data = assigns()
+      assert_hash_has_key(data, "{2}")
+    end)
 
-        test("returns 404 for missing record", fn() {{
-            let response = get("/{1}/99999");
-            assert_eq(res_status(response), 404);
-        }})
-    }})
+    test("returns 404 for missing record", fn do
+      response = get("/{1}/99999")
+      assert_eq(res_status(response), 404)
+    end)
+  end)
 
-    describe("GET /{1}/:id/edit", fn() {{
-        test("renders edit form", fn() {{
-            let response = get("/{1}/1/edit");
-            assert_eq(res_status(response), 200);
-            assert(render_template());
-        }})
+  describe("GET /{1}/:id/edit", fn do
+    test("renders edit form", fn do
+      response = get("/{1}/1/edit")
+      assert_eq(res_status(response), 200)
+      assert(render_template())
+    end)
 
-        test("returns 404 for missing record", fn() {{
-            let response = get("/{1}/99999/edit");
-            assert_eq(res_status(response), 404);
-        }})
-    }})
+    test("returns 404 for missing record", fn do
+      response = get("/{1}/99999/edit")
+      assert_eq(res_status(response), 404)
+    end)
+  end)
 
-    describe("POST /{1}", fn() {{
-        test("creates new record with valid data", fn() {{
-            let response = post("/{1}", {{"name": "Test {2}"}});
-            assert_eq(res_status(response), 302);
-        }})
+  describe("POST /{1}", fn do
+    test("creates new record with valid data", fn do
+      response = post("/{1}", {{"name": "Test {2}"}})
+      assert_eq(res_status(response), 302)
+    end)
 
-        test("rejects invalid data", fn() {{
-            let response = post("/{1}", {{}});
-            assert_eq(res_status(response), 422);
-        }})
-    }})
+    test("rejects invalid data", fn do
+      response = post("/{1}", {{}})
+      assert_eq(res_status(response), 422)
+    end)
+  end)
 
-    describe("PUT /{1}/:id", fn() {{
-        test("updates record", fn() {{
-            let response = put("/{1}/1", {{"name": "Updated"}});
-            assert_eq(res_status(response), 302);
-        }})
-    }})
+  describe("PUT /{1}/:id", fn do
+    test("updates record", fn do
+      response = put("/{1}/1", {{"name": "Updated"}})
+      assert_eq(res_status(response), 302)
+    end)
+  end)
 
-    describe("DELETE /{1}/:id", fn() {{
-        test("deletes record", fn() {{
-            let response = delete("/{1}/1");
-            assert_eq(res_status(response), 302);
-        }})
-    }})
+  describe("DELETE /{1}/:id", fn do
+    test("deletes record", fn do
+      response = delete("/{1}/1")
+      assert_eq(res_status(response), 302)
+    end)
+  end)
 
-    describe("Authentication", fn() {{
-        before_each(fn() {{
-            as_guest();
-        }})
+  describe("Authentication", fn do
+    before_each(fn do
+      as_guest()
+    end)
 
-        test("redirects unauthenticated requests to index", fn() {{
-            let response = get("/{1}");
-            assert_eq(res_status(response), 200);
-        }})
-    }})
-}})
+    test("redirects unauthenticated requests to index", fn do
+      response = get("/{1}")
+      assert_eq(res_status(response), 200)
+    end)
+  end)
+end)
 "#,
         controller_name, resource_path, resource_path
     )

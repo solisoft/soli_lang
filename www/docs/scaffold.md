@@ -62,18 +62,18 @@ The model includes:
 
 ```soli
 # Users model - auto-generated scaffold
-class Users extends Model
-  static
-    # Fields
-    # name (string)
-    # email (email)
+class Users < Model
+    static
+        # Fields
+        # name (string)
+        # email (email)
 
-    # Validations
-    validates("name", { "presence": true })
-    validates("email", { "presence": true })
-  end
+        # Validations
+        validates("name", { "presence": true })
+        validates("email", { "presence": true })
+    end
 
-  before_save("normalize_fields")
+    before_save("normalize_fields")
 end
 ```
 
@@ -82,20 +82,45 @@ end
 Standard CRUD actions:
 
 ```soli
-class UsersController extends Controller
-  fn index(req)
-    users = Users.all();
-    return render("users/index", { "users": users });
-  end
-
-  fn show(req)
-    id = req.params["id"];
-    user = Users.find(id);
-    if user == null
-      return halt(404, "User not found");
+class UsersController < Controller
+    def index(req)
+        users = Users.all()
+        render("users/index", { "users": users })
     end
-    return render("users/show", { "user": user });
-  end
+
+    def show(req)
+        user = Users.find(params["id"])
+        render("users/show", { "user": user })
+    end
+
+    def create(req)
+        permitted = this._permit_params(params)
+        user = Users.create(permitted)
+        if user._errors
+            return render("users/new", { "user": user })
+        end
+        return redirect("/users")
+    end
+
+    def update(req)
+        id = params["id"]
+        permitted = this._permit_params(params)
+        Users.update(id, permitted)
+        return redirect("/users")
+    end
+
+    def delete(req)
+        id = params["id"]
+        Users.delete(id)
+        return redirect("/users")
+    end
+
+    def _permit_params(params)
+        return {
+            "name": params["name"],
+            "email": params["email"]
+        }
+    end
 end
 ```
 
@@ -140,12 +165,14 @@ Controller tests include:
 Migrations create the collection and indexes:
 
 ```soli
-fn up(db: Any)    db.create_collection("users");
-  db.create_index("users", "idx_email", ["email"], { "unique": true });
+def up(db)
+    db.create_collection("users")
+    db.create_index("users", "idx_email", ["email"], { "unique": true })
 end
 
-fn down(db: Any)    db.drop_index("users", "idx_email");
-  db.drop_collection("users");
+def down(db)
+    db.drop_index("users", "idx_email")
+    db.drop_collection("users")
 end
 ```
 

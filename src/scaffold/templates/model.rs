@@ -11,18 +11,18 @@ pub fn model_template(
         r#"// {model_name} model - auto-generated scaffold
 // Collection: {collection_name}
 
-class {model_name} extends Model {{
-    static {{
-        // Fields
+class {model_name} < Model
+  static
+    // Fields
 {field_comments}
 
-        // Validations
+    // Validations
 {validations}
-    }}
+  end
 
-    // Callbacks
-    before_save("normalize_fields")
-}}
+  // Callbacks
+  before_save("normalize_fields")
+end
 "#,
         model_name = model_name,
         collection_name = collection_name,
