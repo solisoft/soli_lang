@@ -65,6 +65,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                 <tbody class="divide-y divide-white/5 text-gray-400">
                     <tr><td class="py-3 px-4"><code>SOLI_TRUST_PROXY</code></td><td class="py-3 px-4">Honors <code>X-Forwarded-Proto</code> / <code>X-Forwarded-Host</code> when set to <code>1</code>, <code>true</code>, or <code>yes</code>. Only enable when the deployment terminates these headers at a trusted proxy hop.</td><td class="py-3 px-4"><code>false</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_MAX_BODY_SIZE</code></td><td class="py-3 px-4">Maximum buffered request body, in bytes. Requests over the cap return <code>413 Payload Too Large</code>.</td><td class="py-3 px-4"><code>8388608</code> (8 MiB)</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DISABLE_CSRF</code></td><td class="py-3 px-4">Disables the same-origin CSRF check entirely when set to <code>true</code>. For API-only deployments where no cookie session is in play. Per-route opt-out via <code>skip_csrf("/path")</code> in <code>config/routes.sl</code> is preferred &mdash; see <a href="/docs/routing#csrf-protection" class="text-indigo-400 hover:text-indigo-300 transition-colors">Routing &rarr; CSRF Protection</a>.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>
         </div>

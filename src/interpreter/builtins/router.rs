@@ -664,4 +664,32 @@ pub fn register_router_builtins(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+
+    // SEC-014: skip_csrf(path_pattern) — declare a path or path-prefix
+    // exempt from the same-origin CSRF check. Call from `config/routes.sl`
+    // (or a controller's `static` block) for webhook endpoints, public
+    // APIs, or any path that legitimately needs cross-origin POST.
+    //
+    // Examples:
+    //   skip_csrf("/webhooks/stripe")    # exact path
+    //   skip_csrf("/api/*")              # everything under /api/
+    //
+    // Without this, state-changing requests (POST/PUT/PATCH/DELETE) whose
+    // Origin or Referer doesn't match the request Host get a 403.
+    env.define(
+        "skip_csrf".to_string(),
+        Value::NativeFunction(NativeFunction::new("skip_csrf", Some(1), |args| {
+            let pattern = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "skip_csrf() expects string path pattern, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            crate::serve::register_csrf_skip_pattern(pattern);
+            Ok(Value::Null)
+        })),
+    );
 }

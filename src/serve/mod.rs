@@ -1625,6 +1625,16 @@ async fn handle_hyper_request(
     let uri = req.uri();
     let path = uri.path().to_string();
 
+    // SEC-014: same-origin gate for state-changing requests. Runs before
+    // routing so a cross-origin POST is rejected before any controller
+    // sees it. WebSocket upgrades have their own check (`websocket_origin_allowed`)
+    // a few lines below, so the early return doesn't fire on those.
+    if !hyper_tungstenite::is_upgrade_request(&req) {
+        if let Err(reason) = check_csrf_origin(req.headers(), &method, &path) {
+            return Ok(forbidden_csrf_response(&reason));
+        }
+    }
+
     // Check for WebSocket upgrade request
     if hyper_tungstenite::is_upgrade_request(&req) {
         // Handle live reload WebSocket endpoint
@@ -2365,6 +2375,139 @@ fn forbidden_websocket_origin_response() -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
         .body(Full::new(Bytes::from("Forbidden WebSocket origin")))
+        .unwrap()
+}
+
+/// SEC-014: app-registered CSRF exemption patterns. Populated from Soli
+/// code via `skip_csrf("/path[/*]")` (typically called from
+/// `config/routes.sl` or a controller's `static` block before route
+/// matching runs). Each entry is a path pattern; `*` suffix means "any
+/// path that starts with this prefix".
+///
+/// `RwLock` so writes from the boot phase don't block the request hot
+/// path's reads.
+static CSRF_SKIP_PATTERNS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+pub fn register_csrf_skip_pattern(pattern: String) {
+    if let Ok(mut guard) = CSRF_SKIP_PATTERNS.write() {
+        if !guard.iter().any(|p| p == &pattern) {
+            guard.push(pattern);
+        }
+    }
+}
+
+#[cfg(test)]
+fn clear_csrf_skip_patterns() {
+    if let Ok(mut guard) = CSRF_SKIP_PATTERNS.write() {
+        guard.clear();
+    }
+}
+
+fn csrf_skipped_by_app(path: &str) -> bool {
+    let Ok(guard) = CSRF_SKIP_PATTERNS.read() else {
+        return false;
+    };
+    guard.iter().any(|pattern| {
+        if let Some(prefix) = pattern.strip_suffix("/*") {
+            path == prefix || path.starts_with(&format!("{}/", prefix))
+        } else if let Some(prefix) = pattern.strip_suffix('*') {
+            path.starts_with(prefix)
+        } else {
+            path == pattern
+        }
+    })
+}
+
+/// SEC-014: reject state-changing browser requests that can't prove they
+/// originate from the same site. Returns `Ok(())` to continue, `Err(reason)`
+/// to reject with 403.
+///
+/// Rules:
+/// - Safe methods (GET/HEAD/OPTIONS) are always allowed.
+/// - Paths under `/_` are exempt (machine-to-machine endpoints like
+///   `/_jobs/run/:name` carry their own HMAC auth).
+/// - Paths matching a `skip_csrf("/pattern[/*]")` declaration in user
+///   Soli code are exempt. This is the per-route opt-out — call it
+///   from `config/routes.sl` or a controller's `static` block for
+///   webhook endpoints, public APIs, etc.
+/// - `SOLI_DISABLE_CSRF=true` operator-level kill switch — for API-only
+///   deployments where no cookie session is in play.
+/// - When `Origin` is present, it must equal the request authority
+///   (`Host`/`X-Forwarded-Host`). `null` Origin (sandboxed iframe etc.)
+///   is rejected.
+/// - When `Origin` is absent but `Referer` is present, the Referer's
+///   authority must match.
+/// - When **neither** is present, allow — this is the non-browser path
+///   (curl, mobile API client). Browser-driven CSRF requires a cross-
+///   origin POST and modern browsers always set `Origin` on those.
+///
+/// The intent matches `websocket_origin_allowed`'s authority semantics so
+/// the two surfaces (HTTP + WebSocket) reject under the same rules.
+fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Result<(), String> {
+    if matches!(method, "GET" | "HEAD" | "OPTIONS") {
+        return Ok(());
+    }
+    if path.starts_with("/_") {
+        return Ok(());
+    }
+    if csrf_skipped_by_app(path) {
+        return Ok(());
+    }
+    if std::env::var("SOLI_DISABLE_CSRF").as_deref() == Ok("true") {
+        return Ok(());
+    }
+
+    let request_authority = match websocket_request_authority(headers) {
+        Some(a) => a,
+        None => return Err("missing Host header".to_string()),
+    };
+
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let origin = origin.trim();
+        // `null` Origin is what sandboxed iframes / data URLs send.
+        // Treat it the same as a foreign origin.
+        if origin.eq_ignore_ascii_case("null") {
+            return Err("Origin is 'null'".to_string());
+        }
+        let Some(origin_auth) = origin_authority(origin) else {
+            return Err(format!("malformed Origin header: {}", origin));
+        };
+        if origin_auth == request_authority {
+            return Ok(());
+        }
+        return Err(format!(
+            "Origin {} does not match request authority {}",
+            origin_auth, request_authority
+        ));
+    }
+
+    if let Some(referer) = headers.get(header::REFERER).and_then(|v| v.to_str().ok()) {
+        let Some(referer_auth) = origin_authority(referer) else {
+            return Err(format!("malformed Referer header: {}", referer));
+        };
+        if referer_auth == request_authority {
+            return Ok(());
+        }
+        return Err(format!(
+            "Referer {} does not match request authority {}",
+            referer_auth, request_authority
+        ));
+    }
+
+    // Neither Origin nor Referer — non-browser client. Browser-driven
+    // CSRF requires a cross-origin state-changing request, and every
+    // modern browser sets Origin on those.
+    Ok(())
+}
+
+fn forbidden_csrf_response(reason: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(Full::new(Bytes::from(format!(
+            "CSRF check failed: {}",
+            reason
+        ))))
         .unwrap()
 }
 
@@ -5727,5 +5870,133 @@ mod tests {
             "captured stack trace should include the middleware source path; got {:?}",
             captured
         );
+    }
+
+    // SEC-014 — `check_csrf_origin` regression coverage.
+
+    fn make_headers(pairs: &[(&str, &str)]) -> hyper::HeaderMap {
+        let mut h = hyper::HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(
+                hyper::header::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                hyper::header::HeaderValue::from_str(v).unwrap(),
+            );
+        }
+        h
+    }
+
+    // SOLI_DISABLE_CSRF is process-global; serialise every test in this
+    // module that depends on its value (i.e. all of them) behind one mutex
+    // so a parallel kill-switch test can't leak its `set_var` into a peer.
+    fn csrf_lock() -> std::sync::MutexGuard<'static, ()> {
+        let g = ENV_TEST_LOCK.lock().unwrap();
+        std::env::remove_var("SOLI_DISABLE_CSRF");
+        g
+    }
+
+    #[test]
+    fn csrf_allows_safe_methods() {
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        assert!(check_csrf_origin(&h, "GET", "/posts").is_ok());
+        assert!(check_csrf_origin(&h, "HEAD", "/posts").is_ok());
+        assert!(check_csrf_origin(&h, "OPTIONS", "/posts").is_ok());
+    }
+
+    #[test]
+    fn csrf_allows_under_underscore_paths() {
+        // /_jobs/run/:name etc carry their own HMAC auth; they're
+        // machine-to-machine so we don't expect Origin/Referer.
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com")]);
+        assert!(check_csrf_origin(&h, "POST", "/_jobs/run/EmailJob").is_ok());
+        assert!(check_csrf_origin(&h, "POST", "/__coverage__").is_ok());
+    }
+
+    #[test]
+    fn csrf_allows_when_origin_matches_host() {
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://example.com")]);
+        assert!(check_csrf_origin(&h, "POST", "/users").is_ok());
+    }
+
+    #[test]
+    fn csrf_rejects_cross_origin_post() {
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        let err = check_csrf_origin(&h, "POST", "/users").unwrap_err();
+        assert!(err.contains("does not match"), "{}", err);
+    }
+
+    #[test]
+    fn csrf_rejects_null_origin() {
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("origin", "null")]);
+        let err = check_csrf_origin(&h, "POST", "/users").unwrap_err();
+        assert!(err.contains("'null'"), "{}", err);
+    }
+
+    #[test]
+    fn csrf_falls_back_to_referer_when_origin_missing() {
+        let _g = csrf_lock();
+        let h = make_headers(&[
+            ("host", "example.com"),
+            ("referer", "https://example.com/page"),
+        ]);
+        assert!(check_csrf_origin(&h, "POST", "/users").is_ok());
+
+        let h = make_headers(&[
+            ("host", "example.com"),
+            ("referer", "https://evil.test/page"),
+        ]);
+        let err = check_csrf_origin(&h, "POST", "/users").unwrap_err();
+        assert!(err.contains("Referer"), "{}", err);
+    }
+
+    #[test]
+    fn csrf_allows_when_neither_origin_nor_referer_present() {
+        // Non-browser clients (curl, mobile) typically don't send these,
+        // and they're not the CSRF threat (no cookie session in play).
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com")]);
+        assert!(check_csrf_origin(&h, "POST", "/users").is_ok());
+    }
+
+    #[test]
+    fn csrf_kill_switch_disables_check() {
+        let _g = csrf_lock();
+        std::env::set_var("SOLI_DISABLE_CSRF", "true");
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        let result = check_csrf_origin(&h, "POST", "/users");
+        std::env::remove_var("SOLI_DISABLE_CSRF");
+        assert!(result.is_ok(), "kill switch should bypass: {:?}", result);
+    }
+
+    #[test]
+    fn csrf_skip_pattern_exact_path() {
+        let _g = csrf_lock();
+        clear_csrf_skip_patterns();
+        register_csrf_skip_pattern("/webhooks/stripe".to_string());
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        // Exact-pattern path: skipped.
+        assert!(check_csrf_origin(&h, "POST", "/webhooks/stripe").is_ok());
+        // Different path under /webhooks/: not skipped.
+        assert!(check_csrf_origin(&h, "POST", "/webhooks/paypal").is_err());
+        clear_csrf_skip_patterns();
+    }
+
+    #[test]
+    fn csrf_skip_pattern_wildcard_suffix() {
+        let _g = csrf_lock();
+        clear_csrf_skip_patterns();
+        register_csrf_skip_pattern("/api/*".to_string());
+        let h = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        // Anything under /api/ is skipped.
+        assert!(check_csrf_origin(&h, "POST", "/api/users").is_ok());
+        assert!(check_csrf_origin(&h, "POST", "/api/v2/orders").is_ok());
+        // A path that merely shares the prefix without the slash boundary
+        // doesn't match — `/api/*` means "/api or /api/...".
+        assert!(check_csrf_origin(&h, "POST", "/apifoo").is_err());
+        clear_csrf_skip_patterns();
     }
 }

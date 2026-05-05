@@ -166,6 +166,27 @@ group("/api", [], fn()
 end);
 ```
 
+## CSRF Protection
+
+Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `Referer` header doesn't match the request `Host`. Cross-origin form-CSRF and same-site browser attacks return 403 before any controller runs. Safe methods (GET/HEAD/OPTIONS), internal endpoints under `/_*`, and requests with neither `Origin` nor `Referer` (typical of non-browser API clients like cURL or mobile apps) are exempt.
+
+For routes that legitimately accept cross-origin POSTs — Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks — opt out per route via `skip_csrf`:
+
+```soli
+# config/routes.sl
+
+# Exact path:
+skip_csrf("/webhooks/stripe");
+post("/webhooks/stripe", "webhooks#stripe");
+
+# Whole prefix:
+skip_csrf("/api/*");
+post("/api/users", "api#users_create");
+post("/api/orders", "api#orders_create");
+```
+
+The pattern is matched against the request path; `/prefix/*` covers `/prefix` and anything under `/prefix/`. To disable the check globally (API-only deployments where no cookie sessions exist), set `SOLI_DISABLE_CSRF=true` in the environment.
+
 ## Best Practices
 
 1. Use RESTful conventions for CRUD operations
