@@ -2608,6 +2608,18 @@ fn normalize_authority(authority: &str) -> String {
     authority.trim().trim_end_matches('.').to_ascii_lowercase()
 }
 
+/// SEC-044: pick the first comma-separated token from a forwarded-header
+/// value (`X-Forwarded-Proto`, `X-Forwarded-Host`). Some proxies append
+/// instead of overwriting, so a request with `X-Forwarded-Host: real,
+/// attacker` would otherwise reach our scheme/host code as the whole
+/// concatenated string. The leftmost entry — written by the *outermost*
+/// trusted proxy in a chain — is the canonical value once `trust_proxy`
+/// is enabled. Empty input or empty first token returns `""`, which lets
+/// callers fall back to defaults without an extra branch.
+fn first_forwarded_token(value: &str) -> &str {
+    value.split(',').next().unwrap_or("").trim()
+}
+
 /// Handle WebSocket upgrade request.
 async fn handle_websocket_upgrade(
     mut req: Request<Incoming>,
@@ -4490,7 +4502,7 @@ fn handle_request(
             let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
                 data.headers
                     .get("x-forwarded-proto")
-                    .map(|v| v == "https")
+                    .map(|v| first_forwarded_token(v) == "https")
                     .unwrap_or(false)
             } else {
                 false
@@ -4590,7 +4602,7 @@ fn handle_request(
     let is_https = if trust_proxy {
         data.headers
             .get("x-forwarded-proto")
-            .map(|v| v == "https")
+            .map(|v| first_forwarded_token(v) == "https")
             .unwrap_or(false)
     } else {
         false
@@ -4602,10 +4614,16 @@ fn handle_request(
     let cookie_secure =
         is_https || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
     let req_host = if trust_proxy {
+        // SEC-044: take only the first comma-separated entry from
+        // X-Forwarded-Host. A nginx-style appending proxy sends
+        // "real, attacker" when a client supplied an XFH already; the
+        // leftmost token is the value the trusted proxy wrote, so use
+        // that for cookie / *_url decisions instead of the verbatim
+        // string.
         data.headers
             .get("x-forwarded-host")
-            .or_else(|| data.headers.get("host"))
-            .cloned()
+            .map(|v| first_forwarded_token(v).to_string())
+            .or_else(|| data.headers.get("host").cloned())
             .unwrap_or_default()
     } else {
         data.headers.get("host").cloned().unwrap_or_default()
@@ -5515,6 +5533,29 @@ mod tests {
         let (state, tick) = unwrap_handler_return(json.clone());
         assert_eq!(state, json);
         assert_eq!(tick, None);
+    }
+
+    /// SEC-044: an appending proxy chain reaches the app as
+    /// "real, attacker" — the trusted-proxy contract is that the
+    /// outermost (leftmost) proxy's value is the canonical one.
+    #[test]
+    fn first_forwarded_token_returns_leftmost_trimmed() {
+        assert_eq!(
+            first_forwarded_token("real.example.com"),
+            "real.example.com"
+        );
+        assert_eq!(
+            first_forwarded_token("real.example.com, attacker.test"),
+            "real.example.com"
+        );
+        assert_eq!(
+            first_forwarded_token("  real.example.com  ,evil"),
+            "real.example.com"
+        );
+        assert_eq!(first_forwarded_token("https"), "https");
+        assert_eq!(first_forwarded_token("https, http"), "https");
+        assert_eq!(first_forwarded_token(""), "");
+        assert_eq!(first_forwarded_token(",real"), "");
     }
 
     #[test]
