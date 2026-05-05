@@ -192,6 +192,59 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
+/// SEC-015: DNS resolver that filters out blocked IPs at the connect-time
+/// resolution. `validate_url_for_ssrf` runs once on the URL string up-front
+/// — without this, the actual reqwest call would resolve DNS *again* later,
+/// opening a textbook DNS-rebinding window where the first answer passes
+/// the check (public IP) and the second targets `127.0.0.1`.
+///
+/// Plugging this resolver into the shared client closes the window: every
+/// resolution that reqwest performs goes through `is_blocked_ip` filtering.
+/// If all candidate IPs are blocked, reqwest sees an empty resolution and
+/// fails the connection.
+#[derive(Debug)]
+struct SsrfBlockingResolver;
+
+impl reqwest::dns::Resolve for SsrfBlockingResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            // `to_socket_addrs` is blocking; spawn_blocking keeps the
+            // tokio I/O driver thread responsive on slow DNS.
+            let safe = tokio::task::spawn_blocking(
+                move || -> Result<Vec<std::net::SocketAddr>, std::io::Error> {
+                    let raw: Vec<std::net::SocketAddr> =
+                        (host.as_str(), 0u16).to_socket_addrs()?.collect();
+                    let allow_loopback = std::env::var("APP_ENV").as_deref() == Ok("test");
+                    let safe: Vec<std::net::SocketAddr> = raw
+                        .into_iter()
+                        .filter(|sa| allow_loopback || !is_blocked_ip(sa.ip()))
+                        .collect();
+                    if safe.is_empty() {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!(
+                                "SSRF: hostname {:?} resolved only to blocked addresses",
+                                host
+                            ),
+                        ));
+                    }
+                    Ok(safe)
+                },
+            )
+            .await
+            .map_err(|join_err| {
+                Box::new(std::io::Error::other(format!(
+                    "DNS task panicked: {}",
+                    join_err
+                ))) as Box<dyn std::error::Error + Send + Sync>
+            })?
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            Ok(Box::new(safe.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
 /// Get the shared async HTTP client (used by HTTP class, Model queries, and SoliDB).
 ///
 /// SEC-007: the redirect policy is `Policy::custom`, not the default
@@ -200,6 +253,12 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 /// can't bounce the request to `http://169.254.169.254/...` (cloud
 /// metadata) or any other private/loopback address. The 10-hop cap is
 /// preserved.
+///
+/// SEC-015: a custom DNS resolver (`SsrfBlockingResolver`) replaces the
+/// default Hyper resolver so connect-time DNS goes through the same
+/// blocked-IP filter as the up-front URL check. This closes the
+/// DNS-rebinding TOCTOU between `validate_url_for_ssrf` and the actual
+/// connect.
 pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         let policy = reqwest::redirect::Policy::custom(|attempt| {
@@ -220,6 +279,7 @@ pub fn get_http_client() -> &'static Client {
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(policy)
+            .dns_resolver(std::sync::Arc::new(SsrfBlockingResolver))
             .build()
             .expect("Failed to create HTTP client")
     })
