@@ -272,6 +272,14 @@ pub fn serve_folder_with_options_and_workers(
     // Set the app root for LiveView template resolution
     crate::live::component::set_app_root(folder.to_path_buf());
 
+    // SEC-006: enable the filesystem jail for the `File` builtins so a
+    // controller calling `File.read(req["params"]["path"])` cannot reach
+    // outside the project directory. Code that needs full access (log
+    // shippers, backup scripts) goes through the parallel `Trusted`
+    // class. CLI invocations (`soli run`, the REPL, the test runner)
+    // never reach this branch and keep their unrestricted access.
+    crate::interpreter::builtins::file::set_file_jail(folder.to_path_buf());
+
     // If the parent process enabled coverage collection (via the test
     // runner), install a global coverage tracker so every interpreter in
     // every worker thread records line hits into it. The hits are returned

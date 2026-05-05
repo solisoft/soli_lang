@@ -16,6 +16,19 @@
         </p>
     </div>
 
+    <!-- Security: filesystem jail -->
+    <section id="section-jail" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-rose-500/10 border border-rose-500/20 p-5">
+            <h2 class="text-xl font-bold text-rose-200 mb-2">Filesystem jail</h2>
+            <p class="text-gray-300 mb-3 text-sm">
+                When the application is started with <code class="text-amber-400">soli serve &lt;dir&gt;</code>, every path passed to <code class="text-amber-400">slurp</code> / <code class="text-amber-400">barf</code> / <code class="text-amber-400">File.*</code> / <code class="text-amber-400">mkdir_p</code> / <code class="text-amber-400">file_write_*</code> is resolved relative to <code class="text-amber-400">&lt;dir&gt;</code> and rejected if it escapes that root (via absolute paths, <code class="text-amber-400">..</code> segments, or symlinks). A controller calling <code class="text-amber-400">File.read(req["params"]["path"])</code> therefore can no longer reach <code class="text-amber-400">/etc/passwd</code>.
+            </p>
+            <p class="text-gray-300 text-sm">
+                CLI invocations (<code class="text-amber-400">soli run</code>, the REPL, the test runner) do <strong>not</strong> install a jail, so command-line scripts keep full filesystem access. Code that genuinely needs to step outside the jail at runtime should use the parallel <code class="text-amber-400">Trusted</code> class &mdash; <code class="text-amber-400">Trusted.read("/var/log/...")</code>, <code class="text-amber-400">Trusted.write(...)</code>, etc. Its API mirrors <code class="text-amber-400">File</code> exactly but skips the jail check, making the unsafe access explicit at the call site so reviewers and grep can find it.
+            </p>
+        </div>
+    </section>
+
     <!-- File Class Methods -->
     <section id="section-file-class" class="scroll-mt-20 mb-12">
         <div class="space-y-6">

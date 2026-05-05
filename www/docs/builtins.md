@@ -573,6 +573,10 @@ body, a stored URL string).
 
 ### File I/O Functions
 
+> **Security — filesystem jail.** When the application is started with `soli serve <dir>`, every path passed to `slurp` / `barf` / `File.*` / `mkdir_p` / `file_write_*` is resolved relative to `<dir>` and rejected if it escapes that root (via absolute paths, `..` segments, or symlinks). A controller calling `File.read(req["params"]["path"])` therefore can no longer reach `/etc/passwd`. CLI invocations (`soli run`, the REPL, the test runner) do **not** install a jail, so command-line scripts keep full filesystem access.
+>
+> Code that genuinely needs to step outside the jail (log shippers, backup scripts, cron-style maintenance jobs) should use the parallel `Trusted` class — `Trusted.read("/var/log/...")`, `Trusted.write(...)`, etc. Its API mirrors `File` exactly but skips the jail check, making the unsafe access explicit at the call site so reviewers and grep can find it.
+
 #### slurp(path)
 
 Reads the entire contents of a file.
