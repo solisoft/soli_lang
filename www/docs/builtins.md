@@ -2493,8 +2493,7 @@ Removing the field does not auto-delete the SolidB entry — call `Cron.delete(i
 | `SOLI_JOBS_DATABASE` | SolidB database for queues and cron | `SOLIDB_DATABASE` then `default` |
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied | `default` |
 | `SOLI_JOBS_CALLBACK_URL` | URL SolidB POSTs to when a job fires | `http://127.0.0.1:3000/_jobs/run` |
-| `SOLI_JOBS_ALLOW_REMOTE` | Allow non-localhost callbacks | `false` |
-| `SOLI_JOBS_SECRET` | HMAC secret (when remote allowed) | unset |
+| `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). The `/_jobs/run/:name` route is not registered if unset — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks) | unset |
 
 ---
 

@@ -132,6 +132,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "bcrypt_hash",
     "bcrypt_verify",
     "hmac",
+    "secure_compare",
     "sha256",
     // Module system
     "import",

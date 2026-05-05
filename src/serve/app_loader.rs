@@ -263,6 +263,24 @@ fn register_jobs_callback(worker_id: usize, interpreter: &mut Interpreter) {
         return;
     }
 
+    // Default-deny: only expose the job dispatcher when the operator has set
+    // SOLI_JOBS_SECRET. The route is otherwise an unauthenticated RCE primitive
+    // (`__soli_get_class(name).perform(json_args)` reachable from any client),
+    // so we'd rather break enqueued callbacks than leave the door open. Worker
+    // 0 logs once so the situation is obvious in `soli serve` output; other
+    // workers stay silent to avoid spamming.
+    let secret = std::env::var("SOLI_JOBS_SECRET").unwrap_or_default();
+    if secret.is_empty() {
+        if worker_id == 0 {
+            eprintln!(
+                "Worker 0: SOLI_JOBS_SECRET is unset — POST /_jobs/run/:name will NOT be registered. \
+                 Set SOLI_JOBS_SECRET (and configure SolidB to sign callbacks with it via the \
+                 X-Job-Signature header) to enable background-job callbacks."
+            );
+        }
+        return;
+    }
+
     crate::interpreter::builtins::server::register_route_with_handler(
         "POST",
         "/_jobs/run/:name",

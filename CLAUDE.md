@@ -433,3 +433,13 @@ The CI verifies that the tag version matches `Cargo.toml` before publishing. Nev
 | `src/parser/parser.rs` | Parser |
 | `src/template.rs` | ERB template engine |
 | `FEATURE_SPECS.md` | Language feature specs |
+
+## Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| `task-workflow` | Pick a task from `tasks/todo/`, work on it, and move it through the workflow |
+| `ci` | Run the full CI pipeline: clippy, fmt, and tests |
+| `doc` | Update documentation about current changes in the www/ folder |
+| `release` | Complete development workflow: lint, tests, changelog, commit, release |
+| `review` | Review code changes and provide feedback |

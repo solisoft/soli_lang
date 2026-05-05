@@ -104,15 +104,33 @@ You can always pass a raw cron string instead.
 
 Set these env vars (typically in `.env`):
 
-| Variable                  | Purpose                                       | Default                            |
-|---------------------------|-----------------------------------------------|------------------------------------|
-| `SOLI_JOBS_DATABASE`      | SolidB database hosting queues + cron entries | `SOLIDB_DATABASE` then `default`   |
-| `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied              | `default`                          |
-| `SOLI_JOBS_CALLBACK_URL`  | URL SolidB POSTs to when a job fires          | `http://127.0.0.1:3000/_jobs/run`  |
-| `SOLI_JOBS_ALLOW_REMOTE`  | Allow non-localhost callbacks                 | `false`                            |
-| `SOLI_JOBS_SECRET`        | HMAC secret (when remote allowed)             | unset                              |
+| Variable                  | Purpose                                                                 | Default                            |
+|---------------------------|-------------------------------------------------------------------------|------------------------------------|
+| `SOLI_JOBS_DATABASE`      | SolidB database hosting queues + cron entries                           | `SOLIDB_DATABASE` then `default`   |
+| `SOLI_JOBS_DEFAULT_QUEUE` | Queue name when none is supplied                                        | `default`                          |
+| `SOLI_JOBS_CALLBACK_URL`  | URL SolidB POSTs to when a job fires                                    | `http://127.0.0.1:3000/_jobs/run`  |
+| `SOLI_JOBS_SECRET`        | **Required.** HMAC-SHA256 key used to sign and verify job callbacks     | unset                              |
 
 The callback URL must be reachable from the SolidB server. In production set it to your Soli app's public URL plus `/_jobs/run`.
+
+## Security: Signed Callbacks
+
+The `POST /_jobs/run/:name` route dispatches to `XJob.perform(args)` on whichever class the URL names — i.e. it can call any loaded class with a static `perform`. To stop a passing client from invoking arbitrary code, every callback must carry a valid signature.
+
+- **`SOLI_JOBS_SECRET` is required.** If it isn't set, Soli **does not register** the `/_jobs/run/:name` route at all. Workers log a warning at boot and SolidB callbacks will get 404s until you configure a secret.
+- **Signature header.** SolidB must include an `X-Job-Signature` header whose value is the lowercase hex HMAC-SHA256 of the raw request body, computed with `SOLI_JOBS_SECRET` as the key.
+- **Constant-time check.** Soli verifies the signature with `secure_compare()` (constant-time) so callers can't probe the secret by timing 401 responses.
+- **Bad signature → 401, missing class → 503, handler error → 500** — only a valid signature lets the request reach `cls.perform(args)`.
+
+If you compute the signature yourself (e.g. for an integration test), it's:
+
+```soli
+let body = json_stringify({ "args": { "user_id": 42 } });
+let sig  = hmac(body, getenv("SOLI_JOBS_SECRET"));   # hex HMAC-SHA256
+# POST /_jobs/run/WelcomeEmailJob with body and X-Job-Signature: <sig>
+```
+
+Use a long, random value for `SOLI_JOBS_SECRET` (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.
 
 ## How Dispatch Works
 

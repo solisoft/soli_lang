@@ -310,20 +310,45 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
                             <td class="py-3 pr-4">URL SolidB POSTs to when a job fires</td>
                             <td class="py-3"><code class="text-purple-400">http://127.0.0.1:3000/_jobs/run</code></td>
                         </tr>
-                        <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_ALLOW_REMOTE</code></td>
-                            <td class="py-3 pr-4">Allow non-localhost callbacks</td>
-                            <td class="py-3"><code class="text-purple-400">false</code></td>
-                        </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_SECRET</code></td>
-                            <td class="py-3 pr-4">HMAC secret (when remote allowed)</td>
+                            <td class="py-3 pr-4"><span class="text-fuchsia-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify job callbacks</td>
                             <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <p class="text-gray-400 mt-3 text-sm">The callback URL must be reachable from the SolidB server. In production, set it to your Soli app's public URL plus <code class="text-amber-400">/_jobs/run</code>.</p>
+        </div>
+    </section>
+
+    <!-- Security: Signed Callbacks -->
+    <section id="section-security" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </span>
+            Signed Callbacks
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-300 mb-3">The <code class="text-amber-400">POST /_jobs/run/:name</code> route dispatches to <code class="text-amber-400">XJob.perform(args)</code> on whichever class the URL names — it can call any loaded class with a static <code class="text-amber-400">perform</code>. To stop a passing client from invoking arbitrary code, every callback must carry a valid signature.</p>
+            <ul class="list-disc list-inside text-gray-300 space-y-2 text-sm">
+                <li><code class="text-amber-400">SOLI_JOBS_SECRET</code> is <strong>required</strong>. If it isn't set, Soli does not register <code class="text-amber-400">/_jobs/run/:name</code> at all — workers log a warning at boot and SolidB callbacks will get 404s until a secret is configured.</li>
+                <li>SolidB must include an <code class="text-amber-400">X-Job-Signature</code> header whose value is the lowercase hex HMAC-SHA256 of the raw request body, keyed with <code class="text-amber-400">SOLI_JOBS_SECRET</code>.</li>
+                <li>Soli verifies the signature with <code class="text-amber-400">secure_compare()</code> (constant-time), so callers can't probe the secret by timing 401 responses.</li>
+                <li>Bad signature &rarr; <code class="text-amber-400">401</code>, missing class &rarr; <code class="text-amber-400">503</code>, handler error &rarr; <code class="text-amber-400">500</code>. Only a valid signature lets the request reach <code class="text-amber-400">cls.perform(args)</code>.</li>
+            </ul>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3 text-sm">Computing the signature yourself (e.g. for an integration test):</p>
+            <pre class="bg-black/30 rounded-lg p-4 overflow-x-auto"><code class="text-sm text-gray-300">let body = json_stringify({ "args": { "user_id": 42 } });
+let sig  = hmac(body, getenv("SOLI_JOBS_SECRET"));   <span class="text-gray-500"># hex HMAC-SHA256</span>
+<span class="text-gray-500"># POST /_jobs/run/WelcomeEmailJob with body and X-Job-Signature: &lt;sig&gt;</span></code></pre>
+            <p class="text-gray-400 mt-3 text-sm">Use a long, random value for <code class="text-amber-400">SOLI_JOBS_SECRET</code> (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.</p>
         </div>
     </section>
 

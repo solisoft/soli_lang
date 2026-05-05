@@ -121,6 +121,22 @@ fn do_hmac_sha256(message: &str, key: &str) -> Result<String, String> {
     Ok(bytes_to_hex(&mac.finalize().into_bytes()))
 }
 
+/// Constant-time byte comparison. Returns false immediately for unequal-length
+/// inputs (length is not secret); for equal-length inputs the running time
+/// depends only on the length, not on the position of any differing byte.
+fn do_secure_compare(a: &str, b: &str) -> bool {
+    let ab = a.as_bytes();
+    let bb = b.as_bytes();
+    if ab.len() != bb.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in ab.iter().zip(bb.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn do_argon2_hash(password: &[u8]) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -301,6 +317,36 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             let result = do_hmac_sha256(&message, &key)?;
             Ok(Value::String(result))
         })),
+    );
+
+    // Crypto.secure_compare(a, b) -> Bool — constant-time string equality
+    crypto_static_methods.insert(
+        "secure_compare".to_string(),
+        Rc::new(NativeFunction::new(
+            "Crypto.secure_compare",
+            Some(2),
+            |args| {
+                let a = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "Crypto.secure_compare() expects string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                let b = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "Crypto.secure_compare() expects string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                Ok(Value::Bool(do_secure_compare(&a, &b)))
+            },
+        )),
     );
 
     // Crypto.argon2_hash(password) -> String
@@ -799,6 +845,32 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
+    // secure_compare(a, b) -> Bool — constant-time string equality
+    env.define(
+        "secure_compare".to_string(),
+        Value::NativeFunction(NativeFunction::new("secure_compare", Some(2), |args| {
+            let a = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "secure_compare() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let b = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "secure_compare() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::Bool(do_secure_compare(&a, &b)))
+        })),
+    );
+
     // argon2_hash(password) -> String
     env.define(
         "argon2_hash".to_string(),
@@ -1003,4 +1075,31 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             ]))
         })),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secure_compare_equal_strings() {
+        assert!(do_secure_compare("hello", "hello"));
+        assert!(do_secure_compare("", ""));
+        let hash = do_hmac_sha256("payload", "key").unwrap();
+        assert!(do_secure_compare(&hash, &hash));
+    }
+
+    #[test]
+    fn secure_compare_unequal_strings() {
+        assert!(!do_secure_compare("hello", "world"));
+        assert!(!do_secure_compare("hello", "Hello"));
+        assert!(!do_secure_compare("foo", "foobar"));
+        assert!(!do_secure_compare("foobar", "foo"));
+    }
+
+    #[test]
+    fn secure_compare_unicode_safe() {
+        assert!(do_secure_compare("café", "café"));
+        assert!(!do_secure_compare("café", "cafe"));
+    }
 }

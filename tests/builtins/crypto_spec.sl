@@ -55,6 +55,20 @@ describe("Cryptography Standalone Functions", fn() {
         assert(len(mac) > 0);
     });
 
+    test("secure_compare() matches identical strings", fn() {
+        assert(secure_compare("abc", "abc"));
+        assert(secure_compare("", ""));
+        let mac = hmac("payload", "key");
+        assert(secure_compare(mac, mac));
+    });
+
+    test("secure_compare() rejects mismatches and length differences", fn() {
+        assert_not(secure_compare("abc", "abd"));
+        assert_not(secure_compare("abc", "ABC"));
+        assert_not(secure_compare("abc", "abcd"));
+        assert_not(secure_compare("abcd", "abc"));
+    });
+
     test("Base64.encode() and Base64.decode() work", fn() {
         let original = "hello world";
         let encoded = Base64.encode(original);
@@ -87,6 +101,12 @@ describe("Crypto Class Static Methods", fn() {
         let mac = Crypto.hmac("message", "secret");
         assert_not_null(mac);
         assert_eq(len(mac), 64);  // HMAC-SHA256 produces 32 bytes = 64 hex chars
+    });
+
+    test("Crypto.secure_compare() matches and rejects", fn() {
+        assert(Crypto.secure_compare("foo", "foo"));
+        assert_not(Crypto.secure_compare("foo", "bar"));
+        assert_not(Crypto.secure_compare("foo", "fooo"));
     });
 
     test("Crypto.argon2_hash() and Crypto.argon2_verify() work", fn() {

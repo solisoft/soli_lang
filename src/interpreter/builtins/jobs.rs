@@ -693,8 +693,28 @@ pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<Str
 /// Soli prelude that defines the SolidB-webhook callback handler. Loaded once
 /// per worker. Looks up the matching XJob class by name, calls its `perform`
 /// method with the supplied args, and returns 200/503/500.
+///
+/// Security: every request must carry an `X-Job-Signature` header whose value
+/// is the HMAC-SHA256 (hex) of the raw request body, keyed with the value of
+/// `SOLI_JOBS_SECRET`. Comparison is constant-time. The route is only
+/// registered when `SOLI_JOBS_SECRET` is set (see `app_loader.rs`); the
+/// belt-and-suspenders check below also rejects requests if the secret was
+/// somehow cleared after boot.
+///
+/// Header keys are stored lowercase in `req["headers"]` (hyper normalizes
+/// them), so the lookup uses `"x-job-signature"`, not the canonical case.
 pub const JOBS_CALLBACK_PRELUDE: &str = r#"
 fn __soli_jobs_run(req) {
+    let secret = getenv("SOLI_JOBS_SECRET");
+    if secret == null or secret == "" {
+        return {"status": 503, "body": "Job dispatcher disabled: SOLI_JOBS_SECRET not set"};
+    }
+    let provided_sig = req["headers"]["x-job-signature"] ?? "";
+    let raw_body = req["body"] ?? "";
+    let expected_sig = hmac(raw_body, secret);
+    if !secure_compare(provided_sig, expected_sig) {
+        return {"status": 401, "body": "Invalid signature"};
+    }
     let name = req["params"]["name"];
     let cls = __soli_get_class(name);
     if cls == null {
@@ -729,4 +749,164 @@ pub fn class_name_to_snake(name: &str) -> String {
         out.extend(ch.to_lowercase());
     }
     out
+}
+
+#[cfg(test)]
+mod prelude_tests {
+    //! Exercise the JOBS_CALLBACK_PRELUDE end-to-end through the interpreter.
+    //! Confirms the lowercase header lookup, constant-time comparison, and
+    //! hard-fail behaviour when the secret is missing — the regressions that
+    //! the original SEC-001 fix shipped with.
+    use super::JOBS_CALLBACK_PRELUDE;
+    use crate::interpreter::value::{HashKey, HashPairs, Value};
+    use crate::interpreter::Interpreter;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::sync::Mutex;
+
+    /// std::env mutations are process-global; tests that touch them must run
+    /// serially or they'll observe each other's writes.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn run_prelude(interp: &mut Interpreter) {
+        let tokens = crate::lexer::Scanner::new(JOBS_CALLBACK_PRELUDE)
+            .scan_tokens()
+            .expect("prelude lex");
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .expect("prelude parse");
+        interp.interpret(&program).expect("prelude execute");
+    }
+
+    fn make_request(headers: &[(&str, &str)], body: &str, name: &str) -> Value {
+        let mut params = HashPairs::default();
+        params.insert(
+            HashKey::String("name".to_string()),
+            Value::String(name.to_string()),
+        );
+        let mut hdrs = HashPairs::default();
+        for (k, v) in headers {
+            hdrs.insert(
+                HashKey::String((*k).to_string()),
+                Value::String((*v).to_string()),
+            );
+        }
+        let mut req = HashPairs::default();
+        req.insert(
+            HashKey::String("params".to_string()),
+            Value::Hash(Rc::new(RefCell::new(params))),
+        );
+        req.insert(
+            HashKey::String("headers".to_string()),
+            Value::Hash(Rc::new(RefCell::new(hdrs))),
+        );
+        req.insert(
+            HashKey::String("body".to_string()),
+            Value::String(body.to_string()),
+        );
+        Value::Hash(Rc::new(RefCell::new(req)))
+    }
+
+    fn invoke(interp: &mut Interpreter, req: Value) -> Value {
+        let func = match interp.environment.borrow().get("__soli_jobs_run") {
+            Some(Value::Function(f)) => f,
+            other => panic!("__soli_jobs_run not defined as Function (got {:?})", other),
+        };
+        interp
+            .call_function(&func, vec![req])
+            .expect("call_function")
+    }
+
+    fn status_of(value: &Value) -> i64 {
+        let Value::Hash(h) = value else {
+            panic!("expected Hash response, got {:?}", value)
+        };
+        for (k, v) in h.borrow().iter() {
+            if matches!(k, HashKey::String(s) if s == "status") {
+                if let Value::Int(n) = v {
+                    return *n;
+                }
+            }
+        }
+        panic!("no status field in response");
+    }
+
+    fn hex_hmac(message: &str, key: &str) -> String {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("hmac key");
+        mac.update(message.as_bytes());
+        let bytes = mac.finalize().into_bytes();
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for b in bytes.iter() {
+            out.push_str(&format!("{:02x}", b));
+        }
+        out
+    }
+
+    #[test]
+    fn rejects_when_secret_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("SOLI_JOBS_SECRET");
+        let mut interp = Interpreter::new();
+        run_prelude(&mut interp);
+        let req = make_request(&[], r#"{"args":{}}"#, "Foo");
+        let resp = invoke(&mut interp, req);
+        assert_eq!(status_of(&resp), 503);
+    }
+
+    #[test]
+    fn rejects_missing_signature_header() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
+        let mut interp = Interpreter::new();
+        run_prelude(&mut interp);
+        let req = make_request(&[], r#"{"args":{}}"#, "Foo");
+        let resp = invoke(&mut interp, req);
+        assert_eq!(status_of(&resp), 401);
+    }
+
+    #[test]
+    fn rejects_wrong_signature() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
+        let mut interp = Interpreter::new();
+        run_prelude(&mut interp);
+        let req = make_request(&[("x-job-signature", "deadbeef")], r#"{"args":{}}"#, "Foo");
+        let resp = invoke(&mut interp, req);
+        assert_eq!(status_of(&resp), 401);
+    }
+
+    #[test]
+    fn rejects_canonical_case_signature_header() {
+        // hyper normalises header names to lowercase before they reach the
+        // request hash; the prelude must look up the lowercase form. If a
+        // future regression switches to "X-Job-Signature" this test catches it.
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
+        let mut interp = Interpreter::new();
+        run_prelude(&mut interp);
+        let body = r#"{"args":{}}"#;
+        let sig = hex_hmac(body, "test-secret");
+        // Insert under the canonical case only — the lookup should miss and
+        // the request should be rejected.
+        let req = make_request(&[("X-Job-Signature", &sig)], body, "Foo");
+        let resp = invoke(&mut interp, req);
+        assert_eq!(status_of(&resp), 401);
+    }
+
+    #[test]
+    fn accepts_valid_signature_returns_503_for_unknown_class() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOLI_JOBS_SECRET", "test-secret");
+        let mut interp = Interpreter::new();
+        run_prelude(&mut interp);
+        let body = r#"{"args":{}}"#;
+        let sig = hex_hmac(body, "test-secret");
+        let req = make_request(&[("x-job-signature", &sig)], body, "NotARealJob");
+        let resp = invoke(&mut interp, req);
+        // Auth passed → falls through to class lookup, which returns 503
+        // because the class isn't loaded in this test interpreter.
+        assert_eq!(status_of(&resp), 503);
+    }
 }
