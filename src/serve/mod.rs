@@ -183,6 +183,12 @@ pub(crate) struct RequestData {
     pub(crate) multipart_form: Option<HashMap<String, String>>,
     /// Pre-parsed files from multipart
     pub(crate) multipart_files: Option<Vec<UploadedFile>>,
+    /// SEC-030: actual TCP peer IP (no port). Threaded to handlers as
+    /// `req["remote_addr"]` so the rate limiter can fall back to it
+    /// when `enable_trust_proxy()` is off — without this, an attacker
+    /// rotating `X-Forwarded-For` per request would mint a fresh
+    /// rate-limit bucket each time and bypass the limiter entirely.
+    pub(crate) peer_ip: String,
     pub(crate) response_tx: oneshot::Sender<ResponseData>,
 }
 
@@ -2238,6 +2244,7 @@ async fn handle_hyper_request(
         body_bytes: body_bytes_opt,
         multipart_form,
         multipart_files,
+        peer_ip: peer_addr.ip().to_string(),
         response_tx,
     };
 
@@ -4592,6 +4599,7 @@ fn handle_request(
         headers,
         &data.body,
         parsed_body,
+        &data.peer_ip,
     );
 
     // Publish scheme + host to the per-request thread-local so `<name>_url`

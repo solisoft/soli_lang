@@ -232,6 +232,10 @@ end</code></pre>
             <code class="text-indigo-300 font-bold">req.session</code>
             <p class="text-sm text-gray-400 mt-1">User session data storage</p>
         </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req["remote_addr"]</code>
+            <p class="text-sm text-gray-400 mt-1">Actual TCP peer IP. Used by <code>rate_limit</code> for buckets; honored as the trusted client identifier when <code>enable_trust_proxy()</code> is off, otherwise the rightmost <code>X-Forwarded-For</code> entry wins.</p>
+        </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Response Types</h2>

@@ -477,30 +477,156 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
     );
 }
 
+/// SEC-030: derive a stable rate-limit key from the request.
+///
+/// Previously this function unconditionally trusted `X-Forwarded-For` from
+/// the request headers — on a directly-exposed app, an attacker rotating
+/// `X-Forwarded-For: <random>` per request would mint a fresh bucket each
+/// time and bypass the limiter (including for login endpoints).
+///
+/// Behavior:
+/// * `enable_trust_proxy()` ON: read `X-Forwarded-For` and take the
+///   right-most entry. With a standard nginx-style
+///   `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`,
+///   the rightmost entry is the actual client as seen by the trusted
+///   proxy; whatever the client tried to spoof in the header sits to
+///   the left and is ignored.
+/// * trust-proxy OFF (default): use the request hash's `remote_addr`
+///   (the actual TCP peer IP populated by `serve/mod.rs`). Falls back
+///   to `None` only when called from a non-server context.
 fn extract_client_ip(req: &Value) -> Option<String> {
-    match req {
-        Value::Hash(hash) => {
-            let borrowed = hash.borrow();
-            borrowed.iter()
-                .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
-                .and_then(|(_, h)| {
-                    if let Value::Hash(headers) = h {
-                        let h_borrowed = headers.borrow();
-                        h_borrowed.iter()
-                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "x-forwarded-for" || s == "X-Forwarded-For"))
-                            .map(|(_, v)| {
-                                if let Value::String(s) = v { s.clone() } else { String::new() }
-                            })
-                            .or_else(|| {
-                                h_borrowed.iter()
-                                    .find(|(k, _)| matches!(k, HashKey::String(s) if s == "remote_addr" || s == "Remote-Addr"))
-                                    .map(|(_, v)| {
-                                        if let Value::String(s) = v { s.clone() } else { String::new() }
-                                    })
-                            })
-                    } else { None }
+    let hash = match req {
+        Value::Hash(h) => h,
+        _ => return None,
+    };
+    let borrowed = hash.borrow();
+
+    if super::trust_proxy::is_trust_proxy_enabled() {
+        if let Some((_, Value::Hash(headers))) = borrowed
+            .iter()
+            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
+        {
+            let h_borrowed = headers.borrow();
+            let xff = h_borrowed
+                .iter()
+                .find(|(k, _)| {
+                    matches!(k, HashKey::String(s) if s == "x-forwarded-for" || s == "X-Forwarded-For")
                 })
+                .and_then(|(_, v)| {
+                    if let Value::String(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                });
+            if let Some(xff) = xff {
+                // Take the rightmost non-empty entry — that's the address
+                // the trusted proxy chose to record.
+                if let Some(ip) = xff.rsplit(',').map(|s| s.trim()).find(|s| !s.is_empty()) {
+                    return Some(ip.to_string());
+                }
+            }
         }
-        _ => None,
+    }
+
+    borrowed
+        .iter()
+        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "remote_addr"))
+        .and_then(|(_, v)| {
+            if let Value::String(s) = v {
+                Some(s.clone())
+            } else {
+                None
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::HashPairs;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Bundled into one test because `TRUST_PROXY_ENABLED` is process-global —
+    /// running cases as separate `#[test]` items would race them under
+    /// cargo's parallel runner.
+    #[test]
+    fn extract_client_ip_honours_trust_proxy_gate() {
+        // Helper to build a request hash with the given headers and remote.
+        let make_req = |xff: Option<&str>, remote: Option<&str>| -> Value {
+            let mut req: HashPairs = HashPairs::default();
+            if let Some(xff) = xff {
+                let mut headers: HashPairs = HashPairs::default();
+                headers.insert(
+                    HashKey::String("x-forwarded-for".to_string()),
+                    Value::String(xff.to_string()),
+                );
+                req.insert(
+                    HashKey::String("headers".to_string()),
+                    Value::Hash(Rc::new(RefCell::new(headers))),
+                );
+            }
+            if let Some(remote) = remote {
+                req.insert(
+                    HashKey::String("remote_addr".to_string()),
+                    Value::String(remote.to_string()),
+                );
+            }
+            Value::Hash(Rc::new(RefCell::new(req)))
+        };
+
+        // Save and restore the global flag.
+        let prev = super::super::trust_proxy::is_trust_proxy_enabled();
+
+        // Trust-proxy OFF: XFF is ignored, remote_addr wins.
+        // SEC-030 attack scenario: client rotates `X-Forwarded-For: <random>` per
+        // request; without the gate, the limiter is bypassed.
+        super::super::trust_proxy::TRUST_PROXY_ENABLED
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            extract_client_ip(&make_req(Some("1.1.1.1"), Some("203.0.113.5"))),
+            Some("203.0.113.5".to_string()),
+            "trust_proxy OFF must ignore X-Forwarded-For"
+        );
+        // Even if XFF rotates, the bucket key stays the peer IP.
+        assert_eq!(
+            extract_client_ip(&make_req(Some("99.99.99.99"), Some("203.0.113.5"))),
+            Some("203.0.113.5".to_string()),
+            "rotating XFF must not change the bucket when trust_proxy is off"
+        );
+        // No remote_addr → None (limiter falls back to a sane default).
+        assert!(extract_client_ip(&make_req(Some("1.1.1.1"), None)).is_none());
+
+        // Trust-proxy ON: take the rightmost XFF entry — the address the
+        // trusted proxy chose to record.
+        super::super::trust_proxy::TRUST_PROXY_ENABLED
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            extract_client_ip(&make_req(Some("1.2.3.4"), Some("203.0.113.5"))),
+            Some("1.2.3.4".to_string()),
+            "single-hop XFF should resolve to the recorded client"
+        );
+        // `X-Forwarded-For: <spoofed>, <real>` — nginx-style append puts
+        // the real client at the right.
+        assert_eq!(
+            extract_client_ip(&make_req(Some("99.99.99.99, 1.2.3.4"), Some("203.0.113.5"))),
+            Some("1.2.3.4".to_string()),
+            "rightmost XFF entry wins under trust_proxy"
+        );
+        // Trailing/leading whitespace tolerated.
+        assert_eq!(
+            extract_client_ip(&make_req(Some("a, b ,  1.2.3.4   "), None)),
+            Some("1.2.3.4".to_string())
+        );
+        // Empty XFF falls back to remote_addr.
+        assert_eq!(
+            extract_client_ip(&make_req(Some(""), Some("203.0.113.5"))),
+            Some("203.0.113.5".to_string())
+        );
+
+        // Restore.
+        super::super::trust_proxy::TRUST_PROXY_ENABLED
+            .store(prev, std::sync::atomic::Ordering::Relaxed);
     }
 }

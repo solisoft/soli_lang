@@ -800,6 +800,9 @@ struct RequestHashKeys {
     form: HashKey,
     files: HashKey,
     all: HashKey,
+    /// SEC-030: actual TCP peer IP (no port). Always populated when the
+    /// request comes from the HTTP server.
+    remote_addr: HashKey,
 }
 
 thread_local! {
@@ -814,6 +817,7 @@ thread_local! {
         form: HashKey::String("form".to_string()),
         files: HashKey::String("files".to_string()),
         all: HashKey::String("all".to_string()),
+        remote_addr: HashKey::String("remote_addr".to_string()),
     };
 }
 
@@ -894,6 +898,7 @@ pub fn build_request_hash(
         headers,
         body,
         ParsedBody::default(),
+        "",
     )
 }
 
@@ -901,6 +906,10 @@ pub fn build_request_hash(
 /// Skips inserting Null/empty fields to reduce allocations — missing keys
 /// return Null on access anyway (via StrKey lookup in template engine).
 /// Takes owned query and headers to avoid cloning individual keys/values.
+///
+/// `peer_ip` is the actual TCP peer address as a string (no port). Empty
+/// string when called from a non-server context (e.g. test harness).
+#[allow(clippy::too_many_arguments)]
 pub fn build_request_hash_with_parsed(
     method: &str,
     path: &str,
@@ -909,6 +918,7 @@ pub fn build_request_hash_with_parsed(
     headers: HashMap<String, String>,
     body: &str,
     parsed: ParsedBody,
+    peer_ip: &str,
 ) -> Value {
     // Build sub-hashes only when non-empty (avoids Rc allocation for empty maps)
     let params_value = if params.is_empty() {
@@ -986,7 +996,8 @@ pub fn build_request_hash_with_parsed(
             + if parsed.json.is_some() { 1 } else { 0 }
             + if parsed.form.is_some() { 1 } else { 0 }
             + if parsed.files.is_some() { 1 } else { 0 }
-            + if all_value.is_some() { 1 } else { 0 };
+            + if all_value.is_some() { 1 } else { 0 }
+            + if !peer_ip.is_empty() { 1 } else { 0 };
         let mut map = HashPairs::with_capacity_and_hasher(capacity, AHasher::default());
         map.insert(keys.method.clone(), Value::String(method.to_string()));
         map.insert(keys.path.clone(), Value::String(path.to_string()));
@@ -1013,6 +1024,9 @@ pub fn build_request_hash_with_parsed(
         }
         if let Some(v) = all_value {
             map.insert(keys.all.clone(), v);
+        }
+        if !peer_ip.is_empty() {
+            map.insert(keys.remote_addr.clone(), Value::String(peer_ip.to_string()));
         }
         map
     });

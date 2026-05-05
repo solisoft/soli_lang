@@ -290,6 +290,11 @@ fn create(req)
   # Session data
   user_id = req.session["user_id"];
 
+  # Actual TCP peer IP (no port). Used by `rate_limit` for buckets.
+  # Honored as the trustworthy client identifier when `enable_trust_proxy()`
+  # is off; otherwise the rightmost `X-Forwarded-For` entry wins.
+  client_ip = req["remote_addr"];
+
   # Store data for after_action or views
   req["my_data"] = some_value;
 end

@@ -14,7 +14,7 @@ use std::sync::Once;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
-static TRUST_PROXY_ENABLED: AtomicBool = AtomicBool::new(false);
+pub(crate) static TRUST_PROXY_ENABLED: AtomicBool = AtomicBool::new(false);
 static ENV_INIT: Once = Once::new();
 
 /// Whether the server should honor `X-Forwarded-Proto` / `X-Forwarded-Host`
