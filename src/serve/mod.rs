@@ -2120,7 +2120,7 @@ async fn handle_hyper_request(
         }
         // Source code endpoint
         if path == "/__dev/source" && method == "GET" {
-            return handle_dev_source(req).await;
+            return handle_dev_source(req, peer_addr).await;
         }
     }
 
@@ -4866,7 +4866,26 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 }
 
 /// Handle source code fetching for dev mode.
-async fn handle_dev_source(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+///
+/// SEC-009: this endpoint reads arbitrary files inside `app_root`
+/// (`.env`, `app/models/*.sl`, controllers, config). It must share the
+/// same `is_authorized_dev_repl_request` gate as `/__dev/repl` so a
+/// dev server reachable on a shared box / container / port-forward
+/// doesn't leak secrets to anyone who can hit the port.
+async fn handle_dev_source(
+    req: Request<Incoming>,
+    peer_addr: SocketAddr,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    if !is_authorized_dev_repl_request(req.headers(), peer_addr) {
+        return Ok(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(
+                r#"{"error": "Forbidden dev source request"}"#,
+            )))
+            .unwrap());
+    }
+
     let uri = req.uri();
     let query = uri.query().unwrap_or("");
 
