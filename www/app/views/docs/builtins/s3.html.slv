@@ -244,6 +244,7 @@ files = S3.list_objects("my-bucket", "documents/")</code></pre>
                     <div><code class="text-amber-400">source</code> : <code class="text-purple-400">String</code> - Source in format "bucket/key"</div>
                     <div><code class="text-amber-400">dest</code> : <code class="text-purple-400">String</code> - Destination in format "bucket/key"</div>
                 </div>
+                <p class="text-gray-400 text-sm mb-3">Both bucket names must match <code>^[a-z0-9.-]{3,63}$</code> — lowercase letters, digits, <code>.</code> and <code>-</code>, 3 to 63 characters. Names containing other characters are rejected before any S3 call to prevent header injection (e.g. an attacker-supplied <code>bucket?versionId=evil</code> cannot redirect the copy to a different version).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">S3.copy_object("source-bucket/file.txt", "dest-bucket/file.txt")</code></pre>

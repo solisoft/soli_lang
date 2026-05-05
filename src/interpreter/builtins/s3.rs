@@ -68,6 +68,34 @@ fn extract_string(
     }
 }
 
+/// SEC-021: validate an S3 bucket name against the conservative subset
+/// `^[a-z0-9.-]{3,63}$`. Used by `copy_object` to refuse a `source` like
+/// `"my-bucket?versionId=evil/foo"` — the `?versionId=…` would otherwise
+/// be concatenated into the `x-amz-copy-source` header value, letting an
+/// attacker pivot the copy to a bucket/version they control.
+///
+/// AWS's full naming rules are stricter (no `..`, no `-.`, no IP-shaped
+/// names, must start/end alphanumeric); this regex is the minimum set
+/// that blocks header injection. Tightening can come later if needed.
+fn validate_bucket_name(name: &str) -> Result<(), String> {
+    if name.len() < 3 || name.len() > 63 {
+        return Err(format!(
+            "Invalid bucket name '{}': length must be 3-63 characters",
+            name
+        ));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+    {
+        return Err(format!(
+            "Invalid bucket name '{}': only lowercase letters, digits, '.' and '-' are allowed",
+            name
+        ));
+    }
+    Ok(())
+}
+
 fn build_s3_client() -> Result<S3Client, String> {
     let access_key = env::var("AWS_ACCESS_KEY_ID")
         .or_else(|_| env::var("S3_ACCESS_KEY"))
@@ -334,8 +362,20 @@ pub fn register_s3_class(env: &mut Environment) {
                 .split_once('/')
                 .ok_or("Dest must be in format 'bucket/key'")?;
 
+            // SEC-021: refuse bucket names that could inject query-string
+            // or other special chars into the `x-amz-copy-source` header.
+            // Encode the validated bucket as belt-and-suspenders so any
+            // future relaxation of `validate_bucket_name` doesn't reopen
+            // the hole.
+            validate_bucket_name(src_bucket)?;
+            validate_bucket_name(dst_bucket)?;
+
             let client = get_s3_client()?;
-            let copy_source = format!("{}/{}", src_bucket, urlencoding::encode(src_key));
+            let copy_source = format!(
+                "{}/{}",
+                urlencoding::encode(src_bucket),
+                urlencoding::encode(src_key)
+            );
             let request = CopyObjectRequest {
                 bucket: dst_bucket.to_string(),
                 key: dst_key.to_string(),
@@ -366,4 +406,31 @@ pub fn register_s3_class(env: &mut Environment) {
     };
 
     env.define("S3".to_string(), Value::Class(Rc::new(s3_class)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_bucket_name_accepts_valid() {
+        assert!(validate_bucket_name("my-bucket").is_ok());
+        assert!(validate_bucket_name("a.b-c.123").is_ok());
+        assert!(validate_bucket_name("abc").is_ok()); // min length
+        assert!(validate_bucket_name(&"a".repeat(63)).is_ok()); // max length
+    }
+
+    #[test]
+    fn validate_bucket_name_rejects_injection_attempts() {
+        // SEC-021: the original CVE — `?versionId=` injection.
+        assert!(validate_bucket_name("my-bucket?versionId=evil").is_err());
+        // Other special chars that would land in a header value.
+        assert!(validate_bucket_name("my bucket").is_err()); // space
+        assert!(validate_bucket_name("my/bucket").is_err()); // slash
+        assert!(validate_bucket_name("my\nbucket").is_err()); // CRLF injection
+        assert!(validate_bucket_name("MyBucket").is_err()); // uppercase
+        assert!(validate_bucket_name("").is_err()); // empty
+        assert!(validate_bucket_name("ab").is_err()); // too short
+        assert!(validate_bucket_name(&"a".repeat(64)).is_err()); // too long
+    }
 }

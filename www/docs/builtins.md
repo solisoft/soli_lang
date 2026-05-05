@@ -983,6 +983,8 @@ Copies an object within S3.
 - `source` (String) - Source in format `bucket/key`
 - `dest` (String) - Destination in format `bucket/key`
 
+Both bucket names must match `^[a-z0-9.-]{3,63}$` — lowercase letters, digits, `.` and `-`, 3 to 63 characters. Names containing other characters are rejected before any S3 call to prevent header injection (e.g. an attacker-supplied `bucket?versionId=evil` cannot redirect the copy to a different version).
+
 **Returns:** Boolean - `true` on success
 
 **Example:**
