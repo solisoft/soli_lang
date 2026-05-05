@@ -53,6 +53,23 @@ pub fn register_session_helpers(env: &mut Environment) {
     env.define(
         "with_session".to_string(),
         Value::NativeFunction(NativeFunction::new("with_session", Some(1), |args| {
+            // SEC-040: refuse to write to the live `CURRENT_STORE` outside
+            // a test context. `register_session_helpers` is gated on
+            // `include_test_builtins` at the registration point, but
+            // `Interpreter::new()` (used by the REPL, `soli run`, the dev
+            // server boot, jobs, etc.) sets that flag true. Without this
+            // runtime gate, a Soli-code injection in any of those paths
+            // could call `with_session({ "user_id": 1 })` and impersonate
+            // any user against the live session store. The flag is the
+            // same one SEC-017 uses for the SSRF bypass — it can only be
+            // flipped by `soli test` startup or by a test-server child
+            // born of `SOLI_INTERNAL_TEST_RUNNER=1`.
+            if !super::test_server::is_test_runner_process() {
+                return Err("with_session is a test-only helper; it is not callable \
+                            outside a test runner context"
+                    .to_string());
+            }
+
             let hash = match &args[0] {
                 Value::Hash(h) => h.clone(),
                 other => {
@@ -341,6 +358,12 @@ mod tests {
     }
 
     fn fresh_env() -> Environment {
+        // SEC-040: `with_session` refuses to operate outside a test
+        // runner. The unit tests in this module simulate that context, so
+        // flip the same flag the real test runner flips at startup. The
+        // flag is process-wide and one-way (no disable), matching the
+        // pattern SEC-017 established for the SSRF bypass.
+        crate::interpreter::builtins::http_class::enable_ssrf_test_mode();
         clear_cookies_inner();
         clear_test_user();
         let mut env = Environment::new();

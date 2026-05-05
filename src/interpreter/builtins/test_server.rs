@@ -119,6 +119,21 @@ fn is_test_server_running() -> bool {
     TEST_SERVER_RUNNING.load(Ordering::SeqCst)
 }
 
+/// Whether this process is the `soli test` parent or a test-server child
+/// it spawned. Backed by the same in-process `AtomicBool` SEC-017 uses to
+/// relax the SSRF blocklist (`http_class::ssrf_test_mode`): the flag is
+/// flipped exactly once at startup — by `cli/commands/test_runner.rs` for
+/// the runner itself, and by `main.rs` for children that see
+/// `SOLI_INTERNAL_TEST_RUNNER=1` in their environment. REPLs, `soli run`,
+/// dev tooling, and `soli serve --dev` cannot flip it, and Soli code has
+/// no way to set it. SEC-040: the dangerous test session helpers
+/// (currently `with_session`) consult this gate so that even if they were
+/// accidentally registered in a non-test interpreter, attacker-injected
+/// Soli code can't forge an authenticated session in the live store.
+pub fn is_test_runner_process() -> bool {
+    crate::interpreter::builtins::http_class::ssrf_test_mode()
+}
+
 /// Get the test server port. Prefers the thread-local override (set by
 /// the parallel test runner) so each worker reaches its own subprocess.
 pub fn get_test_server_port() -> Option<u16> {

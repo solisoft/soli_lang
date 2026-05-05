@@ -429,6 +429,11 @@ assert(signed_out())</code></pre>
 })
 response = get("/dashboard")
 assert_eq(res_status(response), 200)</code></pre>
+                <div class="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <p class="text-yellow-300 text-sm">
+                        <strong>Test-runner only.</strong> <code>with_session</code> writes to the live session store and is gated to processes started by <code>soli test</code> (or test-server children spawned by it). Calling it from <code>soli run</code>, the REPL, a job, or a <code>soli serve --dev</code> script raises <code>with_session is a test-only helper; &hellip;</code> so an attacker who can inject Soli code into one of those contexts cannot forge an authenticated session.
+                    </p>
+                </div>
             </div>
         </section>
 

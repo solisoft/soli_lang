@@ -355,6 +355,8 @@ response = get("/dashboard")
 assert_eq(res_status(response), 200)
 ```
 
+> **Test-runner only.** `with_session` writes to the live session store and is gated to processes started by `soli test` (or test-server children spawned by it). Calling it from `soli run`, the REPL, a job, or a `soli serve --dev` script raises `with_session is a test-only helper; ...` so an attacker who can inject Soli code into one of those contexts cannot forge an authenticated session.
+
 ### Token Authentication
 
 **with_token(token)** sets a Bearer authorization header:
