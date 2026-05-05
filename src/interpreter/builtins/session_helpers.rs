@@ -66,7 +66,7 @@ pub fn register_session_helpers(env: &mut Environment) {
             // Reuse the session_id already in the cookie jar if any; otherwise
             // create a fresh server-side session so the test server reads back
             // exactly what we write here.
-            let store = &*super::session::SESSION_STORE;
+            let store = super::session::get_current_store();
             let session_id = match session_id_from_cookies() {
                 Some(id) if !id.is_empty() => store.get_or_create(&id),
                 _ => store.create_session(),
@@ -376,7 +376,7 @@ mod tests {
             "session_id cookie must be non-empty"
         );
 
-        let store = &*super::super::session::SESSION_STORE;
+        let store = super::super::session::get_current_store();
         assert_eq!(store.get(&session_id, "user_id"), Some(json!(42)));
         assert_eq!(store.get(&session_id, "role"), Some(json!("editor")));
     }
@@ -405,7 +405,7 @@ mod tests {
         let second_id = session_id_from_cookies().unwrap();
 
         assert_eq!(first_id, second_id, "cookie session id must be reused");
-        let store = &*super::super::session::SESSION_STORE;
+        let store = super::super::session::get_current_store();
         assert_eq!(store.get(&first_id, "a"), Some(json!(1)));
         assert_eq!(store.get(&first_id, "b"), Some(json!(2)));
     }

@@ -65,60 +65,14 @@ pub trait SessionStore: Send + Sync {
     fn driver_name(&self) -> &'static str;
 }
 
-pub struct SessionStoreManager {
-    store: Arc<dyn SessionStore>,
-    max_age: Duration,
-}
-
-impl SessionStoreManager {
-    pub fn new(store: Arc<dyn SessionStore>) -> Self {
-        Self {
-            store,
-            max_age: Duration::from_secs(24 * 60 * 60),
-        }
-    }
-
-    pub fn with_max_age(mut self, max_age: Duration) -> Self {
-        self.max_age = max_age;
-        self
-    }
-
-    pub fn get_or_create(&self, session_id: &str) -> String {
-        self.store.get_or_create(session_id)
-    }
-
-    pub fn create_session(&self) -> String {
-        self.store.create_session()
-    }
-
-    pub fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        self.store.get(session_id, key)
-    }
-
-    pub fn set(&self, session_id: &str, key: &str, value: JsonValue) {
-        self.store.set(session_id, key, value)
-    }
-
-    pub fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        self.store.delete(session_id, key)
-    }
-
-    pub fn destroy(&self, session_id: &str) {
-        self.store.destroy(session_id)
-    }
-
-    pub fn regenerate(&self, old_id: &str) -> String {
-        self.store.regenerate(old_id)
-    }
-
-    pub fn cleanup(&self) {
-        self.store.cleanup()
-    }
-
-    pub fn driver_name(&self) -> &'static str {
-        self.store.driver_name()
-    }
-}
+// SEC-038a: the previous `SessionStoreManager` cached one Arc<dyn SessionStore>
+// at first access via a lazy_static. `configure_session` updated CURRENT_STORE
+// but the manager's cached pointer never moved, so a runtime call like
+// `session_configure({"driver": "disk"})` was a silent no-op for dispatch.
+// Helpers now go straight through `get_current_store()` per call, which reads
+// the live `RwLock` and picks up backend swaps. The extra `RwLock::read +
+// Arc::clone` per session op is negligible compared to the underlying store
+// work (HashMap lookup or RESP/HTTP round-trip).
 
 #[derive(Clone)]
 pub struct SessionConfig {
@@ -515,11 +469,6 @@ impl SessionStore for InMemorySessionStore {
     }
 }
 
-lazy_static! {
-    pub static ref SESSION_STORE: SessionStoreManager =
-        SessionStoreManager::new(get_current_store());
-}
-
 // Thread-local current session ID (set per-request from cookie).
 thread_local! {
     static CURRENT_SESSION_ID: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -540,9 +489,10 @@ pub fn get_current_session_id() -> Option<String> {
 /// Get or create a session for the given cookie value.
 /// Returns the session ID to use (may be new if expired or invalid).
 pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
+    let store = get_current_store();
     match cookie_session_id {
-        Some(id) if !id.is_empty() => SESSION_STORE.get_or_create(id),
-        _ => SESSION_STORE.create_session(),
+        Some(id) if !id.is_empty() => store.get_or_create(id),
+        _ => store.create_session(),
     }
 }
 
@@ -621,7 +571,7 @@ pub fn register_session_builtins(env: &mut Environment) {
 
             let session_id = get_current_session_id();
             match session_id {
-                Some(id) => Ok(SESSION_STORE
+                Some(id) => Ok(get_current_store()
                     .get(&id, &key)
                     .map(|json| json_to_value(&json))
                     .unwrap_or(Value::Null)),
@@ -652,12 +602,12 @@ pub fn register_session_builtins(env: &mut Environment) {
             let id = match get_current_session_id() {
                 Some(id) => id,
                 None => {
-                    let id = SESSION_STORE.create_session();
+                    let id = get_current_store().create_session();
                     set_current_session_id(Some(id.clone()));
                     id
                 }
             };
-            SESSION_STORE.set(&id, &key, json_value);
+            get_current_store().set(&id, &key, json_value);
 
             Ok(Value::Null)
         })),
@@ -678,7 +628,7 @@ pub fn register_session_builtins(env: &mut Environment) {
             };
 
             if let Some(id) = get_current_session_id() {
-                return Ok(SESSION_STORE
+                return Ok(get_current_store()
                     .delete(&id, &key)
                     .map(|json| json_to_value(&json))
                     .unwrap_or(Value::Null));
@@ -693,7 +643,7 @@ pub fn register_session_builtins(env: &mut Environment) {
         "session_destroy".to_string(),
         Value::NativeFunction(NativeFunction::new("session_destroy", Some(0), |_args| {
             if let Some(id) = get_current_session_id() {
-                SESSION_STORE.destroy(&id);
+                get_current_store().destroy(&id);
             }
             Ok(Value::Null)
         })),
@@ -717,8 +667,8 @@ pub fn register_session_builtins(env: &mut Environment) {
             Some(0),
             |_args| {
                 let new_id = match get_current_session_id() {
-                    Some(old_id) => SESSION_STORE.regenerate(&old_id),
-                    None => SESSION_STORE.create_session(),
+                    Some(old_id) => get_current_store().regenerate(&old_id),
+                    None => get_current_store().create_session(),
                 };
                 set_current_session_id(Some(new_id.clone()));
                 Ok(Value::String(new_id))
@@ -741,7 +691,7 @@ pub fn register_session_builtins(env: &mut Environment) {
             };
 
             if let Some(id) = get_current_session_id() {
-                return Ok(Value::Bool(SESSION_STORE.get(&id, &key).is_some()));
+                return Ok(Value::Bool(get_current_store().get(&id, &key).is_some()));
             }
 
             Ok(Value::Bool(false))
@@ -752,7 +702,7 @@ pub fn register_session_builtins(env: &mut Environment) {
     env.define(
         "session_driver".to_string(),
         Value::NativeFunction(NativeFunction::new("session_driver", Some(0), |_args| {
-            Ok(Value::String(SESSION_STORE.driver_name().to_string()))
+            Ok(Value::String(get_current_store().driver_name().to_string()))
         })),
     );
 
@@ -917,7 +867,7 @@ mod tests {
     //! End-to-end integration tests for the session layer.
     //!
     //! These exercise the actual native-function closures that the interpreter
-    //! invokes, driving the same SESSION_STORE + CURRENT_SESSION_ID thread-local
+    //! invokes, driving the same get_current_store() + CURRENT_SESSION_ID thread-local
     //! that a real HTTP request uses. They simulate the request lifecycle
     //! (resolve cookie → run handler → diff IDs for Set-Cookie) without
     //! standing up a full interpreter + router.
@@ -1010,7 +960,7 @@ mod tests {
 
         let current = get_current_session_id().expect("session should be created lazily");
         assert_eq!(
-            SESSION_STORE.get(&current, "user_id"),
+            get_current_store().get(&current, "user_id"),
             Some(json!(42)),
             "value must persist under the newly created session"
         );
@@ -1029,8 +979,8 @@ mod tests {
         let env = fresh_env();
 
         // Prime a session as if an earlier request had created one.
-        let old_id = SESSION_STORE.create_session();
-        SESSION_STORE.set(&old_id, "flash", json!("hello"));
+        let old_id = get_current_store().create_session();
+        get_current_store().set(&old_id, "flash", json!("hello"));
         set_current_session_id(Some(old_id.clone()));
         let cookie_session_id = Some(old_id.clone());
 
@@ -1049,15 +999,15 @@ mod tests {
         .unwrap();
 
         assert!(
-            SESSION_STORE.get(&old_id, "flash").is_none(),
+            get_current_store().get(&old_id, "flash").is_none(),
             "old session ID must be destroyed after regenerate"
         );
         assert_eq!(
-            SESSION_STORE.get(&new_id, "flash"),
+            get_current_store().get(&new_id, "flash"),
             Some(json!("hello")),
             "data must move from old ID to new ID"
         );
-        assert_eq!(SESSION_STORE.get(&new_id, "user_id"), Some(json!(42)));
+        assert_eq!(get_current_store().get(&new_id, "user_id"), Some(json!(42)));
         assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_str()));
 
         let cookie = session_cookie_if_changed(
@@ -1145,11 +1095,16 @@ mod tests {
         assert!(cookie.contains(&format!("session_id={resolved}")));
     }
 
+    /// Serialize tests that mutate the process-global SESSION_CONFIG /
+    /// CURRENT_STORE. Cargo runs tests in a module in parallel by default,
+    /// and these globals are read by every other test in this module.
+    static GLOBAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// SEC-038: SOLI_SESSION_TTL must drive Set-Cookie's Max-Age and the
     /// in-memory store's expiry, not silently fall back to 24h.
     #[test]
     fn session_ttl_threads_through_to_cookie_and_store() {
-        // Snapshot and replace SESSION_CONFIG.ttl so we don't depend on env.
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let prev = SESSION_CONFIG.read().unwrap().clone();
         {
             let mut cfg = SESSION_CONFIG.write().unwrap();
@@ -1180,6 +1135,44 @@ mod tests {
         // Restore.
         let mut cfg = SESSION_CONFIG.write().unwrap();
         *cfg = prev;
+    }
+
+    /// SEC-038a: configure_session must swap the live store at runtime.
+    /// Previously the lazy_static SessionStoreManager cached one Arc clone
+    /// at first access, so dispatch kept going to the original store
+    /// regardless of subsequent configure_session() calls.
+    #[test]
+    fn configure_session_swaps_store_at_runtime() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+        // Snapshot and rebuild the default store so the test starts clean.
+        let prev_cfg = SESSION_CONFIG.read().unwrap().clone();
+        configure_session(prev_cfg.clone()).expect("reset to default config");
+
+        let store_before = get_current_store();
+        let id = store_before.create_session();
+        store_before.set(&id, "marker", json!("before-swap"));
+        assert_eq!(store_before.get(&id, "marker"), Some(json!("before-swap")));
+
+        // Swap to a fresh in-memory store via configure_session — same
+        // driver, but a brand-new instance. After the swap, the old key
+        // must be invisible because dispatch goes through the new store.
+        let mut next_cfg = prev_cfg.clone();
+        next_cfg.driver = SessionDriver::InMemory;
+        configure_session(next_cfg).expect("swap to fresh in-memory store");
+
+        let store_after = get_current_store();
+        assert!(
+            !Arc::ptr_eq(&store_before, &store_after),
+            "configure_session must replace the underlying store"
+        );
+        assert!(
+            store_after.get(&id, "marker").is_none(),
+            "post-swap dispatch must hit the new store, not the cached old one"
+        );
+
+        // Restore.
+        configure_session(prev_cfg).expect("restore previous config");
     }
 
     #[test]
