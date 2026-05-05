@@ -117,6 +117,11 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 # Markdown rendering for .md views
 pulldown-cmark = "0.12"
 
+# HTML sanitizer — real html5ever-based parser for `sanitize_html`.
+# SEC-024: replaces a prior substring-scanner that was bypassed by
+# entity-encoded attributes, unquoted attributes, SVG sub-trees, etc.
+ammonia = "4"
+
 # S3 support
 rusoto_s3 = "0.48"
 rusoto_core = "0.48"
