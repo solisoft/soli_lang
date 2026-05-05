@@ -22,77 +22,43 @@ pub fn register_system_builtins(env: &mut Environment) {
 fn system_class() -> Value {
     let mut methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
-    // System.run(command) - Run command asynchronously
+    // System.run(command) - Run command asynchronously, no auto-shell.
     #[allow(clippy::arc_with_non_send_sync)]
     methods.insert(
         "run".to_string(),
         Rc::new(NativeFunction::new("System.run", Some(1), |args| {
-            let cmd = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "System.run() expects string command, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            // Parse command - detect if shell command or direct executable
-            let (program, args_vec) = parse_command(&cmd);
-
-            // Spawn background thread and return Future
-            let (tx, rx): (Sender<Result<String, String>>, Receiver<_>) = mpsc::channel();
-
-            thread::spawn(move || {
-                let result = execute_command(&program, &args_vec);
-                let json = match result {
-                    Ok(data) => serde_json::to_string(&data).map_err(|e| e.to_string()),
-                    Err(e) => Err(e),
-                };
-                tx.send(json).ok();
-            });
-
-            let future_state = crate::interpreter::value::FutureState::Pending {
-                receiver: rx,
-                kind: crate::interpreter::value::HttpFutureKind::SystemResult,
-            };
-            Ok(Value::Future(Arc::new(Mutex::new(future_state))))
+            let (program, args_vec) = parse_argv(&args[0], "System.run")?;
+            Ok(spawn_future(program, args_vec))
         })),
     );
 
-    // System.run_sync(command) - Run command synchronously (blocking)
+    // System.run_sync(command) - Run command synchronously (blocking), no auto-shell.
     methods.insert(
         "run_sync".to_string(),
         Rc::new(NativeFunction::new("System.run_sync", Some(1), |args| {
-            let cmd = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "System.run_sync() expects string command, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let (program, args_vec) = parse_argv(&args[0], "System.run_sync")?;
+            let result = execute_command(&program, &args_vec)?;
+            Ok(result_to_hash(result))
+        })),
+    );
 
-            let (program, args) = parse_command(&cmd);
-            let result = execute_command(&program, &args)?;
+    // System.shell(command) - Run command via `sh -c` (explicit opt-in to shell).
+    #[allow(clippy::arc_with_non_send_sync)]
+    methods.insert(
+        "shell".to_string(),
+        Rc::new(NativeFunction::new("System.shell", Some(1), |args| {
+            let (program, args_vec) = parse_shell(&args[0], "System.shell")?;
+            Ok(spawn_future(program, args_vec))
+        })),
+    );
 
-            // Create a Hash with the result data using IndexMap
-            let mut hash: HashPairs = HashPairs::default();
-            hash.insert(
-                HashKey::String("stdout".to_string()),
-                Value::String(result.stdout),
-            );
-            hash.insert(
-                HashKey::String("stderr".to_string()),
-                Value::String(result.stderr),
-            );
-            hash.insert(
-                HashKey::String("exit_code".to_string()),
-                Value::Int(result.exit_code as i64),
-            );
-
-            Ok(Value::Hash(Rc::new(RefCell::new(hash))))
+    // System.shell_sync(command) - Run command via `sh -c` synchronously.
+    methods.insert(
+        "shell_sync".to_string(),
+        Rc::new(NativeFunction::new("System.shell_sync", Some(1), |args| {
+            let (program, args_vec) = parse_shell(&args[0], "System.shell_sync")?;
+            let result = execute_command(&program, &args_vec)?;
+            Ok(result_to_hash(result))
         })),
     );
 
@@ -113,42 +79,128 @@ fn system_class() -> Value {
     Value::Class(Rc::new(class))
 }
 
-/// Parse a command string into program and arguments.
-/// If the command contains shell metacharacters, use "sh" as the program.
-pub fn parse_command(cmd: &str) -> (String, Vec<String>) {
-    let has_shell_chars = cmd.contains('|')
-        || cmd.contains('>')
-        || cmd.contains('<')
-        || cmd.contains('&')
-        || cmd.contains(';')
-        || cmd.contains('$')
-        || cmd.contains('(')
-        || cmd.contains(')')
-        || cmd.contains('`')
-        || cmd.contains('\'')
-        || cmd.contains('"')
-        || cmd.contains('*')
-        || cmd.contains('?')
-        || cmd.contains('[')
-        || cmd.contains(']')
-        || cmd.contains('{')
-        || cmd.contains('}')
-        || cmd.contains('~');
+fn result_to_hash(result: SystemResultData) -> Value {
+    let mut hash: HashPairs = HashPairs::default();
+    hash.insert(
+        HashKey::String("stdout".to_string()),
+        Value::String(result.stdout),
+    );
+    hash.insert(
+        HashKey::String("stderr".to_string()),
+        Value::String(result.stderr),
+    );
+    hash.insert(
+        HashKey::String("exit_code".to_string()),
+        Value::Int(result.exit_code as i64),
+    );
+    Value::Hash(Rc::new(RefCell::new(hash)))
+}
 
-    if has_shell_chars {
-        // Use shell to execute
-        ("sh".to_string(), vec!["-c".to_string(), cmd.to_string()])
-    } else {
-        // Direct executable - split into program and args
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        if parts.is_empty() {
-            ("".to_string(), vec![])
-        } else {
+#[allow(clippy::arc_with_non_send_sync)]
+fn spawn_future(program: String, args_vec: Vec<String>) -> Value {
+    let (tx, rx): (Sender<Result<String, String>>, Receiver<_>) = mpsc::channel();
+
+    thread::spawn(move || {
+        let result = execute_command(&program, &args_vec);
+        let json = match result {
+            Ok(data) => serde_json::to_string(&data).map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        };
+        tx.send(json).ok();
+    });
+
+    let future_state = crate::interpreter::value::FutureState::Pending {
+        receiver: rx,
+        kind: crate::interpreter::value::HttpFutureKind::SystemResult,
+    };
+    Value::Future(Arc::new(Mutex::new(future_state)))
+}
+
+/// Shell metacharacters that must not silently re-route a string to `sh -c`.
+const SHELL_METACHARS: &[char] = &[
+    '|', '>', '<', '&', ';', '$', '(', ')', '`', '\'', '"', '*', '?', '[', ']', '{', '}', '~',
+];
+
+fn contains_shell_metachars(s: &str) -> bool {
+    s.chars().any(|c| SHELL_METACHARS.contains(&c))
+}
+
+/// Parse the argument to `System.run` / `System.run_sync` into (program, argv).
+///
+/// Strings are split on whitespace and executed directly — never auto-promoted
+/// to `sh -c`. Strings containing shell metacharacters are rejected with a
+/// clear error pointing to `System.shell` or the array form.
+///
+/// Arrays of strings are taken verbatim: `[program, arg1, arg2, ...]`.
+pub fn parse_argv(value: &Value, fn_name: &str) -> Result<(String, Vec<String>), String> {
+    match value {
+        Value::Array(arr) => {
+            let arr = arr.borrow();
+            if arr.is_empty() {
+                return Err(format!("{}() received an empty array", fn_name));
+            }
+            let mut parts: Vec<String> = Vec::with_capacity(arr.len());
+            for (i, v) in arr.iter().enumerate() {
+                match v {
+                    Value::String(s) => parts.push(s.clone()),
+                    other => {
+                        return Err(format!(
+                            "{}() array must contain only strings, got {} at index {}",
+                            fn_name,
+                            other.type_name(),
+                            i
+                        ))
+                    }
+                }
+            }
+            let program = parts.remove(0);
+            Ok((program, parts))
+        }
+        Value::String(s) => {
+            if contains_shell_metachars(s) {
+                return Err(format!(
+                    "{}() refuses to auto-shell a command containing shell metacharacters: {:?}. \
+                     Use System.shell() for explicit shell execution, or pass an argv array \
+                     like [\"program\", \"arg1\", ...] to bypass the shell.",
+                    fn_name, s
+                ));
+            }
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.is_empty() {
+                return Err(format!("{}() received an empty command", fn_name));
+            }
             let program = parts[0].to_string();
             let args = parts[1..].iter().map(|s| s.to_string()).collect();
-            (program, args)
+            Ok((program, args))
         }
+        other => Err(format!(
+            "{}() expects a string or array of strings, got {}",
+            fn_name,
+            other.type_name()
+        )),
     }
+}
+
+/// Parse the argument to `System.shell` / `System.shell_sync` — always wraps
+/// the string in `sh -c <string>`.
+pub fn parse_shell(value: &Value, fn_name: &str) -> Result<(String, Vec<String>), String> {
+    match value {
+        Value::String(s) => Ok(("sh".to_string(), vec!["-c".to_string(), s.clone()])),
+        other => Err(format!(
+            "{}() expects a string command, got {}",
+            fn_name,
+            other.type_name()
+        )),
+    }
+}
+
+/// Build the (program, argv) pair for backtick command substitution `` `cmd` ``.
+///
+/// Backtick literals are authored in source code (no string interpolation is
+/// supported by the lexer), so they're treated as explicit shell commands —
+/// equivalent to `System.shell(s)`.
+pub fn parse_backtick(cmd: &str) -> (String, Vec<String>) {
+    ("sh".to_string(), vec!["-c".to_string(), cmd.to_string()])
 }
 
 /// Internal data structure for system result

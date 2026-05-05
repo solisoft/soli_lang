@@ -719,7 +719,7 @@ impl Interpreter {
         use std::sync::{Arc, Mutex};
         use std::thread;
 
-        let (program, args_vec) = crate::interpreter::builtins::system::parse_command(cmd);
+        let (program, args_vec) = crate::interpreter::builtins::system::parse_backtick(cmd);
 
         let (tx, rx): (Sender<Result<String, String>>, Receiver<_>) = mpsc::channel();
 

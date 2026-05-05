@@ -5,7 +5,7 @@
             <span class="bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 bg-clip-text text-transparent">System Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Execute shell commands directly from Soli. Run commands asynchronously with auto-resolving futures or synchronously with blocking calls.
+            Execute commands directly from Soli. <code>System.run</code> / <code>System.run_sync</code> exec the program directly with no shell. Use <code>System.shell</code> / <code>System.shell_sync</code> (or backticks) when you explicitly want shell features.
         </p>
     </div>
 
@@ -14,12 +14,12 @@
         <h2 class="text-2xl font-bold text-white mb-6">System.run(command)</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <p class="text-gray-300 mb-4">
-                Runs a command asynchronously and returns a Future that resolves to a Hash containing <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.
+                Runs a command asynchronously and returns a Future. <strong class="text-white">No shell is invoked</strong> — arguments are passed verbatim, so metacharacters from user input do not get interpreted.
             </p>
 
             <h3 class="text-lg font-semibold text-white mb-3">Parameters</h3>
             <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1">
-                <li><code>command</code> (String) - The command to execute</li>
+                <li><code>command</code> (String | Array&lt;String&gt;) - Either a whitespace-split string with no shell metacharacters, or an argv array <code>[program, arg1, arg2, ...]</code>. Use the array form whenever any argument may contain user-controlled values.</li>
             </ul>
 
             <h3 class="text-lg font-semibold text-white mb-3">Returns</h3>
@@ -30,6 +30,11 @@
                 <li><code>exit_code</code> (Int) - Exit code (0 for success)</li>
             </ul>
 
+            <h3 class="text-lg font-semibold text-white mb-3">Errors</h3>
+            <p class="text-gray-300 mb-4">
+                Throws if the string form contains shell metacharacters (<code>| &gt; &lt; &amp; ; $ ( ) ` ' " * ? [ ] { } ~</code>). Use <code>System.shell()</code> or pass an argv array.
+            </p>
+
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
             <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.run("echo hello")
 # result is a Future
@@ -37,6 +42,9 @@
 # Access properties directly (auto-resolves)
 print(result.stdout)   # "hello"
 print(result.exit_code) # 0
+
+# Argv form — safe with user input, no shell expansion
+let safe = System.run(["convert", filename, "out.png"])
 
 # Or resolve manually
 let output = await(result)
@@ -49,21 +57,59 @@ print(output["stdout"])</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6">System.run_sync(command)</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <p class="text-gray-300 mb-4">
-                Runs a command synchronously (blocking)
-and returns the result immediately.
+                Runs a command synchronously (blocking) and returns the result immediately. Same shell-free semantics as <code>System.run</code>.
             </p>
 
             <h3 class="text-lg font-semibold text-white mb-3">Parameters</h3>
             <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1">
-                <li><code>command</code> (String) - The command to execute</li>
+                <li><code>command</code> (String | Array&lt;String&gt;) - String (no metacharacters) or argv array.</li>
             </ul>
 
             <h3 class="text-lg font-semibold text-white mb-3">Returns</h3>
             <p class="text-gray-300 mb-4">Hash - Contains <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.</p>
 
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
-            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.run_sync("ls -la")
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.run_sync(["ls", "-la"])
 print(result["stdout"])
+print(result["exit_code"])</code></pre>
+        </div>
+    </section>
+
+    <!-- System.shell -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">System.shell(command)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Runs a command asynchronously through <code>sh -c &lt;command&gt;</code>. Use this when you explicitly want shell features (pipes, redirection, globbing, etc.).
+            </p>
+            <div class="mt-2 mb-4 p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                <p class="text-rose-300">
+                    <strong>Warning:</strong> Never pass unsanitised user input here — every metacharacter is interpreted by the shell. For commands built from user data, use <code>System.run</code> with an argv array.
+                </p>
+            </div>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Parameters</h3>
+            <ul class="list-disc list-inside text-gray-300 mb-4 space-y-1">
+                <li><code>command</code> (String) - The shell command to execute</li>
+            </ul>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Returns</h3>
+            <p class="text-gray-300 mb-4">Future&lt;Hash&gt;</p>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let listing = System.shell("ls *.sl | wc -l")
+print(listing.stdout)</code></pre>
+        </div>
+    </section>
+
+    <!-- System.shell_sync -->
+    <section class="mb-16">
+        <h2 class="text-2xl font-bold text-white mb-6">System.shell_sync(command)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                Synchronous variant of <code>System.shell</code>. Returns a Hash directly.
+            </p>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>let result = System.shell_sync("grep pattern file.txt")
 print(result["exit_code"])</code></pre>
         </div>
     </section>
@@ -73,7 +119,7 @@ print(result["exit_code"])</code></pre>
         <h2 class="text-2xl font-bold text-white mb-6">Command Substitution</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-6">
             <p class="text-gray-300 mb-4">
-                Use backtick syntax for convenient command execution. This is syntactic sugar for <code>System.run()</code>.
+                Backtick syntax is syntactic sugar for <code>System.shell()</code> — the literal command is sent through <code>sh -c</code>.
             </p>
 
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
@@ -81,7 +127,7 @@ print(result["exit_code"])</code></pre>
 let result = `echo hello`
 print(result.stdout)  # "hello"
 
-# With shell features
+# Shell features work directly
 let files = `ls *.sl`
 print(files.stdout)
 
@@ -93,30 +139,9 @@ end</code></pre>
 
             <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                 <p class="text-amber-300">
-                    <strong>Note:</strong> Command substitution uses <code>System.run()</code> internally, so it returns a Future that auto-resolves when accessed. This means you can access properties directly without explicitly awaiting.
+                    <strong>Note:</strong> Backticks accept literal source-code commands only (no string interpolation). For commands that include user input, build an argv array and call <code>System.run</code> instead.
                 </p>
             </div>
-        </div>
-    </section>
-
-    <!-- Shell Features -->
-    <section class="mb-16">
-        <h2 class="text-2xl font-bold text-white mb-6">Shell Features</h2>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
-            <p class="text-gray-300 mb-4">
-                Commands are parsed to detect shell metacharacters. If detected, the command is executed via <code>sh -c</code>:
-            </p>
-            <ul class="list-disc list-inside text-gray-300 space-y-2">
-                <li>Pipes: <code>|</code></li>
-                <li>Redirection: <code>&gt;</code>, <code>&lt;</code></li>
-                <li>Background: <code>&</code></li>
-                <li>Sequential: <code>;</code></li>
-                <li>Environment: <code>$VAR</code></li>
-                <li>Subshells: <code>()</code>, <code>``</code></li>
-                <li>Quotes: <code>'</code>, <code>"</code></li>
-                <li>Globbing: <code>*</code>, <code>?</code>, <code>[]</code></li>
-                <li>Braces: <code>{}</code>, <code>~</code></li>
-            </ul>
         </div>
     </section>
 

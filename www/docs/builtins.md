@@ -3850,65 +3850,95 @@ xml = SOAP.to_xml(data, "catalog")
 
 The `System` class provides methods for executing system commands.
 
+`System.run` and `System.run_sync` execute a program directly — they do **not** invoke a shell, so metacharacters in arguments are passed through verbatim. Use `System.shell` / `System.shell_sync` (or backtick command substitution) for explicit shell semantics.
+
 ### System.run(command)
 
-Runs a command asynchronously and returns a Future.
+Runs a command asynchronously and returns a Future. **No shell is invoked.**
 
 **Parameters:**
-- `command` (String) - The command to execute
+- `command` (String | Array<String>) - Either a whitespace-split command string with no shell metacharacters, or an argv array `[program, arg1, arg2, ...]`. The argv form is the safe choice when arguments may contain user-controlled values.
 
 **Returns:** Future<Hash> - A future that resolves to `{ stdout: String, stderr: String, exit_code: Int }`
 
+**Errors:** Throws if the string form contains shell metacharacters (`| > < & ; $ ( ) ` ' " * ? [ ] { } ~`). Use `System.shell()` for those, or pass an argv array.
+
 **Example:**
 ```soli
-result = System.run("echo hello")
+let result = System.run("echo hello")
 # result is a Future that auto-resolves when used
 
 # Access properties directly (auto-resolves)
 print(result.stdout)   # "hello"
 print(result.exit_code) # 0
 
+# Argv form — safe with user input, no shell expansion
+let safe = System.run(["convert", filename, "out.png"])
+
 # Or resolve manually
-output = await(result)
+let output = await(result)
 print(output["stdout"])
 ```
 
 ### System.run_sync(command)
 
-Runs a command synchronously (blocking).
+Runs a command synchronously (blocking). **No shell is invoked.**
 
 **Parameters:**
-- `command` (String) - The command to execute
+- `command` (String | Array<String>) - Same rules as `System.run`.
 
 **Returns:** Hash - `{ stdout: String, stderr: String, exit_code: Int }`
 
 **Example:**
 ```soli
-result = System.run_sync("ls -la")
+let result = System.run_sync(["ls", "-la"])
 print(result["stdout"])
+print(result["exit_code"])
+```
+
+### System.shell(command)
+
+Runs a command asynchronously through `sh -c <command>`. Use this when you explicitly want shell features (pipes, redirection, globbing, etc.). **Never pass unsanitised user input here** — every metacharacter is interpreted by the shell.
+
+**Parameters:**
+- `command` (String) - The shell command to execute
+
+**Returns:** Future<Hash>
+
+**Example:**
+```soli
+let listing = System.shell("ls *.sl | wc -l")
+print(listing.stdout)
+```
+
+### System.shell_sync(command)
+
+Synchronous variant of `System.shell`. Returns a Hash directly.
+
+```soli
+let result = System.shell_sync("grep pattern file.txt")
 print(result["exit_code"])
 ```
 
 ### Command Substitution
 
-You can use backtick syntax for convenient command execution:
+Backtick syntax is syntactic sugar for `System.shell()` — the literal command is sent through `sh -c`:
 
 ```soli
-result = `echo hello`
+let result = `echo hello`
 print(result.stdout)  # "hello"
 
-# With shell features
-files = `ls *.sl`
+# Shell features work directly
+let files = `ls *.sl`
 print(files.stdout)
 
-# Access exit code
-status = `grep pattern file`
+let status = `grep pattern file`
 if status.exit_code != 0
   println("Pattern not found")
 end
 ```
 
-The command substitution uses `System.run()` internally, so it returns a Future that auto-resolves when accessed.
+Backticks accept literal source-code commands only (no string interpolation). For commands that include user input, build an argv array and call `System.run` instead.
 
 ---
 
