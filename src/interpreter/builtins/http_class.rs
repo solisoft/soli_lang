@@ -191,6 +191,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 }
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+static USER_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// SEC-015: DNS resolver that filters out blocked IPs at the connect-time
 /// resolution. `validate_url_for_ssrf` runs once on the URL string up-front
@@ -198,10 +199,11 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 /// opening a textbook DNS-rebinding window where the first answer passes
 /// the check (public IP) and the second targets `127.0.0.1`.
 ///
-/// Plugging this resolver into the shared client closes the window: every
-/// resolution that reqwest performs goes through `is_blocked_ip` filtering.
-/// If all candidate IPs are blocked, reqwest sees an empty resolution and
-/// fails the connection.
+/// Plugged into `get_user_http_client` (HTTP class / SOAP — URLs come from
+/// user code) only. The shared `get_http_client` used by Model queries and
+/// the SoliDB HTTP path keeps the default resolver: SOLIDB_HOST typically
+/// points at `localhost:6745` in dev/staging, and a blanket loopback block
+/// would refuse every Model.find() call in production.
 #[derive(Debug)]
 struct SsrfBlockingResolver;
 
@@ -245,43 +247,61 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
     }
 }
 
-/// Get the shared async HTTP client (used by HTTP class, Model queries, and SoliDB).
-///
-/// SEC-007: the redirect policy is `Policy::custom`, not the default
-/// follow-up-to-10. Each redirect target is re-validated against
-/// `validate_url_for_ssrf` so an attacker who controls the first hop
-/// can't bounce the request to `http://169.254.169.254/...` (cloud
-/// metadata) or any other private/loopback address. The 10-hop cap is
-/// preserved.
-///
-/// SEC-015: a custom DNS resolver (`SsrfBlockingResolver`) replaces the
-/// default Hyper resolver so connect-time DNS goes through the same
-/// blocked-IP filter as the up-front URL check. This closes the
-/// DNS-rebinding TOCTOU between `validate_url_for_ssrf` and the actual
-/// connect.
+/// Build the SEC-007 redirect policy that re-runs `validate_url_for_ssrf`
+/// on each hop and caps the chain at 10 redirects. Same policy for both
+/// clients — internal Model traffic doesn't expect redirects but the cap
+/// is harmless, and a misconfigured SoliDB shouldn't be allowed to follow
+/// a redirect into the cloud metadata IP either.
+fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 10 {
+            return attempt.error(std::io::Error::other("too many redirects (max 10)"));
+        }
+        if let Err(e) = validate_url_for_ssrf(attempt.url().as_str()) {
+            return attempt.error(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("SSRF: redirect target rejected: {}", e),
+            ));
+        }
+        attempt.follow()
+    })
+}
+
+/// Internal HTTP client — used by Model queries and SoliDB's HTTP path.
+/// URL is operator-configured (`SOLIDB_HOST`, typically loopback in dev
+/// and a private hostname behind a VPC in production), so the SSRF
+/// blocklist would refuse every connection. Default DNS resolver +
+/// SEC-007 redirect policy.
 pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
-        let policy = reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() >= 10 {
-                return attempt.error(std::io::Error::other("too many redirects (max 10)"));
-            }
-            if let Err(e) = validate_url_for_ssrf(attempt.url().as_str()) {
-                return attempt.error(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    format!("SSRF: redirect target rejected: {}", e),
-                ));
-            }
-            attempt.follow()
-        });
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
-            .redirect(policy)
+            .redirect(build_ssrf_redirect_policy())
+            .build()
+            .expect("Failed to create internal HTTP client")
+    })
+}
+
+/// User-facing HTTP client — used by `HTTP.*` builtins and SOAP. URL
+/// comes from user Soli code, so DNS rebinding is a real threat:
+/// `SsrfBlockingResolver` filters resolved IPs through `is_blocked_ip`
+/// at connect time, closing the TOCTOU between `validate_url_for_ssrf`
+/// and the actual TCP connect. Same SEC-007 redirect policy as the
+/// internal client.
+pub fn get_user_http_client() -> &'static Client {
+    USER_HTTP_CLIENT.get_or_init(|| {
+        Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(8)
+            .tcp_keepalive(std::time::Duration::from_secs(60))
+            .redirect(build_ssrf_redirect_policy())
             .dns_resolver(std::sync::Arc::new(SsrfBlockingResolver))
             .build()
-            .expect("Failed to create HTTP client")
+            .expect("Failed to create user HTTP client")
     })
 }
 
@@ -408,7 +428,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let resp = send_logged("GET", &url, client.get(&url)).await?;
 
@@ -475,7 +495,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .post(&url)
@@ -550,7 +570,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .put(&url)
@@ -625,7 +645,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .patch(&url)
@@ -683,7 +703,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let resp = send_logged("DELETE", &url, client.delete(&url)).await?;
 
@@ -733,7 +753,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let resp = send_logged("HEAD", &url, client.head(&url)).await?;
                         let status = resp.status().as_u16();
@@ -778,7 +798,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client.get(&url).header("Accept", "application/json");
                         let resp = send_logged("GET", &url, req).await?;
@@ -839,7 +859,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .post(&url)
@@ -903,7 +923,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .put(&url)
@@ -967,7 +987,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
                             .patch(&url)
@@ -1071,7 +1091,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     let method_clone = method.clone();
                     let body_opt_clone = body_opt.clone();
                     let headers_vec_clone = headers_vec.clone();

@@ -14,7 +14,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::interpreter::builtins::http_class::{
-    get_http_client, ureq_agent, validate_url_for_ssrf,
+    get_user_http_client, ureq_agent, validate_url_for_ssrf,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
@@ -92,7 +92,7 @@ pub fn register_soap_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(rt) => {
-                    let client = get_http_client().clone();
+                    let client = get_user_http_client().clone();
                     match rt.block_on(async move {
                         let mut request = client.post(&url);
 
