@@ -343,7 +343,13 @@ pub fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> 
     // Create app directory
     fs::create_dir_all(app_path).map_err(|e| e.to_string())?;
 
-    // Extract files
+    // Extract files. SEC-011: a malicious tarball can carry entries with
+    // absolute paths (`/etc/passwd`) or `..` segments (`../../../.bashrc`)
+    // that the bare `out_path.push(component)` loop would happily honour,
+    // letting `soli new --template <url>` overwrite arbitrary files in
+    // the operator's home directory. Run every entry path through
+    // `validate_template_entry_path` first; refuse the whole archive on
+    // anything other than plain `Normal(_)` components.
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path().map_err(|e| e.to_string())?.into_owned();
@@ -353,9 +359,30 @@ pub fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> 
             continue;
         }
 
+        validate_template_entry_path(&path)?;
+
         let mut out_path = app_path.to_path_buf();
         for component in path.iter() {
             out_path.push(component);
+        }
+
+        // Defence in depth: even after rejecting `..`/root components above,
+        // re-canonicalise (where possible) and confirm the result is still
+        // under `app_path`. The loop ran inside the Normal-only filter so
+        // the only way to fail this check is a symlink in the existing
+        // ancestor chain pointing outside — also worth refusing.
+        if let Some(parent_for_check) = out_path.parent() {
+            if let (Ok(canon_parent), Ok(canon_root)) = (
+                fs::canonicalize(parent_for_check),
+                fs::canonicalize(app_path),
+            ) {
+                if !canon_parent.starts_with(&canon_root) {
+                    return Err(format!(
+                        "Refusing to extract template entry that resolves outside the app directory: {}",
+                        path.display()
+                    ));
+                }
+            }
         }
 
         if entry.header().entry_type() == tar::EntryType::Directory {
@@ -535,4 +562,63 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     println!("  \x1b[2m│\x1b[0m");
 
     Ok(())
+}
+
+/// Reject tarball entry paths that contain anything other than plain
+/// `Normal(_)` segments. This is the SEC-011 Zip-Slip guard: a template
+/// archive that smuggles `..` or absolute path components could otherwise
+/// overwrite arbitrary files when `soli new --template <url>` extracts
+/// it under the operator's home directory.
+fn validate_template_entry_path(path: &Path) -> Result<(), String> {
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            _ => {
+                return Err(format!(
+                    "Refusing to extract template entry with unsafe path: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_normal_relative_paths() {
+        assert!(validate_template_entry_path(Path::new("app/models/user.sl")).is_ok());
+        assert!(validate_template_entry_path(Path::new("README.md")).is_ok());
+        assert!(validate_template_entry_path(Path::new("a/b/c/d/e")).is_ok());
+    }
+
+    #[test]
+    fn rejects_parent_dir_segment() {
+        let err = validate_template_entry_path(Path::new("../bashrc")).unwrap_err();
+        assert!(err.contains("unsafe path"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_buried_parent_dir_segment() {
+        let err = validate_template_entry_path(Path::new("a/b/../../../etc/passwd")).unwrap_err();
+        assert!(err.contains("unsafe path"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_absolute_path() {
+        let err = validate_template_entry_path(Path::new("/etc/passwd")).unwrap_err();
+        assert!(err.contains("unsafe path"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_current_dir_only() {
+        // `./foo` parses as CurDir + Normal("foo"); the CurDir component
+        // alone is harmless but we still refuse the entry rather than
+        // strip it silently — predictable failure beats silent rewrite.
+        let err = validate_template_entry_path(Path::new("./foo")).unwrap_err();
+        assert!(err.contains("unsafe path"), "{}", err);
+    }
 }
