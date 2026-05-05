@@ -681,23 +681,43 @@ fn build_image_class() -> Rc<Class> {
                 }
             };
 
-            let handles: Vec<_> = plans
-                .into_iter()
-                .map(|plan| thread::spawn(move || execute_plan(&plan)))
-                .collect();
+            // SEC-020: refuse oversized input lists, then process the
+            // remainder in chunks of `parallel_max_concurrency()` so the
+            // worker never holds more than that many decoders alive.
+            let item_cap = crate::interpreter::builtins::http_class::parallel_max_items();
+            if plans.len() > item_cap {
+                return Err(format!(
+                    "Image.process_all() input size {} exceeds limit {} (set SOLI_PARALLEL_MAX_ITEMS to raise)",
+                    plans.len(),
+                    item_cap
+                ));
+            }
 
-            let results: Vec<Value> = handles
-                .into_iter()
-                .map(|h| match h.join() {
-                    Ok(Ok(PlanResult::Saved)) => Value::Bool(true),
-                    Ok(Ok(PlanResult::Image(data))) => image_data_to_value(data),
-                    Ok(Err(e)) => hash_from_pairs([("error".to_string(), Value::String(e))]),
-                    Err(_) => hash_from_pairs([(
-                        "error".to_string(),
-                        Value::String("Thread panicked".to_string()),
-                    )]),
-                })
-                .collect();
+            let max_concurrency =
+                crate::interpreter::builtins::http_class::parallel_max_concurrency();
+            let mut results: Vec<Value> = Vec::with_capacity(plans.len());
+            let mut iter = plans.into_iter();
+            loop {
+                let chunk: Vec<ImagePlan> = iter.by_ref().take(max_concurrency).collect();
+                if chunk.is_empty() {
+                    break;
+                }
+                let handles: Vec<_> = chunk
+                    .into_iter()
+                    .map(|plan| thread::spawn(move || execute_plan(&plan)))
+                    .collect();
+                for h in handles {
+                    results.push(match h.join() {
+                        Ok(Ok(PlanResult::Saved)) => Value::Bool(true),
+                        Ok(Ok(PlanResult::Image(data))) => image_data_to_value(data),
+                        Ok(Err(e)) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                        Err(_) => hash_from_pairs([(
+                            "error".to_string(),
+                            Value::String("Thread panicked".to_string()),
+                        )]),
+                    });
+                }
+            }
 
             Ok(Value::Array(Rc::new(RefCell::new(results))))
         })),

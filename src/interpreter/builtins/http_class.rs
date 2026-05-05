@@ -61,6 +61,36 @@ fn ssrf_test_mode() -> bool {
     SSRF_TEST_MODE.load(Ordering::Relaxed)
 }
 
+/// SEC-020: cap the number of items the user can submit to a parallel
+/// fan-out builtin (`HTTP.get_all`, `HTTP.get_all_json`, `HTTP.parallel`,
+/// `Image.process_all`). Without this, a controller that does
+/// `HTTP.get_all(req["urls"])` with attacker-supplied input lets a
+/// single request spawn thousands of OS threads and exhaust the worker.
+pub(crate) fn parallel_max_items() -> usize {
+    static CAP: OnceLock<usize> = OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("SOLI_PARALLEL_MAX_ITEMS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(256)
+    })
+}
+
+/// SEC-020: cap the number of OS threads a single parallel fan-out call
+/// may have alive at once. The runner consumes the input list in chunks
+/// of this size — one chunk fully completes before the next starts.
+pub(crate) fn parallel_max_concurrency() -> usize {
+    static CAP: OnceLock<usize> = OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("SOLI_PARALLEL_MAX_CONCURRENCY")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(16)
+    })
+}
+
 /// Run an async future safely, avoiding blocking the I/O driver if already in async context.
 /// If called from within an async runtime, spawns a dedicated single-thread runtime to avoid
 /// blocking the worker thread. Otherwise uses the runtime handle directly.
@@ -1429,6 +1459,16 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             };
 
+            // SEC-020: refuse oversized input lists before they fan out.
+            let cap = parallel_max_items();
+            if urls.len() > cap {
+                return Err(format!(
+                    "HTTP.get_all() input size {} exceeds limit {} (set SOLI_PARALLEL_MAX_ITEMS to raise)",
+                    urls.len(),
+                    cap
+                ));
+            }
+
             for u in &urls {
                 validate_url_for_ssrf(u)?;
             }
@@ -1474,6 +1514,16 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             };
 
+            // SEC-020: refuse oversized input lists before they fan out.
+            let cap = parallel_max_items();
+            if urls.len() > cap {
+                return Err(format!(
+                    "HTTP.get_all_json() input size {} exceeds limit {} (set SOLI_PARALLEL_MAX_ITEMS to raise)",
+                    urls.len(),
+                    cap
+                ));
+            }
+
             for u in &urls {
                 validate_url_for_ssrf(u)?;
             }
@@ -1511,6 +1561,16 @@ pub fn register_http_class(env: &mut Environment) {
                     ))
                 }
             };
+
+            // SEC-020: refuse oversized input lists before they fan out.
+            let cap = parallel_max_items();
+            if requests.len() > cap {
+                return Err(format!(
+                    "HTTP.parallel() input size {} exceeds limit {} (set SOLI_PARALLEL_MAX_ITEMS to raise)",
+                    requests.len(),
+                    cap
+                ));
+            }
 
             for c in &requests {
                 validate_url_for_ssrf(&c.url)?;
@@ -1690,55 +1750,69 @@ fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
 }
 
 fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
-    let handles: Vec<_> = urls
-        .into_iter()
-        .map(|url| {
-            thread::spawn(move || {
-                let start = std::time::Instant::now();
-                let url_for_call = url.clone();
-                // SEC-015a: route through the SSRF-aware reqwest client so
-                // the connect-time DNS lookup goes through
-                // `SsrfBlockingResolver` (no equivalent on `ureq`).
-                let (status, body): (u16, Result<String, String>) =
-                    match run_user_http_request::<_, _, (u16, Result<String, String>)>(
-                        move |client| async move {
-                            let resp = client
-                                .get(&url_for_call)
-                                .send()
-                                .await
-                                .map_err(|e| format!("Request failed: {}", e))?;
-                            let code = resp.status().as_u16();
-                            if !resp.status().is_success() {
-                                let body = read_capped_text_async(resp).await.unwrap_or_default();
-                                return Ok((code, Err(format!("HTTP {} error: {}", code, body))));
-                            }
-                            let body = read_capped_text_async(resp)
-                                .await
-                                .map_err(|e| format!("Failed to read response: {}", e));
-                            Ok((code, body))
-                        },
-                    ) {
-                        Ok(pair) => pair,
-                        Err(e) => (0, Err(e)),
-                    };
-                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                let stats = ParallelCallStats {
-                    method: "GET".to_string(),
-                    url,
-                    start,
-                    duration_ms,
-                    status,
-                    error: body.as_ref().err().cloned(),
-                };
-                (body, stats)
-            })
-        })
-        .collect();
-
-    let joined: Vec<_> = handles
-        .into_iter()
-        .map(|h| {
-            h.join().unwrap_or_else(|_| {
+    // SEC-020: process at most `parallel_max_concurrency()` URLs at a time.
+    // Each chunk fully completes before the next starts so we never hold
+    // more than that many OS threads alive.
+    let max_concurrency = parallel_max_concurrency();
+    let mut joined: Vec<(Result<String, String>, ParallelCallStats)> =
+        Vec::with_capacity(urls.len());
+    let mut iter = urls.into_iter();
+    loop {
+        let chunk: Vec<String> = iter.by_ref().take(max_concurrency).collect();
+        if chunk.is_empty() {
+            break;
+        }
+        let handles: Vec<_> =
+            chunk
+                .into_iter()
+                .map(|url| {
+                    thread::spawn(move || {
+                        let start = std::time::Instant::now();
+                        let url_for_call = url.clone();
+                        // SEC-015a: route through the SSRF-aware reqwest client so
+                        // the connect-time DNS lookup goes through
+                        // `SsrfBlockingResolver` (no equivalent on `ureq`).
+                        let (status, body): (u16, Result<String, String>) =
+                            match run_user_http_request::<_, _, (u16, Result<String, String>)>(
+                                move |client| async move {
+                                    let resp = client
+                                        .get(&url_for_call)
+                                        .send()
+                                        .await
+                                        .map_err(|e| format!("Request failed: {}", e))?;
+                                    let code = resp.status().as_u16();
+                                    if !resp.status().is_success() {
+                                        let body =
+                                            read_capped_text_async(resp).await.unwrap_or_default();
+                                        return Ok((
+                                            code,
+                                            Err(format!("HTTP {} error: {}", code, body)),
+                                        ));
+                                    }
+                                    let body = read_capped_text_async(resp)
+                                        .await
+                                        .map_err(|e| format!("Failed to read response: {}", e));
+                                    Ok((code, body))
+                                },
+                            ) {
+                                Ok(pair) => pair,
+                                Err(e) => (0, Err(e)),
+                            };
+                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                        let stats = ParallelCallStats {
+                            method: "GET".to_string(),
+                            url,
+                            start,
+                            duration_ms,
+                            status,
+                            error: body.as_ref().err().cloned(),
+                        };
+                        (body, stats)
+                    })
+                })
+                .collect();
+        for h in handles {
+            joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
                     ParallelCallStats {
@@ -1750,9 +1824,9 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
                         error: Some("Thread panicked".to_string()),
                     },
                 )
-            })
-        })
-        .collect();
+            }));
+        }
+    }
 
     let (results, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
     record_parallel_stats(stats);
@@ -1763,54 +1837,67 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
     // Fetch bodies on worker threads, then parse JSON on the main thread —
     // `Value` is `!Send` (contains Rc), so JSON parsing can't happen inside
     // the spawned threads.
-    let handles: Vec<_> = urls
-        .into_iter()
-        .map(|url| {
-            thread::spawn(move || {
-                let start = std::time::Instant::now();
-                let url_for_call = url.clone();
-                // SEC-015a: SSRF-aware reqwest client.
-                let (status, body): (u16, Result<String, String>) =
-                    match run_user_http_request::<_, _, (u16, Result<String, String>)>(
-                        move |client| async move {
-                            let resp = client
-                                .get(&url_for_call)
-                                .header("Accept", "application/json")
-                                .send()
-                                .await
-                                .map_err(|e| format!("Request failed: {}", e))?;
-                            let code = resp.status().as_u16();
-                            if !resp.status().is_success() {
-                                let body = read_capped_text_async(resp).await.unwrap_or_default();
-                                return Ok((code, Err(format!("HTTP {} error: {}", code, body))));
-                            }
-                            let body = read_capped_text_async(resp)
-                                .await
-                                .map_err(|e| format!("Failed to read response: {}", e));
-                            Ok((code, body))
-                        },
-                    ) {
-                        Ok(pair) => pair,
-                        Err(e) => (0, Err(e)),
-                    };
-                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                let stats = ParallelCallStats {
-                    method: "GET".to_string(),
-                    url,
-                    start,
-                    duration_ms,
-                    status,
-                    error: body.as_ref().err().cloned(),
-                };
-                (body, stats)
-            })
-        })
-        .collect();
-
-    let joined: Vec<_> = handles
-        .into_iter()
-        .map(|h| {
-            h.join().unwrap_or_else(|_| {
+    //
+    // SEC-020: bound concurrent threads at `parallel_max_concurrency()`.
+    let max_concurrency = parallel_max_concurrency();
+    let mut joined: Vec<(Result<String, String>, ParallelCallStats)> =
+        Vec::with_capacity(urls.len());
+    let mut iter = urls.into_iter();
+    loop {
+        let chunk: Vec<String> = iter.by_ref().take(max_concurrency).collect();
+        if chunk.is_empty() {
+            break;
+        }
+        let handles: Vec<_> =
+            chunk
+                .into_iter()
+                .map(|url| {
+                    thread::spawn(move || {
+                        let start = std::time::Instant::now();
+                        let url_for_call = url.clone();
+                        // SEC-015a: SSRF-aware reqwest client.
+                        let (status, body): (u16, Result<String, String>) =
+                            match run_user_http_request::<_, _, (u16, Result<String, String>)>(
+                                move |client| async move {
+                                    let resp = client
+                                        .get(&url_for_call)
+                                        .header("Accept", "application/json")
+                                        .send()
+                                        .await
+                                        .map_err(|e| format!("Request failed: {}", e))?;
+                                    let code = resp.status().as_u16();
+                                    if !resp.status().is_success() {
+                                        let body =
+                                            read_capped_text_async(resp).await.unwrap_or_default();
+                                        return Ok((
+                                            code,
+                                            Err(format!("HTTP {} error: {}", code, body)),
+                                        ));
+                                    }
+                                    let body = read_capped_text_async(resp)
+                                        .await
+                                        .map_err(|e| format!("Failed to read response: {}", e));
+                                    Ok((code, body))
+                                },
+                            ) {
+                                Ok(pair) => pair,
+                                Err(e) => (0, Err(e)),
+                            };
+                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                        let stats = ParallelCallStats {
+                            method: "GET".to_string(),
+                            url,
+                            start,
+                            duration_ms,
+                            status,
+                            error: body.as_ref().err().cloned(),
+                        };
+                        (body, stats)
+                    })
+                })
+                .collect();
+        for h in handles {
+            joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
                     ParallelCallStats {
@@ -1822,9 +1909,9 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
                         error: Some("Thread panicked".to_string()),
                     },
                 )
-            })
-        })
-        .collect();
+            }));
+        }
+    }
 
     let (bodies, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
     record_parallel_stats(stats);
@@ -1841,36 +1928,43 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
 }
 
 fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpResponse, String>> {
-    let handles: Vec<_> = requests
-        .into_iter()
-        .map(|config| {
-            thread::spawn(move || {
-                let method = config.method.clone();
-                let url = config.url.clone();
-                let start = std::time::Instant::now();
-                let result = execute_request(config);
-                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                let (status, error) = match &result {
-                    Ok(resp) => (resp.status, None),
-                    Err(e) => (0, Some(e.clone())),
-                };
-                let stats = ParallelCallStats {
-                    method,
-                    url,
-                    start,
-                    duration_ms,
-                    status,
-                    error,
-                };
-                (result, stats)
+    // SEC-020: bound concurrent threads at `parallel_max_concurrency()`.
+    let max_concurrency = parallel_max_concurrency();
+    let mut joined: Vec<(Result<HttpResponse, String>, ParallelCallStats)> =
+        Vec::with_capacity(requests.len());
+    let mut iter = requests.into_iter();
+    loop {
+        let chunk: Vec<RequestConfig> = iter.by_ref().take(max_concurrency).collect();
+        if chunk.is_empty() {
+            break;
+        }
+        let handles: Vec<_> = chunk
+            .into_iter()
+            .map(|config| {
+                thread::spawn(move || {
+                    let method = config.method.clone();
+                    let url = config.url.clone();
+                    let start = std::time::Instant::now();
+                    let result = execute_request(config);
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let (status, error) = match &result {
+                        Ok(resp) => (resp.status, None),
+                        Err(e) => (0, Some(e.clone())),
+                    };
+                    let stats = ParallelCallStats {
+                        method,
+                        url,
+                        start,
+                        duration_ms,
+                        status,
+                        error,
+                    };
+                    (result, stats)
+                })
             })
-        })
-        .collect();
-
-    let joined: Vec<_> = handles
-        .into_iter()
-        .map(|h| {
-            h.join().unwrap_or_else(|_| {
+            .collect();
+        for h in handles {
+            joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
                     ParallelCallStats {
@@ -1882,9 +1976,9 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
                         error: Some("Thread panicked".to_string()),
                     },
                 )
-            })
-        })
-        .collect();
+            }));
+        }
+    }
 
     let (results, stats): (Vec<_>, Vec<_>) = joined.into_iter().unzip();
     record_parallel_stats(stats);
@@ -2026,6 +2120,24 @@ mod parallel_ssrf_tests {
         };
         let err = (f.func)(vec![arr(vec![cfg])]).expect_err("parallel should reject ftp:// URLs");
         assert!(err.contains("not allowed"), "got: {}", err);
+    }
+
+    /// SEC-020: oversized inputs must be rejected before any thread spawns.
+    /// Generates `parallel_max_items() + 1` `https://` URLs (no actual I/O —
+    /// the cap fires before validate_url_for_ssrf does any DNS work).
+    #[test]
+    fn get_all_rejects_oversized_input() {
+        let f = http_static("get_all");
+        let cap = parallel_max_items();
+        let urls: Vec<Value> = (0..=cap)
+            .map(|i| Value::String(format!("https://example.com/{}", i)))
+            .collect();
+        let err = (f.func)(vec![arr(urls)]).expect_err("get_all should reject oversized input");
+        assert!(
+            err.contains("exceeds limit") && err.contains("SOLI_PARALLEL_MAX_ITEMS"),
+            "got: {}",
+            err
+        );
     }
 }
 
