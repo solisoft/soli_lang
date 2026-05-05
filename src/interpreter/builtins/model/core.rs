@@ -340,6 +340,37 @@ fn get_class_rc_from_args(args: &[Value]) -> Result<Rc<Class>, String> {
     }
 }
 
+/// Validate that a string is a safe AQL identifier before it's
+/// `format!`-interpolated into a query template such as
+/// `FOR doc IN ... FILTER doc.{field} == @val` or
+/// `SORT doc.{field}`.
+///
+/// Pattern: `^[A-Za-z_][A-Za-z0-9_]*$` — letter-or-underscore first
+/// char, then letters/digits/underscores. Any other character (including
+/// dots, spaces, quotes, semicolons, parens, AQL keywords) is rejected
+/// so a controller calling `User.find_by(req["params"]["field"], v)`
+/// can't smuggle in `1==1 RETURN doc REMOVE doc` etc.
+///
+/// `method` is the user-facing call name (e.g. `"find_by"`) so the error
+/// message points the developer at the right line.
+fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
+    let mut chars = field.chars();
+    let first_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_');
+    if !first_ok {
+        return Err(format!(
+            "{}() field name must start with a letter or underscore — got {:?}",
+            method, field
+        ));
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(format!(
+            "{}() field name may only contain letters, digits, and underscores — got {:?}",
+            method, field
+        ));
+    }
+    Ok(())
+}
+
 /// Collect field names from `attr_accessible(...)` arguments. Accepts
 /// either a single Array of strings (`attr_accessible(["a", "b"])`) or a
 /// variadic string list (`attr_accessible("a", "b")`) — both forms read
@@ -1187,7 +1218,10 @@ impl Model {
             let mut fields = Vec::new();
             for arg in &args[1..] {
                 match arg {
-                    Value::String(s) => fields.push(s.clone()),
+                    Value::String(s) => {
+                        validate_field_name(s, "select")?;
+                        fields.push(s.clone());
+                    }
                     other => {
                         return Err(format!(
                             "select() expects string field names, got {}",
@@ -1526,6 +1560,7 @@ impl Model {
                     }
                     None => return Err("Model.order() requires a field name".to_string()),
                 };
+                validate_field_name(&field, "order")?;
 
                 let direction = match args.get(2) {
                     Some(Value::String(s)) => s.clone(),
@@ -1796,6 +1831,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("find_by() expects string field name".to_string()),
                 };
+                validate_field_name(&field, "find_by")?;
                 let value = match args.get(2) {
                     Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
                     None => return Err("find_by() requires a value".to_string()),
@@ -1826,6 +1862,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("first_by() expects string field name".to_string()),
                 };
+                validate_field_name(&field, "first_by")?;
                 let value = match args.get(2) {
                     Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
                     None => return Err("first_by() requires a value".to_string()),
@@ -1861,6 +1898,7 @@ impl Model {
                             return Err("find_or_create_by() expects string field name".to_string())
                         }
                     };
+                    validate_field_name(&field, "find_or_create_by")?;
                     let value = args
                         .get(2)
                         .ok_or_else(|| "find_or_create_by() requires a value".to_string())?;
@@ -2080,7 +2118,10 @@ impl Model {
                 let mut fields = Vec::new();
                 for arg in args.iter().skip(1) {
                     match arg {
-                        Value::String(s) => fields.push(s.clone()),
+                        Value::String(s) => {
+                            validate_field_name(s, "pluck")?;
+                            fields.push(s.clone());
+                        }
                         _ => return Err("pluck() expects string field names".to_string()),
                     }
                 }
@@ -2118,6 +2159,7 @@ impl Model {
                                 return Err(format!("{}() expects string field name", method_name))
                             }
                         };
+                        validate_field_name(&field, &method_name)?;
                         let mut qb = super::query::QueryBuilder::new_with_class(
                             class_name, collection, class,
                         );
@@ -2139,6 +2181,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("group_by() expects string group field".to_string()),
                 };
+                validate_field_name(&group_field, "group_by")?;
                 let func_name = match args.get(2) {
                     Some(Value::String(s)) => s.clone().to_lowercase(),
                     _ => return Err("group_by() expects string function name".to_string()),
@@ -2147,6 +2190,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("group_by() expects string aggregate field".to_string()),
                 };
+                validate_field_name(&agg_field, "group_by")?;
                 let func = match func_name.as_str() {
                     "sum" => super::AggregationFunc::Sum,
                     "avg" => super::AggregationFunc::Avg,
