@@ -34,6 +34,15 @@ pub fn is_live_reload_enabled() -> bool {
 
 /// Handle a live reload SSE connection using long-polling.
 /// Waits for a reload signal with a 55 second timeout (under typical browser timeout).
+///
+/// SEC-043: the same-origin check happens at the call site
+/// (`serve/mod.rs::handle_hyper_request`) before this future is awaited,
+/// and the responses below intentionally omit
+/// `Access-Control-Allow-Origin: *`. The header was a relic of a
+/// dev-only "open to anyone" stance — combined with the 55 s long-poll
+/// it let any origin pin a worker per connection. Browsers refuse a
+/// cross-origin EventSource without that header, so dropping it is
+/// belt-and-suspenders on top of the in-bound origin gate.
 pub async fn handle_live_reload_sse(
     mut reload_rx: broadcast::Receiver<()>,
 ) -> Response<Full<Bytes>> {
@@ -45,7 +54,6 @@ pub async fn handle_live_reload_sse(
                 .status(200)
                 .header("Content-Type", "text/event-stream")
                 .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                .header("Access-Control-Allow-Origin", "*")
                 .header("X-Accel-Buffering", "no")
                 .body(Full::new(Bytes::from("event: reload\ndata: reload\n\n")))
                 .unwrap()
@@ -56,7 +64,6 @@ pub async fn handle_live_reload_sse(
                 .status(200)
                 .header("Content-Type", "text/event-stream")
                 .header("Cache-Control", "no-cache")
-                .header("Access-Control-Allow-Origin", "*")
                 .body(Full::new(Bytes::from("retry: 1000\n: reconnect\n\n")))
                 .unwrap()
         }
@@ -66,7 +73,6 @@ pub async fn handle_live_reload_sse(
                 .status(200)
                 .header("Content-Type", "text/event-stream")
                 .header("Cache-Control", "no-cache")
-                .header("Access-Control-Allow-Origin", "*")
                 .body(Full::new(Bytes::from("retry: 100\n: keepalive\n\n")))
                 .unwrap()
         }

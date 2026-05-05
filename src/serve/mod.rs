@@ -2117,6 +2117,19 @@ async fn handle_hyper_request(
 
     // Handle live reload SSE endpoint
     if path == "/__livereload" {
+        // SEC-043: gate the dev-only SSE endpoint by Origin, mirroring
+        // the WebSocket variant a few lines above. Without this any
+        // browser tab on any origin can open the long-poll, hold a
+        // worker for 55 s per connection, and fan out hundreds in
+        // parallel to exhaust the broadcast channel + worker pool.
+        // `websocket_origin_allowed` allows missing Origin (curl from
+        // the dev box) and otherwise requires `Origin` to match `Host`.
+        if !websocket_origin_allowed(req.headers()) {
+            return Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body(Full::new(Bytes::from("Forbidden live-reload origin")))
+                .unwrap());
+        }
         if let Some(ref tx) = reload_tx {
             return Ok(live_reload::handle_live_reload_sse(tx.subscribe()).await);
         } else {
