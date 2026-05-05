@@ -122,18 +122,16 @@ tx.commit()
     <h3 class="text-xl font-bold text-white mb-4">Execute SDBQL in Transaction</h3>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm"># Execute SDBQL in a transaction (auto-commits)
+            <pre><code class="language-soli text-sm"># Execute a single SDBQL statement transactionally (auto-commits).
 result = User.transaction("
-  INSERT { name: 'Alice', age: 30 } INTO users;
-  INSERT { name: 'Bob', age: 25 } INTO users;
-  RETURN users
+  FOR u IN users FILTER u.active == true UPDATE u WITH { last_seen: DATE_NOW() } IN users
 ")</code></pre>
         </div>
     </div>
 
     <div class="my-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-12">
         <p class="text-green-300 text-sm">
-            <strong>Auto-commit:</strong> When passing a SDBQL string to <code>transaction()</code>, all statements are executed atomically and committed automatically. If any statement fails, the entire transaction is rolled back.
+            <strong>Auto-commit:</strong> The string form of <code>transaction()</code> runs one SDBQL statement through the cursor endpoint with bind variables — the query is never interpolated into server-side JavaScript. For multiple operations in one transaction, use the transaction handle above.
         </p>
     </div>
 

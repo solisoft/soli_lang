@@ -641,54 +641,22 @@ fn document_base_url(collection: &str) -> String {
     ))
 }
 
-/// Execute a database transaction with SDBQL queries.
-/// The action is a string containing SDBQL statements to execute within the transaction.
-pub fn exec_transaction(action: &str) -> Result<serde_json::Value, String> {
-    let client = get_http_client().clone();
-    let _database = get_database_name();
-    // SEC-027: use the configured scheme.
-    let url = db_url("/_api/transaction");
-
-    let body = serde_json::json!({
-        "collections": {
-            "allow": [],
-            "exclusive": [],
-            "write": []
-        },
-        "action": action
-    });
-
-    run_db_future(async move {
-        let mut request = apply_db_auth(client.request(reqwest::Method::POST, &url));
-        request = request.header("Content-Type", "application/json");
-
-        let response = request
-            .body(serde_json::to_string(&body).map_err(|e| e.to_string())?)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let error_text =
-                crate::interpreter::builtins::http_class::read_capped_text_async(response)
-                    .await
-                    .unwrap_or_default();
-            return Err(format!("Transaction failed: {} - {}", status, error_text));
-        }
-
-        let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-        Ok(json)
-    })
-}
-
-/// Execute a transaction with a single SDBQL query string.
+/// Execute a single SDBQL query in transactional context.
+///
+/// SEC-035: previously wrapped the SDBQL in a server-side JavaScript function
+/// (`function() { return AQL_QUERY('...', {}); }`) and POSTed it to
+/// `/_api/transaction`. Single-quote escaping was insufficient — backslashes,
+/// newlines, comments, and template literals could all break out of the JS
+/// string literal and execute attacker-controlled JS.
+///
+/// We now route through the cursor endpoint with `{query, bindVars}`, so the
+/// SDBQL string is sent as a query parameter and is never interpolated into
+/// JavaScript source. A single AQL query on the cursor endpoint is atomic
+/// (server-side single-statement transaction), preserving the previous
+/// transactional semantics for the one-shot string form.
 pub fn exec_transaction_sdbql(sdbql: &str) -> Result<serde_json::Value, String> {
-    let action = format!(
-        "function() {{ return AQL_QUERY('{}', {{}}); }}",
-        sdbql.replace("'", "\\'")
-    );
-    exec_transaction(&action)
+    let results = exec_async_query_with_binds(sdbql.to_string(), None)?;
+    Ok(serde_json::Value::Array(results))
 }
 
 /// Execute a direct HTTP document operation using the shared runtime and client.

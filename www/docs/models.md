@@ -967,13 +967,15 @@ User.transaction {
 ### Using AQL String
 
 ```soli
-# Execute AQL in a transaction
+# Execute a single AQL statement transactionally (auto-commits).
+# The string runs through the cursor endpoint with bind variables, so the
+# query parameter is never interpolated into server-side JavaScript.
 result = User.transaction("
-  INSERT { name: 'Alice', age: 30 } INTO users;
-  INSERT { name: 'Bob', age: 25 } INTO users;
-  RETURN users
+  FOR u IN users FILTER u.active == true UPDATE u WITH { last_seen: DATE_NOW() } IN users
 ");
 ```
+
+For multiple operations in one transaction, use the block form or transaction handle below — the string form runs a single AQL statement.
 
 ### Using Transaction Object (Manual Control)
 
