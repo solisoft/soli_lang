@@ -27,7 +27,6 @@ pub mod factories;
 pub mod file;
 pub mod hash;
 pub mod html;
-pub mod http;
 pub mod http_class;
 pub mod http_log;
 pub mod i18n;

@@ -142,48 +142,68 @@ fn is_blocked_host(host: &str) -> bool {
     false
 }
 
+/// SEC-016: SSRF blocklist for any IP we'd connect to. Centralised here so
+/// the `validate_url_for_ssrf` up-front check, the SEC-015 connect-time DNS
+/// resolver, and any future call site share one definition. Earlier the
+/// IPv6 branch only blocked `fe80::` (link-local) and `ff01::` (one
+/// multicast slice), missing IPv4-mapped loopback / ULA / discard / docs
+/// prefixes — anything in those ranges resolved through DNS or smuggled
+/// in via `[::ffff:127.0.0.1]` would have slipped past.
+///
+/// We deliberately do not call `Ipv6Addr::is_private` (still unstable in
+/// stable Rust) — instead we check the bit patterns explicitly and let
+/// the standard `is_loopback` / `is_unspecified` / `is_multicast`
+/// helpers cover what they cover.
 fn is_blocked_ip(ip: IpAddr) -> bool {
+    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
+        return true;
+    }
     match ip {
-        IpAddr::V4(ipv4) => {
-            let octets = ipv4.octets();
-            if octets[0] == 127 {
+        IpAddr::V4(v4) => {
+            // RFC1918 private + RFC3927 link-local are stable on Ipv4Addr.
+            if v4.is_private() || v4.is_link_local() {
                 return true;
             }
-            if octets[0] == 10 {
-                return true;
-            }
-            if octets[0] == 172 && (octets[1] & 0xf0) == 16 {
-                return true;
-            }
-            if octets[0] == 192 && octets[1] == 168 {
-                return true;
-            }
-            if octets[0] == 169 && octets[1] == 254 {
-                return true;
-            }
-            if octets[0] == 0 {
-                return true;
-            }
+            // RFC6598 carrier-grade NAT (100.64.0.0/10) — not covered by
+            // `is_private`.
+            let octets = v4.octets();
             if octets[0] == 100 && (octets[1] & 0xc0) == 64 {
                 return true;
             }
             false
         }
-        IpAddr::V6(ipv6) => {
-            let segments = ipv6.segments();
-            if segments[0] == 0xfe80 {
+        IpAddr::V6(v6) => {
+            // IPv4-mapped (::ffff:a.b.c.d): defer to the IPv4 rule so a
+            // request to e.g. `[::ffff:127.0.0.1]` is rejected exactly
+            // like `127.0.0.1`.
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_blocked_ip(IpAddr::V4(v4));
+            }
+            // ULA — RFC4193 fc00::/7 (covers fc00::/8 and fd00::/8).
+            let octets = v6.octets();
+            if (octets[0] & 0xfe) == 0xfc {
                 return true;
             }
-            if segments[0] == 0xff01 {
+            // Link-local — RFC4291 fe80::/10. `(fe80..fec0)` so check
+            // the high 10 bits: byte0 == 0xfe AND top two bits of
+            // byte1 are `10`.
+            if octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80 {
                 return true;
             }
-            for segment in &segments[..8] {
-                if *segment == 0 {
-                    continue;
-                }
-                if *segment == 1 {
-                    return true;
-                }
+            // Discard prefix — RFC6666 100::/64.
+            let segments = v6.segments();
+            if segments[0] == 0x0100 && segments[1] == 0 && segments[2] == 0 && segments[3] == 0 {
+                return true;
+            }
+            // Documentation prefix — RFC3849 2001:db8::/32 is reserved
+            // for examples and must never be reached on a real network.
+            if segments[0] == 0x2001 && segments[1] == 0x0db8 {
+                return true;
+            }
+            // Site-local — RFC3879 deprecated fec0::/10 — reject for
+            // historical safety.
+            if octets[0] == 0xfe && (octets[1] & 0xc0) == 0xc0 {
+                return true;
             }
             false
         }
@@ -1989,5 +2009,107 @@ mod parallel_logging_tests {
         );
 
         http_log::clear();
+    }
+
+    // SEC-016 — `is_blocked_ip` regression coverage. Each test names the
+    // RFC the rule comes from so the intent stays obvious if the ranges
+    // are ever touched again.
+    mod ssrf_blocklist {
+        use super::super::is_blocked_ip;
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+        #[test]
+        fn blocks_ipv4_loopback_and_unspecified() {
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3))));
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+        }
+
+        #[test]
+        fn blocks_ipv4_rfc1918_private_ranges() {
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(172, 16, 5, 5))));
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(172, 31, 5, 5))));
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        }
+
+        #[test]
+        fn blocks_ipv4_link_local_and_cgnat() {
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)))); // metadata
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1)))); // CGNAT
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(100, 127, 0, 1))));
+        }
+
+        #[test]
+        fn blocks_ipv4_multicast() {
+            assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(224, 0, 0, 1))));
+        }
+
+        #[test]
+        fn allows_public_ipv4() {
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))));
+            // 172.32 is right outside 172.16/12 — stays unblocked.
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(172, 32, 0, 1))));
+            // 100.128 is right outside 100.64/10.
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(100, 128, 0, 1))));
+        }
+
+        #[test]
+        fn blocks_ipv6_loopback_and_unspecified() {
+            assert!(is_blocked_ip(IpAddr::V6(Ipv6Addr::LOCALHOST)));
+            assert!(is_blocked_ip(IpAddr::V6(Ipv6Addr::UNSPECIFIED)));
+        }
+
+        #[test]
+        fn blocks_ipv4_mapped_ipv6() {
+            // `::ffff:127.0.0.1` — the bypass the previous IPv6 branch missed.
+            let mapped = Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped();
+            assert!(is_blocked_ip(IpAddr::V6(mapped)));
+            // Same for an RFC1918 mapped address.
+            let mapped_priv = Ipv4Addr::new(10, 0, 0, 1).to_ipv6_mapped();
+            assert!(is_blocked_ip(IpAddr::V6(mapped_priv)));
+            // Mapped public IP stays unblocked.
+            let mapped_public = Ipv4Addr::new(8, 8, 8, 8).to_ipv6_mapped();
+            assert!(!is_blocked_ip(IpAddr::V6(mapped_public)));
+        }
+
+        #[test]
+        fn blocks_ipv6_unique_local() {
+            // fc00::/7 — both fc00::/8 and fd00::/8.
+            assert!(is_blocked_ip(IpAddr::V6("fc00::1".parse().unwrap())));
+            assert!(is_blocked_ip(IpAddr::V6(
+                "fd12:3456:789a::1".parse().unwrap()
+            )));
+        }
+
+        #[test]
+        fn blocks_ipv6_link_local() {
+            assert!(is_blocked_ip(IpAddr::V6("fe80::1".parse().unwrap())));
+            assert!(is_blocked_ip(IpAddr::V6("febf::ffff".parse().unwrap())));
+        }
+
+        #[test]
+        fn blocks_ipv6_site_local_deprecated() {
+            assert!(is_blocked_ip(IpAddr::V6("fec0::1".parse().unwrap())));
+        }
+
+        #[test]
+        fn blocks_ipv6_multicast_and_documentation_and_discard() {
+            assert!(is_blocked_ip(IpAddr::V6("ff01::1".parse().unwrap())));
+            assert!(is_blocked_ip(IpAddr::V6("ff02::1".parse().unwrap())));
+            assert!(is_blocked_ip(IpAddr::V6("2001:db8::1".parse().unwrap())));
+            assert!(is_blocked_ip(IpAddr::V6("100::1".parse().unwrap())));
+        }
+
+        #[test]
+        fn allows_public_ipv6() {
+            assert!(!is_blocked_ip(IpAddr::V6(
+                "2606:4700:4700::1111".parse().unwrap()
+            ))); // Cloudflare
+            assert!(!is_blocked_ip(IpAddr::V6(
+                "2001:4860:4860::8888".parse().unwrap()
+            ))); // Google
+        }
     }
 }
