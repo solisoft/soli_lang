@@ -136,6 +136,65 @@ pub fn register_validation(class_name: &str, rule: ValidationRule) {
     metadata.validations.push(rule);
 }
 
+/// Heuristic detection of a unique-index conflict in an error returned by
+/// `exec_insert`/`exec_update`. SoliDB stringifies failures as
+/// `"HTTP {status} {url}: {body}"` (see `crud.rs::exec_document_request`),
+/// so we look for HTTP 409 plus body keywords. The collection-already-exists
+/// case (also a 409) is filtered out so callers don't mistake an auto-create
+/// race for a uniqueness failure.
+///
+/// SEC-039: the `validates uniqueness:` SELECT-then-INSERT path is racy by
+/// construction; this helper lets `Model.create`/`save`/`update`/`upsert`/
+/// `find_or_create_by` translate the atomic DB-side error into a normal
+/// validation failure when a unique index is in place.
+pub fn is_unique_violation(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    let hint = lower.contains("409")
+        || lower.contains("conflict")
+        || lower.contains("duplicate")
+        || lower.contains("unique");
+    if !hint {
+        return false;
+    }
+    !(lower.contains("collection") && lower.contains("already"))
+}
+
+/// Fields with `validates uniqueness: true` registered on `class_name`.
+pub fn unique_validation_fields(class_name: &str) -> Vec<String> {
+    let registry = MODEL_REGISTRY.read().unwrap();
+    registry
+        .get(class_name)
+        .map(|m| {
+            m.validations
+                .iter()
+                .filter(|r| r.uniqueness)
+                .map(|r| r.field.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Build `_errors` entries for a unique-violation insert/update error. We
+/// attribute the failure to a specific `validates uniqueness:` field by
+/// scanning the error body for its name; if no registered unique field
+/// matches we fall back to flagging every uniquely-validated field, and
+/// `_base` if none are registered. Silently dropping the error would leave
+/// callers thinking the write succeeded, so be loud rather than precise.
+pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<ValidationError> {
+    let unique = unique_validation_fields(class_name);
+    let lower = err.to_lowercase();
+    if let Some(field) = unique.iter().find(|f| lower.contains(&f.to_lowercase())) {
+        return vec![ValidationError::new(field, "has already been taken")];
+    }
+    if unique.is_empty() {
+        return vec![ValidationError::new("_base", "has already been taken")];
+    }
+    unique
+        .into_iter()
+        .map(|f| ValidationError::new(f, "has already been taken"))
+        .collect()
+}
+
 /// Run validations on data and return any errors.
 /// If `exclude_key` is provided (for updates), that record is excluded from uniqueness checks.
 pub fn run_validations(
@@ -201,7 +260,15 @@ pub fn run_validations(
             }
         }
 
-        // Uniqueness validation (query the database)
+        // Uniqueness validation (query the database).
+        //
+        // SEC-039: this SELECT is best-effort — two concurrent writers can
+        // both pass it and then both insert. The atomic guarantee comes
+        // from a unique DB index on `rule.field`; `Model.create`/`save`/
+        // `upsert`/`find_or_create_by` translate the resulting 409 into a
+        // `_errors` entry via `build_unique_violation_errors`. Models that
+        // declare `validates uniqueness:` should declare the matching index
+        // (see `www/docs/models.md` "Atomic uniqueness").
         if rule.uniqueness {
             if let Some(Value::String(val)) = &field_value {
                 if !val.is_empty() {
@@ -331,4 +398,77 @@ pub fn run_validations(
     }
 
     Ok(errors)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_violation_detects_409_conflict() {
+        let err = "HTTP 409 Conflict http://localhost/_api/database/db/document/users: \
+                   {\"errorMessage\":\"unique constraint violated on email\"}";
+        assert!(is_unique_violation(err));
+    }
+
+    #[test]
+    fn unique_violation_detects_duplicate_keyword() {
+        assert!(is_unique_violation("duplicate key value"));
+    }
+
+    #[test]
+    fn unique_violation_ignores_collection_already_exists() {
+        // Collection auto-create rides on the same 409 status code; we
+        // must not mistake it for a unique-key conflict.
+        let err = "HTTP 409 Conflict http://x/_api/database/db/collection: \
+                   {\"errorMessage\":\"collection 'users' already exists\"}";
+        assert!(!is_unique_violation(err));
+    }
+
+    #[test]
+    fn unique_violation_ignores_unrelated_errors() {
+        assert!(!is_unique_violation("HTTP 500 Internal Server Error"));
+        assert!(!is_unique_violation("connection refused"));
+    }
+
+    #[test]
+    fn build_unique_violation_errors_falls_back_to_base_when_no_rule() {
+        let errs = build_unique_violation_errors("ModelWithoutUniqueRule__sec039", "duplicate key");
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "_base");
+        assert_eq!(errs[0].message, "has already been taken");
+    }
+
+    #[test]
+    fn build_unique_violation_errors_picks_field_from_message() {
+        let class = "TestUserSec039MatchField";
+        let mut rule = ValidationRule::new("email".to_string());
+        rule.uniqueness = true;
+        register_validation(class, rule);
+        let mut rule2 = ValidationRule::new("username".to_string());
+        rule2.uniqueness = true;
+        register_validation(class, rule2);
+
+        let err = "HTTP 409 Conflict: unique constraint violated on field email";
+        let errs = build_unique_violation_errors(class, err);
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "email");
+    }
+
+    #[test]
+    fn build_unique_violation_errors_flags_all_when_field_unknown() {
+        let class = "TestUserSec039AllFields";
+        let mut rule_a = ValidationRule::new("alpha".to_string());
+        rule_a.uniqueness = true;
+        register_validation(class, rule_a);
+        let mut rule_b = ValidationRule::new("beta".to_string());
+        rule_b.uniqueness = true;
+        register_validation(class, rule_b);
+
+        // No registered field name appears in the body.
+        let errs = build_unique_violation_errors(class, "duplicate key");
+        let fields: Vec<&str> = errs.iter().map(|e| e.field.as_str()).collect();
+        assert!(fields.contains(&"alpha"));
+        assert!(fields.contains(&"beta"));
+    }
 }

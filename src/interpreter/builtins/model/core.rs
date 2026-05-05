@@ -708,6 +708,24 @@ fn apply_hash_to_instance(
     Ok(())
 }
 
+/// Build the `_errors` array contents for a failed insert/update. SEC-039:
+/// when the DB rejects the write with a unique-index conflict (e.g. two
+/// concurrent `User.create({...})` calls racing on `email`), translate the
+/// 409 into the same `[{field, message: "has already been taken"}]` shape
+/// `validates uniqueness:` already produces, so callers handle the race
+/// case identically to the SELECT-pre-flight case. Other errors are
+/// preserved verbatim as before.
+fn build_persistence_errors(class_name: &str, err: String) -> Vec<Value> {
+    if super::validation::is_unique_violation(&err) {
+        super::validation::build_unique_violation_errors(class_name, &err)
+            .iter()
+            .map(|v| v.to_value())
+            .collect()
+    } else {
+        vec![Value::String(err)]
+    }
+}
+
 pub struct Model;
 
 impl Model {
@@ -1430,9 +1448,10 @@ impl Model {
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => {
+                        let error_values = build_persistence_errors(&class_name, e);
                         instance.borrow_mut().set(
                             "_errors".to_string(),
-                            Value::Array(Rc::new(RefCell::new(vec![Value::String(e)]))),
+                            Value::Array(Rc::new(RefCell::new(error_values))),
                         );
                         Ok(Value::Instance(instance))
                     }
@@ -2029,14 +2048,43 @@ impl Model {
                         _ => serde_json::Map::new(),
                     };
                     let mut doc = defaults;
-                    doc.insert(field, json_val);
+                    doc.insert(field.clone(), json_val.clone());
                     match super::crud::exec_insert(
                         &collection,
                         None,
                         serde_json::Value::Object(doc),
                     ) {
                         Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
-                        Err(e) => Err(format!("find_or_create_by create failed: {}", e)),
+                        Err(e) => {
+                            // SEC-039: another writer beat us between the
+                            // initial find and this insert. If the model
+                            // has a unique index on `field` the DB will
+                            // tell us about the race; retry the find so
+                            // find_or_create_by's contract holds (the
+                            // record exists by the time we return) instead
+                            // of bubbling a 409 back to the caller.
+                            if super::validation::is_unique_violation(&e) {
+                                let retry_sdbql = format!(
+                                    "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN doc",
+                                    collection, field
+                                );
+                                let mut retry_binds = std::collections::HashMap::new();
+                                retry_binds.insert("val".to_string(), json_val);
+                                if let Ok(results) = super::crud::exec_with_auto_collection(
+                                    retry_sdbql,
+                                    Some(retry_binds),
+                                    &collection,
+                                ) {
+                                    if !results.is_empty() {
+                                        return Ok(super::crud::json_doc_to_instance(
+                                            &class,
+                                            &results[0],
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(format!("find_or_create_by create failed: {}", e))
+                        }
                     }
                 },
             )),
@@ -2079,19 +2127,39 @@ impl Model {
                 match exec_update(&collection, &key, data.clone(), true) {
                     Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
                     Err(_) => {
-                        // Insert with key
-                        let mut obj = match data {
+                        let mut insert_obj = match data {
                             serde_json::Value::Object(m) => m,
                             _ => serde_json::Map::new(),
                         };
-                        obj.insert("_key".to_string(), serde_json::Value::String(key));
+                        // Snapshot the body sans `_key` so a retry-update
+                        // (after a race) sends a normal update payload.
+                        let update_payload = serde_json::Value::Object(insert_obj.clone());
+                        insert_obj
+                            .insert("_key".to_string(), serde_json::Value::String(key.clone()));
                         match super::crud::exec_insert(
                             &collection,
                             None,
-                            serde_json::Value::Object(obj),
+                            serde_json::Value::Object(insert_obj),
                         ) {
                             Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
-                            Err(e) => Err(format!("upsert failed: {}", e)),
+                            Err(e) => {
+                                // SEC-039: another writer created `key`
+                                // between our failed update and our
+                                // insert. Retry the update so upsert
+                                // converges to the documented semantics
+                                // instead of leaking a 409 the caller
+                                // can't distinguish from a real conflict.
+                                if super::validation::is_unique_violation(&e) {
+                                    if let Ok(result) =
+                                        exec_update(&collection, &key, update_payload, true)
+                                    {
+                                        return Ok(super::crud::json_doc_to_instance(
+                                            &class, &result,
+                                        ));
+                                    }
+                                }
+                                Err(format!("upsert failed: {}", e))
+                            }
                         }
                     }
                 }
@@ -2444,11 +2512,10 @@ impl Model {
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
+                            let error_values = build_persistence_errors(&class_name, e);
                             instance.borrow_mut().set(
                                 "_errors".to_string(),
-                                Value::Array(Rc::new(RefCell::new(vec![Value::String(
-                                    e.to_string(),
-                                )]))),
+                                Value::Array(Rc::new(RefCell::new(error_values))),
                             );
                             Ok(Value::Bool(false))
                         }
@@ -2617,11 +2684,10 @@ impl Model {
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
+                                let error_values = build_persistence_errors(&class_name, e);
                                 instance.borrow_mut().set(
                                     "_errors".to_string(),
-                                    Value::Array(Rc::new(RefCell::new(vec![Value::String(
-                                        e.to_string(),
-                                    )]))),
+                                    Value::Array(Rc::new(RefCell::new(error_values))),
                                 );
                                 Ok(Value::Bool(false))
                             }
@@ -2647,11 +2713,10 @@ impl Model {
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
+                                let error_values = build_persistence_errors(&class_name, e);
                                 instance.borrow_mut().set(
                                     "_errors".to_string(),
-                                    Value::Array(Rc::new(RefCell::new(vec![Value::String(
-                                        e.to_string(),
-                                    )]))),
+                                    Value::Array(Rc::new(RefCell::new(error_values))),
                                 );
                                 Ok(Value::Bool(false))
                             }

@@ -111,6 +111,24 @@ end</code></pre>
         </p>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Atomic Uniqueness</h2>
+    <p class="text-gray-400 mb-4">
+        <code>uniqueness: true</code> issues a <code>SELECT &hellip; LIMIT 1</code> before the write, but that check is <strong class="text-white">best-effort</strong>: two concurrent <code>User.create({ "email": "x" })</code> calls can both pass the SELECT and both insert. To make uniqueness atomic, declare a unique index on the column at deploy time and let the database enforce it. Soli detects the resulting 409 from <code>Model.create</code>, <code>instance.save</code>, <code>instance.update</code>, <code>Model.upsert</code>, and <code>Model.find_or_create_by</code>, and turns it into the same <code>_errors</code> entry the SELECT path produces (<code>field: "has already been taken"</code>), so callers handle the race identically.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Run once at deploy time (e.g. in a migration):
+solidb.create_index("users", "users_email_unique", ["email"], { "unique": true })</code></pre>
+        </div>
+    </div>
+
+    <div class="my-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
+        <p class="text-yellow-300 text-sm">
+            <strong>Without the index,</strong> the SELECT is the only line of defense and the race is silently lost &mdash; two parallel writers can both produce duplicate rows.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Custom Methods on Models</h2>
     <p class="text-gray-400 mb-4">
         Define instance methods directly in your model class to encapsulate business logic.

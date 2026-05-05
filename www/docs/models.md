@@ -308,6 +308,26 @@ else
 end
 ```
 
+### Atomic uniqueness
+
+`uniqueness: true` issues a `SELECT … LIMIT 1` before the write, but that
+check is **best-effort**: two concurrent `User.create({ "email": "x" })`
+calls can both pass the SELECT and both insert. To make uniqueness atomic,
+declare a unique index on the column at deploy time and let the database
+enforce it. Soli detects the resulting 409 from `Model.create`,
+`instance.save`, `instance.update`, `Model.upsert`, and
+`Model.find_or_create_by`, and turns it into the same `_errors` entry the
+SELECT path produces (`field: "has already been taken"`), so callers
+handle the race identically.
+
+```soli
+# Run once at deploy time (e.g. in a migration):
+solidb.create_index("users", "users_email_unique", ["email"], { "unique": true });
+```
+
+Without the index, the SELECT is the only line of defense and the race is
+silently lost.
+
 ## Callbacks
 
 Define lifecycle callbacks to run code at specific points:
