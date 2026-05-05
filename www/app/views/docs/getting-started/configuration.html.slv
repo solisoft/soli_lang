@@ -149,6 +149,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLIKV_RESP_HOST</code></td><td class="py-3 px-4">SoliKV RESP host used by KV/cache builtins.</td><td class="py-3 px-4"><code>localhost</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLIKV_RESP_PORT</code></td><td class="py-3 px-4">SoliKV RESP port.</td><td class="py-3 px-4"><code>6380</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLIKV_TOKEN</code></td><td class="py-3 px-4">SoliKV auth token.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_KV_ALLOW_ADMIN</code></td><td class="py-3 px-4">Set to <code>1</code>/<code>true</code>/<code>yes</code> to lift the denylist on destructive/admin RESP commands (<code>FLUSHALL</code>, <code>FLUSHDB</code>, <code>KEYS</code>, <code>SCAN</code>, <code>CONFIG</code>, <code>DEBUG</code>, <code>EVAL</code>, etc.) reachable from <code>KV.cmd</code>, <code>KV.flushdb</code>, and <code>KV.keys</code>. Only set this on a trusted, non-user-facing process.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>
         </div>

@@ -44,6 +44,60 @@ fn extract_int(args: &[Value], idx: usize, fn_name: &str, param: &str) -> Result
     }
 }
 
+/// SEC-037: Commands that wipe state, enumerate the entire keyspace, mutate
+/// server config, or run arbitrary Lua. Denied by default for `KV.cmd`,
+/// `KV.flushdb`, and `KV.keys` — opt back in with `SOLI_KV_ALLOW_ADMIN=1`
+/// (and only do so on a privately-deployed admin process, not on a worker
+/// reachable from user traffic).
+const KV_DENYLIST: &[&str] = &[
+    // Wipes / mass-mutation
+    "FLUSHALL",
+    "FLUSHDB",
+    // Bulk key enumeration (also O(N) blocking on Redis)
+    "KEYS",
+    "SCAN",
+    // Server / cluster control
+    "CONFIG",
+    "DEBUG",
+    "SHUTDOWN",
+    "MONITOR",
+    "CLIENT",
+    "SLAVEOF",
+    "REPLICAOF",
+    "BGREWRITEAOF",
+    "BGSAVE",
+    "SAVE",
+    "CLUSTER",
+    "FAILOVER",
+    "RESET",
+    "ACL",
+    // Arbitrary Lua / scripting surface
+    "SCRIPT",
+    "EVAL",
+    "EVALSHA",
+    "FUNCTION",
+];
+
+fn kv_admin_allowed() -> bool {
+    matches!(
+        std::env::var("SOLI_KV_ALLOW_ADMIN").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    )
+}
+
+fn check_kv_command(verb: &str) -> Result<(), String> {
+    let upper = verb.to_uppercase();
+    if KV_DENYLIST.iter().any(|c| *c == upper) && !kv_admin_allowed() {
+        return Err(format!(
+            "KV: '{}' is denylisted as a destructive or admin command. \
+             Set SOLI_KV_ALLOW_ADMIN=1 to enable raw admin commands \
+             (only on a trusted, non-user-facing process).",
+            upper
+        ));
+    }
+    Ok(())
+}
+
 /// Convert a serde_json::Value from solikv_cmd to a Soli Value.
 fn solikv_result_to_value(result: &serde_json::Value) -> Result<Value, String> {
     match result {
@@ -138,6 +192,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 })
                 .unwrap_or_else(|| "*".to_string());
 
+            // SEC-037: KEYS is O(N) and exposes the entire keyspace —
+            // denylisted unless SOLI_KV_ALLOW_ADMIN=1.
+            check_kv_command("KEYS")?;
             let result = solikv_cmd(&["KEYS", &pattern])?;
             let keys: Vec<Value> = result
                 .as_array()
@@ -537,6 +594,9 @@ pub fn register_kv_builtins(env: &mut Environment) {
     kv_static_methods.insert(
         "flushdb".to_string(),
         Rc::new(NativeFunction::new("KV.flushdb", Some(0), |_args| {
+            // SEC-037: wipes the entire database — denylisted unless
+            // SOLI_KV_ALLOW_ADMIN=1.
+            check_kv_command("FLUSHDB")?;
             solikv_cmd(&["FLUSHDB"])?;
             Ok(Value::Null)
         })),
@@ -550,6 +610,10 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 return Err("KV.cmd() requires at least one argument".to_string());
             }
             let str_args: Vec<String> = args.iter().map(value_to_raw).collect();
+            // SEC-037: filter the verb against the destructive/admin
+            // denylist before issuing the raw command. The check is on the
+            // first positional argument (the command verb).
+            check_kv_command(&str_args[0])?;
             let refs: Vec<&str> = str_args.iter().map(|s| s.as_str()).collect();
             let result = solikv_cmd(&refs)?;
             solikv_result_to_value(&result)
@@ -596,4 +660,88 @@ pub fn register_kv_builtins(env: &mut Environment) {
     });
 
     env.define("KV".to_string(), Value::Class(kv_class_rc));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// SOLI_KV_ALLOW_ADMIN is read from process env, so the env-mutating
+    /// tests must not interleave. Cargo runs tests in this module in
+    /// parallel by default — serialize them through this mutex.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_admin_env<F: FnOnce()>(value: Option<&str>, body: F) {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prev = std::env::var("SOLI_KV_ALLOW_ADMIN").ok();
+        // SAFETY: ENV_LOCK serializes all SOLI_KV_ALLOW_ADMIN access in
+        // this module, so no other thread is reading the variable while
+        // we mutate it.
+        unsafe {
+            match value {
+                Some(v) => std::env::set_var("SOLI_KV_ALLOW_ADMIN", v),
+                None => std::env::remove_var("SOLI_KV_ALLOW_ADMIN"),
+            }
+        }
+        body();
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("SOLI_KV_ALLOW_ADMIN", v),
+                None => std::env::remove_var("SOLI_KV_ALLOW_ADMIN"),
+            }
+        }
+    }
+
+    #[test]
+    fn denylist_blocks_destructive_verbs_by_default() {
+        with_admin_env(None, || {
+            for verb in ["FLUSHALL", "FLUSHDB", "KEYS", "CONFIG", "DEBUG", "EVAL"] {
+                let err = check_kv_command(verb).unwrap_err();
+                assert!(
+                    err.contains(verb) && err.contains("SOLI_KV_ALLOW_ADMIN"),
+                    "expected denylist error for {}, got: {}",
+                    verb,
+                    err
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn denylist_is_case_insensitive() {
+        with_admin_env(None, || {
+            assert!(check_kv_command("flushdb").is_err());
+            assert!(check_kv_command("FlushAll").is_err());
+            assert!(check_kv_command("keys").is_err());
+        });
+    }
+
+    #[test]
+    fn allows_normal_commands() {
+        with_admin_env(None, || {
+            for verb in ["GET", "SET", "INCR", "HGETALL", "LRANGE", "EXPIRE"] {
+                check_kv_command(verb)
+                    .unwrap_or_else(|e| panic!("expected {} to be allowed, got: {}", verb, e));
+            }
+        });
+    }
+
+    #[test]
+    fn admin_env_unlocks_denylist() {
+        with_admin_env(Some("1"), || {
+            check_kv_command("FLUSHDB").unwrap();
+            check_kv_command("KEYS").unwrap();
+            check_kv_command("CONFIG").unwrap();
+        });
+        with_admin_env(Some("true"), || {
+            check_kv_command("EVAL").unwrap();
+        });
+        with_admin_env(Some("yes"), || {
+            check_kv_command("DEBUG").unwrap();
+        });
+        with_admin_env(Some("0"), || {
+            assert!(check_kv_command("FLUSHDB").is_err());
+        });
+    }
 }

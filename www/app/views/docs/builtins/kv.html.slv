@@ -53,7 +53,8 @@ KV.set("temp", "data", 60)  # expires in 60 seconds</code></pre>
 
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">KV.keys(pattern?)</h3>
-                <p class="text-gray-400">List keys matching a glob pattern. Default: <code>"*"</code></p>
+                <p class="text-gray-400">List keys matching a glob pattern. Default: <code>"*"</code>.</p>
+                <p class="text-amber-300 mt-2 text-sm"><strong>Denied by default</strong> — see <a href="#admin-denylist" class="underline">Admin denylist</a>. Bulk key enumeration is O(N) and exposes the entire keyspace, so it is gated behind <code>SOLI_KV_ALLOW_ADMIN=1</code>.</p>
                 <pre class="text-sm text-gray-300 overflow-x-auto mt-4"><code>let all = KV.keys()             # all keys
 let users = KV.keys("user:*")  # keys starting with "user:"</code></pre>
             </div>
@@ -211,15 +212,27 @@ KV.hset("user:1", "email", "alice@example.com")</code></pre>
             </div>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">KV.flushdb()</h3>
-                <p class="text-gray-400">Delete all keys in the database. Use with caution.</p>
+                <p class="text-gray-400">Delete all keys in the database.</p>
+                <p class="text-amber-300 mt-2 text-sm"><strong>Denied by default</strong> — see <a href="#admin-denylist" class="underline">Admin denylist</a>.</p>
             </div>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">KV.cmd(...args)</h3>
-                <p class="text-gray-400 mb-4">Run any raw SoliKV command.</p>
+                <p class="text-gray-400 mb-2">Run a raw SoliKV command. The first argument is the command verb, filtered through the <a href="#admin-denylist" class="underline">admin denylist</a>.</p>
                 <pre class="text-sm text-gray-300 overflow-x-auto"><code>KV.cmd("SET", "key", "value")
 KV.cmd("GET", "key")
 KV.cmd("EXPIRE", "key", 60)</code></pre>
             </div>
+        </div>
+
+        <div id="admin-denylist" class="bg-gray-900 rounded-xl border border-amber-500/30 p-6 mt-6">
+            <h3 class="text-lg font-semibold text-amber-300 mb-2">Admin denylist</h3>
+            <p class="text-gray-400 mb-3"><code>KV.cmd</code>, <code>KV.flushdb</code>, and <code>KV.keys</code> refuse destructive or keyspace-wide commands by default. The verb is matched (case-insensitive) against:</p>
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code>FLUSHALL  FLUSHDB  KEYS  SCAN
+CONFIG  DEBUG  SHUTDOWN  MONITOR  CLIENT
+SLAVEOF  REPLICAOF  BGREWRITEAOF  BGSAVE  SAVE
+CLUSTER  FAILOVER  RESET  ACL
+SCRIPT  EVAL  EVALSHA  FUNCTION</code></pre>
+            <p class="text-gray-400 mt-3">A blocked call returns an error rather than executing the command. To enable raw admin access, set <code>SOLI_KV_ALLOW_ADMIN=1</code> (or <code>true</code>/<code>yes</code>) on the process that needs it. Leave this unset on workers reachable from user traffic — that way a controller bug or template injection cannot reach <code>KV.cmd("FLUSHALL")</code>.</p>
         </div>
     </section>
 

@@ -88,6 +88,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLIKV_RESP_HOST` | SoliKV RESP host used by KV/cache builtins. | `localhost` |
 | `SOLIKV_RESP_PORT` | SoliKV RESP port. | `6380` |
 | `SOLIKV_TOKEN` | SoliKV auth token. | unset |
+| `SOLI_KV_ALLOW_ADMIN` | Set to `1`/`true`/`yes` to lift the denylist on destructive/admin RESP commands (`FLUSHALL`, `FLUSHDB`, `KEYS`, `SCAN`, `CONFIG`, `DEBUG`, `SHUTDOWN`, `MONITOR`, `CLIENT`, `EVAL`, `SCRIPT`, etc.) reachable from `KV.cmd`, `KV.flushdb`, and `KV.keys`. Only set this on a trusted, non-user-facing process. | unset |
 
 ## S3
 

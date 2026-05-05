@@ -3095,7 +3095,7 @@ Full-featured key-value store backed by SoliKV. Supports strings, counters, list
 - **KV.get(key)** — Retrieve a value. Returns null if missing.
 - **KV.delete(key)** — Delete a key. Returns Bool.
 - **KV.exists(key)** — Check if key exists. Returns Bool.
-- **KV.keys(pattern?)** — List keys matching glob pattern (default `"*"`). Returns Array.
+- **KV.keys(pattern?)** — List keys matching glob pattern (default `"*"`). Returns Array. **Denied by default** — set `SOLI_KV_ALLOW_ADMIN=1` to enable (see [Admin denylist](#admin-denylist)).
 - **KV.type(key)** — Get the type of a key. Returns String.
 - **KV.rename(key, newkey)** — Rename a key.
 
@@ -3138,9 +3138,23 @@ Full-featured key-value store backed by SoliKV. Supports strings, counters, list
 
 - **KV.ping()** — Check connectivity.
 - **KV.dbsize()** — Total number of keys.
-- **KV.flushdb()** — Delete all keys.
-- **KV.cmd(...args)** — Run any raw SoliKV command.
+- **KV.flushdb()** — Delete all keys. **Denied by default** (see [Admin denylist](#admin-denylist)).
+- **KV.cmd(...args)** — Run any raw SoliKV command. The first argument is the command verb, which is filtered through the [admin denylist](#admin-denylist).
 - **KV.configure(host, token?)** — Configure connection.
+
+### Admin Denylist
+
+`KV.cmd`, `KV.flushdb`, and `KV.keys` refuse destructive or keyspace-wide commands by default. The verb is matched (case-insensitive) against:
+
+```
+FLUSHALL  FLUSHDB  KEYS  SCAN
+CONFIG  DEBUG  SHUTDOWN  MONITOR  CLIENT
+SLAVEOF  REPLICAOF  BGREWRITEAOF  BGSAVE  SAVE
+CLUSTER  FAILOVER  RESET  ACL
+SCRIPT  EVAL  EVALSHA  FUNCTION
+```
+
+A blocked call returns an error rather than running the command. To enable raw admin access, set `SOLI_KV_ALLOW_ADMIN=1` (or `true` / `yes`) in the environment of the process that needs it. Only do this on a privately-deployed admin process — a worker reachable from user traffic should leave this unset, so that a controller bug or template injection cannot reach `KV.cmd("FLUSHALL")`.
 
 ---
 
