@@ -48,11 +48,6 @@
                     <td class="px-4 py-3">Trusted HTML you've already produced — partials, <code>Markdown.to_safe_html(...)</code> output.</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%== expr %&gt;</td>
-                    <td class="px-4 py-3">Unescapes HTML entities (calls <code>html_unescape</code>)</td>
-                    <td class="px-4 py-3">Rare: output a value that was previously escape-encoded.</td>
-                </tr>
-                <tr>
                     <td class="px-4 py-3 font-mono text-indigo-300">&lt;% stmt %&gt;</td>
                     <td class="px-4 py-3">Executes code, emits nothing</td>
                     <td class="px-4 py-3"><code>let</code> bindings, <code>if</code>, <code>for</code>, other statements.</td>
@@ -64,6 +59,7 @@
                 </tr>
             </tbody>
         </table>
+        <p class="text-gray-400 text-sm mt-4"><code>&lt;%== expr %&gt;</code> was removed (SEC-023). It decoded HTML entities and emitted the result raw, which silently re-created <code>&lt;script&gt;</code> from <code>&amp;lt;script&amp;gt;</code> whenever a value had been round-tripped through escape-encoded storage. Use <code>&lt;%= html_unescape(expr) %&gt;</code> for entity-decoded but escaped output, or <code>&lt;%- expr %&gt;</code> for trusted raw HTML.</p>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Output Variables</h3>

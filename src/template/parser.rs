@@ -3,9 +3,14 @@
 //! Parses templates with syntax like:
 //! - `<%= expr %>` - HTML-escaped output
 //! - `<%- expr %>` - Raw/unescaped output
-//! - `<%== expr %>` - HTML-unescaped output (shorthand for `<%= html_unescape(expr) %>`)
 //! - `<% code %>` - Control flow (if, for, end, else, elsif)
 //! - `<%= yield %>` - Layout content insertion point
+//!
+//! `<%== expr %>` was removed in SEC-023 — it decoded HTML entities and
+//! emitted the result raw, which silently re-created `<script>` from
+//! `&lt;script&gt;` whenever a value had been round-tripped through
+//! escape-encoded storage. Templates that reach for it are rejected at
+//! parse time with a migration hint.
 
 /// Pre-compiled expression for fast evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -139,7 +144,8 @@ pub enum CompareOp {
 pub enum TemplateNode {
     /// Raw HTML/text content
     Literal(String),
-    /// Output expression: `<%= expr %>` (escaped), `<%- expr %>` (raw), or `<%== expr %>` (unescape)
+    /// Output expression: `<%= expr %>` (escaped) or `<%- expr %>` (raw).
+    /// `<%== expr %>` was removed in SEC-023.
     Output {
         expr: Expr,
         escaped: bool,
@@ -186,11 +192,14 @@ pub enum TemplateNode {
 /// Token types during lexing
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Literal(String, usize),        // content, line
-    OutputEscaped(String, usize),  // <%= ... %>, line
-    OutputRaw(String, usize),      // <%- ... %>, line
-    OutputUnescape(String, usize), // <%== ... %>, line (html_unescape)
-    Code(String, usize),           // <% ... %>, line
+    Literal(String, usize),       // content, line
+    OutputEscaped(String, usize), // <%= ... %>, line
+    OutputRaw(String, usize),     // <%- ... %>, line
+    /// `<%== ... %>` — removed in SEC-023. The lexer still recognizes the
+    /// syntax so the parser can produce a clean migration error, instead
+    /// of dropping into `<%=` and treating the trailing `=` as an operator.
+    OutputUnescape(String, usize),
+    Code(String, usize), // <% ... %>, line
 }
 
 /// Parse an ERB-style template into an AST.
@@ -639,23 +648,19 @@ fn parse_output_token(token: &Token) -> Result<TemplateNode, String> {
                 })
             }
         }
-        Token::OutputUnescape(expr, line) => {
-            let inner_expr = parse_core_expr(expr, *line)?;
-            let call_expr = crate::ast::expr::Expr::new(
-                crate::ast::expr::ExprKind::Call {
-                    callee: Box::new(crate::ast::expr::Expr::new(
-                        crate::ast::expr::ExprKind::Variable("html_unescape".to_string()),
-                        crate::span::Span::default(),
-                    )),
-                    arguments: vec![crate::ast::expr::Argument::Positional(inner_expr)],
-                },
-                crate::span::Span::default(),
-            );
-            Ok(TemplateNode::CoreOutput {
-                expr: call_expr,
-                escaped: false,
-                line: *line,
-            })
+        Token::OutputUnescape(_expr, line) => {
+            // SEC-023: `<%==` previously rewrote to `html_unescape(expr)` and
+            // emitted with `escaped: false`. The combination "decode HTML
+            // entities, then emit raw" is a silent XSS footgun — applied to
+            // any value that round-tripped through the database or JSON, it
+            // turns `&lt;script&gt;` back into `<script>`. The syntax has
+            // been removed; `<%= html_unescape(expr) %>` (entity decode +
+            // safe escape) and `<%- expr %>` (raw output) cover the two
+            // legitimate use cases visibly.
+            Err(format!(
+                "<%== %> at line {} has been removed (SEC-023). Use `<%= html_unescape(expr) %>` for entity-decoded but escaped output, or `<%- expr %>` for raw HTML.",
+                line
+            ))
         }
         Token::Code(_, _) => unreachable!("Code tokens handled separately"),
     }
@@ -1316,21 +1321,16 @@ mod tests {
         );
     }
 
+    /// SEC-023: `<%== expr %>` is rejected at parse time with a migration
+    /// hint pointing at the safer alternatives.
     #[test]
-    fn test_parse_unescape_output() {
-        let nodes = parse_template("<%== encoded %>").unwrap();
-        assert_eq!(nodes.len(), 1);
-        match &nodes[0] {
-            TemplateNode::CoreOutput { expr, escaped, .. } => {
-                // Should be a call to html_unescape wrapping the expression
-                assert!(matches!(
-                    &expr.kind,
-                    crate::ast::expr::ExprKind::Call { .. }
-                ));
-                assert!(!escaped); // Should not escape the unescaped output
-            }
-            _ => panic!("Expected CoreOutput node"),
-        }
+    fn test_parse_unescape_output_is_rejected() {
+        let err = parse_template("<%== encoded %>").unwrap_err();
+        assert!(
+            err.contains("SEC-023") && err.contains("html_unescape"),
+            "expected SEC-023 migration error, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -1416,27 +1416,15 @@ mod tests {
         }
     }
 
+    /// SEC-023: `<%==` must also be rejected when wrapped in control flow.
     #[test]
-    fn test_parse_unescape_in_if() {
-        // Test <%== inside if block
-        let nodes = parse_template("<% if show %><%== encoded %><% end %>").unwrap();
-        assert_eq!(nodes.len(), 1);
-        match &nodes[0] {
-            TemplateNode::If { body, .. } => {
-                assert_eq!(body.len(), 1);
-                match &body[0] {
-                    TemplateNode::CoreOutput { expr, escaped, .. } => {
-                        assert!(matches!(
-                            &expr.kind,
-                            crate::ast::expr::ExprKind::Call { .. }
-                        ));
-                        assert!(!escaped);
-                    }
-                    _ => panic!("Expected CoreOutput node"),
-                }
-            }
-            _ => panic!("Expected If node"),
-        }
+    fn test_parse_unescape_in_if_is_rejected() {
+        let err = parse_template("<% if show %><%== encoded %><% end %>").unwrap_err();
+        assert!(
+            err.contains("SEC-023"),
+            "expected SEC-023 migration error, got: {}",
+            err
+        );
     }
 
     #[test]
