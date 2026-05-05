@@ -1999,9 +1999,13 @@ async fn handle_hyper_request(
                                         server_constants::parse_range_header(range_str, file_size)
                                     {
                                         let length = end - start + 1;
-                                        // Read only the requested range
-                                        let content = match std::fs::read(&file_path) {
-                                            Ok(c) => c,
+                                        // SEC-048: open + seek + bounded read so a tiny
+                                        // Range against a large asset doesn't slurp the
+                                        // whole file into memory each request.
+                                        let slice = match server_constants::read_file_range(
+                                            &file_path, start, length,
+                                        ) {
+                                            Ok(buf) => buf,
                                             Err(_) => {
                                                 return Ok(Response::builder()
                                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -2011,8 +2015,6 @@ async fn handle_hyper_request(
                                                     .unwrap())
                                             }
                                         };
-                                        let slice = &content[start as usize
-                                            ..=(end as usize).min(content.len() - 1)];
                                         return Ok(Response::builder()
                                             .status(StatusCode::PARTIAL_CONTENT)
                                             .header("Content-Type", mime_type)
@@ -2027,7 +2029,7 @@ async fn handle_hyper_request(
                                                 "Cache-Control",
                                                 server_constants::STATIC_CACHE_MAX_AGE,
                                             )
-                                            .body(Full::new(Bytes::copy_from_slice(slice)))
+                                            .body(Full::new(Bytes::from(slice)))
                                             .unwrap());
                                     } else {
                                         // Range not satisfiable

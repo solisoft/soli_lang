@@ -145,6 +145,33 @@ pub fn parse_range_header(range_header: &str, file_size: u64) -> Option<(u64, u6
     }
 }
 
+/// SEC-048: read a byte range from a file without slurping the entire
+/// file into memory.
+///
+/// The production cache-miss path used to do `std::fs::read(path)` and
+/// then slice — so a 1-byte Range request against a 1 GiB asset
+/// allocated 1 GiB per request. Repeated tiny-range requests amplified
+/// into a memory-pressure DoS. Open + seek + `read_exact` bounds the
+/// allocation to the requested span; the page cache still amortizes the
+/// disk I/O.
+///
+/// Caller is responsible for ensuring `start` and `length` are within
+/// the file (typically by going through `parse_range_header`).
+pub fn read_file_range(
+    path: &std::path::Path,
+    start: u64,
+    length: u64,
+) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    file.seek(SeekFrom::Start(start))?;
+    let len = usize::try_from(length)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "range too large"))?;
+    let mut buf = vec![0u8; len];
+    file.read_exact(&mut buf)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +358,42 @@ mod tests {
     fn range_zero_to_zero_returns_first_byte() {
         // Single-byte range at the start: 0-0 is a one-byte response.
         assert_eq!(parse_range_header("bytes=0-0", 100), Some((0, 0)));
+    }
+
+    // ---------- read_file_range ----------
+
+    #[test]
+    fn read_file_range_returns_only_requested_span() {
+        // SEC-048: the helper must not slurp the whole file. Verify it
+        // returns exactly `length` bytes from `start`.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset.bin");
+        std::fs::write(&path, b"abcdefghij").unwrap();
+
+        let buf = read_file_range(&path, 3, 4).unwrap();
+        assert_eq!(buf, b"defg");
+        assert_eq!(buf.len(), 4);
+    }
+
+    #[test]
+    fn read_file_range_first_byte() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset.bin");
+        std::fs::write(&path, b"abcdefghij").unwrap();
+
+        let buf = read_file_range(&path, 0, 1).unwrap();
+        assert_eq!(buf, b"a");
+    }
+
+    #[test]
+    fn read_file_range_past_end_errors() {
+        // Bounds enforcement is `parse_range_header`'s job, but if a
+        // caller passes a span that overruns the file, `read_exact`
+        // surfaces it rather than silently truncating.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset.bin");
+        std::fs::write(&path, b"short").unwrap();
+
+        assert!(read_file_range(&path, 0, 10).is_err());
     }
 }
