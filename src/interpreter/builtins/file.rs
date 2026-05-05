@@ -13,11 +13,21 @@
 //! command-line scripts keep their full access to the local filesystem
 //! exactly as before.
 //!
+//! ## Symlink defense (SEC-006a)
+//!
+//! On Unix, every `File.*` open also passes `O_NOFOLLOW`, and metadata
+//! lookups go through `symlink_metadata` rather than `metadata`. That
+//! closes a residual TOCTOU window where an attacker with local FS
+//! access could swap a path with a symlink between `canonicalize` and
+//! `open`. The `Trusted` class deliberately keeps following symlinks so
+//! legitimate callers (tail a symlinked log file, read a config that
+//! lives behind a `current` symlink) keep working.
+//!
 //! Code that genuinely needs to step outside the jail — log shippers,
 //! backup scripts, cron-style maintenance jobs that ssh to other
 //! machines — should call the parallel `Trusted` class
 //! (`Trusted.read("/etc/...")`). It mirrors the `File` API but skips the
-//! jail check.
+//! jail check **and** the `O_NOFOLLOW` flag.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -122,11 +132,31 @@ fn resolve_trusted(path: &str) -> PathBuf {
 
 // ---------------------------------------------------------------------------
 // Builtins — both standalone (`barf`, `slurp`, …) and the `File` class share
-// the same per-op closures, parameterised over `resolve` so the `Trusted`
-// class can register the same set with the jail check skipped.
+// the same per-op closures, parameterised over a small `FsPolicy` struct so
+// the `Trusted` class can register the same set with the jail check skipped
+// and symlink-following re-enabled.
 // ---------------------------------------------------------------------------
 
-type Resolver = fn(&str, &str) -> Result<PathBuf, String>;
+#[derive(Clone, Copy)]
+struct FsPolicy {
+    /// Resolves user-supplied paths through the jail (or unchanged for
+    /// `Trusted`).
+    resolve: fn(&str, &str) -> Result<PathBuf, String>,
+    /// `false` → `O_NOFOLLOW` on every open, `symlink_metadata` for
+    /// metadata. `true` → vanilla open / `metadata`. The `Trusted` class
+    /// uses `true` so callers can deliberately follow a symlink.
+    follow_symlinks: bool,
+}
+
+const JAILED: FsPolicy = FsPolicy {
+    resolve: jailed_resolver,
+    follow_symlinks: false,
+};
+
+const TRUSTED: FsPolicy = FsPolicy {
+    resolve: trusted_resolver,
+    follow_symlinks: true,
+};
 
 fn jailed_resolver(path: &str, op: &str) -> Result<PathBuf, String> {
     resolve_path(path, op)
@@ -136,14 +166,91 @@ fn trusted_resolver(path: &str, _op: &str) -> Result<PathBuf, String> {
     Ok(resolve_trusted(path))
 }
 
-/// Register all file I/O built-in functions.
-pub fn register_file_builtins(env: &mut Environment) {
-    define_standalone_file_builtins(env, jailed_resolver);
-    register_file_class(env, "File", jailed_resolver);
-    register_file_class(env, "Trusted", trusted_resolver);
+/// Apply `O_NOFOLLOW` to an `OpenOptions` builder when the policy says
+/// not to follow symlinks. Compiled out on non-Unix targets — Windows
+/// has no equivalent flag, so the jail check from SEC-006 is the only
+/// protection there. (Soli's production deploy target is Linux, so the
+/// Windows gap is documented but not a regression vs. pre-SEC-006a.)
+#[cfg(unix)]
+fn apply_nofollow(opts: &mut std::fs::OpenOptions, follow_symlinks: bool) {
+    if !follow_symlinks {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.custom_flags(libc::O_NOFOLLOW);
+    }
 }
 
-fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
+#[cfg(not(unix))]
+fn apply_nofollow(_opts: &mut std::fs::OpenOptions, _follow_symlinks: bool) {}
+
+/// Open a file for reading, honoring the policy's symlink stance.
+fn open_for_read(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    apply_nofollow(&mut opts, follow_symlinks);
+    opts.open(path)
+}
+
+/// Open for write+create+truncate, honoring the policy.
+fn open_for_write_truncate(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    apply_nofollow(&mut opts, follow_symlinks);
+    opts.open(path)
+}
+
+/// Open for create+append (the `File.append` builtin path).
+fn open_for_append(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    apply_nofollow(&mut opts, follow_symlinks);
+    opts.open(path)
+}
+
+/// Read whole-file contents as a `String` through `open_for_read`.
+fn read_to_string_policy(path: &Path, follow_symlinks: bool) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut f = open_for_read(path, follow_symlinks)?;
+    let mut s = String::new();
+    f.read_to_string(&mut s)?;
+    Ok(s)
+}
+
+/// Read whole-file contents as raw bytes through `open_for_read`.
+fn read_to_bytes_policy(path: &Path, follow_symlinks: bool) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut f = open_for_read(path, follow_symlinks)?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// Write `bytes` to `path`, truncating any existing file.
+fn write_all_policy(path: &Path, bytes: &[u8], follow_symlinks: bool) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = open_for_write_truncate(path, follow_symlinks)?;
+    f.write_all(bytes)
+}
+
+/// `metadata` if `follow_symlinks`, otherwise `symlink_metadata` so a
+/// symlink reports the link's own type/size, not the target's.
+fn metadata_policy(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::Metadata> {
+    if follow_symlinks {
+        std::fs::metadata(path)
+    } else {
+        std::fs::symlink_metadata(path)
+    }
+}
+
+/// Register all file I/O built-in functions.
+pub fn register_file_builtins(env: &mut Environment) {
+    define_standalone_file_builtins(env, JAILED);
+    register_file_class(env, "File", JAILED);
+    register_file_class(env, "Trusted", TRUSTED);
+}
+
+fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
+    let resolve = policy.resolve;
+    let follow = policy.follow_symlinks;
     // barf(path, content) - Write file (auto-detects text vs binary)
     env.define(
         "barf".to_string(),
@@ -151,7 +258,7 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
             match &args[..] {
                 [Value::String(path), Value::String(content)] => {
                     let resolved = resolve(path, "barf")?;
-                    fs::write(&resolved, content)
+                    write_all_policy(&resolved, content.as_bytes(), follow)
                         .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
                     Ok(Value::Null)
                 }
@@ -166,7 +273,7 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
                             other => Err(format!("expected byte, got {}", other.type_name())),
                         })
                         .collect();
-                    fs::write(&resolved, byte_vec?)
+                    write_all_policy(&resolved, &byte_vec?, follow)
                         .map_err(|e| format!("barf failed to write {}: {}", path, e))?;
                     Ok(Value::Null)
                 }
@@ -184,20 +291,20 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
             move |args| match &args[..] {
                 [Value::String(path)] => {
                     let resolved = resolve(path, "slurp")?;
-                    fs::read_to_string(&resolved)
+                    read_to_string_policy(&resolved, follow)
                         .map(Value::String)
                         .map_err(|e| format!("slurp failed to read {}: {}", path, e))
                 }
                 [Value::String(path), Value::String(mode)] => {
                     let resolved = resolve(path, "slurp")?;
                     if mode == "binary" {
-                        let bytes = fs::read(&resolved)
+                        let bytes = read_to_bytes_policy(&resolved, follow)
                             .map_err(|e| format!("slurp failed to read {}: {}", path, e))?;
                         let value_bytes: Vec<Value> =
                             bytes.iter().map(|&b| Value::Int(b as i64)).collect();
                         Ok(Value::Array(Rc::new(RefCell::new(value_bytes))))
                     } else {
-                        fs::read_to_string(&resolved)
+                        read_to_string_policy(&resolved, follow)
                             .map(Value::String)
                             .map_err(|e| format!("slurp failed to read {}: {}", path, e))
                     }
@@ -216,7 +323,7 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
                 _ => return Err("slurp_json expects a string path".to_string()),
             };
             let resolved = resolve(&path, "slurp_json")?;
-            let content = fs::read_to_string(&resolved)
+            let content = read_to_string_policy(&resolved, follow)
                 .map_err(|e| format!("slurp_json failed to read {}: {}", path, e))?;
             let json: serde_json::Value = serde_json::from_str(&content)
                 .map_err(|e| format!("slurp_json failed to parse {}: {}", path, e))?;
@@ -225,6 +332,12 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
     );
 
     // mkdir_p(path) - Create directory and all parent directories
+    //
+    // `create_dir_all` doesn't have a `nofollow` knob — it walks the
+    // path and `mkdir`s each missing component. Since we already
+    // canonicalised the deepest existing ancestor in `resolve_path`,
+    // any symlink-out-of-jail in the existing prefix would have been
+    // rejected before we get here.
     env.define(
         "mkdir_p".to_string(),
         Value::NativeFunction(NativeFunction::new("mkdir_p", Some(1), move |args| {
@@ -248,9 +361,12 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
                 _ => return Err("file_exists() expects string path".to_string()),
             };
             // For exists() the jail check still runs: an attacker shouldn't
-            // be able to enumerate /etc by probing existence either.
+            // be able to enumerate /etc by probing existence either. The
+            // policy's symlink stance flows through too — `File.exists()`
+            // on a symlink reports the link's existence, `Trusted.exists()`
+            // follows the link.
             match resolve(&path, "file_exists") {
-                Ok(resolved) => Ok(Value::Bool(resolved.exists())),
+                Ok(resolved) => Ok(Value::Bool(metadata_policy(&resolved, follow).is_ok())),
                 Err(_) => Ok(Value::Bool(false)),
             }
         })),
@@ -276,7 +392,7 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(&data)
                     .map_err(|e| format!("file_write_base64() decode failed: {}", e))?;
-                fs::write(&resolved, bytes)
+                write_all_policy(&resolved, &bytes, follow)
                     .map(|_| Value::Bool(true))
                     .map_err(|e| format!("file_write_base64() write failed: {}", e))
             },
@@ -309,7 +425,7 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
                     _ => return Err("file_write_bytes() expects array or string data".to_string()),
                 };
                 let resolved = resolve(&path, "file_write_bytes")?;
-                fs::write(&resolved, bytes)
+                write_all_policy(&resolved, &bytes, follow)
                     .map(|_| Value::Bool(true))
                     .map_err(|e| format!("file_write_bytes() write failed: {}", e))
             },
@@ -317,8 +433,11 @@ fn define_standalone_file_builtins(env: &mut Environment, resolve: Resolver) {
     );
 }
 
-/// Register either the `File` (jailed) or `Trusted` (unjailed) class.
-fn register_file_class(env: &mut Environment, class_name: &'static str, resolve: Resolver) {
+/// Register either the `File` (jailed + nofollow) or `Trusted`
+/// (unjailed + follows symlinks) class.
+fn register_file_class(env: &mut Environment, class_name: &'static str, policy: FsPolicy) {
+    let resolve = policy.resolve;
+    let follow = policy.follow_symlinks;
     let mut static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
     // File.read(path) - Read file contents as string
@@ -335,7 +454,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.read() expects string path", class_name)),
                     };
                     let resolved = resolve(&path, "read")?;
-                    fs::read_to_string(&resolved)
+                    read_to_string_policy(&resolved, follow)
                         .map(Value::String)
                         .map_err(|e| format!("{}.read() failed: {}", class_name, e))
                 },
@@ -361,7 +480,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         other => other.to_string(),
                     };
                     let resolved = resolve(&path, "write")?;
-                    fs::write(&resolved, &content)
+                    write_all_policy(&resolved, content.as_bytes(), follow)
                         .map(|_| Value::Bool(true))
                         .map_err(|e| format!("{}.write() failed: {}", class_name, e))
                 },
@@ -382,8 +501,11 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         Value::String(s) => s.clone(),
                         _ => return Err(format!("{}.exists() expects string path", class_name)),
                     };
+                    // Use metadata_policy so File.exists("symlink") reports
+                    // the symlink itself (true even if the target is gone),
+                    // while Trusted.exists() reports the target.
                     match resolve(&path, "exists") {
-                        Ok(resolved) => Ok(Value::Bool(resolved.exists())),
+                        Ok(resolved) => Ok(Value::Bool(metadata_policy(&resolved, follow).is_ok())),
                         Err(_) => Ok(Value::Bool(false)),
                     }
                 },
@@ -413,7 +535,9 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
         );
     }
 
-    // File.is_file(path)
+    // File.is_file(path) — uses metadata_policy so a symlink reports
+    // false under `File.*` (the link itself is not a regular file under
+    // symlink_metadata) and follows the link under `Trusted.*`.
     {
         let label = format!("{}.is_file", class_name);
         static_methods.insert(
@@ -427,7 +551,10 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.is_file() expects string path", class_name)),
                     };
                     match resolve(&path, "is_file") {
-                        Ok(resolved) => Ok(Value::Bool(resolved.is_file())),
+                        Ok(resolved) => match metadata_policy(&resolved, follow) {
+                            Ok(m) => Ok(Value::Bool(m.is_file())),
+                            Err(_) => Ok(Value::Bool(false)),
+                        },
                         Err(_) => Ok(Value::Bool(false)),
                     }
                 },
@@ -449,7 +576,10 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.is_dir() expects string path", class_name)),
                     };
                     match resolve(&path, "is_dir") {
-                        Ok(resolved) => Ok(Value::Bool(resolved.is_dir())),
+                        Ok(resolved) => match metadata_policy(&resolved, follow) {
+                            Ok(m) => Ok(Value::Bool(m.is_dir())),
+                            Err(_) => Ok(Value::Bool(false)),
+                        },
                         Err(_) => Ok(Value::Bool(false)),
                     }
                 },
@@ -471,7 +601,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.size() expects string path", class_name)),
                     };
                     let resolved = resolve(&path, "size")?;
-                    fs::metadata(&resolved)
+                    metadata_policy(&resolved, follow)
                         .map(|m| Value::Int(m.len() as i64))
                         .map_err(|e| format!("{}.size() failed: {}", class_name, e))
                 },
@@ -493,7 +623,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.modified() expects string path", class_name)),
                     };
                     let resolved = resolve(&path, "modified")?;
-                    fs::metadata(&resolved)
+                    metadata_policy(&resolved, follow)
                         .and_then(|m| m.modified())
                         .map(|t| {
                             let duration = t.duration_since(std::time::UNIX_EPOCH).unwrap();
@@ -514,7 +644,6 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                 Box::leak(label.into_boxed_str()),
                 Some(2),
                 move |args| {
-                    use std::fs::OpenOptions;
                     use std::io::Write;
                     let path = match &args[0] {
                         Value::String(s) => s.clone(),
@@ -525,10 +654,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         other => other.to_string(),
                     };
                     let resolved = resolve(&path, "append")?;
-                    let mut file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&resolved)
+                    let mut file = open_for_append(&resolved, follow)
                         .map_err(|e| format!("{}.append() failed to open: {}", class_name, e))?;
                     file.write_all(content.as_bytes())
                         .map(|_| Value::Bool(true))
@@ -552,7 +678,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                         _ => return Err(format!("{}.lines() expects string path", class_name)),
                     };
                     let resolved = resolve(&path, "lines")?;
-                    let content = fs::read_to_string(&resolved)
+                    let content = read_to_string_policy(&resolved, follow)
                         .map_err(|e| format!("{}.lines() failed: {}", class_name, e))?;
                     let lines: Vec<Value> = content
                         .lines()
@@ -564,7 +690,9 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
         );
     }
 
-    // File.copy(src, dest)
+    // File.copy(src, dest) — read src + write dest through the policy so
+    // a symlinked src under `File.copy` cannot smuggle in
+    // attacker-controlled content from outside the jail.
     {
         let label = format!("{}.copy", class_name);
         static_methods.insert(
@@ -590,7 +718,11 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, resolve:
                     };
                     let src_resolved = resolve(&src, "copy")?;
                     let dest_resolved = resolve(&dest, "copy")?;
-                    fs::copy(&src_resolved, &dest_resolved)
+                    let mut src_f = open_for_read(&src_resolved, follow)
+                        .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
+                    let mut dest_f = open_for_write_truncate(&dest_resolved, follow)
+                        .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
+                    std::io::copy(&mut src_f, &mut dest_f)
                         .map(|_| Value::Bool(true))
                         .map_err(|e| format!("{}.copy() failed: {}", class_name, e))
                 },
@@ -820,5 +952,70 @@ mod tests {
         // unchanged regardless of jail state.
         let p = trusted_resolver("/anywhere", "read").unwrap();
         assert_eq!(p, PathBuf::from("/anywhere"));
+    }
+
+    // ----- SEC-006a: O_NOFOLLOW / symlink_metadata behaviour ---------------
+
+    #[cfg(unix)]
+    #[test]
+    fn nofollow_open_rejects_symlink_even_when_target_is_in_jail() {
+        // Even with the symlink target inside the jail, `O_NOFOLLOW`
+        // must refuse to open through the link. This is the regression
+        // SEC-006a defends against (a local TOCTOU swap that points an
+        // already-canonicalised path at a symlink before the open).
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.txt");
+        std::fs::write(&target, "ok").unwrap();
+        let link = dir.path().join("link.txt");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            return;
+        }
+        let err = open_for_read(&link, /* follow */ false).unwrap_err();
+        assert_eq!(
+            err.raw_os_error(),
+            Some(libc::ELOOP),
+            "expected ELOOP, got {:?}",
+            err
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn follow_open_succeeds_through_symlink_for_trusted() {
+        // The `Trusted` policy keeps following symlinks; this is the
+        // legitimate "tail a symlinked log file" use case.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.txt");
+        std::fs::write(&target, "hello").unwrap();
+        let link = dir.path().join("link.txt");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            return;
+        }
+        let mut s = String::new();
+        use std::io::Read;
+        open_for_read(&link, /* follow */ true)
+            .unwrap()
+            .read_to_string(&mut s)
+            .unwrap();
+        assert_eq!(s, "hello");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn metadata_policy_returns_link_under_nofollow_target_under_follow() {
+        // With follow=false, metadata_policy reports the symlink itself
+        // (file_type().is_symlink() == true). With follow=true, it
+        // reports the regular-file target.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.txt");
+        std::fs::write(&target, "x").unwrap();
+        let link = dir.path().join("link.txt");
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            return;
+        }
+        let link_meta = metadata_policy(&link, false).unwrap();
+        assert!(link_meta.file_type().is_symlink());
+        let target_meta = metadata_policy(&link, true).unwrap();
+        assert!(target_meta.is_file() && !target_meta.file_type().is_symlink());
     }
 }

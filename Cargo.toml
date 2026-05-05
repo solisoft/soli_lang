@@ -90,6 +90,11 @@ async-channel = "2.3"
 daemonize = "0.5"
 nix = { version = "0.29", features = ["signal", "process"] }
 
+# Used for Unix-only `O_NOFOLLOW` open flag in the file builtins (SEC-006a).
+# Already a transitive dep via tokio/etc; promoting it to a direct dep so the
+# constant is reachable without depending on a specific transitive's exports.
+libc = "0.2"
+
 # Ordered hash map with O(1) lookups
 indexmap = "2"
 

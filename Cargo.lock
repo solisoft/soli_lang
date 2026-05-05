@@ -3997,6 +3997,7 @@ dependencies = [
  "itoa",
  "jsonwebtoken",
  "lazy_static",
+ "libc",
  "lru",
  "md-5 0.10.6",
  "mimalloc",
