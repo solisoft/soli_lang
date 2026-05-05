@@ -36,8 +36,12 @@ pub async fn handle_live_reload_websocket(
             .unwrap());
     }
 
-    // Perform the WebSocket upgrade
-    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, None) {
+    // SEC-047: cap incoming message + frame size on the live-reload WS
+    // upgrade — the client only sends pong frames, but tungstenite's
+    // 64 MiB default leaves an attacker free to drip-feed huge payloads
+    // and pin worker memory.
+    let ws_config = super::default_websocket_config();
+    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config)) {
         Ok(result) => result,
         Err(e) => {
             eprintln!("[LiveReload WS] Upgrade error: {}", e);

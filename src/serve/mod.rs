@@ -1693,7 +1693,9 @@ async fn handle_hyper_request(
             let session_id = extract_live_session_id(cookies);
 
             // Perform the WebSocket upgrade
-            let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, None) {
+            let ws_config = default_websocket_config();
+            let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config))
+            {
                 Ok(result) => result,
                 Err(e) => {
                     eprintln!("[LiveView] Upgrade error: {}", e);
@@ -2410,6 +2412,21 @@ fn forbidden_websocket_origin_response() -> Response<Full<Bytes>> {
         .unwrap()
 }
 
+/// SEC-047: tungstenite's default caps are 64 MiB per message and 16 MiB
+/// per frame. Combined with the per-connection mpsc channel of 32
+/// pending messages, a few hundred connections drip-feeding maximum-size
+/// payloads can pin tens of GiB of worker memory. 1 MiB is plenty for
+/// live-reload signals, LiveView event payloads, and form-shaped data;
+/// large blobs (file uploads, images) belong on HTTP, not WS.
+pub(crate) fn default_websocket_config() -> hyper_tungstenite::tungstenite::protocol::WebSocketConfig
+{
+    hyper_tungstenite::tungstenite::protocol::WebSocketConfig {
+        max_message_size: Some(1 << 20),
+        max_frame_size: Some(1 << 20),
+        ..Default::default()
+    }
+}
+
 /// SEC-014: app-registered CSRF exemption patterns. Populated from Soli
 /// code via `skip_csrf("/path[/*]")` (typically called from
 /// `config/routes.sl` or a controller's `static` block before route
@@ -2658,7 +2675,8 @@ async fn handle_websocket_upgrade(
     }
 
     // Perform the WebSocket upgrade
-    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, None) {
+    let ws_config = default_websocket_config();
+    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config)) {
         Ok(result) => result,
         Err(e) => {
             eprintln!("[WS] Upgrade error: {}", e);
@@ -5653,6 +5671,16 @@ mod tests {
 
         assert!(is_authorized_dev_repl_request(&headers, peer_addr));
         std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+    }
+
+    #[test]
+    fn default_websocket_config_caps_message_and_frame_size() {
+        // SEC-047: tungstenite's defaults (64 MiB / 16 MiB) are too
+        // generous; lock the caps in so a future refactor can't quietly
+        // restore them.
+        let cfg = default_websocket_config();
+        assert_eq!(cfg.max_message_size, Some(1 << 20));
+        assert_eq!(cfg.max_frame_size, Some(1 << 20));
     }
 
     #[test]
