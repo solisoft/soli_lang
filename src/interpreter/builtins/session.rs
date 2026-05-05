@@ -127,6 +127,18 @@ pub struct SessionConfig {
     pub solidb_host: Option<String>,
     pub solidb_database: Option<String>,
     pub solidb_collection: Option<String>,
+    /// SEC-025: API key passed to the SoliDB session backend so worker
+    /// → SoliDB calls authenticate. Reads `SOLI_SOLIDB_API_KEY`, falling
+    /// back to `SOLIDB_API_KEY` (the same key the Model layer uses) when
+    /// the session-specific override isn't set — common-case operators
+    /// only need to configure it once.
+    pub solidb_api_key: Option<String>,
+    /// SEC-025: basic-auth username for SoliDB sessions. Reads
+    /// `SOLI_SOLIDB_USERNAME`, falling back to `SOLIDB_USERNAME`.
+    pub solidb_username: Option<String>,
+    /// SEC-025: basic-auth password for SoliDB sessions. Reads
+    /// `SOLI_SOLIDB_PASSWORD`, falling back to `SOLIDB_PASSWORD`.
+    pub solidb_password: Option<String>,
     pub solikv_host: Option<String>,
     pub solikv_port: Option<u16>,
     pub solikv_token: Option<String>,
@@ -144,6 +156,20 @@ impl Default for SessionConfig {
         let solidb_host = std::env::var("SOLI_SOLIDB_HOST").ok();
         let solidb_database = std::env::var("SOLI_SOLIDB_DATABASE").ok();
         let solidb_collection = std::env::var("SOLI_SOLIDB_COLLECTION").ok();
+        // SEC-025: prefer session-specific overrides, fall back to the
+        // generic SOLIDB_* credentials the Model layer already reads.
+        let solidb_api_key = std::env::var("SOLI_SOLIDB_API_KEY")
+            .ok()
+            .or_else(|| std::env::var("SOLIDB_API_KEY").ok())
+            .filter(|t| !t.is_empty());
+        let solidb_username = std::env::var("SOLI_SOLIDB_USERNAME")
+            .ok()
+            .or_else(|| std::env::var("SOLIDB_USERNAME").ok())
+            .filter(|t| !t.is_empty());
+        let solidb_password = std::env::var("SOLI_SOLIDB_PASSWORD")
+            .ok()
+            .or_else(|| std::env::var("SOLIDB_PASSWORD").ok())
+            .filter(|t| !t.is_empty());
         let solikv_host = std::env::var("SOLI_SOLIKV_HOST").ok();
         let solikv_port = std::env::var("SOLI_SOLIKV_PORT")
             .ok()
@@ -162,6 +188,9 @@ impl Default for SessionConfig {
             solidb_host,
             solidb_database,
             solidb_collection,
+            solidb_api_key,
+            solidb_username,
+            solidb_password,
             solikv_host,
             solikv_port,
             solikv_token,
@@ -194,8 +223,43 @@ impl SessionConfig {
                     .solidb_database
                     .clone()
                     .unwrap_or_else(|| "solidb".to_string());
-                let store = crate::interpreter::builtins::session_solidb::SolidbSessionStore::new(
-                    host, database,
+
+                // SEC-025: refuse plaintext-HTTP non-loopback session storage,
+                // and require auth. Sessions hold authenticated `user_id`s,
+                // so anyone on the network path between the app and SoliDB
+                // could otherwise read or forge user identity.
+                let in_test = crate::interpreter::builtins::http_class::ssrf_test_mode();
+                let allow_insecure = session_allow_insecure_http();
+                let is_https = host.starts_with("https://");
+                let is_loopback = is_loopback_session_host(&host);
+                if !in_test && !is_https && !is_loopback && !allow_insecure {
+                    return Err(format!(
+                        "SoliDB session storage refuses plaintext HTTP for non-loopback host '{}'. \
+                         Use https:// or set SOLI_SESSION_ALLOW_INSECURE_HTTP=1 (only when the network path is trusted).",
+                        host
+                    ));
+                }
+                let has_auth = self.solidb_api_key.is_some()
+                    || (self.solidb_username.is_some() && self.solidb_password.is_some());
+                if !in_test && !is_loopback && !has_auth && !allow_insecure {
+                    return Err(format!(
+                        "SoliDB session storage requires authentication for non-loopback host '{}'. \
+                         Set SOLI_SOLIDB_API_KEY or SOLI_SOLIDB_USERNAME / SOLI_SOLIDB_PASSWORD, or set SOLI_SESSION_ALLOW_INSECURE_HTTP=1.",
+                        host
+                    ));
+                }
+
+                let mut store =
+                    crate::interpreter::builtins::session_solidb::SolidbSessionStore::new(
+                        host, database,
+                    );
+                if let Some(collection) = self.solidb_collection.clone() {
+                    store = store.with_collection(collection);
+                }
+                let store = store.with_auth(
+                    self.solidb_api_key.clone(),
+                    self.solidb_username.clone(),
+                    self.solidb_password.clone(),
                 );
                 Ok(Arc::new(store))
             }
@@ -214,6 +278,45 @@ impl SessionConfig {
             }
         }
     }
+}
+
+/// SEC-025: returns true when the operator has explicitly opted into
+/// plaintext / no-auth session storage via `SOLI_SESSION_ALLOW_INSECURE_HTTP=1`.
+/// Use sparingly — this disables the same-VPC TLS/auth requirement.
+fn session_allow_insecure_http() -> bool {
+    std::env::var("SOLI_SESSION_ALLOW_INSECURE_HTTP")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+}
+
+/// SEC-025: detect loopback-only session storage hosts. Loopback has no
+/// network path so plaintext / no-auth SoliDB is acceptable there.
+/// Accepts the same set of names `is_blocked_host` does in the SSRF
+/// guard so the two surfaces agree on what counts as loopback.
+fn is_loopback_session_host(host: &str) -> bool {
+    let host = host.trim_end_matches('/');
+    let host = host
+        .strip_prefix("http://")
+        .or_else(|| host.strip_prefix("https://"))
+        .unwrap_or(host);
+    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
+    // Extract just the hostname, handling bracketed `[::1]:8080`,
+    // bare IPv6 like `::1`, and `host:port`.
+    let hostname = if let Some(rest) = host.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else if host.matches(':').count() >= 2 {
+        host
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    let lower = hostname.to_ascii_lowercase();
+    if lower == "localhost" || lower.starts_with("localhost.") {
+        return true;
+    }
+    if let Ok(ip) = lower.parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+    false
 }
 
 lazy_static! {
@@ -651,6 +754,21 @@ pub fn register_session_builtins(env: &mut Environment) {
                             config.solidb_collection = Some(s.clone());
                         }
                     }
+                    "solidb_api_key" | "api_key" => {
+                        if let Value::String(s) = v {
+                            config.solidb_api_key = Some(s.clone());
+                        }
+                    }
+                    "solidb_username" | "username" => {
+                        if let Value::String(s) = v {
+                            config.solidb_username = Some(s.clone());
+                        }
+                    }
+                    "solidb_password" | "password" => {
+                        if let Value::String(s) = v {
+                            config.solidb_password = Some(s.clone());
+                        }
+                    }
                     "solikv_host" => {
                         if let Value::String(s) = v {
                             config.solikv_host = Some(s.clone());
@@ -777,6 +895,50 @@ mod tests {
         let mut env = Environment::new();
         register_session_builtins(&mut env);
         env
+    }
+
+    /// SEC-025: loopback host detection accepts the names that
+    /// `is_blocked_host` does in the SSRF guard.
+    #[test]
+    fn loopback_session_host_accepts_known_loopbacks() {
+        for host in [
+            "127.0.0.1",
+            "localhost",
+            "localhost:8080",
+            "http://127.0.0.1:6745",
+            "https://localhost",
+            "user:pass@127.0.0.1:8080",
+            "[::1]",
+            "[::1]:8080",
+            "::1",
+            "127.0.0.1/",
+            "localhost.local",
+        ] {
+            assert!(
+                is_loopback_session_host(host),
+                "expected `{}` to be loopback",
+                host
+            );
+        }
+    }
+
+    /// SEC-025: non-loopback hosts must be flagged as remote so the
+    /// gate refuses plaintext / no-auth traffic.
+    #[test]
+    fn loopback_session_host_rejects_remote() {
+        for host in [
+            "db.internal:8080",
+            "10.0.0.1:8080",
+            "http://example.com",
+            "https://soli.example.com:6745",
+            "192.168.1.1",
+        ] {
+            assert!(
+                !is_loopback_session_host(host),
+                "expected `{}` to NOT be loopback",
+                host
+            );
+        }
     }
 
     /// First-time visitor: no Cookie header, handler writes to the session.

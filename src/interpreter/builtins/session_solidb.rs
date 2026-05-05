@@ -41,6 +41,13 @@ pub struct SolidbSessionStore {
     collection: String,
     max_age: Duration,
     request_counter: AtomicU64,
+    /// SEC-025: authenticate worker → SoliDB calls so a network attacker
+    /// (or an unrelated tenant on the same DB) can't read or forge
+    /// session documents. At most one of {api_key} or {username+password}
+    /// is honored (JWT priority is applied inside `SoliDBClient`).
+    api_key: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 impl SolidbSessionStore {
@@ -51,6 +58,9 @@ impl SolidbSessionStore {
             collection: "sessions".to_string(),
             max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
+            api_key: None,
+            username: None,
+            password: None,
         }
     }
 
@@ -59,10 +69,30 @@ impl SolidbSessionStore {
         self
     }
 
+    /// SEC-025: install auth credentials. Pass `(Some(key), None, None)`
+    /// for API-key auth or `(None, Some(user), Some(pass))` for basic
+    /// auth. Other combinations leave the request unauthenticated and
+    /// are intended for loopback / test runs only.
+    pub fn with_auth(
+        mut self,
+        api_key: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> Self {
+        self.api_key = api_key;
+        self.username = username;
+        self.password = password;
+        self
+    }
+
     fn create_client(&self) -> Result<SoliDBClient, SoliDBError> {
-        let client = SoliDBClient::connect(&self.host)?;
-        let mut client = client;
+        let mut client = SoliDBClient::connect(&self.host)?;
         client.set_database(&self.database);
+        if let Some(key) = &self.api_key {
+            client = client.with_api_key(key);
+        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
+            client = client.with_basic_auth(u, p);
+        }
         Ok(client)
     }
 

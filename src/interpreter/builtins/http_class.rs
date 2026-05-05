@@ -57,7 +57,7 @@ pub fn enable_ssrf_test_mode() {
     SSRF_TEST_MODE.store(true, Ordering::SeqCst);
 }
 
-fn ssrf_test_mode() -> bool {
+pub fn ssrf_test_mode() -> bool {
     SSRF_TEST_MODE.load(Ordering::Relaxed)
 }
 

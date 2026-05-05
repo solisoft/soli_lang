@@ -60,9 +60,13 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_SESSION_DRIVER` | Session backend: `in_memory`, `disk`, `solidb`, or `solikv`. | `in_memory` |
 | `SOLI_SESSION_PATH` | Directory for disk-backed session files. | `./sessions` |
 | `SOLI_SESSION_TTL` | Session timeout in seconds. | `86400` |
-| `SOLI_SOLIDB_HOST` | SolidB host for the `solidb` session driver. | driver default |
+| `SOLI_SOLIDB_HOST` | SolidB host for the `solidb` session driver. Must be `https://` or a loopback (`localhost`, `127.0.0.1`, `::1`) — plaintext HTTP to a remote SolidB is rejected. | driver default |
 | `SOLI_SOLIDB_DATABASE` | SolidB database for sessions. | driver default |
 | `SOLI_SOLIDB_COLLECTION` | SolidB collection for sessions. | driver default |
+| `SOLI_SOLIDB_API_KEY` | API key the `solidb` session driver presents to SolidB. Required for non-loopback hosts. Falls back to `SOLIDB_API_KEY` (the same key the Model layer reads) when unset. | unset |
+| `SOLI_SOLIDB_USERNAME` | Basic-auth username for the `solidb` session driver (paired with `SOLI_SOLIDB_PASSWORD`). Falls back to `SOLIDB_USERNAME`. | unset |
+| `SOLI_SOLIDB_PASSWORD` | Basic-auth password for the `solidb` session driver. Falls back to `SOLIDB_PASSWORD`. | unset |
+| `SOLI_SESSION_ALLOW_INSECURE_HTTP` | Set to `1`/`true`/`yes` to allow plaintext HTTP and missing auth on non-loopback session hosts. Only when the network path is operator-trusted. | unset |
 | `SOLI_SOLIKV_HOST` | SoliKV host for the `solikv` session driver. | `localhost` |
 | `SOLI_SOLIKV_PORT` | SoliKV port for sessions. | `6380` |
 | `SOLI_SOLIKV_TOKEN` | SoliKV auth token for sessions. | unset |
