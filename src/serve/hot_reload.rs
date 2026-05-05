@@ -37,8 +37,16 @@ impl FileTracker {
     }
 
     /// Start tracking a file, recording its current modification time.
+    ///
+    /// SEC-049: refuses symlinks. An attacker who can drop a symlink into
+    /// a watched dir would otherwise have us track an arbitrary path
+    /// outside the project; on the next mtime bump the hot-reload
+    /// pipeline would read+execute it.
     pub fn track(&mut self, path: &Path) {
-        if let Ok(metadata) = std::fs::metadata(path) {
+        if let Ok(metadata) = std::fs::symlink_metadata(path) {
+            if metadata.file_type().is_symlink() {
+                return;
+            }
             if let Ok(mtime) = metadata.modified() {
                 self.files.insert(path.to_path_buf(), mtime);
             }
@@ -58,8 +66,14 @@ impl FileTracker {
 
         let mut changed = Vec::new();
 
+        // SEC-049: stat with `symlink_metadata` so a tracked file
+        // replaced by a symlink mid-flight is silently ignored instead
+        // of triggering a reload that would follow the link.
         for (path, last_mtime) in &self.files {
-            if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(metadata) = std::fs::symlink_metadata(path) {
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if let Ok(current_mtime) = metadata.modified() {
                     if current_mtime > *last_mtime {
                         changed.push(path.clone());
@@ -70,7 +84,10 @@ impl FileTracker {
 
         // Update mtimes for changed files
         for path in &changed {
-            if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(metadata) = std::fs::symlink_metadata(path) {
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if let Ok(mtime) = metadata.modified() {
                     self.files.insert(path.clone(), mtime);
                 }
@@ -83,7 +100,10 @@ impl FileTracker {
     /// Check if any tracked files have been modified.
     pub fn has_changes(&self) -> bool {
         for (path, last_mtime) in &self.files {
-            if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(metadata) = std::fs::symlink_metadata(path) {
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if let Ok(current_mtime) = metadata.modified() {
                     if current_mtime > *last_mtime {
                         return true;
@@ -114,6 +134,28 @@ impl Default for FileTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn track_refuses_symlink_entries() {
+        // SEC-049: a symlink dropped into a watched dir would otherwise
+        // let an attacker have the hot-reload pipeline read+execute an
+        // arbitrary file outside the project on the next mtime bump.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real_view.erb");
+        std::fs::write(&target, "<h1>real</h1>").unwrap();
+        let link = dir.path().join("symlinked_view.erb");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let mut tracker = FileTracker::with_check_interval(Duration::from_millis(0));
+        tracker.track(&link);
+
+        assert_eq!(tracker.tracked_count(), 0, "symlink should not be tracked");
+
+        // Sanity check: a real file at the same dir IS tracked.
+        tracker.track(&target);
+        assert_eq!(tracker.tracked_count(), 1);
+    }
 
     #[test]
     fn test_file_tracker_basic() {
