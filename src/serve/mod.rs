@@ -2133,8 +2133,9 @@ async fn handle_hyper_request(
         // browser tab on any origin can open the long-poll, hold a
         // worker for 55 s per connection, and fan out hundreds in
         // parallel to exhaust the broadcast channel + worker pool.
-        // `websocket_origin_allowed` allows missing Origin (curl from
-        // the dev box) and otherwise requires `Origin` to match `Host`.
+        // `websocket_origin_allowed` requires Origin whenever a Cookie
+        // is present (SEC-046) and otherwise requires it to match
+        // `Host`; cookie-less curl from the dev box still works.
         if !websocket_origin_allowed(req.headers()) {
             return Ok(Response::builder()
                 .status(StatusCode::FORBIDDEN)
@@ -2544,9 +2545,15 @@ fn forbidden_csrf_response(reason: &str) -> Response<Full<Bytes>> {
 
 fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {
     let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
-        // Non-browser clients often omit Origin. The Origin check protects
-        // browser-driven, cookie-authenticated WebSocket requests.
-        return true;
+        // SEC-046: an Origin-less upgrade was previously allowed because
+        // non-browser clients (curl, native apps) often omit it. But the
+        // CSWSH threat is precisely a non-browser pivot — e.g. an SSRF
+        // target inside the network forging a cookie-bearing handshake
+        // to a privileged endpoint. Require Origin whenever the request
+        // carries a Cookie; allow the missing header only on
+        // unauthenticated upgrades, where there are no credentials to
+        // ride.
+        return !headers.contains_key(header::COOKIE);
     };
 
     let Some(origin_authority) = origin_authority(origin) else {
@@ -5649,11 +5656,26 @@ mod tests {
     }
 
     #[test]
-    fn websocket_origin_allows_missing_origin() {
+    fn websocket_origin_allows_missing_origin_without_cookie() {
+        // SEC-046: cookie-less upgrade has no credentials to ride, so a
+        // missing Origin is still acceptable (curl from the dev box, native
+        // clients hitting an unauthenticated endpoint).
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::HOST, "app.test:5011".parse().unwrap());
 
         assert!(websocket_origin_allowed(&headers));
+    }
+
+    #[test]
+    fn websocket_origin_rejects_missing_origin_with_cookie() {
+        // SEC-046: the CSWSH threat is a non-browser pivot forging a
+        // cookie-bearing handshake. When a Cookie is present, Origin must
+        // be too.
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, "app.test:5011".parse().unwrap());
+        headers.insert(header::COOKIE, "session=abc".parse().unwrap());
+
+        assert!(!websocket_origin_allowed(&headers));
     }
 
     #[test]
