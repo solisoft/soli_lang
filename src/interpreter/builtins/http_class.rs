@@ -444,6 +444,30 @@ where
     })))
 }
 
+/// SEC-015a: route a fallback (no-shared-tokio-handle) HTTP call through
+/// the user-facing reqwest client instead of `ureq_agent()`. The reqwest
+/// client carries `SsrfBlockingResolver` from SEC-015 — every connect-time
+/// DNS lookup goes through the same blocked-IP filter as
+/// `validate_url_for_ssrf`, closing the DNS-rebinding TOCTOU. `ureq` has
+/// no DNS-resolver hook, so any code path that calls `ureq_agent()` for a
+/// user-supplied URL is rebinding-vulnerable.
+///
+/// Builds a private current-thread runtime per call. CLI HTTP usage is
+/// infrequent and the build cost is sub-millisecond, so a thread-local
+/// cache buys nothing — we'd be on a fresh thread anyway.
+fn run_user_http_request<F, Fut, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(reqwest::Client) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let client = get_user_http_client().clone();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("Failed to build tokio runtime: {}", e))?;
+    rt.block_on(f(client))
+}
+
 fn value_to_json(value: &Value) -> Result<String, String> {
     crate::interpreter::value::stringify_to_string(value)
 }
@@ -550,14 +574,20 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent().get(&url).call() {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .get(&url)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -620,18 +650,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .post(&url)
-                        .set("Content-Type", &content_type)
-                        .send_string(&body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .post(&url)
+                                .header("Content-Type", content_type)
+                                .body(body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -694,18 +728,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .put(&url)
-                        .set("Content-Type", &content_type)
-                        .send_string(&body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .put(&url)
+                                .header("Content-Type", content_type)
+                                .body(body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -768,18 +806,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .patch(&url)
-                        .set("Content-Type", &content_type)
-                        .send_string(&body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .patch(&url)
+                                .header("Content-Type", content_type)
+                                .body(body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -821,14 +863,20 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent().delete(&url).call() {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .delete(&url)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -868,12 +916,20 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent().head(&url).call() {
-                        Ok(response) => {
-                            let status = response.status();
-                            Ok(format!("{} {}", status, response.status_text()))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .head(&url)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            Ok(format!(
+                                "{} {}",
+                                status.as_u16(),
+                                status.canonical_reason().unwrap_or("")
+                            ))
+                        })
                     },
                     HttpFutureKind::String,
                 )),
@@ -920,18 +976,21 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .get(&url)
-                        .set("Accept", "application/json")
-                        .call()
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .get(&url)
+                                .header("Accept", "application/json")
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::Json,
                 )),
@@ -983,18 +1042,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .post(&url)
-                        .set("Content-Type", "application/json")
-                        .send_string(&json_body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .post(&url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::Json,
                 )),
@@ -1046,18 +1109,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .put(&url)
-                        .set("Content-Type", "application/json")
-                        .send_string(&json_body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .put(&url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::Json,
                 )),
@@ -1109,18 +1176,22 @@ pub fn register_http_class(env: &mut Environment) {
                     }
                 }
                 _ => Ok(spawn_http_future(
-                    move || match ureq_agent()
-                        .patch(&url)
-                        .set("Content-Type", "application/json")
-                        .send_string(&json_body)
-                    {
-                        Ok(response) => read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response body: {}", e)),
-                        Err(ureq::Error::Status(code, response)) => {
-                            let body = read_capped_text_sync(response).unwrap_or_default();
-                            Err(format!("HTTP {} error: {}", code, body))
-                        }
-                        Err(e) => Err(format!("HTTP request failed: {}", e)),
+                    move || {
+                        run_user_http_request(move |client| async move {
+                            let resp = client
+                                .patch(&url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body)
+                                .send()
+                                .await
+                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let status = resp.status();
+                            if !status.is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Err(format!("HTTP {} error: {}", status.as_u16(), body));
+                            }
+                            read_capped_text_async(resp).await
+                        })
                     },
                     HttpFutureKind::Json,
                 )),
@@ -1240,74 +1311,60 @@ pub fn register_http_class(env: &mut Environment) {
                     let headers_vec_clone = headers_vec.clone();
                     Ok(spawn_http_future(
                         move || {
-                            let mut request = match method_clone.as_str() {
-                                "GET" => ureq_agent().get(&url),
-                                "POST" => ureq_agent().post(&url),
-                                "PUT" => ureq_agent().put(&url),
-                                "DELETE" => ureq_agent().delete(&url),
-                                "PATCH" => ureq_agent().patch(&url),
-                                "HEAD" => ureq_agent().head(&url),
-                                _ => {
-                                    return Err(format!(
-                                        "Unsupported HTTP method: {}",
-                                        method_clone
-                                    ))
-                                }
-                            };
-
-                            for (key, value) in &headers_vec_clone {
-                                request = request.set(key, value);
-                            }
-
-                            let response = if let Some(body) = body_opt_clone {
-                                request.send_string(&body)
-                            } else {
-                                request.call()
-                            };
-
-                            match response {
-                                Ok(resp) => {
-                                    let status = resp.status();
-                                    let status_text = resp.status_text().to_string();
-
-                                    let mut headers_map = serde_json::Map::new();
-                                    for name in resp.headers_names() {
-                                        if let Some(value) = resp.header(&name) {
-                                            headers_map.insert(
-                                                name,
-                                                serde_json::Value::String(value.to_string()),
-                                            );
-                                        }
+                            run_user_http_request(move |client| async move {
+                                let mut request = match method_clone.as_str() {
+                                    "GET" => client.get(&url),
+                                    "POST" => client.post(&url),
+                                    "PUT" => client.put(&url),
+                                    "DELETE" => client.delete(&url),
+                                    "PATCH" => client.patch(&url),
+                                    "HEAD" => client.head(&url),
+                                    _ => {
+                                        return Err(format!(
+                                            "Unsupported HTTP method: {}",
+                                            method_clone
+                                        ))
                                     }
+                                };
 
-                                    let body = read_capped_text_sync(resp).map_err(|e| {
-                                        format!("Failed to read response body: {}", e)
-                                    })?;
-
-                                    let result = serde_json::json!({
-                                        "status": status,
-                                        "status_text": status_text,
-                                        "headers": headers_map,
-                                        "body": body
-                                    });
-
-                                    Ok(result.to_string())
+                                for (key, value) in &headers_vec_clone {
+                                    request = request.header(key.as_str(), value.as_str());
                                 }
-                                Err(ureq::Error::Status(code, resp)) => {
-                                    let status_text = resp.status_text().to_string();
-                                    let body = read_capped_text_sync(resp).unwrap_or_default();
 
-                                    let result = serde_json::json!({
-                                        "status": code,
-                                        "status_text": status_text,
-                                        "headers": {},
-                                        "body": body
-                                    });
-
-                                    Ok(result.to_string())
+                                if let Some(body) = body_opt_clone {
+                                    request = request.body(body);
                                 }
-                                Err(e) => Err(format!("HTTP request failed: {}", e)),
-                            }
+
+                                let resp = request
+                                    .send()
+                                    .await
+                                    .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+                                let status = resp.status().as_u16();
+                                let status_text =
+                                    resp.status().canonical_reason().unwrap_or("").to_string();
+
+                                let mut headers_map = serde_json::Map::new();
+                                for (name, value) in resp.headers().iter() {
+                                    if let Ok(v) = value.to_str() {
+                                        headers_map.insert(
+                                            name.to_string(),
+                                            serde_json::Value::String(v.to_string()),
+                                        );
+                                    }
+                                }
+
+                                let body = read_capped_text_async(resp).await?;
+
+                                let result = serde_json::json!({
+                                    "status": status,
+                                    "status_text": status_text,
+                                    "headers": headers_map,
+                                    "body": body
+                                });
+
+                                Ok(result.to_string())
+                            })
                         },
                         HttpFutureKind::FullResponse,
                     ))
@@ -1638,19 +1695,32 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
         .map(|url| {
             thread::spawn(move || {
                 let start = std::time::Instant::now();
-                let (status, body) = match ureq_agent().get(&url).call() {
-                    Ok(response) => {
-                        let status = response.status();
-                        let body = read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response: {}", e));
-                        (status, body)
-                    }
-                    Err(ureq::Error::Status(code, response)) => {
-                        let body = read_capped_text_sync(response).unwrap_or_default();
-                        (code, Err(format!("HTTP {} error: {}", code, body)))
-                    }
-                    Err(e) => (0, Err(format!("Request failed: {}", e))),
-                };
+                let url_for_call = url.clone();
+                // SEC-015a: route through the SSRF-aware reqwest client so
+                // the connect-time DNS lookup goes through
+                // `SsrfBlockingResolver` (no equivalent on `ureq`).
+                let (status, body): (u16, Result<String, String>) =
+                    match run_user_http_request::<_, _, (u16, Result<String, String>)>(
+                        move |client| async move {
+                            let resp = client
+                                .get(&url_for_call)
+                                .send()
+                                .await
+                                .map_err(|e| format!("Request failed: {}", e))?;
+                            let code = resp.status().as_u16();
+                            if !resp.status().is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Ok((code, Err(format!("HTTP {} error: {}", code, body))));
+                            }
+                            let body = read_capped_text_async(resp)
+                                .await
+                                .map_err(|e| format!("Failed to read response: {}", e));
+                            Ok((code, body))
+                        },
+                    ) {
+                        Ok(pair) => pair,
+                        Err(e) => (0, Err(e)),
+                    };
                 let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                 let stats = ParallelCallStats {
                     method: "GET".to_string(),
@@ -1698,23 +1768,31 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
         .map(|url| {
             thread::spawn(move || {
                 let start = std::time::Instant::now();
-                let (status, body) = match ureq_agent()
-                    .get(&url)
-                    .set("Accept", "application/json")
-                    .call()
-                {
-                    Ok(response) => {
-                        let status = response.status();
-                        let body = read_capped_text_sync(response)
-                            .map_err(|e| format!("Failed to read response: {}", e));
-                        (status, body)
-                    }
-                    Err(ureq::Error::Status(code, response)) => {
-                        let body = read_capped_text_sync(response).unwrap_or_default();
-                        (code, Err(format!("HTTP {} error: {}", code, body)))
-                    }
-                    Err(e) => (0, Err(format!("Request failed: {}", e))),
-                };
+                let url_for_call = url.clone();
+                // SEC-015a: SSRF-aware reqwest client.
+                let (status, body): (u16, Result<String, String>) =
+                    match run_user_http_request::<_, _, (u16, Result<String, String>)>(
+                        move |client| async move {
+                            let resp = client
+                                .get(&url_for_call)
+                                .header("Accept", "application/json")
+                                .send()
+                                .await
+                                .map_err(|e| format!("Request failed: {}", e))?;
+                            let code = resp.status().as_u16();
+                            if !resp.status().is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Ok((code, Err(format!("HTTP {} error: {}", code, body))));
+                            }
+                            let body = read_capped_text_async(resp)
+                                .await
+                                .map_err(|e| format!("Failed to read response: {}", e));
+                            Ok((code, body))
+                        },
+                    ) {
+                        Ok(pair) => pair,
+                        Err(e) => (0, Err(e)),
+                    };
                 let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                 let stats = ParallelCallStats {
                     method: "GET".to_string(),
@@ -1814,58 +1892,52 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
 }
 
 fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
-    let mut request = match config.method.as_str() {
-        "GET" => ureq_agent().get(&config.url),
-        "POST" => ureq_agent().post(&config.url),
-        "PUT" => ureq_agent().put(&config.url),
-        "DELETE" => ureq_agent().delete(&config.url),
-        "PATCH" => ureq_agent().patch(&config.url),
-        "HEAD" => ureq_agent().head(&config.url),
-        _ => return Err(format!("Unsupported HTTP method: {}", config.method)),
-    };
+    // SEC-015a: SSRF-aware reqwest client with `SsrfBlockingResolver`.
+    // Was on `ureq_agent()` which had no DNS-resolver hook, so the
+    // SEC-015 DNS-rebinding TOCTOU defense couldn't apply here.
+    run_user_http_request::<_, _, HttpResponse>(move |client| async move {
+        let mut request = match config.method.as_str() {
+            "GET" => client.get(&config.url),
+            "POST" => client.post(&config.url),
+            "PUT" => client.put(&config.url),
+            "DELETE" => client.delete(&config.url),
+            "PATCH" => client.patch(&config.url),
+            "HEAD" => client.head(&config.url),
+            _ => return Err(format!("Unsupported HTTP method: {}", config.method)),
+        };
 
-    for (key, value) in &config.headers {
-        request = request.set(key, value);
-    }
+        for (key, value) in &config.headers {
+            request = request.header(key.as_str(), value.as_str());
+        }
 
-    let response = if let Some(body) = config.body {
-        request.send_string(&body)
-    } else {
-        request.call()
-    };
+        if let Some(body) = config.body {
+            request = request.body(body);
+        }
 
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            let status_text = resp.status_text().to_string();
-            let mut headers = vec![];
-            for name in resp.headers_names() {
-                if let Some(value) = resp.header(&name) {
-                    headers.push((name, value.to_string()));
-                }
+        let resp = request
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = resp.status().as_u16();
+        let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
+        let mut headers = vec![];
+        for (name, value) in resp.headers().iter() {
+            if let Ok(v) = value.to_str() {
+                headers.push((name.to_string(), v.to_string()));
             }
-            let body = read_capped_text_sync(resp)
-                .map_err(|e| format!("Failed to read response: {}", e))?;
+        }
+        let body = read_capped_text_async(resp)
+            .await
+            .map_err(|e| format!("Failed to read response: {}", e))?;
 
-            Ok(HttpResponse {
-                status,
-                status_text,
-                headers,
-                body,
-            })
-        }
-        Err(ureq::Error::Status(code, resp)) => {
-            let status_text = resp.status_text().to_string();
-            let body = read_capped_text_sync(resp).unwrap_or_default();
-            Ok(HttpResponse {
-                status: code,
-                status_text,
-                headers: vec![],
-                body,
-            })
-        }
-        Err(e) => Err(format!("Request failed: {}", e)),
-    }
+        Ok(HttpResponse {
+            status,
+            status_text,
+            headers,
+            body,
+        })
+    })
 }
 
 fn response_to_value(response: HttpResponse) -> Value {

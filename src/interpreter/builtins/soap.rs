@@ -14,8 +14,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::interpreter::builtins::http_class::{
-    get_user_http_client, read_capped_text_async, read_capped_text_sync, ureq_agent,
-    validate_url_for_ssrf,
+    get_user_http_client, read_capped_text_async, validate_url_for_ssrf,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
@@ -286,63 +285,65 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        // SEC-007a: route through the redirect-disabled shared agent so a
-        // SOAP endpoint can't bounce the request to a private/loopback
-        // address after passing the up-front validate_url_for_ssrf check.
-        let mut request = ureq_agent().post(&url);
-
-        for (key, value) in &headers {
-            request = request.set(key, value);
-        }
-
-        let result = match request.send_string(&envelope) {
-            Ok(resp) => {
-                let status = resp.status();
-                let body = read_capped_text_sync(resp).unwrap_or_default();
-                let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
-
-                let mut result: HashPairs = HashPairs::default();
-                result.insert(
-                    HashKey::String("status".to_string()),
-                    Value::Int(status as i64),
-                );
-                result.insert(
-                    HashKey::String("status_text".to_string()),
-                    Value::String("OK".to_string()),
-                );
-                result.insert(
-                    HashKey::String("headers".to_string()),
-                    Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
-                );
-                result.insert(HashKey::String("body".to_string()), Value::String(body));
-                result.insert(HashKey::String("parsed".to_string()), parsed);
-
-                build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
+        // SEC-007a + SEC-015a: route through the SSRF-aware reqwest client.
+        // Builds a private current-thread tokio runtime per call so the
+        // connect-time DNS lookup goes through `SsrfBlockingResolver`
+        // (closing the DNS-rebinding TOCTOU `ureq` couldn't cover) while
+        // preserving the existing redirect-disabled posture.
+        let client = get_user_http_client().clone();
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                let _ = tx.send(Ok(format!(
+                    "{{\"error\": \"Failed to build tokio runtime: {}\"}}",
+                    e
+                )));
+                return;
             }
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = read_capped_text_sync(resp).unwrap_or_default();
-                let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
-
-                let mut result: HashPairs = HashPairs::default();
-                result.insert(
-                    HashKey::String("status".to_string()),
-                    Value::Int(code as i64),
-                );
-                result.insert(
-                    HashKey::String("status_text".to_string()),
-                    Value::String("Error".to_string()),
-                );
-                result.insert(
-                    HashKey::String("headers".to_string()),
-                    Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
-                );
-                result.insert(HashKey::String("body".to_string()), Value::String(body));
-                result.insert(HashKey::String("parsed".to_string()), parsed);
-
-                build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
-            }
-            Err(e) => format!("{{\"error\": \"{}\"}}", e),
         };
+
+        let result = rt.block_on(async {
+            let mut request = client.post(&url);
+            for (key, value) in &headers {
+                request = request.header(key.as_str(), value.as_str());
+            }
+
+            match request.body(envelope).send().await {
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    let status_text = if resp.status().is_success() {
+                        "OK"
+                    } else {
+                        "Error"
+                    }
+                    .to_string();
+                    let body = read_capped_text_async(resp).await.unwrap_or_default();
+                    let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
+
+                    let mut result: HashPairs = HashPairs::default();
+                    result.insert(
+                        HashKey::String("status".to_string()),
+                        Value::Int(status as i64),
+                    );
+                    result.insert(
+                        HashKey::String("status_text".to_string()),
+                        Value::String(status_text),
+                    );
+                    result.insert(
+                        HashKey::String("headers".to_string()),
+                        Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+                    );
+                    result.insert(HashKey::String("body".to_string()), Value::String(body));
+                    result.insert(HashKey::String("parsed".to_string()), parsed);
+
+                    build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
+                }
+                Err(e) => format!("{{\"error\": \"{}\"}}", e),
+            }
+        });
 
         let _ = tx.send(Ok(result));
     });
