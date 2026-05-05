@@ -1,146 +1,66 @@
-//! Dotenv file loading built-in functions.
-
-use std::fs;
-use std::path::Path;
+//! `dotenv` / `dotenv!` runtime stubs.
+//!
+//! SEC-033: these were exposed in earlier versions and called the
+//! `unsafe` `std::env::set_var` from worker thread code. That's
+//! documented UB on Rust 2024 / glibc the moment another worker reads
+//! env (which `getenv` and the `SOLIDB_*` builtins do constantly).
+//!
+//! `.env` and `.env.{APP_ENV}` are auto-loaded once at single-threaded
+//! server boot via `serve::env_loader::load_env_files`, so the runtime
+//! stubs are no longer needed. We keep the names registered with
+//! migration errors so existing apps fail loud instead of running
+//! into `undefined variable`.
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
-/// Load a single .env file and return the count of loaded variables.
-fn load_single_env_file(path: &Path) -> Result<i64, String> {
-    if !path.exists() {
-        return Ok(0);
-    }
-
-    let content =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read .env file: {}", e))?;
-
-    let mut loaded = 0;
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        if let Some((key, value)) = parse_env_line(line) {
-            // TODO: Audit that the environment access only happens in single-threaded code.
-            unsafe { std::env::set_var(&key, &value) };
-            loaded += 1;
-        }
-    }
-
-    Ok(loaded)
-}
-
-/// Load environment variables from a .env file.
 pub fn register_dotenv_builtins(env: &mut Environment) {
     env.define(
         "dotenv".to_string(),
-        Value::NativeFunction(NativeFunction::new("dotenv", None, |args| {
-            match args.first() {
-                // If a path is provided, load only that specific file
-                Some(Value::String(s)) => {
-                    let path = Path::new(s);
-                    if !path.exists() {
-                        return Err(format!(".env file not found: {}", path.display()));
-                    }
-                    let loaded = load_single_env_file(path)?;
-                    Ok(Value::Int(loaded))
-                }
-                Some(_) => Err("dotenv() expects optional string path".to_string()),
-                // No path provided: load .env then .env.{APP_ENV}
-                None => {
-                    let base_path = Path::new(".env");
-                    if !base_path.exists() {
-                        return Err(format!(".env file not found: {}", base_path.display()));
-                    }
-
-                    // Load base .env first
-                    let mut total_loaded = load_single_env_file(base_path)?;
-
-                    // Then load environment-specific file if APP_ENV is set
-                    if let Ok(app_env) = std::env::var("APP_ENV") {
-                        let env_specific_path = format!(".env.{}", app_env);
-                        let env_specific = Path::new(&env_specific_path);
-                        if env_specific.exists() {
-                            total_loaded += load_single_env_file(env_specific)?;
-                        }
-                    }
-
-                    Ok(Value::Int(total_loaded))
-                }
-            }
+        Value::NativeFunction(NativeFunction::new("dotenv", None, |_args| {
+            Err(
+                "dotenv() has been removed (SEC-033). `.env` and `.env.{APP_ENV}` are auto-loaded at single-threaded server boot \
+                 — runtime env mutation from a worker thread is unsafe."
+                    .to_string(),
+            )
         })),
     );
 
     env.define(
         "dotenv!".to_string(),
-        Value::NativeFunction(NativeFunction::new("dotenv!", None, |args| {
-            match args.first() {
-                // If a path is provided, load only that specific file
-                Some(Value::String(s)) => {
-                    let path = Path::new(s);
-                    if !path.exists() {
-                        return Err(format!(".env file not found: {}", path.display()));
-                    }
-                    let loaded = load_single_env_file(path)?;
-                    Ok(Value::Int(loaded))
-                }
-                Some(_) => Err("dotenv!() expects optional string path".to_string()),
-                // No path provided: load .env then .env.{APP_ENV}
-                None => {
-                    let base_path = Path::new(".env");
-                    if !base_path.exists() {
-                        return Err(format!(".env file not found: {}", base_path.display()));
-                    }
-
-                    // Load base .env first
-                    let mut total_loaded = load_single_env_file(base_path)?;
-
-                    // Then load environment-specific file if APP_ENV is set
-                    if let Ok(app_env) = std::env::var("APP_ENV") {
-                        let env_specific_path = format!(".env.{}", app_env);
-                        let env_specific = Path::new(&env_specific_path);
-                        if env_specific.exists() {
-                            total_loaded += load_single_env_file(env_specific)?;
-                        }
-                    }
-
-                    Ok(Value::Int(total_loaded))
-                }
-            }
+        Value::NativeFunction(NativeFunction::new("dotenv!", None, |_args| {
+            Err(
+                "dotenv!() has been removed (SEC-033). `.env` and `.env.{APP_ENV}` are auto-loaded at single-threaded server boot \
+                 — runtime env mutation from a worker thread is unsafe."
+                    .to_string(),
+            )
         })),
     );
 }
 
-fn parse_env_line(line: &str) -> Option<(String, String)> {
-    let line = line.trim();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
+    /// SEC-033: `dotenv` and `dotenv!` are removed but still registered;
+    /// callers get a migration error.
+    #[test]
+    fn dotenv_runtime_callers_get_migration_error() {
+        let mut env = Environment::new();
+        register_dotenv_builtins(&mut env);
 
-    let (key, value) = match line.split_once('=') {
-        Some((k, v)) => (k.trim(), v.trim()),
-        None => return None,
-    };
-
-    if key.is_empty() {
-        return None;
-    }
-
-    let key = key.to_string();
-    let value = unquote(value).to_string();
-
-    Some((key, value))
-}
-
-fn unquote(s: &str) -> &str {
-    let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-        &s[1..s.len() - 1]
-    } else {
-        s
+        for name in ["dotenv", "dotenv!"] {
+            let f = match env.get(name) {
+                Some(Value::NativeFunction(f)) => f.clone(),
+                other => panic!("expected NativeFunction for {name}, got {other:?}"),
+            };
+            let err = (f.func)(vec![]).unwrap_err();
+            assert!(
+                err.contains("SEC-033") && err.contains(".env"),
+                "expected SEC-033 migration error from {}, got: {}",
+                name,
+                err
+            );
+        }
     }
 }

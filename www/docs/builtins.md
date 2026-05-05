@@ -1642,30 +1642,6 @@ path = getenv("PATH")
 debug = getenv("DEBUG")
 ```
 
-### setenv(name, value)
-
-Sets an environment variable.
-
-**Parameters:**
-- `name` (String) - Variable name
-- `value` (String) - Variable value
-
-**Returns:** null
-
-**Example:**
-```soli
-setenv("MY_VAR", "my_value")
-```
-
-### unsetenv(name)
-
-Removes an environment variable.
-
-**Parameters:**
-- `name` (String) - Variable name
-
-**Returns:** null
-
 ### hasenv(name)
 
 Checks if an environment variable exists.
@@ -1682,24 +1658,7 @@ if hasenv("DATABASE_URL")
 end
 ```
 
-### dotenv(path?)
-
-Loads environment variables from a .env file.
-
-**Parameters:**
-- `path` (String, optional) - Path to .env file (default: ".env")
-
-**Returns:** Int - Number of variables loaded
-
-**Example:**
-```soli
-dotenv()                    # Loads .env and .env.{APP_ENV}
-dotenv(".env.production")   # Loads specific file
-```
-
-### dotenv!(path?)
-
-Same as `dotenv()` - loads environment variables from a .env file.
+> `.env` and `.env.{APP_ENV}` in the application directory are auto-loaded once at server startup — no Soli-level call is needed.
 
 ---
 

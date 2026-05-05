@@ -61,7 +61,13 @@ pub fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
         let already_set = std::env::var(key).is_ok();
 
         if (override_existing && !is_protected) || !already_set {
-            // TODO: Audit that the environment access only happens in single-threaded code.
+            // SEC-033: `set_var` is `unsafe` because of multi-thread UB on
+            // Rust 2024 / glibc. This call is safe because every caller
+            // of `load_env_file[s]` runs at single-threaded boot, before
+            // worker threads are spawned: `serve::serve_folder` (line 249),
+            // `cli::commands::test_runner::main` (line 300), and the REPL
+            // entry. The `setenv`/`dotenv` runtime builtins that wrapped
+            // this call from worker code were removed in SEC-033.
             unsafe { std::env::set_var(key, value) };
         }
     }
