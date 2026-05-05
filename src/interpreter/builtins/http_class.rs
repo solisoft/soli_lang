@@ -22,6 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 
@@ -34,6 +35,31 @@ use crate::interpreter::value::{
 use crate::serve::get_tokio_handle;
 
 const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
+
+/// SEC-017: process-wide flag that allows the SSRF blocklist to permit
+/// loopback / private IPs. Previously the bypass keyed off
+/// `APP_ENV=test`, but `APP_ENV` is a normal-looking env name that
+/// staging/CI/etc routinely set — operators occasionally turn it on in
+/// production by mistake and lost the SSRF guardrail without warning.
+///
+/// The flag now starts `false` in every process and is flipped to `true`
+/// only by the `soli test` parent (in-process call to
+/// [`enable_ssrf_test_mode`]) and by `soli serve` children spawned by
+/// that parent (via the `SOLI_INTERNAL_TEST_RUNNER` env var, read once
+/// at startup in `main.rs`). Application code, controllers, and
+/// production deployments cannot set it.
+static SSRF_TEST_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Mark this process as the test runner / a test-runner-spawned child.
+/// SSRF blocklist will allow loopback and private addresses while
+/// running. **Never call this from production code paths.**
+pub fn enable_ssrf_test_mode() {
+    SSRF_TEST_MODE.store(true, Ordering::SeqCst);
+}
+
+fn ssrf_test_mode() -> bool {
+    SSRF_TEST_MODE.load(Ordering::Relaxed)
+}
 
 /// Run an async future safely, avoiding blocking the I/O driver if already in async context.
 /// If called from within an async runtime, spawns a dedicated single-thread runtime to avoid
@@ -107,10 +133,12 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     }
 
     if is_blocked_host(host) {
-        // Under the test runner (`APP_ENV=test` is set by `soli test`), allow
-        // loopback/private hosts so specs can reach their own test server.
-        // Production/dev requests remain blocked.
-        if std::env::var("APP_ENV").as_deref() != Ok("test") {
+        // SEC-017: bypass loopback/private only when the process is
+        // running under the test runner (in-process `AtomicBool` set by
+        // `soli test` or by `main.rs` via `SOLI_INTERNAL_TEST_RUNNER`).
+        // Production/dev/staging — no matter what `APP_ENV` says —
+        // stays blocked.
+        if !ssrf_test_mode() {
             return Err("Access to private/localhost addresses is not allowed".to_string());
         }
     }
@@ -237,7 +265,7 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
                 move || -> Result<Vec<std::net::SocketAddr>, std::io::Error> {
                     let raw: Vec<std::net::SocketAddr> =
                         (host.as_str(), 0u16).to_socket_addrs()?.collect();
-                    let allow_loopback = std::env::var("APP_ENV").as_deref() == Ok("test");
+                    let allow_loopback = ssrf_test_mode();
                     let safe: Vec<std::net::SocketAddr> = raw
                         .into_iter()
                         .filter(|sa| allow_loopback || !is_blocked_ip(sa.ip()))
@@ -2110,6 +2138,40 @@ mod parallel_logging_tests {
             assert!(!is_blocked_ip(IpAddr::V6(
                 "2001:4860:4860::8888".parse().unwrap()
             ))); // Google
+        }
+    }
+
+    // SEC-017 — `validate_url_for_ssrf` honors only the in-process
+    // `SSRF_TEST_MODE` flag, not `APP_ENV=test`.
+    static SSRF_FLAG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn ssrf_validate_ignores_app_env_test() {
+        // Serialise with other tests that touch the flag / APP_ENV so
+        // parallel runs don't see each other's transient state.
+        let _guard = SSRF_FLAG_TEST_LOCK.lock().unwrap();
+        let prev_flag = super::SSRF_TEST_MODE.load(std::sync::atomic::Ordering::SeqCst);
+        let prev_env = std::env::var("APP_ENV").ok();
+
+        // Force flag off, even with APP_ENV=test set.
+        super::SSRF_TEST_MODE.store(false, std::sync::atomic::Ordering::SeqCst);
+        std::env::set_var("APP_ENV", "test");
+        let err = super::validate_url_for_ssrf("http://127.0.0.1/").unwrap_err();
+        assert!(
+            err.contains("private/localhost"),
+            "APP_ENV=test alone must NOT bypass the blocklist; got: {}",
+            err
+        );
+
+        // With the flag explicitly enabled, loopback is allowed.
+        super::enable_ssrf_test_mode();
+        assert!(super::validate_url_for_ssrf("http://127.0.0.1/").is_ok());
+
+        // Restore.
+        super::SSRF_TEST_MODE.store(prev_flag, std::sync::atomic::Ordering::SeqCst);
+        match prev_env {
+            Some(v) => std::env::set_var("APP_ENV", v),
+            None => std::env::remove_var("APP_ENV"),
         }
     }
 }

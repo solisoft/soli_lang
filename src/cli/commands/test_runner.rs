@@ -271,6 +271,16 @@ pub fn run_test(
     }
 
     std::env::set_var("APP_ENV", "test");
+
+    // SEC-017: tell the SSRF blocklist this process is a test runner so
+    // loopback/private addresses are reachable for spec fixtures. The
+    // flag is process-local (an `AtomicBool` in `http_class.rs`) — env
+    // vars are explicitly NOT trusted for this decision so a production
+    // deployment that happens to have `APP_ENV=test` set can't lose
+    // the guardrail. Children spawned below get a separate signal via
+    // `SOLI_INTERNAL_TEST_RUNNER` which `main.rs` translates into the
+    // same in-process flag.
+    solilang::interpreter::builtins::http_class::enable_ssrf_test_mode();
     let app_dir = if test_path.is_file() {
         test_path
             .parent()
@@ -484,6 +494,11 @@ pub fn run_test(
                 .arg("--workers")
                 .arg("1")
                 .env("APP_ENV", "test")
+                // SEC-017: hidden internal-only env signal for the SSRF
+                // bypass on test-server children. `main.rs` reads this
+                // once at startup and flips the in-process AtomicBool.
+                // Documented as not for operator use.
+                .env("SOLI_INTERNAL_TEST_RUNNER", "1")
                 .env("SOLIDB_HOST", &solidb_host)
                 .env("SOLIDB_DATABASE", &env.database)
                 .env("SOLIDB_USERNAME", &solidb_user)

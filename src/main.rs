@@ -48,5 +48,19 @@ fn install_graceful_shutdown_handler() {}
 
 fn main() {
     install_graceful_shutdown_handler();
+
+    // SEC-017: the test runner (`soli test`) signals child processes
+    // (test-server `soli serve` instances) that they should permit
+    // loopback / private-IP outbound requests by setting
+    // `SOLI_INTERNAL_TEST_RUNNER=1`. Translate that env signal *once*
+    // here, into the in-process `AtomicBool` the SSRF blocklist
+    // consults — after this point env vars are never trusted again
+    // for that decision. The variable name is undocumented for
+    // operator use; setting it manually in production is equivalent
+    // to disabling the SSRF guardrail and should never be done.
+    if std::env::var("SOLI_INTERNAL_TEST_RUNNER").as_deref() == Ok("1") {
+        solilang::interpreter::builtins::http_class::enable_ssrf_test_mode();
+    }
+
     cli::run();
 }
