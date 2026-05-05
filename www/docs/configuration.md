@@ -67,9 +67,9 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_SOLIDB_USERNAME` | Basic-auth username for the `solidb` session driver (paired with `SOLI_SOLIDB_PASSWORD`). Falls back to `SOLIDB_USERNAME`. | unset |
 | `SOLI_SOLIDB_PASSWORD` | Basic-auth password for the `solidb` session driver. Falls back to `SOLIDB_PASSWORD`. | unset |
 | `SOLI_SESSION_ALLOW_INSECURE_HTTP` | Set to `1`/`true`/`yes` to allow plaintext HTTP and missing auth on non-loopback session hosts. Only when the network path is operator-trusted. | unset |
-| `SOLI_SOLIKV_HOST` | SoliKV host for the `solikv` session driver. | `localhost` |
+| `SOLI_SOLIKV_HOST` | SoliKV host for the `solikv` session driver. Must be a loopback (`localhost`, `127.0.0.1`, `::1`) — SoliKV uses plaintext RESP/TCP and the `AUTH` token transits in the clear, so non-loopback hosts are rejected. | `localhost` |
 | `SOLI_SOLIKV_PORT` | SoliKV port for sessions. | `6380` |
-| `SOLI_SOLIKV_TOKEN` | SoliKV auth token for sessions. | unset |
+| `SOLI_SOLIKV_TOKEN` | SoliKV auth token for sessions. Sent as a Redis-style `AUTH` command — same loopback-only constraint as the host. | unset |
 
 ## Jobs
 

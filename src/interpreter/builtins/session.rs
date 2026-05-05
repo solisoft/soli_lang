@@ -269,6 +269,23 @@ impl SessionConfig {
                     .clone()
                     .unwrap_or_else(|| "localhost".to_string());
                 let port = self.solikv_port.unwrap_or(6380);
+
+                // SEC-026: SoliKV's RESP transport is plaintext TCP — the
+                // `auth_token` is sent as a `AUTH` command in the clear,
+                // so a passive sniff equals full session takeover. There
+                // is no rustls path on `RespPool`; refuse non-loopback
+                // hosts unless the operator explicitly opts in (same
+                // `SOLI_SESSION_ALLOW_INSECURE_HTTP` knob as SEC-025).
+                let in_test = crate::interpreter::builtins::http_class::ssrf_test_mode();
+                let allow_insecure = session_allow_insecure_http();
+                if !in_test && !is_loopback_session_host(&host) && !allow_insecure {
+                    return Err(format!(
+                        "SoliKV session storage is plaintext TCP and refuses non-loopback host '{}'. \
+                         Move SoliKV to loopback or set SOLI_SESSION_ALLOW_INSECURE_HTTP=1 (only when the network path is trusted).",
+                        host
+                    ));
+                }
+
                 let store = crate::interpreter::builtins::session_solikv::SolikvSessionStore::new(
                     host,
                     port,
