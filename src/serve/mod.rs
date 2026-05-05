@@ -2536,9 +2536,21 @@ fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {
 }
 
 fn websocket_request_authority(headers: &hyper::HeaderMap) -> Option<String> {
-    headers
-        .get("x-forwarded-host")
-        .or_else(|| headers.get(header::HOST))
+    // SEC-032: only consult `X-Forwarded-Host` when the operator has
+    // explicitly opted into the trust-proxy gate. On a directly-exposed
+    // app, an attacker controls every inbound header, so trusting XFH
+    // unconditionally would let a cross-origin WebSocket handshake
+    // present `Origin: http://evil` and `X-Forwarded-Host: evil` and
+    // pass the same-origin check (CSWSH against cookie-authenticated
+    // WS endpoints, including LiveView's `/live/socket`).
+    let value = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
+        headers
+            .get("x-forwarded-host")
+            .or_else(|| headers.get(header::HOST))
+    } else {
+        headers.get(header::HOST)
+    };
+    value
         .and_then(|v| v.to_str().ok())
         .and_then(|host| host.split(',').next())
         .map(normalize_request_authority)
@@ -5599,12 +5611,23 @@ mod tests {
 
     #[test]
     fn websocket_origin_uses_forwarded_host_for_proxied_apps() {
+        // SEC-032: X-Forwarded-Host is only honored when the operator
+        // has opted into trust-proxy. Flip the flag for the duration of
+        // this test and restore it on the way out.
+        let _g = csrf_lock();
+        let prev_trust = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::HOST, "127.0.0.1:5011".parse().unwrap());
         headers.insert("x-forwarded-host", "app.test".parse().unwrap());
         headers.insert(header::ORIGIN, "https://app.test".parse().unwrap());
 
         assert!(websocket_origin_allowed(&headers));
+
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
+            .store(prev_trust, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
@@ -6018,5 +6041,58 @@ mod tests {
         // doesn't match — `/api/*` means "/api or /api/...".
         assert!(check_csrf_origin(&h, "POST", "/apifoo").is_err());
         clear_csrf_skip_patterns();
+    }
+
+    /// SEC-032: `websocket_request_authority` must only consult
+    /// `X-Forwarded-Host` when the operator has opted into trust-proxy.
+    /// Otherwise an attacker-controlled XFH header could spoof the
+    /// authority that gets compared to `Origin`, bypassing CSWSH defense
+    /// (and the same-helper-driven CSRF check).
+    #[test]
+    fn websocket_request_authority_gates_xfh_on_trust_proxy() {
+        let _g = csrf_lock();
+        let prev_trust = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
+
+        // Trust-proxy OFF: the real Host wins, the attacker's XFH is ignored.
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let h = make_headers(&[("host", "example.com"), ("x-forwarded-host", "evil.test")]);
+        assert_eq!(
+            websocket_request_authority(&h),
+            Some("example.com".to_string()),
+            "trust_proxy OFF must ignore X-Forwarded-Host"
+        );
+
+        // The CSWSH attack scenario from the SEC-032 task md:
+        //   Origin: http://evil.test  AND  X-Forwarded-Host: evil.test
+        // With trust_proxy OFF the request authority resolves to the real
+        // Host (`example.com`), so the Origin check fails and CSWSH is
+        // blocked.
+        let h = make_headers(&[
+            ("host", "example.com"),
+            ("x-forwarded-host", "evil.test"),
+            ("origin", "http://evil.test"),
+        ]);
+        assert!(
+            !websocket_origin_allowed(&h),
+            "trust_proxy OFF must block spoofed X-Forwarded-Host CSWSH"
+        );
+
+        // Trust-proxy ON: XFH is honored, since the operator has stated
+        // the deployment terminates that header at a trusted proxy hop.
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let h = make_headers(&[
+            ("host", "example.com"),
+            ("x-forwarded-host", "app.example.com"),
+        ]);
+        assert_eq!(
+            websocket_request_authority(&h),
+            Some("app.example.com".to_string())
+        );
+
+        // Restore.
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
+            .store(prev_trust, std::sync::atomic::Ordering::Relaxed);
     }
 }
