@@ -50,6 +50,13 @@ struct SolidbState {
     host: String,
     database: String,
     auth_username: Option<String>,
+    // SEC-073: auth_password is retained for the lifetime of the Solidb
+    // instance (until close() is called). Each DB operation clones the
+    // password and passes it to with_basic_auth(). There is no JWT or
+    // short-lived token — the raw credentials stay in memory. This is
+    // acceptable for process-resident credentials but means memory dumps
+    // or core dumps could expose them. Consider using a HashMap backed by
+    // mmap'd memory or a keyring for higher-sensitivity deployments.
     auth_password: Option<String>,
     connected: bool,
 }
@@ -651,7 +658,9 @@ fn register_solidb_class(env: &mut Environment) {
                     }
                     "connected" => Ok(Value::Bool(state_connected)),
                     "close" => {
-                        // Remove state from global HashMap to free memory
+                        // SEC-073: Remove state from global HashMap to free memory.
+                        // The password field is dropped here implicitly; there is
+                        // no JWT bootstrap step that would let us zero it sooner.
                         let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
                         states.remove(&instance_id);
                         Ok(Value::Bool(true))
