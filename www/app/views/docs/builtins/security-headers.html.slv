@@ -11,10 +11,16 @@
         </p>
     </div>
 
+    <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 mb-12">
+        <p class="text-sm text-gray-300">
+            <strong class="text-emerald-300">SEC-056: on by default in production.</strong> As of v0.6x, security headers are enabled out of the box: every response carries <code>X-Frame-Options: SAMEORIGIN</code> and <code>X-Content-Type-Options: nosniff</code> even without an explicit preset call. <code>--dev</code> mode flips them off so the dev bar's inline scripts and the dev REPL aren't second-guessed by a CSP the operator didn't choose. The <code>secure_headers()</code> preset now also sets HSTS (1-year <code>max-age</code> + <code>includeSubDomains</code>); <code>secure_headers_strict()</code> keeps its tighter <code>DENY</code> + CSP defaults.
+        </p>
+    </div>
+
     <!-- enable_security_headers -->
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">enable_security_headers() / disable_security_headers()</h2>
-        <p class="text-gray-400 mb-4">Enable or disable automatic security header injection on all responses.</p>
+        <p class="text-gray-400 mb-4">Enable or disable automatic security header injection on all responses. <strong>Already on by default in production</strong> (SEC-056); <code>enable_security_headers()</code> only matters if you previously disabled them.</p>
         <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
             <div class="flex items-center gap-3 mb-4">
                 <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Note</span>
@@ -24,7 +30,8 @@
 # All subsequent responses will include configured security headers
 
 disable_security_headers
-# Disable automatic injection</code></pre>
+# Opt out of the default-on behavior (e.g. behind a proxy that
+# already sets all hardening headers)</code></pre>
         </div>
     </section>
 
@@ -125,7 +132,14 @@ allow_same_origin_frames  # X-Frame-Options: SAMEORIGIN</code></pre>
             </div>
             <div class="bg-gray-900 rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">secure_headers()</h3>
-                <p class="text-gray-400">Applies recommended security headers for web apps.</p>
+                <p class="text-gray-400 mb-4">Applies the recommended security headers for web apps:</p>
+                <ul class="text-gray-300 space-y-1 ml-4">
+                    <li>X-Frame-Options: SAMEORIGIN</li>
+                    <li>X-Content-Type-Options: nosniff</li>
+                    <li>Referrer-Policy: strict-origin-when-cross-origin</li>
+                    <li>Permissions-Policy: geolocation=(), microphone=(), camera=()</li>
+                    <li><strong class="text-emerald-300">Strict-Transport-Security: max-age=31536000; includeSubDomains (SEC-056)</strong></li>
+                </ul>
             </div>
         </div>
     </section>

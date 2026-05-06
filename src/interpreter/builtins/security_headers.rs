@@ -8,7 +8,12 @@ use std::sync::RwLock;
 lazy_static! {
     static ref SECURITY_HEADERS_CONFIG: RwLock<SecurityHeadersConfig> =
         RwLock::new(SecurityHeadersConfig::default());
-    static ref SECURITY_HEADERS_ENABLED: RwLock<bool> = RwLock::new(false);
+    /// SEC-056: default to ON. New projects previously had to call
+    /// `enable_security_headers()` explicitly to get any baseline
+    /// hardening; that's the wrong default for a web framework. Dev
+    /// mode flips this back off at boot in
+    /// `serve_folder_with_options_and_workers`.
+    static ref SECURITY_HEADERS_ENABLED: RwLock<bool> = RwLock::new(true);
 }
 
 /// Global version counter incremented on every config change.
@@ -416,6 +421,15 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
             config.permissions_policy =
                 Some("geolocation=(), microphone=(), camera=()".to_string());
+            // SEC-056: HSTS in the standard preset (was previously only
+            // in `secure_headers_strict`). 1-year max-age + includeSubDomains
+            // is the operator-friendly baseline RFC 6797 recommends; bump
+            // to preload-eligible later by upgrading to `_strict`.
+            config.hsts = Some(HstsConfig {
+                max_age: 31_536_000,
+                include_subdomains: true,
+                preload: false,
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -645,12 +659,21 @@ fn build_security_headers_vec() -> Vec<(String, String)> {
         }
         headers.push(("Strict-Transport-Security".to_string(), hsts_val));
     }
-    if let Some(xfo) = config.x_frame_options {
-        headers.push(("X-Frame-Options".to_string(), xfo));
-    }
-    if config.x_content_type_options {
-        headers.push(("X-Content-Type-Options".to_string(), "nosniff".to_string()));
-    }
+    // SEC-056: baseline X-Frame-Options + X-Content-Type-Options always
+    // fire when headers are enabled, even if the app didn't pick a
+    // preset. SAMEORIGIN is the operator-friendly default (DENY would
+    // break legitimate same-origin embeds like dashboard widgets) and
+    // `nosniff` blocks MIME-confusion attacks at near-zero cost. The
+    // `x_content_type_options` flag is kept on the struct so future
+    // overrides can opt out, but the current emission is unconditional
+    // because `nosniff` is the only value the header takes anyway.
+    headers.push((
+        "X-Frame-Options".to_string(),
+        config
+            .x_frame_options
+            .unwrap_or_else(|| "SAMEORIGIN".to_string()),
+    ));
+    headers.push(("X-Content-Type-Options".to_string(), "nosniff".to_string()));
     if let Some(xss) = config.xss_protection {
         headers.push(("X-XSS-Protection".to_string(), xss));
     }
@@ -673,6 +696,17 @@ fn build_security_headers_vec() -> Vec<(String, String)> {
     headers
 }
 
+/// SEC-056: flip the global on/off switch from Rust. Used by the
+/// server boot to turn headers off in `--dev` mode (so the dev bar's
+/// inline scripts and the dev REPL aren't second-guessed by a CSP that
+/// the operator didn't actually configure).
+pub fn set_security_headers_enabled(enabled: bool) {
+    if let Ok(mut guard) = SECURITY_HEADERS_ENABLED.write() {
+        *guard = enabled;
+        invalidate_security_headers_cache();
+    }
+}
+
 pub fn security_headers_enabled() -> bool {
     // Use the cached headers to check — if cache is valid and empty, headers are disabled
     let current_version = SECURITY_HEADERS_VERSION.load(Ordering::Acquire);
@@ -688,4 +722,96 @@ pub fn security_headers_enabled() -> bool {
             Err(_) => false,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Serialize tests that mutate the global config / enable flag so
+    /// they don't trample each other under `cargo test`'s default
+    /// thread pool.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset() {
+        if let Ok(mut cfg) = SECURITY_HEADERS_CONFIG.write() {
+            *cfg = SecurityHeadersConfig::default();
+        }
+        if let Ok(mut enabled) = SECURITY_HEADERS_ENABLED.write() {
+            *enabled = true;
+        }
+        invalidate_security_headers_cache();
+    }
+
+    #[test]
+    fn default_state_is_enabled_with_baseline_headers() {
+        // SEC-056: an unconfigured app must still emit
+        // X-Frame-Options: SAMEORIGIN and X-Content-Type-Options:
+        // nosniff. Pre-SEC-056, both required an explicit preset call.
+        let _g = TEST_LOCK.lock().unwrap();
+        reset();
+
+        let headers = build_security_headers_vec();
+        let xfo = headers.iter().find(|(k, _)| k == "X-Frame-Options");
+        assert_eq!(xfo, Some(&("X-Frame-Options".into(), "SAMEORIGIN".into())));
+        let xcto = headers.iter().find(|(k, _)| k == "X-Content-Type-Options");
+        assert_eq!(
+            xcto,
+            Some(&("X-Content-Type-Options".into(), "nosniff".into()))
+        );
+    }
+
+    #[test]
+    fn secure_headers_preset_includes_hsts() {
+        // SEC-056: HSTS used to live only in `secure_headers_strict`.
+        // The standard `secure_headers()` preset now sets a 1-year
+        // max-age + includeSubDomains baseline.
+        let _g = TEST_LOCK.lock().unwrap();
+        reset();
+
+        // Mimic the `secure_headers()` builtin body.
+        {
+            let mut config = SECURITY_HEADERS_CONFIG.write().unwrap();
+            config.x_frame_options = Some("SAMEORIGIN".to_string());
+            config.x_content_type_options = true;
+            config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
+            config.permissions_policy =
+                Some("geolocation=(), microphone=(), camera=()".to_string());
+            config.hsts = Some(HstsConfig {
+                max_age: 31_536_000,
+                include_subdomains: true,
+                preload: false,
+            });
+            invalidate_security_headers_cache();
+        }
+
+        let headers = build_security_headers_vec();
+        let hsts = headers
+            .iter()
+            .find(|(k, _)| k == "Strict-Transport-Security")
+            .expect("standard preset must emit HSTS (SEC-056)");
+        assert!(
+            hsts.1.contains("max-age=31536000") && hsts.1.contains("includeSubDomains"),
+            "unexpected HSTS shape: {}",
+            hsts.1
+        );
+    }
+
+    #[test]
+    fn set_security_headers_enabled_false_emits_no_headers() {
+        // SEC-056: dev mode (and an explicit operator opt-out) must be
+        // able to silence the baseline.
+        let _g = TEST_LOCK.lock().unwrap();
+        reset();
+
+        set_security_headers_enabled(false);
+        assert!(
+            build_security_headers_vec().is_empty(),
+            "disabled state must emit zero headers"
+        );
+
+        // Restore for the next test.
+        set_security_headers_enabled(true);
+    }
 }

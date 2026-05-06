@@ -3287,15 +3287,19 @@ Creates a RateLimiter instance based on client IP address (extracts from X-Forwa
 
 Automatic security header injection for HTTP responses.
 
+> **SEC-056: on by default in production.** As of v0.6x, security headers are enabled out of the box: every response carries `X-Frame-Options: SAMEORIGIN` and `X-Content-Type-Options: nosniff` even without an explicit preset call. `--dev` mode flips them off so the dev bar's inline scripts and the dev REPL aren't second-guessed by a CSP the operator didn't choose.
+>
+> The `secure_headers()` preset now also sets HSTS (1-year `max-age` + `includeSubDomains`); `secure_headers_strict()` keeps its tighter `DENY` + CSP defaults.
+
 ### enable_security_headers()
 
-Enables automatic security header injection on all responses.
+Enables automatic security header injection on all responses. **Already on by default in production** (SEC-056); call this only to re-enable headers you previously disabled.
 
 **Returns:** Bool
 
 ### disable_security_headers()
 
-Disables automatic security header injection.
+Disables automatic security header injection. Use to opt out of the default-on behavior — for example, if you serve only API endpoints behind a proxy that already sets all hardening headers.
 
 **Returns:** Bool
 
@@ -3401,7 +3405,7 @@ Sets the Cross-Origin-Resource-Policy header.
 
 ### secure_headers()
 
-Applies recommended security headers for web apps.
+Applies the recommended security headers for web apps: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a tight `Permissions-Policy` (no geolocation/microphone/camera), **and HSTS with a 1-year `max-age` + `includeSubDomains`** (SEC-056).
 
 ### secure_headers_basic()
 
@@ -3409,7 +3413,7 @@ Applies basic security headers (X-Frame-Options, X-Content-Type-Options).
 
 ### secure_headers_strict()
 
-Applies strict security headers including HSTS and CSP.
+Applies strict security headers including HSTS, a same-origin CSP, `X-Frame-Options: DENY`, and Cross-Origin-Embedder-Policy.
 
 ### secure_headers_api()
 

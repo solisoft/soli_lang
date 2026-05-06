@@ -276,6 +276,15 @@ pub fn serve_folder_with_options_and_workers(
         });
     }
 
+    // SEC-056: security headers default to ON. In `--dev` mode, flip
+    // them back off so the dev bar's inline scripts and the dev REPL
+    // aren't blocked by a CSP the operator didn't choose. Production
+    // (`--no-dev`) keeps the baseline (X-Frame-Options: SAMEORIGIN +
+    // X-Content-Type-Options: nosniff) without any explicit opt-in.
+    if dev_mode {
+        crate::interpreter::builtins::security_headers::set_security_headers_enabled(false);
+    }
+
     // Resolve to an absolute path — notify emits absolute event paths, so
     // storing watch dirs as relative would break the `starts_with` checks
     // that classify hot-reload events by category.
