@@ -174,6 +174,36 @@ pub fn register_soap_class(env: &mut Environment) {
                 SOAP11_NS.to_string()
             };
 
+            let escape_body = if args.len() > 2 {
+                if let Value::Hash(opts) = &args[2] {
+                    let opts = opts.borrow();
+                    opts.get(&HashKey::String("escape".to_string()))
+                        .map(|v| matches!(v, Value::Bool(true)))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            let safe_body = if escape_body {
+                let mut result = String::new();
+                for c in body.chars() {
+                    match c {
+                        '<' => result.push_str("&lt;"),
+                        '>' => result.push_str("&gt;"),
+                        '&' => result.push_str("&amp;"),
+                        '"' => result.push_str("&quot;"),
+                        '\'' => result.push_str("&apos;"),
+                        _ => result.push(c),
+                    }
+                }
+                result
+            } else {
+                body
+            };
+
             let envelope = format!(
                 r#"<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:soap="{}">
@@ -181,7 +211,7 @@ pub fn register_soap_class(env: &mut Environment) {
     {}
   </soap:Body>
 </soap:Envelope>"#,
-                namespace, body
+                namespace, safe_body
             );
 
             Ok(Value::String(envelope))
