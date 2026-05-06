@@ -347,6 +347,73 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
     Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
 }
 
+/// Escape for use in a JavaScript string literal context.
+/// Escapes backslash, quotes, and control characters for safe embedding
+/// inside a JS string in an HTML script block.
+pub fn js_escape(s: &str) -> Cow<'_, str> {
+    if !s
+        .bytes()
+        .any(|b| matches!(b, b'\\' | b'"' | b'\'' | b'<' | b'>' | b'&'))
+    {
+        return Cow::Borrowed(s);
+    }
+    let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
+    for &b in s.as_bytes() {
+        match b {
+            b'\\' => result.extend_from_slice(b"\\\\"),
+            b'"' => result.extend_from_slice(b"\\\""),
+            b'\'' => result.extend_from_slice(b"\\'"),
+            b'<' => result.extend_from_slice(b"&lt;"),
+            b'>' => result.extend_from_slice(b"&gt;"),
+            b'&' => result.extend_from_slice(b"&amp;"),
+            _ => result.push(b),
+        }
+    }
+    Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
+}
+
+/// Escape for use in an HTML attribute value context.
+/// Escapes quotes and angle brackets.
+pub fn attr_escape(s: &str) -> Cow<'_, str> {
+    if !s
+        .bytes()
+        .any(|b| matches!(b, b'"' | b'\'' | b'<' | b'>' | b'&'))
+    {
+        return Cow::Borrowed(s);
+    }
+    let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
+    for &b in s.as_bytes() {
+        match b {
+            b'"' => result.extend_from_slice(b"&quot;"),
+            b'\'' => result.extend_from_slice(b"&#x27;"),
+            b'<' => result.extend_from_slice(b"&lt;"),
+            b'>' => result.extend_from_slice(b"&gt;"),
+            b'&' => result.extend_from_slice(b"&amp;"),
+            _ => result.push(b),
+        }
+    }
+    Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
+}
+
+/// Escape for use in a URL query parameter context.
+/// Percent-encodes characters that are not safe in query values.
+pub fn url_escape(s: &str) -> Cow<'_, str> {
+    let mut result = String::new();
+    for c in s.chars() {
+        match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
+            _ => {
+                let mut buf = [0u8; 4];
+                let encoded = c.encode_utf8(&mut buf);
+                for byte in encoded.bytes() {
+                    result.push_str(&format!("%{:02X}", byte));
+                }
+            }
+        }
+    }
+    Cow::Owned(result)
+}
+
 /// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
 /// This allows templates to omit parentheses for no-arg method calls: `<%= now.to_iso %>`.
 #[inline]

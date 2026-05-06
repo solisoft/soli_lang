@@ -1237,6 +1237,48 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
+    // j(string) - JavaScript escape for embedding in script blocks
+    env.define(
+        "j".to_string(),
+        Value::NativeFunction(NativeFunction::new("j", Some(1), |args| {
+            let s = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            };
+            Ok(Value::String(
+                crate::template::renderer::js_escape(&s).into_owned(),
+            ))
+        })),
+    );
+
+    // attr(string) - Attribute escape for embedding in HTML attribute values
+    env.define(
+        "attr".to_string(),
+        Value::NativeFunction(NativeFunction::new("attr", Some(1), |args| {
+            let s = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            };
+            Ok(Value::String(
+                crate::template::renderer::attr_escape(&s).into_owned(),
+            ))
+        })),
+    );
+
+    // url(string) - URL escape for embedding in query parameters
+    env.define(
+        "url".to_string(),
+        Value::NativeFunction(NativeFunction::new("url", Some(1), |args| {
+            let s = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            };
+            Ok(Value::String(
+                crate::template::renderer::url_escape(&s).into_owned(),
+            ))
+        })),
+    );
+
     // range(start, end, step?) - Create a range of integers
     env.define(
         "range".to_string(),
