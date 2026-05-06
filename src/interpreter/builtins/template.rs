@@ -984,6 +984,81 @@ fn validate_local_redirect_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve `redirect(:back)` to a safe local path.
+///
+/// Reads the `Referer` header from the per-request thread-local. If it points
+/// at our own host (matching scheme+host from `named_routes`) we keep its
+/// path+query; otherwise we fall back to `/`. Missing/invalid Referer also
+/// falls back to `/`. The chosen path is run through `validate_local_redirect_url`
+/// so a malformed Referer can never produce an unsafe Location header.
+fn resolve_back_redirect() -> String {
+    let Some(req) = get_current_request() else {
+        return "/".to_string();
+    };
+    let Value::Hash(req_hash) = &req else {
+        return "/".to_string();
+    };
+    let referer = req_hash
+        .borrow()
+        .get(&HashKey::String("headers".to_string()))
+        .and_then(|h| match h {
+            Value::Hash(hh) => hh
+                .borrow()
+                .get(&HashKey::String("referer".to_string()))
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s.clone()),
+                    _ => None,
+                }),
+            _ => None,
+        });
+
+    let Some(referer) = referer else {
+        return "/".to_string();
+    };
+    if referer.is_empty() || has_redirect_control_chars(&referer) {
+        return "/".to_string();
+    }
+
+    let lower = referer.to_ascii_lowercase();
+    let (referer_scheme, rest) = if let Some(r) = lower.strip_prefix("https://") {
+        ("https", r)
+    } else if let Some(r) = lower.strip_prefix("http://") {
+        ("http", r)
+    } else {
+        return "/".to_string();
+    };
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    if authority.is_empty() || authority.contains('@') {
+        return "/".to_string();
+    }
+
+    let Some((cur_scheme, cur_host)) =
+        crate::interpreter::builtins::named_routes::current_request_host()
+    else {
+        return "/".to_string();
+    };
+    if !cur_scheme.eq_ignore_ascii_case(referer_scheme) || !cur_host.eq_ignore_ascii_case(authority)
+    {
+        return "/".to_string();
+    }
+
+    // Re-slice from the original (case-preserving) Referer so the returned
+    // path keeps its real casing rather than the lowercased copy used for
+    // scheme/host matching.
+    let prefix_len = referer_scheme.len() + 3 + authority.len();
+    let path_and_query = if referer.len() > prefix_len {
+        &referer[prefix_len..]
+    } else {
+        "/"
+    };
+
+    if validate_local_redirect_url(path_and_query).is_err() {
+        return "/".to_string();
+    }
+    path_and_query.to_string()
+}
+
 fn validate_external_redirect_url(url: &str) -> Result<(), String> {
     if url.is_empty() || has_redirect_control_chars(url) {
         return Err("redirect_external() expects a non-empty URL".to_string());
@@ -1347,21 +1422,32 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
-    // redirect(path) - Create a local redirect response (302 Found)
+    // redirect(path) - Create a local redirect response (302 Found).
+    // Accepts either a local absolute path string ("/dashboard") or the symbol
+    // `:back`, which resolves to the request's Referer header when it points at
+    // our own host (and falls back to "/" otherwise).
     env.define(
         "redirect".to_string(),
         Value::NativeFunction(NativeFunction::new("redirect", Some(1), |args| {
             let url = match &args[0] {
-                Value::String(s) => s.clone(),
+                Value::String(s) => {
+                    validate_local_redirect_url(s)?;
+                    s.clone()
+                }
+                Value::Symbol(s) if s == "back" => resolve_back_redirect(),
+                Value::Symbol(s) => {
+                    return Err(format!(
+                        "redirect() does not understand :{s}; only :back is supported"
+                    ))
+                }
                 other => {
                     return Err(format!(
-                        "redirect() expects string URL, got {}",
+                        "redirect() expects string URL or :back, got {}",
                         other.type_name()
                     ))
                 }
             };
 
-            validate_local_redirect_url(&url)?;
             Ok(redirect_response(url))
         })),
     );
@@ -1624,6 +1710,91 @@ mod tests {
                 "expected redirect_external to reject {url:?}"
             );
         }
+    }
+
+    fn make_request_with_referer(referer: Option<&str>) -> Value {
+        let mut headers = HashPairs::default();
+        if let Some(r) = referer {
+            headers.insert(
+                HashKey::String("referer".to_string()),
+                Value::String(r.to_string()),
+            );
+        }
+        make_request(&[("headers", Value::Hash(Rc::new(RefCell::new(headers))))])
+    }
+
+    fn with_request_host<F: FnOnce()>(scheme: &str, host: &str, f: F) {
+        crate::interpreter::builtins::named_routes::set_current_request_host(
+            scheme.to_string(),
+            host.to_string(),
+        );
+        f();
+        crate::interpreter::builtins::named_routes::clear_current_request_host();
+    }
+
+    #[test]
+    fn redirect_back_uses_same_host_referer_path() {
+        set_current_request(make_request_with_referer(Some(
+            "https://app.test/posts/42?tab=comments",
+        )));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())])
+                .expect("redirect(:back) should succeed");
+            assert_eq!(
+                response_location(&resp).as_deref(),
+                Some("/posts/42?tab=comments")
+            );
+        });
+        clear_current_request();
+    }
+
+    #[test]
+    fn redirect_back_falls_back_to_root_for_external_or_missing_referer() {
+        // External Referer → "/"
+        set_current_request(make_request_with_referer(Some("https://evil.test/x")));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            assert_eq!(response_location(&resp).as_deref(), Some("/"));
+        });
+
+        // Scheme mismatch → "/"
+        set_current_request(make_request_with_referer(Some("http://app.test/x")));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            assert_eq!(response_location(&resp).as_deref(), Some("/"));
+        });
+
+        // Missing Referer → "/"
+        set_current_request(make_request_with_referer(None));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            assert_eq!(response_location(&resp).as_deref(), Some("/"));
+        });
+
+        // Userinfo trick → "/"
+        set_current_request(make_request_with_referer(Some(
+            "https://app.test@evil.test/x",
+        )));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            assert_eq!(response_location(&resp).as_deref(), Some("/"));
+        });
+
+        // Non-http scheme → "/"
+        set_current_request(make_request_with_referer(Some("javascript:alert(1)")));
+        with_request_host("https", "app.test", || {
+            let resp = call_builtin("redirect", vec![Value::Symbol("back".into())]).unwrap();
+            assert_eq!(response_location(&resp).as_deref(), Some("/"));
+        });
+
+        clear_current_request();
+    }
+
+    #[test]
+    fn redirect_rejects_unknown_symbols() {
+        let err = call_builtin("redirect", vec![Value::Symbol("forward".into())])
+            .expect_err("unknown symbol must error");
+        assert!(err.contains(":back"), "unexpected error: {err}");
     }
 
     #[test]

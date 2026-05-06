@@ -45,6 +45,12 @@ fn get_current_request_host() -> Option<(String, String)> {
     CURRENT_REQUEST_HOST.with(|c| c.borrow().clone())
 }
 
+/// Public accessor for the per-request (scheme, host). Used by `redirect(:back)`
+/// to validate that the Referer points at our own host before honoring it.
+pub fn current_request_host() -> Option<(String, String)> {
+    get_current_request_host()
+}
+
 /// Rebuild the named-route lookup table from the current ROUTES list.
 /// Called from `RouteIndex::rebuild` so the name index stays in lock-step
 /// with the route table on initial load and on hot reload.

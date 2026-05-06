@@ -435,6 +435,15 @@ fn oauth_start(req)
 end
 ```
 
+To send the user back where they came from, pass the `:back` symbol. Soli reads the `Referer` header and only honors it when scheme + host match the current request — external referers (or a missing/malformed header) fall back to `/`.
+
+```soli
+fn destroy(req)
+  Comment.find(req.params["id"]).delete()
+  redirect(:back)
+end
+```
+
 ### JSON Response
 
 ```soli

@@ -316,6 +316,8 @@ render_text("Not allowed", 403)</code></pre>
 redirect("/posts/" + post["id"])</code></pre>
                 <p class="text-gray-400 text-sm mt-3 mb-3">Use <code class="text-indigo-400">redirect_external(url)</code> only for trusted external destinations such as OAuth providers.</p>
                 <pre data-filename="External Redirect"><code class="language-soli text-sm">redirect_external("https://github.com/login/oauth/authorize")</code></pre>
+                <p class="text-gray-400 text-sm mt-3 mb-3">Pass <code class="text-indigo-400">:back</code> to send the user where they came from. The <code>Referer</code> header is honored only when its scheme and host match the current request; external or missing referers fall back to <code>/</code>.</p>
+                <pre data-filename="Redirect Back"><code class="language-soli text-sm">redirect(:back)</code></pre>
             </div>
         </section>
 
