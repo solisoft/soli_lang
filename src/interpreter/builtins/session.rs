@@ -488,12 +488,30 @@ pub fn get_current_session_id() -> Option<String> {
 
 /// Get or create a session for the given cookie value.
 /// Returns the session ID to use (may be new if expired or invalid).
+///
+/// SEC-053: validates the cookie value against the UUID-v4 hyphenated
+/// shape we generate before passing it to any backend. Without this
+/// check, an attacker-controlled cookie could push very long strings
+/// (memory amplification on the in-memory / SoliKV stores) or values
+/// containing control bytes (log injection in `eprintln!` paths) into
+/// the backend layer. Only the disk store had its own input
+/// validation; centralising it here closes the gap for every
+/// implementor.
 pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
     let store = get_current_store();
     match cookie_session_id {
-        Some(id) if !id.is_empty() => store.get_or_create(id),
+        Some(id) if is_valid_session_id(id) => store.get_or_create(id),
         _ => store.create_session(),
     }
+}
+
+/// SEC-053: a session ID must be a UUID-v4 in 36-char hyphenated form
+/// (the exact shape every store mints via `Uuid::new_v4().to_string()`).
+/// Anything else — too long, wrong alphabet, embedded control bytes,
+/// path-traversal — gets rejected here so the backends only ever see
+/// well-formed IDs.
+pub fn is_valid_session_id(id: &str) -> bool {
+    id.len() == 36 && Uuid::parse_str(id).is_ok()
 }
 
 /// Extract session ID from Cookie header.
@@ -1182,6 +1200,52 @@ mod tests {
         assert!(session_cookie_if_changed(Some("a"), Some("a"), false).is_none());
         assert!(session_cookie_if_changed(Some("a"), Some("b"), false).is_some());
         assert!(session_cookie_if_changed(Some("a"), None, false).is_some());
+    }
+
+    #[test]
+    fn is_valid_session_id_accepts_freshly_minted_uuid() {
+        // SEC-053: every store mints IDs via Uuid::new_v4().to_string();
+        // the validator must pass them.
+        for _ in 0..8 {
+            let id = Uuid::new_v4().to_string();
+            assert!(
+                is_valid_session_id(&id),
+                "freshly minted UUID rejected: {id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_valid_session_id_rejects_attacker_shapes() {
+        // SEC-053: too long, wrong length, control bytes, traversal,
+        // empty — all rejected.
+        let too_long = "a".repeat(1024);
+        for bad in [
+            "",
+            "abc",
+            "../etc/passwd",
+            "session\rinjected",
+            "session\nlog",
+            "00000000-0000-0000-0000-00000000000",   // 35 chars
+            "00000000-0000-0000-0000-0000000000000", // 37 chars
+            "ZZZZZZZZ-0000-0000-0000-000000000000",  // bad alphabet
+            too_long.as_str(),
+        ] {
+            assert!(!is_valid_session_id(bad), "expected reject: {bad:?}");
+        }
+    }
+
+    #[test]
+    fn ensure_session_mints_new_when_cookie_id_is_invalid() {
+        // SEC-053: an invalid cookie value must not flow into the
+        // backend — ensure_session should treat it as no cookie and
+        // mint a fresh ID.
+        set_current_session_id(None);
+        let resolved = ensure_session(Some("../etc/passwd\r\n"));
+        assert!(
+            is_valid_session_id(&resolved),
+            "ensure_session returned non-UUID for malformed cookie: {resolved:?}"
+        );
     }
 
     #[test]
