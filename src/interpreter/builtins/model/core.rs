@@ -392,7 +392,20 @@ pub fn build_safe_filter_from_hash(
         // string form take a separate code path, so there's no risk of
         // colliding bind namespaces between the two forms.
         clauses.push(format!("doc.{0} == @{0}", key));
-        binds.insert(key, value_to_json(v).map_err(|e| e.to_string())?);
+        let json_val = value_to_json(v).map_err(|e| e.to_string())?;
+        match json_val {
+            serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+                binds.insert(key, json_val)
+            }
+            serde_json::Value::String(s) => binds.insert(key, serde_json::Value::String(s)),
+            _ => {
+                return Err(format!(
+                    "{}() bind value for '{}' must be a scalar (string, number, bool, null); \
+                     got {}. Pass complex values via raw AQL strings instead.",
+                    method, key, json_val
+                ))
+            }
+        };
     }
     Ok((clauses.join(" AND "), binds))
 }
