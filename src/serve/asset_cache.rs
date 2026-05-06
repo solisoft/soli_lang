@@ -64,6 +64,10 @@ fn walk(dir: &Path, out: &mut HashMap<PathBuf, CachedAsset>, total: &mut u64) {
             Ok(m) => m,
             Err(_) => continue,
         };
+        // SEC-067: skip symlinks to avoid serving files outside public/
+        if meta.file_type().is_symlink() {
+            continue;
+        }
         let path = entry.path();
         if meta.is_dir() {
             walk(&path, out, total);
