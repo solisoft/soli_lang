@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{
+    decode, decode_header, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
@@ -33,6 +35,8 @@ struct Claims {
 
 // Use centralized conversion functions from value module
 use crate::interpreter::value::{json_to_value, value_to_json};
+
+const MIN_SECRET_BYTES: usize = 32;
 
 /// Get current Unix timestamp.
 fn current_timestamp() -> u64 {
@@ -63,25 +67,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
-            // SEC-054: enforce minimum secret length matching the
-            // smallest HMAC output we use (HS256 → 32 bytes). Secrets
-            // shorter than the digest are weaker than the algorithm
-            // itself; RFC 7518 §3.2 says "A key of the same size as the
-            // hash output … or larger MUST be used". 16 chars passed
-            // before, which let `aaaaaaaaaaaaaaaa` and other low-entropy
-            // values through silently.
-            const MIN_SECRET_BYTES: usize = 32;
-            if secret.len() < MIN_SECRET_BYTES {
-                return Err(format!(
-                    "jwt_sign() secret must be at least {} bytes for security (got {}); \
-                     load a high-entropy value from .env, e.g. `JWT_SECRET=$(openssl rand -hex 32)`",
-                    MIN_SECRET_BYTES,
-                    secret.len()
-                ));
-            }
             // Parse options
             let mut expires_in: Option<u64> = None;
             let mut algorithm = Algorithm::HS256;
+            let mut pem_key: Option<String> = None;
 
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
@@ -99,6 +88,8 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                             "HS256" => Algorithm::HS256,
                                             "HS384" => Algorithm::HS384,
                                             "HS512" => Algorithm::HS512,
+                                            "RS256" => Algorithm::RS256,
+                                            "EdDSA" => Algorithm::EdDSA,
                                             _ => {
                                                 return Err(format!(
                                                     "Unsupported algorithm: {}",
@@ -108,11 +99,28 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                         };
                                     }
                                 }
+                                "key" => {
+                                    if let Value::String(k) = v {
+                                        pem_key = Some(k.clone());
+                                    }
+                                }
                                 _ => {}
                             }
                         }
                     }
                 }
+            }
+
+            // SEC-054: enforce minimum secret length for HMAC algorithms.
+            // Asymmetric algorithms (RS256, EdDSA) use PEM keys and are exempt.
+            let is_asymmetric = matches!(algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+            if !is_asymmetric && secret.len() < MIN_SECRET_BYTES {
+                return Err(format!(
+                    "jwt_sign() secret must be at least {} bytes for security (got {}); \
+                     load a high-entropy value from .env, e.g. `JWT_SECRET=$(openssl rand -hex 32)`",
+                    MIN_SECRET_BYTES,
+                    secret.len()
+                ));
             }
 
             // Build claims
@@ -141,7 +149,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let token = encode(
                 &header,
                 &claims,
-                &EncodingKey::from_secret(secret.as_bytes()),
+                &build_encoding_key(&algorithm, &secret, pem_key.as_deref()),
             )
             .map_err(|e| format!("Failed to create JWT: {}", e))?;
 
@@ -173,10 +181,33 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
+            // Detect algorithm from token header for proper validation setup
+            let token_header =
+                decode_header(&token).map_err(|e| format!("Failed to parse JWT header: {}", e))?;
+            let detected_algorithm = token_header.alg;
+
+            // Determine if asymmetric key is needed and parse PEM if provided
+            let is_asymmetric = matches!(detected_algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+            let mut pem_key: Option<String> = None;
+
+            if args.len() > 2 {
+                if let Value::Hash(opts) = &args[2] {
+                    for (k, v) in opts.borrow().iter() {
+                        if let HashKey::String(key) = k {
+                            if key == "key" {
+                                if let Value::String(k) = v {
+                                    pem_key = Some(k.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // SEC-054: same minimum as jwt_sign — verify must reject
-            // secrets shorter than the HS256 digest size.
-            const MIN_SECRET_BYTES: usize = 32;
-            if secret.len() < MIN_SECRET_BYTES {
+            // secrets shorter than the HS256 digest size for HMAC algorithms.
+            // Asymmetric algorithms (RS256, EdDSA) use PEM keys and are exempt.
+            if !is_asymmetric && secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
                     "jwt_verify() secret must be at least {} bytes for security (got {})",
                     MIN_SECRET_BYTES,
@@ -184,13 +215,14 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 ));
             }
 
-            // Try to decode and verify the token
-            let mut validation = Validation::default();
+            // Configure validation to accept the detected algorithm
+            let mut validation = Validation::new(detected_algorithm);
             validation.validate_exp = true;
 
+            // Try to decode and verify the token
             match decode::<Claims>(
                 &token,
-                &DecodingKey::from_secret(secret.as_bytes()),
+                &build_decoding_key(&detected_algorithm, &secret, pem_key.as_deref()),
                 &validation,
             ) {
                 Ok(token_data) => {
@@ -330,6 +362,38 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             )
         })),
     );
+}
+
+/// Build an EncodingKey based on algorithm and key material.
+fn build_encoding_key(algorithm: &Algorithm, secret: &str, pem_key: Option<&str>) -> EncodingKey {
+    match algorithm {
+        Algorithm::RS256 | Algorithm::EdDSA => {
+            if let Some(key) = pem_key {
+                EncodingKey::from_rsa_pem(key.as_bytes())
+                    .or_else(|_| EncodingKey::from_rsa_pem(secret.as_bytes()))
+                    .unwrap_or_else(|_| EncodingKey::from_secret(secret.as_bytes()))
+            } else {
+                EncodingKey::from_secret(secret.as_bytes())
+            }
+        }
+        _ => EncodingKey::from_secret(secret.as_bytes()),
+    }
+}
+
+/// Build a DecodingKey based on algorithm and key material.
+fn build_decoding_key(algorithm: &Algorithm, secret: &str, pem_key: Option<&str>) -> DecodingKey {
+    match algorithm {
+        Algorithm::RS256 | Algorithm::EdDSA => {
+            if let Some(key) = pem_key {
+                DecodingKey::from_rsa_pem(key.as_bytes())
+                    .or_else(|_| DecodingKey::from_rsa_pem(secret.as_bytes()))
+                    .unwrap_or_else(|_| DecodingKey::from_secret(secret.as_bytes()))
+            } else {
+                DecodingKey::from_secret(secret.as_bytes())
+            }
+        }
+        _ => DecodingKey::from_secret(secret.as_bytes()),
+    }
 }
 
 /// Extract a string claim from a payload hash.
