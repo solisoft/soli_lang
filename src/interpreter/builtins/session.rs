@@ -29,6 +29,36 @@ pub enum SessionDriver {
     Solikv,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SameSite {
+    #[default]
+    Lax,
+    Strict,
+    None,
+}
+
+impl std::fmt::Display for SameSite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SameSite::Lax => write!(f, "Lax"),
+            SameSite::Strict => write!(f, "Strict"),
+            SameSite::None => write!(f, "None"),
+        }
+    }
+}
+
+impl std::str::FromStr for SameSite {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "strict" => Ok(SameSite::Strict),
+            "none" => Ok(SameSite::None),
+            "lax" | "" => Ok(SameSite::Lax),
+            _ => Err(format!("Unknown SameSite value: {}", s)),
+        }
+    }
+}
+
 impl std::fmt::Display for SessionDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -97,6 +127,8 @@ pub struct SessionConfig {
     pub solikv_port: Option<u16>,
     pub solikv_token: Option<String>,
     pub ttl: u64,
+    pub same_site: SameSite,
+    pub host_prefix: bool,
 }
 
 impl Default for SessionConfig {
@@ -135,6 +167,14 @@ impl Default for SessionConfig {
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(86400);
+        let same_site = std::env::var("SOLI_SESSION_SAMESITE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(SameSite::Lax);
+        let host_prefix = std::env::var("SOLI_SESSION_HOST_PREFIX")
+            .ok()
+            .map(|v| v == "1" || v.to_lowercase() == "true")
+            .unwrap_or(false);
 
         Self {
             driver,
@@ -149,6 +189,8 @@ impl Default for SessionConfig {
             solikv_port,
             solikv_token,
             ttl,
+            same_site,
+            host_prefix,
         }
     }
 }
@@ -534,14 +576,19 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
 /// stored session. The previous hardcoded 86400 silently kept cookies
 /// alive for 24h regardless of the operator's TTL setting.
 pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
+    let cfg = SESSION_CONFIG.read().ok();
+    let max_age = cfg.as_ref().map(|c| c.ttl).unwrap_or(24 * 60 * 60);
+    let same_site = cfg.as_ref().map(|c| c.same_site).unwrap_or(SameSite::Lax);
+    let host_prefix = cfg.as_ref().map(|c| c.host_prefix).unwrap_or(false);
     let secure_flag = if secure { "; Secure" } else { "" };
-    let max_age = SESSION_CONFIG
-        .read()
-        .map(|cfg| cfg.ttl)
-        .unwrap_or(24 * 60 * 60);
+    let cookie_name = if host_prefix && secure {
+        "__Host-session_id"
+    } else {
+        "session_id"
+    };
     format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
-        session_id, max_age, secure_flag
+        "{}={}; Path=/; HttpOnly; SameSite={}; Max-Age={}{}",
+        cookie_name, session_id, same_site, max_age, secure_flag
     )
 }
 
