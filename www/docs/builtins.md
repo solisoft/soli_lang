@@ -1032,9 +1032,11 @@ All cryptographic functions are available both as static methods on the `Crypto`
 
 ### Hash Functions
 
+> **⚠ Not for password storage.** SHA-256, SHA-512, and MD5 are general-purpose hashes — they are fast by design, which is exactly the wrong property for a password store (an attacker brute-forces them just as fast). For passwords, use [`Crypto.argon2_hash`](#cryptoargon2_hashpassword--argon2_hashpassword). For verifying tokens / MACs in constant time, use [`secure_compare`](#secure_compareab--cryptosecure_compareab).
+
 #### Crypto.sha256(data) / sha256(data)
 
-Computes SHA-256 hash of a string.
+Computes SHA-256 hash of a string. Use for file checksums, ETags, content addressing — **not** for password hashing.
 
 **Parameters:**
 - `data` (String) - The data to hash
@@ -1049,7 +1051,7 @@ hash = Crypto.sha256("hello")
 
 #### Crypto.sha512(data) / sha512(data)
 
-Computes SHA-512 hash of a string.
+Computes SHA-512 hash of a string. Same caveats as `sha256` — **not** for password hashing.
 
 **Parameters:**
 - `data` (String) - The data to hash
@@ -1063,7 +1065,7 @@ hash = Crypto.sha512("hello")
 
 #### Crypto.md5(data) / md5(data)
 
-Computes MD5 hash of a string. **Note:** MD5 is cryptographically broken. Use only for checksums, not security.
+Computes MD5 hash of a string. **Cryptographically broken** — collisions can be constructed cheaply. Use only for non-security checksums (e.g. content fingerprinting where adversarial collisions don't matter). **Never use for passwords or signatures.**
 
 **Parameters:**
 - `data` (String) - The data to hash
@@ -1090,6 +1092,24 @@ Computes HMAC-SHA256 message authentication code.
 ```soli
 mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.
+```
+
+#### secure_compare(a, b) / Crypto.secure_compare(a, b)
+
+Constant-time string equality. Use whenever comparing two values where one comes from an untrusted source and timing-leak of the comparison would help an attacker — verifying an HMAC, a webhook signature, a CSRF token, a session-derived MAC. A naïve `a == b` short-circuits at the first differing byte and leaks the prefix length to a timing attacker.
+
+**Parameters:**
+- `a` (String)
+- `b` (String)
+
+**Returns:** Bool - `true` only if both strings have the same length **and** bytes. Length is not secret; equal-length inputs run in time proportional only to the length, not the position of any differing byte.
+
+**Example:**
+```soli
+expected = Crypto.hmac(payload, getenv("WEBHOOK_SECRET"))
+if secure_compare(expected, request_signature)
+  # Trust the request
+end
 ```
 
 ### Base64 Encoding

@@ -40,6 +40,12 @@
             Hash Functions
         </h2>
 
+        <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
+            <p class="text-sm text-gray-300">
+                <strong class="text-red-400">Not for password storage.</strong> SHA-256, SHA-512, and MD5 are general-purpose hashes &mdash; they are fast by design, which is exactly the wrong property for a password store (an attacker brute-forces them just as fast). For passwords, use <a href="#def-argon2-hash" class="text-indigo-300 underline">Crypto.argon2_hash</a>. For verifying tokens / MACs in constant time, use <a href="#def-secure-compare" class="text-indigo-300 underline">secure_compare</a>.
+            </p>
+        </div>
+
         <section id="def-sha256" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sha256" class="group flex items-center gap-2 mb-3">
@@ -48,7 +54,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute SHA-256 hash of a string. Also available as <code class="text-indigo-400">sha256()</code>.</p>
+                <p class="text-gray-400 mb-3">Compute SHA-256 hash of a string. Also available as <code class="text-indigo-400">sha256()</code>. Use for file checksums, ETags, content addressing &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
@@ -70,7 +76,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute SHA-512 hash of a string. Also available as <code class="text-indigo-400">sha512()</code>.</p>
+                <p class="text-gray-400 mb-3">Compute SHA-512 hash of a string. Also available as <code class="text-indigo-400">sha512()</code>. Same caveats as SHA-256 &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
@@ -92,7 +98,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute MD5 hash of a string. Also available as <code class="text-indigo-400">md5()</code>. <span class="text-yellow-500">Note: MD5 is cryptographically broken. Use only for checksums, not security.</span></p>
+                <p class="text-gray-400 mb-3">Compute MD5 hash of a string. Also available as <code class="text-indigo-400">md5()</code>. <span class="text-red-400"><strong>Cryptographically broken</strong> &mdash; collisions can be constructed cheaply. Use only for non-security checksums (e.g. content fingerprinting where adversarial collisions don't matter). Never use for passwords or signatures.</span></p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
@@ -126,6 +132,31 @@
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.</code></pre>
+            </div>
+        </section>
+
+        <section id="def-secure-compare" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-secure-compare" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Crypto.secure_compare(a, b)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Constant-time string equality. Also available as <code class="text-indigo-400">secure_compare()</code>. Use whenever comparing two values where one comes from an untrusted source and timing-leak of the comparison would help an attacker &mdash; verifying an HMAC, a webhook signature, a CSRF token, a session-derived MAC. A naïve <code>a == b</code> short-circuits at the first differing byte and leaks the prefix length to a timing attacker.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">a</code> : <code class="text-purple-400">String</code></div>
+                    <div><code class="text-amber-400">b</code> : <code class="text-purple-400">String</code></div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">Bool</code> - <code>true</code> only when both strings have the same length <strong>and</strong> bytes. Length is not secret; equal-length inputs run in time proportional only to the length, not the position of any differing byte.
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">expected = Crypto.hmac(payload, getenv("WEBHOOK_SECRET"))
+if secure_compare(expected, request_signature)
+  # Trust the request
+end</code></pre>
             </div>
         </section>
     </section>
