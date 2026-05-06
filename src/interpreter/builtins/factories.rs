@@ -43,8 +43,13 @@ impl FactoryRegistry {
         }
     }
 
-    fn create_with(&self, _name: &str, overrides: &Value) -> Result<Value, String> {
-        Ok(overrides.clone())
+    fn create_with(&self, name: &str, overrides: &Value) -> Result<Value, String> {
+        let base = match self.definitions.get(name) {
+            Some(def) => def.data.clone(),
+            None => return Err(format!("Factory '{}' not defined", name)),
+        };
+        let merged = merge_values(&base, overrides);
+        Ok(merged)
     }
 
     fn create_list(&self, name: &str, count: usize) -> Result<Value, String> {
@@ -64,6 +69,19 @@ impl FactoryRegistry {
     fn clear(&mut self) {
         self.definitions.clear();
         self.sequences.clear();
+    }
+}
+
+fn merge_values(base: &Value, overrides: &Value) -> Value {
+    match (base, overrides) {
+        (Value::Hash(base_pairs), Value::Hash(override_pairs)) => {
+            let mut result = (*base_pairs.borrow()).clone();
+            for (k, v) in override_pairs.borrow().iter() {
+                result.insert(k.clone(), v.clone());
+            }
+            Value::Hash(Rc::new(RefCell::new(result)))
+        }
+        _ => overrides.clone(),
     }
 }
 
