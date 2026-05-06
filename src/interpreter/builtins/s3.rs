@@ -50,6 +50,55 @@ where
     }
 }
 
+fn scrub_s3_error(error: &str) -> String {
+    static SENSITIVE_HEADERS: &[&str] = &[
+        "authorization",
+        "x-amz-content-sha256",
+        "x-amz-date",
+        "x-amz-security-token",
+    ];
+
+    let lower = error.to_lowercase();
+    let mut result = error.to_string();
+
+    for header in SENSITIVE_HEADERS {
+        let pattern = format!("{}:", header);
+        if let Some(start) = lower.find(&pattern) {
+            let end_of_line = result[start..]
+                .find('\n')
+                .map(|i| start + i)
+                .unwrap_or(result.len());
+
+            let line_start = result[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+
+            let scrubbed = format!("[scrubbed {}]", header);
+            result = format!(
+                "{}{}{}",
+                &result[..line_start],
+                scrubbed,
+                &result[end_of_line..]
+            );
+        }
+    }
+
+    for header in SENSITIVE_HEADERS {
+        let pattern = format!("\"{}:", header);
+        if let Some(start) = result.to_lowercase().find(&pattern) {
+            let end = result[start..]
+                .find('\"')
+                .map(|i| start + i + 1)
+                .unwrap_or(result.len());
+
+            let line_start = result[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+
+            let scrubbed = format!("\"[scrubbed {}]", header);
+            result = format!("{}{}{}", &result[..line_start], scrubbed, &result[end..]);
+        }
+    }
+
+    result
+}
+
 fn extract_string(
     args: &[Value],
     idx: usize,
@@ -151,7 +200,10 @@ pub fn register_s3_class(env: &mut Environment) {
                             .collect();
                         Ok(Value::Array(Rc::new(RefCell::new(buckets))))
                     }
-                    Err(e) => Err(format!("Failed to list buckets: {}", e)),
+                    Err(e) => Err(format!(
+                        "Failed to list buckets: {}",
+                        scrub_s3_error(&format!("{}", e))
+                    )),
                 }
             })
         })),
@@ -169,7 +221,11 @@ pub fn register_s3_class(env: &mut Environment) {
             run_s3_future(async move {
                 match client.create_bucket(request).await {
                     Ok(_) => Ok(Value::Bool(true)),
-                    Err(e) => Err(format!("Failed to create bucket '{}': {}", bucket_name, e)),
+                    Err(e) => Err(format!(
+                        "Failed to create bucket '{}': {}",
+                        bucket_name,
+                        scrub_s3_error(&format!("{}", e))
+                    )),
                 }
             })
         })),
@@ -187,7 +243,11 @@ pub fn register_s3_class(env: &mut Environment) {
             run_s3_future(async move {
                 match client.delete_bucket(request).await {
                     Ok(_) => Ok(Value::Bool(true)),
-                    Err(e) => Err(format!("Failed to delete bucket '{}': {}", bucket_name, e)),
+                    Err(e) => Err(format!(
+                        "Failed to delete bucket '{}': {}",
+                        bucket_name,
+                        scrub_s3_error(&format!("{}", e))
+                    )),
                 }
             })
         })),
@@ -228,7 +288,9 @@ pub fn register_s3_class(env: &mut Environment) {
                     Ok(_) => Ok(Value::Bool(true)),
                     Err(e) => Err(format!(
                         "Failed to put object '{}' in '{}': {}",
-                        key, bucket, e
+                        key,
+                        bucket,
+                        scrub_s3_error(&format!("{}", e))
                     )),
                 }
             })
@@ -267,7 +329,9 @@ pub fn register_s3_class(env: &mut Environment) {
                     }
                     Err(e) => Err(format!(
                         "Failed to get object '{}' from '{}': {}",
-                        key, bucket, e
+                        key,
+                        bucket,
+                        scrub_s3_error(&format!("{}", e))
                     )),
                 }
             })
@@ -291,7 +355,9 @@ pub fn register_s3_class(env: &mut Environment) {
                     Ok(_) => Ok(Value::Bool(true)),
                     Err(e) => Err(format!(
                         "Failed to delete object '{}' from '{}': {}",
-                        key, bucket, e
+                        key,
+                        bucket,
+                        scrub_s3_error(&format!("{}", e))
                     )),
                 }
             })
@@ -385,7 +451,12 @@ pub fn register_s3_class(env: &mut Environment) {
             run_s3_future(async move {
                 match client.copy_object(request).await {
                     Ok(_) => Ok(Value::Bool(true)),
-                    Err(e) => Err(format!("Failed to copy '{}' to '{}': {}", source, dest, e)),
+                    Err(e) => Err(format!(
+                        "Failed to copy '{}' to '{}': {}",
+                        source,
+                        dest,
+                        scrub_s3_error(&format!("{}", e))
+                    )),
                 }
             })
         })),
