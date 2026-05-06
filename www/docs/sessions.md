@@ -168,6 +168,17 @@ Sessions are stored in-memory by default. This means:
 
 Session cookies are automatically configured with:
 - `HttpOnly`: Prevents JavaScript access
-- `SameSite=Lax`: CSRF protection
+- `SameSite=Lax`: CSRF protection (override with `SOLI_SESSION_SAMESITE=Strict|None`)
 - `Path=/`: Available on all paths
-- `Max-Age=86400`: 24-hour expiration
+- `Max-Age`: tracks `SOLI_SESSION_TTL` (default `86400` — 24h)
+- `Secure`: set when serving over HTTPS
+
+### Hardening with `__Host-` prefix
+
+Set `SOLI_SESSION_HOST_PREFIX=1` to emit the cookie as `__Host-session_id`. Browsers only accept `__Host-` cookies when they are `Secure`, scoped to `Path=/`, and carry no `Domain` attribute — this prevents a subdomain or stripped-down HTTP origin from setting an attacker-controlled session cookie that would otherwise be replayed to the secure origin. The prefix is applied only when `Secure` is also active; over plain HTTP the plain `session_id` name is used so dev still works.
+
+```bash
+# Production session hardening
+export SOLI_SESSION_SAMESITE=Strict
+export SOLI_SESSION_HOST_PREFIX=1
+```

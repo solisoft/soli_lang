@@ -2448,6 +2448,10 @@ video {
   background-color: rgb(245 158 11 / 0.2);
 }
 
+.bg-amber-500\/5 {
+  background-color: rgb(245 158 11 / 0.05);
+}
+
 .bg-amber-600 {
   --tw-bg-opacity: 1;
   background-color: rgb(217 119 6 / var(--tw-bg-opacity, 1));

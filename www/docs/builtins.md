@@ -1571,21 +1571,29 @@ if result["status"] == 200
 end
 ```
 
-### SOAP.wrap(body)
+### SOAP.wrap(body, namespace?, options?)
 
 Wraps an XML body in a complete SOAP envelope with the standard SOAP 1.1 namespace.
 
 **Parameters:**
 - `body` (String) - The XML body content
+- `namespace` (String, optional) - SOAP envelope namespace (default: SOAP 1.1)
+- `options` (Hash, optional) - Wrapping options:
+  - `escape` (Bool) - When `true`, XML-escapes the body before wrapping. Use this when `body` is **untrusted text** (user input, third-party data) that must appear as PCDATA, not as XML. Defaults to `false` so already-built XML fragments pass through verbatim.
 
 **Returns:** String - Complete SOAP envelope XML
 
 **Example:**
 ```soli
+# Trusted XML fragment — pass through verbatim
 body = "<GetWeather xmlns=\"http://example.com/weather\"><City>London</City></GetWeather>"
 envelope = SOAP.wrap(body)
-# Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+
+# Untrusted text — escape so "<" / "&" cannot break out
+envelope = SOAP.wrap(user_supplied, null, { "escape": true })
 ```
+
+> **Pick `escape: true` whenever `body` contains user input.** Without it, an attacker who controls `body` can inject arbitrary XML into the envelope.
 
 ### SOAP.parse(xml)
 
@@ -3771,13 +3779,14 @@ if result["status"] == 200
 end
 ```
 
-#### SOAP.wrap(body, namespace?)
+#### SOAP.wrap(body, namespace?, options?)
 
 Wraps an XML body in a SOAP envelope.
 
 **Parameters:**
 - `body` (String) - The XML body content
 - `namespace` (String, optional) - SOAP namespace (default: SOAP 1.1)
+- `options` (Hash, optional) - `{ "escape": true }` to XML-escape the body before wrapping. Use this whenever `body` is untrusted text rather than a trusted XML fragment.
 
 **Returns:** String - Complete SOAP envelope XML
 
@@ -3785,6 +3794,9 @@ Wraps an XML body in a SOAP envelope.
 ```soli
 body = "<GetCustomer><id>42</id></GetCustomer>"
 envelope = SOAP.wrap(body)
+
+# Escape user-supplied content
+envelope = SOAP.wrap(user_input, null, { "escape": true })
 ```
 
 #### SOAP.parse(xml_string)

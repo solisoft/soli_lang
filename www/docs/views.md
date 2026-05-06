@@ -89,12 +89,43 @@ Output: `/css/app.css?v=a1b2c3d4...`
 
 #### html_escape(string) / h(string)
 
-Escapes HTML special characters to prevent XSS attacks.
+Escapes HTML special characters to prevent XSS attacks. Use `h()` for content embedded in element bodies (between tags).
 
 ```erb
 <p><%= html_escape(user_input) %></p>
 <p><%= h(user_input) %></p>
 ```
+
+#### attr(string)
+
+Escapes a string for safe interpolation inside an HTML attribute value (between quotes). Encodes `"`, `'`, `<`, `>`, and `&`. Use this — not `h()` — when interpolating into attributes, since attribute context allows unquoted/single-quoted values that `h()` does not cover.
+
+```erb
+<a title="<%= attr(post.title) %>">Read</a>
+<input value="<%= attr(form_value) %>">
+```
+
+#### j(string)
+
+JavaScript-string escape for embedding inside an inline `<script>` block. Escapes backslashes, single/double quotes, and `<`/`>`/`&` so a payload cannot break out of the string literal or close the surrounding `</script>` tag.
+
+```erb
+<script>
+  const user = "<%= j(current_user.name) %>";
+  const next = "<%= j(redirect_url) %>";
+</script>
+```
+
+#### url(string)
+
+Percent-encodes a string for safe use as a URL query-parameter value or path segment. Only unreserved characters (`A-Z`, `a-z`, `0-9`, `-`, `_`, `.`, `~`) are passed through; everything else is `%`-encoded.
+
+```erb
+<a href="/search?q=<%= url(query) %>">Search</a>
+<a href="/users/<%= url(user.slug) %>">Profile</a>
+```
+
+> **Pick the helper that matches the output context.** `h()` is for element bodies, `attr()` for attribute values, `j()` for JS string literals, `url()` for URL query/path parts. Using the wrong one — e.g. `h()` inside a `<script>` — leaves XSS gaps.
 
 #### html_unescape(string)
 

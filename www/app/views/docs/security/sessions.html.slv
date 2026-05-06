@@ -129,12 +129,12 @@ session_destroy()</code></pre>
             <div class="p-6 overflow-x-auto">
                 <pre><code class="language-soli text-sm">def login(req: Any)
   credentials = req["body"]
-  
+
   if verify_user(credentials)
     # CRITICAL: Regenerate session ID before setting sensitive data
     session_regenerate
     session_set("authenticated", true)
-    session_set("user_id", credentials["id"])        
+    session_set("user_id", credentials["id"])
     return redirect("/dashboard")
   end
 
@@ -142,6 +142,24 @@ session_destroy()</code></pre>
 end</code></pre>
             </div>
         </div>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Cookie Hardening</h3>
+        <p class="text-gray-400 mb-4">
+            Session cookies always carry <code>HttpOnly</code> and <code>Path=/</code>. The <code>SameSite</code> attribute and <code>__Host-</code> prefix are configurable via environment variables.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_SAMESITE</code></td><td class="py-3 px-4"><code>Lax</code>, <code>Strict</code>, or <code>None</code>. <code>Strict</code> blocks the cookie on any cross-site navigation; <code>None</code> requires <code>Secure</code>.</td><td class="py-3 px-4"><code>Lax</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_HOST_PREFIX</code></td><td class="py-3 px-4">Set to <code>1</code> to emit the cookie as <code>__Host-session_id</code>. Browsers only accept <code>__Host-</code> cookies that are <code>Secure</code> and scoped to <code>Path=/</code> with no <code>Domain</code> &mdash; this prevents subdomain takeover from setting an attacker-controlled session cookie. Applied only when <code>Secure</code> is also active.</td><td class="py-3 px-4">unset</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <pre data-filename="Production hardening"><code class="language-bash text-sm">export SOLI_SESSION_SAMESITE=Strict
+export SOLI_SESSION_HOST_PREFIX=1</code></pre>
     </section>
 
     <!-- Live Demo Card -->

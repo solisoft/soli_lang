@@ -88,29 +88,39 @@ end</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
             </span>
-            SOAP.wrap(body)
+            SOAP.wrap(body, namespace?, options?)
         </h2>
 
         <section id="soap-wrap-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-wrap-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.wrap(body)</code>
+                    <code class="text-lg font-mono text-indigo-400">SOAP.wrap(body, namespace?, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Wraps an XML body in a complete SOAP envelope with the standard SOAP 1.1 namespace.</p>
+                <p class="text-gray-400 mb-3">Wraps an XML body in a complete SOAP envelope. Defaults to the SOAP 1.1 namespace and passes the body through verbatim &mdash; pass <code>{ "escape": true }</code> when the body is untrusted text.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">body</code> : <code class="text-purple-400">String</code> &mdash; The XML body content</div>
+                    <div><code class="text-amber-400">namespace</code> : <code class="text-purple-400">String?</code> &mdash; SOAP envelope namespace (default: SOAP 1.1)</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; Wrapping options</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">body</code> : <code class="text-purple-400">String</code> - The XML body content
+                    <code class="text-amber-400">escape</code> : <code class="text-purple-400">Bool</code> &mdash; When <code>true</code>, XML-escapes the body before wrapping. Use this whenever <code>body</code> contains user input or other untrusted text. Defaults to <code>false</code> so already-built XML fragments pass through.
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - Complete SOAP envelope XML
+                    <code class="text-purple-400">String</code> &mdash; Complete SOAP envelope XML
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
-envelope = SOAP.wrap(body)
-# Returns complete SOAP envelope with xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"</code></pre>
+                <pre data-filename="Trusted XML fragment"><code class="language-soli text-sm">body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
+envelope = SOAP.wrap(body)</code></pre>
+                <pre data-filename="Untrusted text"><code class="language-soli text-sm">envelope = SOAP.wrap(user_supplied, null, { "escape": true })
+# &lt; / &amp; / etc. are encoded so the payload cannot break out of the body</code></pre>
+                <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
+                    <p class="text-sm text-amber-200"><strong>Pick <code>escape: true</code> whenever <code>body</code> contains user input.</strong> Without it, an attacker who controls <code>body</code> can inject arbitrary XML into the envelope.</p>
+                </div>
             </div>
         </section>
     </section>

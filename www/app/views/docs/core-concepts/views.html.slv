@@ -360,9 +360,18 @@
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- HTML escaping (prevent XSS) --&gt
+<pre><code class="language-erb text-sm">&lt;!-- HTML escaping for element bodies (prevent XSS) --&gt
 &lt;%= html_escape(user_input) %&gt
 &lt;%= h(user_input) %&gt;  &lt;!-- shorthand --&gt
+
+&lt;!-- Attribute-value escaping (use inside HTML attributes) --&gt
+&lt;a title="&lt;%= attr(post.title) %&gt;"&gt;Read&lt;/a&gt
+
+&lt;!-- JavaScript string escaping (use inside &lt;script&gt; blocks) --&gt
+&lt;script&gt;const user = "&lt;%= j(current_user.name) %&gt;";&lt;/script&gt
+
+&lt;!-- URL percent-encoding (query params / path segments) --&gt
+&lt;a href="/search?q=&lt;%= url(query) %&gt;"&gt;Search&lt;/a&gt
 
 &lt;!-- Strip HTML tags --&gt
 &lt;%= strip_html(post["content"]) %&gt
@@ -376,6 +385,10 @@
 &lt;!-- Substring (useful for truncating) --&gt
 &lt;%= substring(post["content"], 0, 100) %&gt;...</code></pre>
         </div>
+    </div>
+
+    <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-8">
+        <p class="text-sm text-amber-200"><strong>Pick the helper that matches the output context.</strong> <code>h()</code> is for element bodies, <code>attr()</code> for attribute values, <code>j()</code> for JS string literals, <code>url()</code> for URL query/path parts. Using the wrong one &mdash; e.g. <code>h()</code> inside a <code>&lt;script&gt;</code> &mdash; leaves XSS gaps.</p>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Utility Functions</h3>
