@@ -23,6 +23,13 @@ fn system_class() -> Value {
     let mut methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
     // System.run(command) - Run command asynchronously, no auto-shell.
+    //
+    // SEC-074: The Arc<Mutex<FutureState>> is sent across thread::spawn
+    // boundaries. FutureState::Pending holds a Receiver which is !Send. This
+    // compiles because the receiver lives entirely on the spawned thread
+    // and Arc/Mutex add Sync — but the lint is a real concern: if a future
+    // is polled from a different thread or FutureState gains Send fields,
+    // this becomes UB. Tracking in SEC-074.
     #[allow(clippy::arc_with_non_send_sync)]
     methods.insert(
         "run".to_string(),
@@ -43,6 +50,7 @@ fn system_class() -> Value {
     );
 
     // System.shell(command) - Run command via `sh -c` (explicit opt-in to shell).
+    // SEC-074: Same Arc<Mutex<FutureState>> cross-thread concern as System.run.
     #[allow(clippy::arc_with_non_send_sync)]
     methods.insert(
         "shell".to_string(),
