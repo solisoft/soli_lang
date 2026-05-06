@@ -23,6 +23,7 @@ pub(crate) struct ReplSession {
 pub(crate) struct ReplSessionStore {
     sessions: RefCell<HashMap<String, Rc<ReplSession>>>,
     max_age: Duration,
+    max_sessions: usize,
 }
 
 impl ReplSessionStore {
@@ -30,6 +31,7 @@ impl ReplSessionStore {
         Self {
             sessions: RefCell::new(HashMap::new()),
             max_age: Duration::from_secs(30 * 60), // 30 minutes
+            max_sessions: 100, // SEC-068: bound session count to prevent unbounded growth
         }
     }
 
@@ -46,7 +48,7 @@ impl ReplSessionStore {
             }
         }
 
-        // Cleanup expired sessions periodically (1 in 50 chance)
+        // Cleanup expired sessions and evict LRU if over capacity
         if rand::random::<u64>().is_multiple_of(50) {
             self.cleanup();
         }
@@ -66,6 +68,16 @@ impl ReplSessionStore {
 
         {
             let mut sessions = self.sessions.borrow_mut();
+            // SEC-068: evict oldest session if at capacity
+            if sessions.len() >= self.max_sessions {
+                if let Some((oldest_key, _)) = sessions
+                    .iter()
+                    .min_by_key(|(_, s)| *s.last_accessed.borrow())
+                {
+                    let key = oldest_key.clone();
+                    sessions.remove(&key);
+                }
+            }
             sessions.insert(new_id.clone(), Rc::clone(&session));
         }
 
