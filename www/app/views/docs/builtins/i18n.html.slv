@@ -70,149 +70,70 @@ I18n.set_locale("de")</code></pre>
         <section id="def-i18n-translate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-i18n-translate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">I18n.translate(key, locale?, translations?)</code>
+                    <code class="text-lg font-mono text-indigo-400">I18n.translate(key, locale_or_values?, values?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Translate a key to the specified locale.</p>
+                <p class="text-gray-400 mb-3">Translate a key against the auto-loaded locale tree (see <a href="#section-locale-files" class="text-indigo-400 hover:text-indigo-300">Locale Files</a>). Placeholders use <code class="text-amber-400">{name}</code> syntax; unknown placeholders are left intact so missing data is visible.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The translation key</div>
-                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale (uses current if not specified)</div>
-                    <div><code class="text-amber-400">translations</code> : <code class="text-purple-400">Hash?</code> - Optional translations hash</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> — dotted lookup path (e.g. <code>"app.welcome"</code>)</div>
+                    <div>2nd arg : <code class="text-purple-400">String</code> for an explicit locale, <strong>or</strong> <code class="text-purple-400">Hash</code> of interpolation values (current locale used)</div>
+                    <div>3rd arg : <code class="text-purple-400">Hash?</code> of interpolation values when an explicit locale was passed</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">translations = {
-  "en.greeting": "Hello",
-  "fr.greeting": "Bonjour",
-  "de.greeting": "Hallo",
-  "en.welcome": "Welcome, {name}!"
-}
-
-I18n.translate("greeting", "fr", translations)  # "Bonjour"
-I18n.translate("greeting", "en", translations)  # "Hello"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.translate("app.welcome")                           # "Welcome"
+I18n.translate("app.welcome", "fr")                     # "Bienvenue"
+I18n.translate("app.greeting", { name: "Alice" })       # "Hello, Alice!"
+I18n.translate("app.greeting", "fr", { name: "Alice" }) # "Bonjour, Alice !"</code></pre>
             </div>
         </section>
 
         <section id="def-i18n-plural" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-i18n-plural" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">I18n.plural(key, count, locale?, translations?)</code>
+                    <code class="text-lg font-mono text-indigo-400">I18n.plural(key, count, locale_or_values?, values?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Handle pluralization based on count.</p>
-                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Plural Forms</h4>
-                <div class="text-sm text-gray-400 mb-4">
-                    Use suffixes: <code class="text-amber-400">_zero</code>, <code class="text-amber-400">_one</code>, <code class="text-amber-400">_other</code>
-                </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">translations = {
-  "en.items_zero": "No items",
-  "en.items_one": "1 item",
-  "en.items_other": "{count} items"
-}
-
-I18n.plural("items", 0, "en", translations)   # "No items"
-I18n.plural("items", 1, "en", translations)   # "1 item"
-I18n.plural("items", 5, "en", translations)   # "5 items"</code></pre>
+                <p class="text-gray-400 mb-3">Resolves <code class="text-amber-400">&lt;key&gt;_zero</code> (count == 0), <code class="text-amber-400">&lt;key&gt;_one</code> (count == 1), or <code class="text-amber-400">&lt;key&gt;_other</code>. Same locale-or-values disambiguation as <code>translate</code>. <code class="text-amber-400">{count}</code> is auto-injected into the interpolation values.</p>
+                <pre data-filename="config/locales/en.yml"><code class="language-yaml text-sm">en:
+  items_zero: No items
+  items_one: One item
+  items_other: "{count} items"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.plural("items", 0)   # "No items"
+I18n.plural("items", 1)   # "One item"
+I18n.plural("items", 5)   # "5 items"</code></pre>
             </div>
         </section>
     </section>
 
-    <!-- Loading External Files -->
-    <section id="section-external-files" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Loading from External Files</h2>
+    <!-- Locale Files -->
+    <section id="section-locale-files" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Locale Files</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <p class="text-gray-400 mb-4">
-                Load translations from external JSON files at application startup. This is typically done in <code class="text-amber-400">app.sl</code> to make translations available globally.
+                Soli auto-loads every <code class="text-amber-400">*.yml</code> (and <code class="text-amber-400">*.yaml</code>) file under <code class="text-amber-400">config/locales/</code> at server boot. The top-level YAML key is the locale name; nested keys form the dotted lookup path used by <code>I18n.translate</code>.
             </p>
-
-            <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">JSON File Format</h4>
-            <pre data-filename="locales/en.json"><code class="language-json text-sm">{
-  "app": {
-    "title": "My Application",
-    "welcome": "Welcome!"
-  },
-  "nav": {
-    "home": "Home",
-    "about": "About"
-  },
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel"
-  }
-}</code></pre>
-        </div>
-
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h4 class="text-sm font-semibold text-gray-300 mb-2">Helper Functions</h4>
-            <p class="text-gray-400 text-sm mb-4">
-                Create a helper to load translations from JSON files. This flattens nested JSON into dot-notation keys.
-            </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">i18n_translations = {}
-
-def flatten_dict(dict, prefix) -> Hash
-  result = {}
-  for (pair in entries(dict))
-    key = pair[0]
-    value = pair[1]
-    full_key = prefix + "." + key
-    if type(value) == "Hash"
-      nested = flatten_dict(value, full_key)
-      for (np in entries(nested))
-        result[np[0]] = np[1]
-      end
-    else
-      result[full_key] = value
-    end
-  end
-  return result
-end
-
-def i18n_load_translations(locale, dict)
-  flat = flatten_dict(dict, locale)
-  for (pair in entries(flat))
-    i18n_translations[pair[0]] = pair[1]
-  end
-end</code></pre>
-        </div>
-
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h4 class="text-sm font-semibold text-gray-300 mb-2">Loading in app.sl</h4>
-            <p class="text-gray-400 text-sm mb-4">
-                Load all translation files at application startup. They'll be available globally.
-            </p>
-            <pre data-filename="app.sl"><code class="language-soli text-sm"># Load translation files from locales/ directory
-en_data = json_parse(slurp("locales/en.json"))
-fr_data = json_parse(slurp("locales/fr.json"))
-de_data = json_parse(slurp("locales/de.json"))
-
-i18n_load_translations("en", en_data)
-i18n_load_translations("fr", fr_data)
-i18n_load_translations("de", de_data)
-
-# Set default locale
-I18n.set_locale("en")
-
-# Define routes (MVC style)
-get("/", "home#index")</code></pre>
-        </div>
-
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <h4 class="text-sm font-semibold text-gray-300 mb-2">Using Translations in Controllers</h4>
-            <p class="text-gray-400 text-sm mb-4">
-                Once loaded in app.sl, use translations anywhere in your controllers.
-            </p>
-            <pre data-filename="Example"><code class="language-soli text-sm">def home_index(req)
-  welcome = I18n.translate("app.welcome", null, i18n_translations)
-  home_link = I18n.translate("nav.home", null, i18n_translations)    
-  return render("home/index", {
-    "welcome": welcome,
-    "nav_home": home_link
-  })
-end</code></pre>
+            <ul class="text-sm text-gray-400 list-disc list-inside space-y-1 mb-4">
+                <li>Resolution falls back to <code class="text-amber-400">en</code> when the active locale has no entry.</li>
+                <li>If no locale resolves the key, the literal key is returned (e.g. <code>"app.welcome"</code>) — typos surface during development.</li>
+                <li>A single file may declare multiple locales, and several files may extend the same locale (e.g. <code>en.yml</code> + <code>accounts.en.yml</code>).</li>
+            </ul>
+            <pre data-filename="config/locales/en.yml"><code class="language-yaml text-sm">en:
+  app:
+    welcome: Welcome
+    greeting: "Hello, {name}!"
+  errors:
+    not_found: Not found</code></pre>
+            <pre data-filename="config/locales/fr.yml"><code class="language-yaml text-sm">fr:
+  app:
+    welcome: Bienvenue
+    greeting: "Bonjour, {name} !"
+  errors:
+    not_found: Introuvable</code></pre>
         </div>
     </section>
 
@@ -301,28 +222,24 @@ dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <pre data-filename="Example"><code class="language-soli text-sm"># Define translations
-translations = {
-  "en.welcome": "Welcome!",
-  "en.cart_items_zero": "Your cart is empty",
-  "en.cart_items_one": "You have 1 item in your cart",
-  "en.cart_items_other": "You have {count} items in your cart",
-  "en.total": "Total: {amount}",
-
-  "fr.welcome": "Bienvenue!",
-  "fr.cart_items_zero": "Votre panier est vide",
-  "fr.cart_items_one": "Vous avez 1 article",
-  "fr.cart_items_other": "Vous avez {count} articles",
-  "fr.total": "Total: {amount}"
-}
-
-# Set locale based on user preference
+            <pre data-filename="config/locales/en.yml"><code class="language-yaml text-sm">en:
+  welcome: "Welcome!"
+  cart_items_zero: "Your cart is empty"
+  cart_items_one: "You have 1 item in your cart"
+  cart_items_other: "You have {count} items in your cart"
+  total: "Total: {amount}"</code></pre>
+            <pre data-filename="config/locales/fr.yml"><code class="language-yaml text-sm">fr:
+  welcome: "Bienvenue !"
+  cart_items_zero: "Votre panier est vide"
+  cart_items_one: "Vous avez 1 article"
+  cart_items_other: "Vous avez {count} articles"
+  total: "Total : {amount}"</code></pre>
+            <pre data-filename="app/controllers/cart_controller.sl"><code class="language-soli text-sm"># Set locale based on user preference
 I18n.set_locale(user["preferred_locale"] ?? "en")
 
-# Use translations
-welcome = I18n.translate("welcome", null, translations)
-cart_msg = I18n.plural("cart_items", cart_count, null, translations)
-total = I18n.format_currency(cart_total, "USD")</code></pre>
+welcome  = I18n.translate("welcome")
+cart_msg = I18n.plural("cart_items", cart_count)
+total    = I18n.translate("total", { amount: I18n.format_currency(cart_total, "USD") })</code></pre>
         </div>
     </section>
 

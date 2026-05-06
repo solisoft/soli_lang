@@ -59,6 +59,57 @@ describe("I18n.translate", fn() {
         }
         assert(failed);
     });
+
+    # ---- New (post-YAML-store) behavior ------------------------------------
+
+    test("translate with one arg returns the key when nothing resolves", fn() {
+        # In the test environment the auto-loaded store is empty, so a key
+        # with no matching locale entry is returned verbatim.
+        assert_eq(I18n.translate("missing.key"), "missing.key");
+    });
+
+    test("translate with null locale uses current locale", fn() {
+        let original = I18n.locale();
+        I18n.set_locale("en");
+        let t = { "en.hi": "Hello" };
+        assert_eq(I18n.translate("hi", null, t), "Hello");
+        I18n.set_locale(original);
+    });
+
+    test("translate rejects non-string non-hash second arg", fn() {
+        let failed = false;
+        try {
+            I18n.translate("greeting", 42);
+        } catch e {
+            failed = true;
+        }
+        assert(failed);
+    });
+
+    test("translate rejects non-hash third arg", fn() {
+        let failed = false;
+        try {
+            I18n.translate("greeting", "en", "not a hash");
+        } catch e {
+            failed = true;
+        }
+        assert(failed);
+    });
+
+    test("translate with values-hash 2nd arg uses current locale", fn() {
+        # No matching translation in the empty auto-store, so the key falls
+        # through as-is. Asserts the disambiguation does not raise.
+        let result = I18n.translate("missing", { name: "Alice" });
+        assert_eq(result, "missing");
+    });
+
+    test("translate treats non-dotted-key 3rd arg as values not legacy", fn() {
+        # 3rd-arg hash whose keys don't all contain a dot is interpolation
+        # values. The auto-store miss returns the key (no `{}`), so values
+        # are unused but the call must not raise nor be misclassified.
+        let result = I18n.translate("missing", "en", { name: "Alice" });
+        assert_eq(result, "missing");
+    });
 });
 
 describe("I18n.plural", fn() {
@@ -77,6 +128,27 @@ describe("I18n.plural", fn() {
         let failed = false;
         try {
             I18n.plural("items", "five", "en", {});
+        } catch e {
+            failed = true;
+        }
+        assert(failed);
+    });
+
+    test("plural with legacy translations selects suffix by count", fn() {
+        let t = {
+            "en.items_zero": "No items",
+            "en.items_one": "1 item",
+            "en.items_other": "Many items"
+        };
+        assert_eq(I18n.plural("items", 0, "en", t), "No items");
+        assert_eq(I18n.plural("items", 1, "en", t), "1 item");
+        assert_eq(I18n.plural("items", 5, "en", t), "Many items");
+    });
+
+    test("plural rejects non-string non-hash third arg", fn() {
+        let failed = false;
+        try {
+            I18n.plural("items", 5, 99);
         } catch e {
             failed = true;
         }

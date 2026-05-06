@@ -2776,138 +2776,69 @@ Sets the current locale.
 I18n.set_locale("fr")
 ```
 
-### I18n.translate(key, locale?, translations?)
+### Locale files
 
-Translates a key.
+Soli auto-loads every `*.yml` (and `*.yaml`) file under `config/locales/` at server boot. The top-level YAML key is the locale name; nested keys form the dotted lookup path used by `I18n.translate`. A single file may declare multiple locales, and several files may extend the same locale (e.g. `en.yml`, `accounts.en.yml`, …).
+
+```yaml
+# config/locales/en.yml
+en:
+  app:
+    welcome: Welcome
+    greeting: "Hello, {name}!"
+  errors:
+    not_found: Not found
+```
+
+```yaml
+# config/locales/fr.yml
+fr:
+  app:
+    welcome: Bienvenue
+    greeting: "Bonjour, {name} !"
+  errors:
+    not_found: Introuvable
+```
+
+Resolution falls back to `en` when the active locale has no entry, and finally returns the literal key (e.g. `"app.welcome"`) so typos surface during development.
+
+### I18n.translate(key, locale_or_values?, values?)
+
+Translates a key against the auto-loaded locale tree.
 
 **Parameters:**
-- `key` (String) - Translation key
-- `locale` (String, optional) - Override locale
-- `translations` (Hash, optional) - Translation dictionary
+- `key` (String) — dotted lookup path (e.g. `"app.welcome"`).
+- 2nd arg — optional locale override (String) **or** interpolation values (Hash).
+- 3rd arg — optional interpolation values (Hash) when an explicit locale was passed.
 
-**Returns:** String - Translated text or key as fallback
+Placeholders inside translated strings use `{name}` syntax. Unknown placeholders are left intact so missing data is visible while iterating.
+
+**Returns:** String — the translated text, or the key itself if no translation resolves.
 
 **Example:**
 ```soli
-translations = {
-  "en.greeting": "Hello",
-  "fr.greeting": "Bonjour"
-}
-
-I18n.set_locale("fr")
-I18n.translate("greeting", null, translations)  # "Bonjour"
+I18n.translate("app.welcome")                          # "Welcome"
+I18n.translate("app.welcome", "fr")                    # "Bienvenue"
+I18n.translate("app.greeting", { name: "Alice" })      # "Hello, Alice!"
+I18n.translate("app.greeting", "fr", { name: "Alice" }) # "Bonjour, Alice !"
 ```
 
-### I18n.plural(key, count, locale?, translations?)
+### I18n.plural(key, count, locale_or_values?, values?)
 
-Gets pluralized translation.
+Picks the matching plural form for a count. Resolves `<key>_zero` (count == 0), `<key>_one` (count == 1), or `<key>_other`. The same locale-or-values disambiguation as `translate` applies. `count` is auto-injected into the interpolation values, so messages can reference `{count}` directly.
 
-**Parameters:**
-- `key` (String) - Base translation key
-- `count` (Int) - Count for pluralization
-- `locale` (String, optional) - Override locale
-- `translations` (Hash, optional) - Translation dictionary
-
-**Returns:** String
-
-**Example:**
-```soli
-translations = {
-  "en.items_zero": "No items",
-  "en.items_one": "1 item",
-  "en.items_other": "Many items"
-}
-
-I18n.plural("items", 0, null, translations)  # "No items"
-I18n.plural("items", 1, null, translations)  # "1 item"
-I18n.plural("items", 5, null, translations)  # "Many items"
+```yaml
+# config/locales/en.yml
+en:
+  items_zero: No items
+  items_one: One item
+  items_other: "{count} items"
 ```
-
-### Loading from External Files
-
-Load translations from external JSON files at application startup. This is typically done in `app.sl` to make translations available globally.
-
-**JSON File Format:**
-
-```json
-{
-  "app": {
-    "title": "My Application",
-    "welcome": "Welcome!"
-  },
-  "nav": {
-    "home": "Home",
-    "about": "About"
-  },
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel"
-  }
-}
-```
-
-**Helper Functions:**
 
 ```soli
-i18n_translations = {}
-
-def flatten_dict(dict, prefix) -> Hash
-  result = {}
-  for (pair in entries(dict))
-    key = pair[0]
-    value = pair[1]
-    full_key = prefix + "." + key
-    if (type(value) == "Hash")
-      nested = flatten_dict(value, full_key)
-      for (np in entries(nested))
-        result[np[0]] = np[1]
-      end
-    else
-      result[full_key] = value
-    end
-  end
-  return result
-end
-
-def i18n_load_translations(locale, dict)
-  flat = flatten_dict(dict, locale)
-  for (pair in entries(flat))
-    i18n_translations[pair[0]] = pair[1]
-  end
-end
-```
-
-**Loading in app.sl:**
-
-```soli
-# Load translation files from locales/ directory
-let en_data = json_parse(slurp("locales/en.json"));
-let fr_data = json_parse(slurp("locales/fr.json"));
-let de_data = json_parse(slurp("locales/de.json"));
-
-i18n_load_translations("en", en_data);
-i18n_load_translations("fr", fr_data);
-i18n_load_translations("de", de_data);
-
-# Set default locale
-I18n.set_locale("en");
-
-# Define routes (MVC style)
-get("/", "home#index")
-```
-
-**Using in Controllers:**
-
-```soli
-def home_index(req)
-  welcome = I18n.translate("app.welcome", null, i18n_translations)
-  home_link = I18n.translate("nav.home", null, i18n_translations)
-  
-  return render("home/index", {
-    "welcome": welcome,
-    "nav_home": home_link
-  })
-end
+I18n.plural("items", 0)   # "No items"
+I18n.plural("items", 1)   # "One item"
+I18n.plural("items", 5)   # "5 items"
 ```
 
 ### I18n.format_number(number, locale?)

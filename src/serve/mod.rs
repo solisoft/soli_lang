@@ -522,6 +522,14 @@ pub fn serve_folder_with_options_and_workers(
     }
     boot_trace("application config loaded");
 
+    // Load translations from config/locales/*.yml so I18n.translate(...) can
+    // resolve keys against the project's locale files without callers having
+    // to pass a translations hash on every call.
+    crate::interpreter::builtins::i18n::helpers::load_locales_from_config_dir(
+        &folder.join("config"),
+    );
+    boot_trace("locales loaded");
+
     // Load routes from config/routes.sl if it exists
     let routes_file = folder.join("config").join("routes.sl");
     if routes_file.exists() {

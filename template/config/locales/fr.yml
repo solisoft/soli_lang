@@ -1,0 +1,5 @@
+# Traductions françaises.
+fr:
+  app:
+    welcome: Bienvenue
+    greeting: "Bonjour, {name} !"

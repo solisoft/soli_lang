@@ -1,0 +1,15 @@
+# English translations.
+#
+# Soli loads every *.yml / *.yaml file under config/locales/ at boot.
+# The top-level key is the locale name; nested keys form the dotted lookup
+# path used by I18n.translate. Example:
+#
+#   I18n.translate("app.welcome")              # => "Welcome"
+#   I18n.translate("app.greeting", { name: "Alice" })  # => "Hello, Alice!"
+#
+# Missing keys fall back to "en"; missing on every locale returns the key
+# itself ("app.welcome") so typos surface during development.
+en:
+  app:
+    welcome: Welcome
+    greeting: "Hello, {name}!"

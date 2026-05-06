@@ -23,6 +23,75 @@ fn set_locale(locale: String) {
     helpers::set_locale(&locale);
 }
 
+/// Convert a values hash into a flat `[(name, displayed_value)]` slice for
+/// `helpers::interpolate`. Non-string keys are skipped.
+fn values_to_strings(hash: &HashPairs) -> Vec<(String, String)> {
+    hash.iter()
+        .filter_map(|(k, v)| match k {
+            HashKey::String(s) => Some((s.clone(), format!("{}", v))),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Heuristic: does this hash look like a legacy flat translations table
+/// (every string key contains a dot, e.g. `"en.greeting"`)? Used to
+/// disambiguate the back-compat 3rd-arg path from interpolation values.
+fn has_dotted_locale_keys(hash: &HashPairs) -> bool {
+    if hash.is_empty() {
+        return false;
+    }
+    hash.iter().all(|(k, _)| match k {
+        HashKey::String(s) => s.contains('.'),
+        _ => false,
+    })
+}
+
+/// Look up a key in a legacy flat translations hash (`{"en.greeting": "Hi"}`).
+/// Tries `<locale>.<key>` then `en.<key>`.
+fn legacy_lookup(translations: &HashPairs, locale: &str, key: &str) -> Option<String> {
+    let primary = format!("{}.{}", locale, key);
+    if let Some(v) = find_string(translations, &primary) {
+        return Some(v);
+    }
+    if locale != "en" {
+        let fallback = format!("en.{}", key);
+        return find_string(translations, &fallback);
+    }
+    None
+}
+
+fn legacy_lookup_plural(
+    translations: &HashPairs,
+    locale: &str,
+    key: &str,
+    n: i64,
+) -> Option<String> {
+    let suffix = if n == 0 {
+        "_zero"
+    } else if n == 1 {
+        "_one"
+    } else {
+        "_other"
+    };
+    let primary = format!("{}.{}{}", locale, key, suffix);
+    if let Some(v) = find_string(translations, &primary) {
+        return Some(v);
+    }
+    if locale != "en" {
+        let fallback = format!("en.{}{}", key, suffix);
+        return find_string(translations, &fallback);
+    }
+    None
+}
+
+fn find_string(hash: &HashPairs, key: &str) -> Option<String> {
+    hash.iter().find_map(|(k, v)| match (k, v) {
+        (HashKey::String(s), Value::String(out)) if s == key => Some(out.clone()),
+        _ => None,
+    })
+}
+
 /// Register the I18n class in the given environment.
 pub fn register_i18n_class(env: &mut Environment) {
     let mut i18n_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
@@ -54,114 +123,146 @@ pub fn register_i18n_class(env: &mut Environment) {
         )),
     );
 
-    // I18n.translate(key, locale?, translations?) - Translate a string
+    // I18n.translate(key, locale_or_values?, values?) - Translate a string.
+    //
+    // - 2nd arg String   → locale; current locale otherwise
+    // - 2nd or 3rd Hash  → interpolation values (placeholders `{name}` in
+    //                      translations are replaced by Display-stringified
+    //                      values; unknown placeholders are left as-is)
+    // - Legacy back-compat: a 3rd-arg Hash whose keys are all dotted (e.g.
+    //   `"en.greeting"`) is consulted as a flat translations table when the
+    //   auto-loaded `config/locales/*.yml` store yields no hit.
     i18n_static_methods.insert(
         "translate".to_string(),
         Rc::new(NativeFunction::new("I18n.translate", None, |args| {
+            if args.is_empty() {
+                return Err("I18n.translate expects a key string".to_string());
+            }
             let key = match &args[0] {
                 Value::String(s) => s.clone(),
                 _ => return Err("I18n.translate expects a key string".to_string()),
             };
 
-            let locale = if args.len() > 1 {
+            let mut locale = get_locale();
+            let mut values: Option<HashPairs> = None;
+            let mut legacy: Option<HashPairs> = None;
+
+            if args.len() > 1 {
                 match &args[1] {
-                    Value::String(s) => s.clone(),
-                    Value::Null => get_locale(),
-                    _ => return Err("I18n.translate locale must be a string or null".to_string()),
+                    Value::String(s) => locale = s.clone(),
+                    Value::Null => {}
+                    Value::Hash(h) => values = Some(h.borrow().clone()),
+                    other => return Err(format!(
+                        "I18n.translate second arg must be a locale string or values hash, got {}",
+                        other.type_name()
+                    )),
                 }
-            } else {
-                get_locale()
-            };
-
-            let translations: HashPairs = if args.len() > 2 {
-                match &args[2] {
-                    Value::Hash(h) => h.borrow().clone(),
-                    _ => return Err("I18n.translate translations must be a Hash".to_string()),
-                }
-            } else {
-                HashPairs::default()
-            };
-
-            // Simple translation lookup
-            let locale_key = format!("{}.{}", locale, key);
-            if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let HashKey::String(s) = k {
-                    s == &locale_key
-                } else {
-                    false
-                }
-            }) {
-                Ok(trans.1.clone())
-            } else if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let HashKey::String(s) = k {
-                    s == &format!("en.{}", key)
-                } else {
-                    false
-                }
-            }) {
-                Ok(trans.1.clone())
-            } else {
-                // Fallback to key
-                Ok(Value::String(key))
             }
+            if args.len() > 2 {
+                match &args[2] {
+                    Value::Null => {}
+                    Value::Hash(h) => {
+                        let hp = h.borrow().clone();
+                        if has_dotted_locale_keys(&hp) {
+                            legacy = Some(hp);
+                        } else {
+                            values = Some(hp);
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "I18n.translate third arg must be a hash, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+
+            let raw = helpers::lookup_translation(&locale, &key)
+                .or_else(|| {
+                    legacy
+                        .as_ref()
+                        .and_then(|t| legacy_lookup(t, &locale, &key))
+                })
+                .unwrap_or_else(|| key.clone());
+
+            let interp = values.as_ref().map(values_to_strings).unwrap_or_default();
+            Ok(Value::String(helpers::interpolate(&raw, &interp)))
         })),
     );
 
-    // I18n.plural(key, n, locale?, translations?) - Get plural form
+    // I18n.plural(key, n, locale_or_values?, values?) - Pluralized translate.
+    //
+    // Resolves `<key>_zero` (n==0), `<key>_one` (n==1), or `<key>_other`
+    // under the active locale tree. `count` is auto-injected into the
+    // interpolation values if not explicitly provided, so messages can read
+    // `"You have {count} items"`.
     i18n_static_methods.insert(
         "plural".to_string(),
         Rc::new(NativeFunction::new("I18n.plural", None, |args| {
+            if args.len() < 2 {
+                return Err("I18n.plural expects (key, n, ...)".to_string());
+            }
             let key = match &args[0] {
                 Value::String(s) => s.clone(),
                 _ => return Err("I18n.plural expects a key string".to_string()),
             };
-
             let n = match &args[1] {
                 Value::Int(i) => *i,
                 Value::Float(f) => *f as i64,
                 _ => return Err("I18n.plural expects a number".to_string()),
             };
 
-            let locale = if args.len() > 2 {
+            let mut locale = get_locale();
+            let mut values: Option<HashPairs> = None;
+            let mut legacy: Option<HashPairs> = None;
+
+            if args.len() > 2 {
                 match &args[2] {
-                    Value::String(s) => s.clone(),
-                    Value::Null => get_locale(),
-                    _ => return Err("I18n.plural locale must be a string or null".to_string()),
+                    Value::String(s) => locale = s.clone(),
+                    Value::Null => {}
+                    Value::Hash(h) => values = Some(h.borrow().clone()),
+                    other => {
+                        return Err(format!(
+                            "I18n.plural third arg must be a locale string or values hash, got {}",
+                            other.type_name()
+                        ))
+                    }
                 }
-            } else {
-                get_locale()
-            };
-
-            let translations: HashPairs = if args.len() > 3 {
-                match &args[3] {
-                    Value::Hash(h) => h.borrow().clone(),
-                    _ => return Err("I18n.plural translations must be a Hash".to_string()),
-                }
-            } else {
-                HashPairs::default()
-            };
-
-            // Simple pluralization: use _zero for 0, _one for 1, _other for plural
-            let plural_key = if n == 0 {
-                format!("{}.{}_zero", locale, key)
-            } else if n == 1 {
-                format!("{}.{}_one", locale, key)
-            } else {
-                format!("{}.{}_other", locale, key)
-            };
-
-            if let Some(trans) = translations.iter().find(|(k, _)| {
-                if let HashKey::String(s) = k {
-                    s == &plural_key
-                } else {
-                    false
-                }
-            }) {
-                Ok(trans.1.clone())
-            } else {
-                // Fallback to key
-                Ok(Value::String(key))
             }
+            if args.len() > 3 {
+                match &args[3] {
+                    Value::Null => {}
+                    Value::Hash(h) => {
+                        let hp = h.borrow().clone();
+                        if has_dotted_locale_keys(&hp) {
+                            legacy = Some(hp);
+                        } else {
+                            values = Some(hp);
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "I18n.plural fourth arg must be a hash, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            }
+
+            let raw = helpers::lookup_plural(&locale, &key, n)
+                .or_else(|| {
+                    legacy
+                        .as_ref()
+                        .and_then(|t| legacy_lookup_plural(t, &locale, &key, n))
+                })
+                .unwrap_or_else(|| key.clone());
+
+            let mut interp = values.as_ref().map(values_to_strings).unwrap_or_default();
+            if !interp.iter().any(|(k, _)| k == "count") {
+                interp.push(("count".to_string(), n.to_string()));
+            }
+            Ok(Value::String(helpers::interpolate(&raw, &interp)))
         })),
     );
 
