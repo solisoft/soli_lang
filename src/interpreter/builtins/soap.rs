@@ -341,7 +341,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
 
                     build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
                 }
-                Err(e) => format!("{{\"error\": \"{}\"}}", e),
+                Err(e) => serde_json::json!({"error": e.to_string()}).to_string(),
             }
         });
 
