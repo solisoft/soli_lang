@@ -334,6 +334,10 @@ pub fn serve_folder_with_options_and_workers(
     // never reach this branch and keep their unrestricted access.
     crate::interpreter::builtins::file::set_file_jail(folder.to_path_buf());
 
+    // SEC-063: set the image jail so Image.new / Image.to_file cannot
+    // read or write outside the app directory.
+    crate::interpreter::builtins::image::set_image_jail(folder.to_path_buf());
+
     // If the parent process enabled coverage collection (via the test
     // runner), install a global coverage tracker so every interpreter in
     // every worker thread records line hits into it. The hits are returned

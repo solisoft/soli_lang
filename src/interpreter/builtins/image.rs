@@ -24,7 +24,48 @@
 //! - img.to_file(path) - Save to file
 
 use image::{DynamicImage, ImageFormat, ImageReader};
+use std::path::PathBuf;
 use std::sync::OnceLock;
+
+static IMAGE_JAIL: OnceLock<PathBuf> = OnceLock::new();
+
+/// SEC-063: set a jail root for Image paths. Paths outside the jail are rejected.
+/// Idempotent on first call.
+pub fn set_image_jail(path: PathBuf) {
+    let _ = IMAGE_JAIL.set(path);
+}
+
+fn current_image_jail() -> Option<&'static PathBuf> {
+    IMAGE_JAIL.get()
+}
+
+/// SEC-063: validate a user-supplied path against the image jail.
+/// Relative paths are joined to the jail root; absolute paths must
+/// be within the jail after canonicalization.
+fn validate_image_path(path: &str, op: &str) -> Result<(), String> {
+    let Some(jail) = current_image_jail() else {
+        return Ok(());
+    };
+
+    let candidate = if std::path::Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        jail.join(path)
+    };
+
+    let canonical_jail = std::fs::canonicalize(jail).unwrap_or_else(|_| jail.clone());
+    let canonical_path = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+
+    if !canonical_path.starts_with(&canonical_jail) {
+        return Err(format!(
+            "{}.new() path {:?} escapes the image jail at {}",
+            op,
+            path,
+            canonical_jail.display()
+        ));
+    }
+    Ok(())
+}
 
 /// SEC-019: decompression-bomb defense for the image builtins. A 100 KB
 /// PNG declaring 65535×65535 pixels would otherwise allocate ~16 GB of
@@ -600,6 +641,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.to_file requires string path".to_string()),
             };
+            validate_image_path(&path, "Image.to_file")?;
             with_image_data(&args, |data| {
                 let format = data
                     .format
@@ -628,6 +670,7 @@ fn build_image_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("Image.new requires string path".to_string()),
             };
+            validate_image_path(&path, "Image.new")?;
             let mut reader =
                 ImageReader::open(&path).map_err(|e| format!("Failed to open image: {}", e))?;
             let format = reader.format();
