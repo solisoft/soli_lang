@@ -63,16 +63,22 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
-            // Enforce minimum secret length for security
-            const MIN_SECRET_LENGTH: usize = 16;
-            if secret.len() < MIN_SECRET_LENGTH {
+            // SEC-054: enforce minimum secret length matching the
+            // smallest HMAC output we use (HS256 → 32 bytes). Secrets
+            // shorter than the digest are weaker than the algorithm
+            // itself; RFC 7518 §3.2 says "A key of the same size as the
+            // hash output … or larger MUST be used". 16 chars passed
+            // before, which let `aaaaaaaaaaaaaaaa` and other low-entropy
+            // values through silently.
+            const MIN_SECRET_BYTES: usize = 32;
+            if secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
-                    "jwt_sign() secret must be at least {} characters for security (got {})",
-                    MIN_SECRET_LENGTH,
+                    "jwt_sign() secret must be at least {} bytes for security (got {}); \
+                     load a high-entropy value from .env, e.g. `JWT_SECRET=$(openssl rand -hex 32)`",
+                    MIN_SECRET_BYTES,
                     secret.len()
                 ));
             }
-
             // Parse options
             let mut expires_in: Option<u64> = None;
             let mut algorithm = Algorithm::HS256;
@@ -167,12 +173,13 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
-            // Enforce minimum secret length for security
-            const MIN_SECRET_LENGTH: usize = 16;
-            if secret.len() < MIN_SECRET_LENGTH {
+            // SEC-054: same minimum as jwt_sign — verify must reject
+            // secrets shorter than the HS256 digest size.
+            const MIN_SECRET_BYTES: usize = 32;
+            if secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
-                    "jwt_verify() secret must be at least {} characters for security (got {})",
-                    MIN_SECRET_LENGTH,
+                    "jwt_verify() secret must be at least {} bytes for security (got {})",
+                    MIN_SECRET_BYTES,
                     secret.len()
                 ));
             }
@@ -378,9 +385,11 @@ mod tests {
             Value::String("admin".to_string()),
         );
         let payload_hash = Value::Hash(Rc::new(RefCell::new(payload)));
+        // SEC-054: secret must be ≥ 32 bytes; the prior fixture was
+        // only 23 chars and would now fail the minimum-length check.
         let token = (sign.func)(vec![
             payload_hash,
-            Value::String("a-very-long-secret-here".to_string()),
+            Value::String("0123456789abcdef0123456789abcdef".to_string()),
         ])
         .unwrap();
         let token_str = match token {
@@ -413,6 +422,42 @@ mod tests {
         assert!(outer_borrow
             .get(&HashKey::String("sub".to_string()))
             .is_none());
+    }
+
+    /// SEC-054: jwt_sign and jwt_verify reject secrets shorter than 32
+    /// bytes. The prior 16-char minimum let `aaaaaaaaaaaaaaaa` and
+    /// other low-entropy secrets through, weaker than the HS256 digest.
+    #[test]
+    fn jwt_sign_rejects_secret_under_32_bytes() {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+
+        let payload = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+        let weak = "a".repeat(31);
+        let err = (sign.func)(vec![payload, Value::String(weak)]).unwrap_err();
+        assert!(
+            err.contains("at least 32") && err.contains("openssl rand"),
+            "expected 32-byte minimum + .env hint, got: {err}"
+        );
+    }
+
+    #[test]
+    fn jwt_verify_rejects_secret_under_32_bytes() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+
+        // Even a structurally invalid token must trip the length gate
+        // first — the key check fires before signature verification.
+        let weak = "a".repeat(31);
+        let err = (verify.func)(vec![
+            Value::String("dummy.token.value".to_string()),
+            Value::String(weak),
+        ])
+        .unwrap_err();
+        assert!(
+            err.contains("at least 32"),
+            "expected 32-byte minimum, got: {err}"
+        );
     }
 
     /// SEC-029: the bare `jwt_decode` builtin is removed and points

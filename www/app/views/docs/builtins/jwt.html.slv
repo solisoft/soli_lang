@@ -39,7 +39,7 @@
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">payload</code> : <code class="text-purple-400">Hash</code> - The claims to encode in the token</div>
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key for signing</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key for signing. Must be at least <strong>32 bytes</strong> (SEC-054). Load a high-entropy value from <code>.env</code>, e.g. generate it once with <code>openssl rand -hex 32</code> and reference it as <code>getenv("JWT_SECRET")</code>. Never commit the secret to source.</div>
                     <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> - Optional settings</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
@@ -49,7 +49,7 @@
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">token = jwt_sign(
   { "sub": "user123", "role": "admin" },
-  "my-secret-key",
+  getenv("JWT_SECRET"),
   { "expires_in": 3600 }
 )
 # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
@@ -68,13 +68,13 @@
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">token</code> : <code class="text-purple-400">String</code> - The JWT token to verify</div>
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key used for signing</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key used for signing. Same 32-byte minimum as <code>jwt_sign</code> (SEC-054).</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">result = jwt_verify(token, "my-secret-key")
+                <pre data-filename="Example"><code class="language-soli text-sm">result = jwt_verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else

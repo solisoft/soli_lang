@@ -1208,7 +1208,7 @@ Creates a signed JWT token.
 
 **Parameters:**
 - `payload` (Hash) - Claims to include in the token
-- `secret` (String) - Secret key for signing
+- `secret` (String) - Secret key for signing. Must be at least **32 bytes** (SEC-054). Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
 - `options` (Hash, optional) - Token options
   - `expires_in` (Int) - Expiration time in seconds
   - `algorithm` (String) - "HS256", "HS384", or "HS512"
@@ -1219,7 +1219,7 @@ Creates a signed JWT token.
 ```soli
 token = jwt_sign(
   { "sub": "user123", "role": "admin" },
-  "my-secret-key",
+  getenv("JWT_SECRET"),
   { "expires_in": 3600 }
 )
 ```
@@ -1230,13 +1230,13 @@ Verifies and decodes a JWT token.
 
 **Parameters:**
 - `token` (String) - The JWT token
-- `secret` (String) - Secret key used for signing
+- `secret` (String) - Secret key used for signing. Same 32-byte minimum as `jwt_sign` (SEC-054).
 
 **Returns:** Hash - Decoded payload, or `{ "error": true, "message": String }` on failure
 
 **Example:**
 ```soli
-result = jwt_verify(token, "my-secret-key")
+result = jwt_verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
