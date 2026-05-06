@@ -45,21 +45,30 @@
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">expires_in</code> : <code class="text-purple-400">Int</code> - Token lifetime in seconds</div>
-                    <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - HS256, HS384, or HS512 (default: HS256)</div>
+                    <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - HS256, HS384, HS512, RS256, or EdDSA (default: HS256)</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - PEM-encoded private key for RS256/EdDSA algorithms</div>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">token = jwt_sign(
+                <pre data-filename="HMAC Example"><code class="language-soli text-sm">token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
   { "expires_in": 3600 }
 )
 # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
+                <pre data-filename="RSA Example"><code class="language-soli text-sm">token = jwt_sign(
+  { "sub": "user123", "role": "admin" },
+  "ignored_for_rsa",  # still required but unused when key is provided
+  {
+    "algorithm": "RS256",
+    "key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BBQEw...\n-----END PRIVATE KEY-----"
+  }
+)</code></pre>
             </div>
         </section>
 
         <section id="def-jwt-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-jwt-verify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">jwt_verify(token, secret)</code>
+                    <code class="text-lg font-mono text-indigo-400">jwt_verify(token, secret, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -68,7 +77,12 @@
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">token</code> : <code class="text-purple-400">String</code> - The JWT token to verify</div>
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key used for signing. Same 32-byte minimum as <code>jwt_sign</code> (SEC-054).</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - The secret key (HMAC) or public key material (RSA/EdDSA). Same 32-byte minimum for HMAC algorithms (SEC-054).</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> - Optional settings</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - PEM-encoded public key for RS256/EdDSA algorithms</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">

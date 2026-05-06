@@ -1359,7 +1359,9 @@
         "jwt",
         "token",
         "auth",
-        "sign"
+        "sign",
+        "rs256",
+        "eddsa"
       ]
     },
     {
@@ -1367,13 +1369,15 @@
       "type": "function",
       "category": "JWT",
       "path": "/docs/builtins/jwt#def-jwt-verify",
-      "signature": "jwt_verify(token, secret)",
+      "signature": "jwt_verify(token, secret, options?)",
       "description": "Verify and decode a JWT token",
       "keywords": [
         "jwt",
         "token",
         "auth",
-        "verify"
+        "verify",
+        "rs256",
+        "eddsa"
       ]
     },
     {

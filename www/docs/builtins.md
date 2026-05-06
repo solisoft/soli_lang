@@ -1228,10 +1228,11 @@ Creates a signed JWT token.
 
 **Parameters:**
 - `payload` (Hash) - Claims to include in the token
-- `secret` (String) - Secret key for signing. Must be at least **32 bytes** (SEC-054). Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
+- `secret` (String) - Secret key for signing. Must be at least **32 bytes** for HMAC algorithms (SEC-054). Asymmetric algorithms (RS256, EdDSA) use PEM keys via the `key` option instead. Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
 - `options` (Hash, optional) - Token options
   - `expires_in` (Int) - Expiration time in seconds
-  - `algorithm` (String) - "HS256", "HS384", or "HS512"
+  - `algorithm` (String) - "HS256", "HS384", "HS512", "RS256", or "EdDSA"
+  - `key` (String) - PEM-encoded private key for RS256/EdDSA algorithms
 
 **Returns:** String - The JWT token
 
@@ -1244,13 +1245,15 @@ token = jwt_sign(
 )
 ```
 
-### jwt_verify(token, secret)
+### jwt_verify(token, secret, options?)
 
 Verifies and decodes a JWT token.
 
 **Parameters:**
 - `token` (String) - The JWT token
-- `secret` (String) - Secret key used for signing. Same 32-byte minimum as `jwt_sign` (SEC-054).
+- `secret` (String) - Secret key used for signing. Same 32-byte minimum for HMAC algorithms. Asymmetric algorithms (RS256, EdDSA) use PEM keys via the `key` option.
+- `options` (Hash, optional) - Verification options
+  - `key` (String) - PEM-encoded public key for RS256/EdDSA algorithms
 
 **Returns:** Hash - Decoded payload, or `{ "error": true, "message": String }` on failure
 

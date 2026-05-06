@@ -101,13 +101,21 @@ jwt_sign(payload, secret, options)
 | `payload` | Hash | Claims to include in the token |
 | `secret` | String | Secret key for signing |
 | `options.expires_in` | Int | Expiration in seconds (optional) |
-| `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512" (optional) |
+| `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512", "RS256", "EdDSA" (optional) |
+| `options.key` | String | PEM-encoded private key for RS256/EdDSA (optional) |
 
 ### jwt_verify
 
 ```soli
 jwt_verify(token, secret)
+jwt_verify(token, secret, options)
 ```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `token` | String | The JWT token |
+| `secret` | String | Secret key for HMAC, or public key material for RS256/EdDSA |
+| `options.key` | String | PEM-encoded public key for RS256/EdDSA (optional) |
 
 Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid.
 

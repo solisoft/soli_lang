@@ -229,7 +229,7 @@ fn do_totp_verify(secret: &str, code: &str, time: u64, period: u64) -> Result<bo
     let windows = [time.saturating_sub(period), time, time + period];
     for window_time in windows {
         let expected = do_totp_generate(secret, window_time, period)?;
-        if expected == code_str {
+        if do_secure_compare(&expected, code_str) {
             return Ok(true);
         }
     }
