@@ -5,29 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
-const TAILWIND_SHA256: &[(&str, &str)] = &[
-    // (version, sha256) — update when releasing new Tailwind versions
-    (
-        "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-macos-arm64",
-        "5d7156e12102b07d15b5a0e6c8891e23ad3a8ed3c6a7c7b8b0d8e8b8e8e8e8e",
-    ),
-    (
-        "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-macos-x64",
-        "5d7156e12102b07d15b5a0e6c8891e23ad3a8ed3c6a7c7b8b0d8e8b8e8e8e8e8e",
-    ),
-    (
-        "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-linux-x64",
-        "5d7156e12102b07d15b5a0e6c8891e23ad3a8ed3c6a7c7b8b0d8e8b8e8e8e8e8e",
-    ),
-    (
-        "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-linux-arm64",
-        "5d7156e12102b07d15b5a0e6c8891e23ad3a8ed3c6a7c7b8b0d8e8b8e8e8e8e8e",
-    ),
-];
-
 /// Platform-specific Tailwind standalone CLI download URL and binary name
 fn tailwind_binary_info() -> (&'static str, &'static str) {
-    const VERSION: &str = "3.4.17";
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
         (

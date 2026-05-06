@@ -102,14 +102,15 @@ impl Interpreter {
                             let mut map = std::collections::HashMap::new();
                             for (k, v) in hash.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(key) = k {
-                                    map.insert(
-                                        key.clone(),
-                                        crate::interpreter::builtins::model::value_to_json(v)
-                                            .map_err(|e| RuntimeError::General {
-                                                message: e,
-                                                span,
-                                            })?,
-                                    );
+                                    let json_val =
+                                        crate::interpreter::builtins::model::ensure_scalar_bind_value(
+                                            v, key, "where",
+                                        )
+                                        .map_err(|e| RuntimeError::General {
+                                            message: e,
+                                            span,
+                                        })?;
+                                    map.insert(key.clone(), json_val);
                                 }
                             }
                             map

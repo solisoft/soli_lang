@@ -139,21 +139,28 @@ pub fn register_validation(class_name: &str, rule: ValidationRule) {
 /// Heuristic detection of a unique-index conflict in an error returned by
 /// `exec_insert`/`exec_update`. SoliDB stringifies failures as
 /// `"HTTP {status} {url}: {body}"` (see `crud.rs::exec_document_request`),
-/// so we look for HTTP 409 plus body keywords. The collection-already-exists
-/// case (also a 409) is filtered out so callers don't mistake an auto-create
-/// race for a uniqueness failure.
+/// so we anchor on the `HTTP 409` status and require a body keyword that
+/// names a uniqueness conflict. The collection-already-exists case (also a
+/// 409, body says `collection ... already exists`) is filtered out so callers
+/// don't mistake an auto-create race for a uniqueness failure.
 ///
 /// SEC-039: the `validates uniqueness:` SELECT-then-INSERT path is racy by
 /// construction; this helper lets `Model.create`/`save`/`update`/`upsert`/
 /// `find_or_create_by` translate the atomic DB-side error into a normal
-/// validation failure when a unique index is in place.
+/// validation failure when a unique index is in place. Earlier versions
+/// matched any error containing `"duplicate"`, `"conflict"`, etc., which
+/// would silently convert an unrelated 5xx that happened to mention those
+/// words into a validation error and mask the real fault — the tighter
+/// anchor on `HTTP 409` plus a body keyword keeps the false-positive rate
+/// near zero.
 pub fn is_unique_violation(err: &str) -> bool {
     let lower = err.to_lowercase();
-    let hint = lower.contains("409")
-        || lower.contains("conflict")
-        || lower.contains("duplicate")
-        || lower.contains("unique");
-    if !hint {
+    if !lower.contains("http 409") {
+        return false;
+    }
+    let has_keyword =
+        lower.contains("conflict") || lower.contains("duplicate") || lower.contains("unique");
+    if !has_keyword {
         return false;
     }
     !(lower.contains("collection") && lower.contains("already"))
@@ -413,7 +420,20 @@ mod tests {
 
     #[test]
     fn unique_violation_detects_duplicate_keyword() {
-        assert!(is_unique_violation("duplicate key value"));
+        let err = "HTTP 409 Conflict http://x/_api/database/db/document/users: \
+                   {\"errorMessage\":\"duplicate key value\"}";
+        assert!(is_unique_violation(err));
+    }
+
+    #[test]
+    fn unique_violation_rejects_keyword_without_409() {
+        // Earlier heuristic matched bare "duplicate" / "conflict" anywhere
+        // in the error body, which silently turned unrelated 5xx errors that
+        // happened to mention those words into validation failures.
+        assert!(!is_unique_violation(
+            "HTTP 500 duplicate request id rejected"
+        ));
+        assert!(!is_unique_violation("connection refused: write conflict"));
     }
 
     #[test]

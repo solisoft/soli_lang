@@ -348,13 +348,17 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
 }
 
 /// Escape for use in a JavaScript string literal context.
-/// Escapes backslash, quotes, and control characters for safe embedding
-/// inside a JS string in an HTML script block.
+/// Escapes backslash, quotes, and characters that would break out of the
+/// literal — including newlines (line-continuation breakouts), CR, and tab.
+/// `< > &` are also escaped so the embedded literal can't terminate the
+/// surrounding `<script>` block.
 pub fn js_escape(s: &str) -> Cow<'_, str> {
-    if !s
-        .bytes()
-        .any(|b| matches!(b, b'\\' | b'"' | b'\'' | b'<' | b'>' | b'&'))
-    {
+    if !s.bytes().any(|b| {
+        matches!(
+            b,
+            b'\\' | b'"' | b'\'' | b'<' | b'>' | b'&' | b'\n' | b'\r' | b'\t'
+        )
+    }) {
         return Cow::Borrowed(s);
     }
     let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
@@ -363,6 +367,9 @@ pub fn js_escape(s: &str) -> Cow<'_, str> {
             b'\\' => result.extend_from_slice(b"\\\\"),
             b'"' => result.extend_from_slice(b"\\\""),
             b'\'' => result.extend_from_slice(b"\\'"),
+            b'\n' => result.extend_from_slice(b"\\n"),
+            b'\r' => result.extend_from_slice(b"\\r"),
+            b'\t' => result.extend_from_slice(b"\\t"),
             b'<' => result.extend_from_slice(b"&lt;"),
             b'>' => result.extend_from_slice(b"&gt;"),
             b'&' => result.extend_from_slice(b"&amp;"),

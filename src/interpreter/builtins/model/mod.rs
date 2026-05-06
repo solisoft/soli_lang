@@ -263,11 +263,11 @@ pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
 pub use core::{
-    build_safe_filter_from_hash, class_name_to_collection, get_model_engine_context,
-    get_or_create_metadata, get_translated_fields, init_db_config, init_jwt_token,
-    is_translated_field, register_model_builtins, register_translation, set_model_engine_context,
-    update_metadata, validate_field_name, validate_order_direction, EngineContextGuard, Model,
-    ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
+    build_safe_filter_from_hash, class_name_to_collection, ensure_scalar_bind_value,
+    get_model_engine_context, get_or_create_metadata, get_translated_fields, init_db_config,
+    init_jwt_token, is_translated_field, register_model_builtins, register_translation,
+    set_model_engine_context, update_metadata, validate_field_name, validate_order_direction,
+    EngineContextGuard, Model, ModelMetadata, DB_CONFIG, MODEL_REGISTRY,
 };
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,

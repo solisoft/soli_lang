@@ -41,7 +41,11 @@ fn current_image_jail() -> Option<&'static PathBuf> {
 
 /// SEC-063: validate a user-supplied path against the image jail.
 /// Relative paths are joined to the jail root; absolute paths must
-/// be within the jail after canonicalization.
+/// be within the jail after canonicalization. Write paths (e.g.
+/// `Image.to_file`) target a file that doesn't exist yet, so we
+/// canonicalize the parent directory and re-join the file name —
+/// canonicalizing the full path would silently fall back to the
+/// raw, traversal-bearing input.
 fn validate_image_path(path: &str, op: &str) -> Result<(), String> {
     let Some(jail) = current_image_jail() else {
         return Ok(());
@@ -53,12 +57,40 @@ fn validate_image_path(path: &str, op: &str) -> Result<(), String> {
         jail.join(path)
     };
 
-    let canonical_jail = std::fs::canonicalize(jail).unwrap_or_else(|_| jail.clone());
-    let canonical_path = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+    let canonical_jail = std::fs::canonicalize(jail)
+        .map_err(|e| format!("{}() image jail {:?} is not accessible: {}", op, jail, e))?;
+
+    let canonical_path = match std::fs::canonicalize(&candidate) {
+        Ok(p) => p,
+        Err(_) => {
+            // Path doesn't exist yet (write op). Canonicalize the parent
+            // and re-join the file name; reject if there's no parent or
+            // the file name is missing/traversal-only.
+            let parent = candidate.parent().ok_or_else(|| {
+                format!(
+                    "{}() path {:?} has no parent directory inside the image jail",
+                    op, path
+                )
+            })?;
+            let file_name = candidate.file_name().ok_or_else(|| {
+                format!(
+                    "{}() path {:?} does not name a file inside the image jail",
+                    op, path
+                )
+            })?;
+            let canonical_parent = std::fs::canonicalize(parent).map_err(|e| {
+                format!(
+                    "{}() parent directory {:?} for path {:?} is not accessible: {}",
+                    op, parent, path, e
+                )
+            })?;
+            canonical_parent.join(file_name)
+        }
+    };
 
     if !canonical_path.starts_with(&canonical_jail) {
         return Err(format!(
-            "{}.new() path {:?} escapes the image jail at {}",
+            "{}() path {:?} escapes the image jail at {}",
             op,
             path,
             canonical_jail.display()

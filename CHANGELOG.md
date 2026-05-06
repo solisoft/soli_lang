@@ -40,6 +40,22 @@
 
 ### Bug Fixes
 
+* **fix(image):** validate write paths against image jail without false negatives on non-existent targets ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **fix(jwt):** enforce HMAC secret floor before token header parsing; surface explicit PEM errors for RS256/EdDSA ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **fix(model):** tighten `is_unique_violation` to require HTTP 409 status — prevents silent misclassification of unrelated 5xx errors ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **fix(serve):** accept `1`/`yes` in addition to `true` for `SOLI_DISABLE_CSRF` env var ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **fix(template):** `js_escape` now escapes newlines, CR, and tab to prevent literal breakout from JS string context ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+
+### Documentation
+
+* **docs(model):** document Arc<Mutex<FutureState>> threading concern ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **docs(solidb):** document SolidbState password retention in memory ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+* **docs(callbacks):** document delete callback gap ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+
+### Tests
+
+* **test(kv):** KEYS test now requires `SOLI_KV_ALLOW_ADMIN=1` env var to run ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
+
 * **fix(parser):** parse `|params|` in trailing brace blocks ([be792eb](https://github.com/solisoft/soli_lang/commit/be792eb))
 * **fix(dev-bar):** make panel scrollable and pin header when expanded ([3c6449a](https://github.com/solisoft/soli_lang/commit/3c6449a))
 * **fix(solidb):** make `Solidb(host, db)` construct and dispatch instance methods ([02702ce](https://github.com/solisoft/soli_lang/commit/02702ce))

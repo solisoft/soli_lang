@@ -146,12 +146,9 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
             // Create token
             let header = Header::new(algorithm);
-            let token = encode(
-                &header,
-                &claims,
-                &build_encoding_key(&algorithm, &secret, pem_key.as_deref()),
-            )
-            .map_err(|e| format!("Failed to create JWT: {}", e))?;
+            let encoding_key = build_encoding_key(&algorithm, &secret, pem_key.as_deref())?;
+            let token = encode(&header, &claims, &encoding_key)
+                .map_err(|e| format!("Failed to create JWT: {}", e))?;
 
             Ok(Value::String(token))
         })),
@@ -181,15 +178,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
-            // Detect algorithm from token header for proper validation setup
-            let token_header =
-                decode_header(&token).map_err(|e| format!("Failed to parse JWT header: {}", e))?;
-            let detected_algorithm = token_header.alg;
-
-            // Determine if asymmetric key is needed and parse PEM if provided
-            let is_asymmetric = matches!(detected_algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+            // Pull out the optional PEM key first — if the caller passes one,
+            // we treat the call as asymmetric and the `secret` argument is a
+            // placeholder that doesn't carry HMAC entropy.
             let mut pem_key: Option<String> = None;
-
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
@@ -204,10 +196,28 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             }
 
-            // SEC-054: same minimum as jwt_sign — verify must reject
-            // secrets shorter than the HS256 digest size for HMAC algorithms.
-            // Asymmetric algorithms (RS256, EdDSA) use PEM keys and are exempt.
-            if !is_asymmetric && secret.len() < MIN_SECRET_BYTES {
+            // SEC-054: enforce the HMAC secret floor before parsing the token
+            // header. A weak secret must be a hard reject regardless of how
+            // structurally valid the token is — otherwise a junk token would
+            // mask a misconfigured production secret. Skip when the caller
+            // supplied a PEM (asymmetric path).
+            if pem_key.is_none() && secret.len() < MIN_SECRET_BYTES {
+                return Err(format!(
+                    "jwt_verify() secret must be at least {} bytes for security (got {})",
+                    MIN_SECRET_BYTES,
+                    secret.len()
+                ));
+            }
+
+            // Detect algorithm from token header for proper validation setup
+            let token_header =
+                decode_header(&token).map_err(|e| format!("Failed to parse JWT header: {}", e))?;
+            let detected_algorithm = token_header.alg;
+            let is_asymmetric = matches!(detected_algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+
+            // Re-check after we know the algorithm — if the token claims an
+            // HMAC alg but a PEM was passed, the secret floor still applies.
+            if !is_asymmetric && pem_key.is_some() && secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
                     "jwt_verify() secret must be at least {} bytes for security (got {})",
                     MIN_SECRET_BYTES,
@@ -220,11 +230,9 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             validation.validate_exp = true;
 
             // Try to decode and verify the token
-            match decode::<Claims>(
-                &token,
-                &build_decoding_key(&detected_algorithm, &secret, pem_key.as_deref()),
-                &validation,
-            ) {
+            let decoding_key =
+                build_decoding_key(&detected_algorithm, &secret, pem_key.as_deref())?;
+            match decode::<Claims>(&token, &decoding_key, &validation) {
                 Ok(token_data) => {
                     // Convert claims to Soli Value
                     let claims = token_data.claims;
@@ -364,35 +372,56 @@ pub fn register_jwt_builtins(env: &mut Environment) {
     );
 }
 
-/// Build an EncodingKey based on algorithm and key material.
-fn build_encoding_key(algorithm: &Algorithm, secret: &str, pem_key: Option<&str>) -> EncodingKey {
+/// Build an EncodingKey for the given algorithm. RS256 expects an RSA PEM,
+/// EdDSA expects an Ed25519 PEM. Falling back to `from_secret` would silently
+/// downgrade asymmetric crypto to HMAC against the PEM bytes — explicitly
+/// surface a parse error instead.
+fn build_encoding_key(
+    algorithm: &Algorithm,
+    secret: &str,
+    pem_key: Option<&str>,
+) -> Result<EncodingKey, String> {
     match algorithm {
-        Algorithm::RS256 | Algorithm::EdDSA => {
-            if let Some(key) = pem_key {
-                EncodingKey::from_rsa_pem(key.as_bytes())
-                    .or_else(|_| EncodingKey::from_rsa_pem(secret.as_bytes()))
-                    .unwrap_or_else(|_| EncodingKey::from_secret(secret.as_bytes()))
-            } else {
-                EncodingKey::from_secret(secret.as_bytes())
-            }
+        Algorithm::RS256 => {
+            let pem = pem_key.unwrap_or(secret);
+            EncodingKey::from_rsa_pem(pem.as_bytes())
+                .map_err(|e| format!("RS256 requires a valid RSA private key in PEM form: {}", e))
         }
-        _ => EncodingKey::from_secret(secret.as_bytes()),
+        Algorithm::EdDSA => {
+            let pem = pem_key.unwrap_or(secret);
+            EncodingKey::from_ed_pem(pem.as_bytes()).map_err(|e| {
+                format!(
+                    "EdDSA requires a valid Ed25519 private key in PEM form: {}",
+                    e
+                )
+            })
+        }
+        _ => Ok(EncodingKey::from_secret(secret.as_bytes())),
     }
 }
 
-/// Build a DecodingKey based on algorithm and key material.
-fn build_decoding_key(algorithm: &Algorithm, secret: &str, pem_key: Option<&str>) -> DecodingKey {
+/// Build a DecodingKey for the given algorithm. See `build_encoding_key`.
+fn build_decoding_key(
+    algorithm: &Algorithm,
+    secret: &str,
+    pem_key: Option<&str>,
+) -> Result<DecodingKey, String> {
     match algorithm {
-        Algorithm::RS256 | Algorithm::EdDSA => {
-            if let Some(key) = pem_key {
-                DecodingKey::from_rsa_pem(key.as_bytes())
-                    .or_else(|_| DecodingKey::from_rsa_pem(secret.as_bytes()))
-                    .unwrap_or_else(|_| DecodingKey::from_secret(secret.as_bytes()))
-            } else {
-                DecodingKey::from_secret(secret.as_bytes())
-            }
+        Algorithm::RS256 => {
+            let pem = pem_key.unwrap_or(secret);
+            DecodingKey::from_rsa_pem(pem.as_bytes())
+                .map_err(|e| format!("RS256 requires a valid RSA public key in PEM form: {}", e))
         }
-        _ => DecodingKey::from_secret(secret.as_bytes()),
+        Algorithm::EdDSA => {
+            let pem = pem_key.unwrap_or(secret);
+            DecodingKey::from_ed_pem(pem.as_bytes()).map_err(|e| {
+                format!(
+                    "EdDSA requires a valid Ed25519 public key in PEM form: {}",
+                    e
+                )
+            })
+        }
+        _ => Ok(DecodingKey::from_secret(secret.as_bytes())),
     }
 }
 

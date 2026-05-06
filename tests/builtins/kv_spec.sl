@@ -93,6 +93,13 @@ describe("KV key management", fn() {
         if not __solikv_available
             return null
         end
+        # SEC-037: KEYS is denylisted as a destructive/admin command and
+        # SEC-033 removed runtime `setenv`, so the gate can only be flipped
+        # at process launch. Skip unless the operator opted in upfront with
+        # SOLI_KV_ALLOW_ADMIN=1 soli test ...
+        if getenv("SOLI_KV_ALLOW_ADMIN") != "1"
+            return null
+        end
         KV.set("test:keys:a", "1")
         KV.set("test:keys:b", "2")
         let keys = KV.keys("test:keys:*")

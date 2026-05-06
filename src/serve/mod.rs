@@ -2556,7 +2556,11 @@ fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Re
     if csrf_skipped_by_app(path) {
         return Ok(());
     }
-    if std::env::var("SOLI_DISABLE_CSRF").as_deref() == Ok("true") {
+    if std::env::var("SOLI_DISABLE_CSRF")
+        .ok()
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+    {
         return Ok(());
     }
 
@@ -2654,7 +2658,7 @@ fn websocket_request_authority(headers: &hyper::HeaderMap) -> Option<String> {
     };
     value
         .and_then(|v| v.to_str().ok())
-        .and_then(|host| host.split(',').next())
+        .map(first_forwarded_token)
         .map(normalize_request_authority)
         .filter(|host| !host.is_empty())
 }

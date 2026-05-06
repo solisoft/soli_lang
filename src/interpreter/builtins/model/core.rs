@@ -370,7 +370,7 @@ pub fn build_safe_filter_from_hash(
     hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
     method: &str,
 ) -> Result<(String, std::collections::HashMap<String, serde_json::Value>), String> {
-    use crate::interpreter::value::{value_to_json, HashKey};
+    use crate::interpreter::value::HashKey;
     let pairs = hash.borrow();
     if pairs.is_empty() {
         return Err(format!(
@@ -392,22 +392,36 @@ pub fn build_safe_filter_from_hash(
         // string form take a separate code path, so there's no risk of
         // colliding bind namespaces between the two forms.
         clauses.push(format!("doc.{0} == @{0}", key));
-        let json_val = value_to_json(v).map_err(|e| e.to_string())?;
-        match json_val {
-            serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
-                binds.insert(key, json_val)
-            }
-            serde_json::Value::String(s) => binds.insert(key, serde_json::Value::String(s)),
-            _ => {
-                return Err(format!(
-                    "{}() bind value for '{}' must be a scalar (string, number, bool, null); \
-                     got {}. Pass complex values via raw AQL strings instead.",
-                    method, key, json_val
-                ))
-            }
-        };
+        let json_val = ensure_scalar_bind_value(v, &key, method)?;
+        binds.insert(key, json_val);
     }
     Ok((clauses.join(" AND "), binds))
+}
+
+/// SEC-062: enforce that user-supplied bind values are scalars (string, number,
+/// bool, null). Nested arrays/objects can produce surprising AQL semantics
+/// when compared with `==`, and they're never the right shape for parameter
+/// substitution in the typed-comparison forms exposed to controllers. The
+/// raw-string `where(string, hash)` form goes through this same check so the
+/// chain and static call sites stay aligned.
+pub fn ensure_scalar_bind_value(
+    value: &Value,
+    key: &str,
+    method: &str,
+) -> Result<serde_json::Value, String> {
+    use crate::interpreter::value::value_to_json;
+    let json_val = value_to_json(value).map_err(|e| e.to_string())?;
+    match json_val {
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => Ok(json_val),
+        _ => Err(format!(
+            "{}() bind value for '{}' must be a scalar (string, number, bool, null); \
+             got {}. Pass complex values via raw AQL strings instead.",
+            method, key, json_val
+        )),
+    }
 }
 
 /// Validate that a string is a safe AQL identifier before it's
@@ -1551,7 +1565,10 @@ impl Model {
                                     let mut map = StdHashMap::new();
                                     for (k, v) in hash.borrow().iter() {
                                         if let HashKey::String(key) = k {
-                                            map.insert(key.clone(), value_to_json(v)?);
+                                            map.insert(
+                                                key.clone(),
+                                                ensure_scalar_bind_value(v, key, "where")?,
+                                            );
                                         }
                                     }
                                     map
