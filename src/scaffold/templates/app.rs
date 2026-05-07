@@ -3,6 +3,9 @@
 /// Routes configuration template
 pub const ROUTES_TEMPLATE: &str = include_str!("routes.sl");
 
+/// Application boot config (loaded by `soli serve` before routes)
+pub const APPLICATION_CONFIG_TEMPLATE: &str = include_str!("application.sl");
+
 /// Home controller template
 pub const HOME_CONTROLLER_TEMPLATE: &str = include_str!("home_controller.sl");
 

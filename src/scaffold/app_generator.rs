@@ -58,6 +58,17 @@ pub fn create_routes_file(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join("config/routes.sl"), app::ROUTES_TEMPLATE)
 }
 
+/// Create the application boot config file. Loaded by `soli serve` before
+/// routes; ships with `enable_trust_proxy` active so apps behind a reverse
+/// proxy honour `X-Forwarded-Host` / `X-Forwarded-Proto` for CSRF, redirects,
+/// and `request.host`.
+pub fn create_application_config(app_path: &Path) -> Result<(), String> {
+    write_file(
+        &app_path.join("config/application.sl"),
+        app::APPLICATION_CONFIG_TEMPLATE,
+    )
+}
+
 /// Create the home controller
 pub fn create_home_controller(app_path: &Path) -> Result<(), String> {
     write_file(
@@ -538,6 +549,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     // Step 2: Generate configuration files
     progress.step("Generating configuration files...");
     create_routes_file(app_path)?;
+    create_application_config(app_path)?;
     create_env_file(app_path)?;
     create_gitignore(app_path)?;
     create_claude_md(app_path)?;
@@ -613,7 +625,10 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     );
     println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m views/          \x1b[2m# Templates\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m config/");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m routes.sl     \x1b[2m# URL routing\x1b[0m");
+    println!(
+        "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m routes.sl       \x1b[2m# URL routing\x1b[0m"
+    );
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m│   └──\x1b[0m application.sl  \x1b[2m# boot config (trust_proxy, etc.)\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m db/migrations/      \x1b[2m# Database migrations\x1b[0m");
     println!(
         "  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m public/             \x1b[2m# Static assets\x1b[0m"
