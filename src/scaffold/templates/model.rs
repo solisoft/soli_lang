@@ -12,13 +12,11 @@ pub fn model_template(
 // Collection: {collection_name}
 
 class {model_name} < Model
-  static
-    // Fields
-{field_comments}
+  // Fields
+  {field_comments}
 
-    // Validations
-{validations}
-  end
+  // Validations
+  {validations}
 
   // Callbacks
   before_save("normalize_fields")

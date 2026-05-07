@@ -12,9 +12,9 @@ pub fn controller_template(
         r#"// {controller_name} controller - auto-generated scaffold
 
 class {controller_name} < Controller
-  static
+  static {{
     this.layout = "application"
-  end
+  }}
 
   // GET /{resource}
   def index(req)
