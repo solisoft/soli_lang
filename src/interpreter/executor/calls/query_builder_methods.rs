@@ -103,7 +103,7 @@ impl Interpreter {
                             for (k, v) in hash.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(key) = k {
                                     let json_val =
-                                        crate::interpreter::builtins::model::ensure_scalar_bind_value(
+                                        crate::interpreter::builtins::model::ensure_string_form_bind_value(
                                             v, key, "where",
                                         )
                                         .map_err(|e| RuntimeError::General {

@@ -217,6 +217,59 @@ fn compute_base_collection_name(name: &str) -> String {
 mod tests {
     use super::*;
 
+    use crate::interpreter::value::Value;
+
+    #[test]
+    fn string_form_accepts_array_of_scalars() {
+        let v = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
+            Value::String("a".into()),
+            Value::String("b".into()),
+        ])));
+        let json = ensure_string_form_bind_value(&v, "ids", "where").unwrap();
+        assert!(json.is_array());
+        assert_eq!(json.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn string_form_accepts_empty_array() {
+        let v = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
+        ensure_string_form_bind_value(&v, "ids", "where").unwrap();
+    }
+
+    #[test]
+    fn string_form_accepts_scalar() {
+        let v = Value::String("a".into());
+        ensure_string_form_bind_value(&v, "id", "where").unwrap();
+    }
+
+    #[test]
+    fn string_form_rejects_array_of_arrays() {
+        let inner = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
+            Value::String("a".into()),
+        ])));
+        let v = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![inner])));
+        let err = ensure_string_form_bind_value(&v, "ids", "where").unwrap_err();
+        assert!(err.contains("element 0 is not a scalar"), "got: {}", err);
+    }
+
+    #[test]
+    fn string_form_rejects_top_level_object() {
+        let v = Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(
+            crate::interpreter::value::HashPairs::default(),
+        )));
+        let err = ensure_string_form_bind_value(&v, "f", "where").unwrap_err();
+        assert!(err.contains("must be a scalar or an array of scalars"));
+    }
+
+    #[test]
+    fn hash_form_still_rejects_arrays() {
+        let v = Value::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
+            Value::String("a".into()),
+        ])));
+        let err = ensure_scalar_bind_value(&v, "ids", "where").unwrap_err();
+        assert!(err.contains("must be a scalar"));
+    }
+
     #[test]
     fn test_compute_base_collection_name() {
         assert_eq!(compute_base_collection_name("User"), "users");
@@ -399,11 +452,9 @@ pub fn build_safe_filter_from_hash(
 }
 
 /// SEC-062: enforce that user-supplied bind values are scalars (string, number,
-/// bool, null). Nested arrays/objects can produce surprising AQL semantics
-/// when compared with `==`, and they're never the right shape for parameter
-/// substitution in the typed-comparison forms exposed to controllers. The
-/// raw-string `where(string, hash)` form goes through this same check so the
-/// chain and static call sites stay aligned.
+/// bool, null). Used by the safe hash form `where({field: val})`, which builds
+/// `doc.field == @field` AQL — arrays/objects against `==` produce surprising
+/// semantics and are almost always a mistake.
 pub fn ensure_scalar_bind_value(
     value: &Value,
     key: &str,
@@ -420,6 +471,50 @@ pub fn ensure_scalar_bind_value(
             "{}() bind value for '{}' must be a scalar (string, number, bool, null); \
              got {}. Pass complex values via raw AQL strings instead.",
             method, key, json_val
+        )),
+    }
+}
+
+/// Bind-value validator for the developer-trusted string form
+/// `where("doc.field IN @ids", { "ids": [...] })`. Caller wrote the AQL, so
+/// arrays are a legitimate shape (for `IN`, `ANY`, `ALL`). Allows scalars and
+/// arrays-of-scalars one level deep; rejects nested arrays and objects, which
+/// have no clean AQL bind interpretation and belong in `@sdbql{}` instead.
+pub fn ensure_string_form_bind_value(
+    value: &Value,
+    key: &str,
+    method: &str,
+) -> Result<serde_json::Value, String> {
+    use crate::interpreter::value::value_to_json;
+    let json_val = value_to_json(value).map_err(|e| e.to_string())?;
+    match &json_val {
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_) => Ok(json_val),
+        serde_json::Value::Array(items) => {
+            for (i, item) in items.iter().enumerate() {
+                match item {
+                    serde_json::Value::Null
+                    | serde_json::Value::Bool(_)
+                    | serde_json::Value::Number(_)
+                    | serde_json::Value::String(_) => {}
+                    _ => {
+                        return Err(format!(
+                            "{}() bind value for '{}' is an array, but element {} is not a scalar \
+                             (string, number, bool, null). Nested structures must go through \
+                             raw AQL strings (`@sdbql{{...}}`).",
+                            method, key, i
+                        ));
+                    }
+                }
+            }
+            Ok(json_val)
+        }
+        serde_json::Value::Object(_) => Err(format!(
+            "{}() bind value for '{}' must be a scalar or an array of scalars; \
+             got an object. Pass complex values via raw AQL strings (`@sdbql{{...}}`) instead.",
+            method, key
         )),
     }
 }
@@ -1567,7 +1662,7 @@ impl Model {
                                         if let HashKey::String(key) = k {
                                             map.insert(
                                                 key.clone(),
-                                                ensure_scalar_bind_value(v, key, "where")?,
+                                                ensure_string_form_bind_value(v, key, "where")?,
                                             );
                                         }
                                     }
