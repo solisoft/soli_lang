@@ -818,6 +818,7 @@ impl Interpreter {
                 | "split"
                 | "replace"
                 | "join"
+                | "slugify"
         ) {
             return Ok(None);
         }
@@ -843,7 +844,7 @@ impl Interpreter {
             (
                 "length" | "len" | "size" | "to_s" | "to_string" | "upcase" | "uppercase"
                 | "downcase" | "lowercase" | "trim" | "strip" | "lstrip" | "rstrip" | "reverse"
-                | "empty?" | "join",
+                | "empty?" | "join" | "slugify",
                 [],
             ) => {
                 if let Some(result) = self.call_string_method_borrowed(&s, method_name, &[], span) {

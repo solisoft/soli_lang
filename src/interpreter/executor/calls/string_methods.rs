@@ -8,6 +8,50 @@ use crate::span::Span;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
+/// run of non-`[a-z0-9]` chars to a single `-`, trim leading/trailing `-`.
+pub(crate) fn slugify_string(s: &str) -> String {
+    let lower = s.to_lowercase();
+    let mut folded = String::with_capacity(lower.len());
+    for ch in lower.chars() {
+        match ch {
+            'a'..='z' | '0'..='9' => folded.push(ch),
+            'à' | 'á' | 'â' | 'ä' | 'ã' | 'å' | 'ā' | 'ą' => folded.push('a'),
+            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ę' => folded.push('e'),
+            'ì' | 'í' | 'î' | 'ï' | 'ī' => folded.push('i'),
+            'ò' | 'ó' | 'ô' | 'ö' | 'õ' | 'ø' | 'ō' => folded.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' | 'ū' => folded.push('u'),
+            'ý' | 'ÿ' => folded.push('y'),
+            'ç' | 'ć' | 'č' => folded.push('c'),
+            'ñ' | 'ń' => folded.push('n'),
+            'š' => folded.push('s'),
+            'ž' | 'ź' | 'ż' => folded.push('z'),
+            'ł' => folded.push('l'),
+            'œ' => folded.push_str("oe"),
+            'æ' => folded.push_str("ae"),
+            'ß' => folded.push_str("ss"),
+            _ => folded.push('-'),
+        }
+    }
+    let mut out = String::with_capacity(folded.len());
+    let mut prev_hyphen = true; // suppress leading hyphens
+    for ch in folded.chars() {
+        if ch == '-' {
+            if !prev_hyphen {
+                out.push('-');
+                prev_hyphen = true;
+            }
+        } else {
+            out.push(ch);
+            prev_hyphen = false;
+        }
+    }
+    if out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
 impl Interpreter {
     pub(crate) fn call_string_method_borrowed(
         &self,
@@ -64,6 +108,12 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
                 Some(Ok(Value::String(s.chars().rev().collect())))
+            }
+            "slugify" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(Ok(Value::String(slugify_string(s))))
             }
             "empty?" => {
                 if !arguments.is_empty() {
@@ -1162,5 +1212,39 @@ impl Interpreter {
             }
         };
         Ok(Value::Bool(s.contains(substr)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::slugify_string;
+
+    #[test]
+    fn slugify_basic() {
+        assert_eq!(slugify_string("Hello World"), "hello-world");
+    }
+
+    #[test]
+    fn slugify_strips_french_accents() {
+        assert_eq!(slugify_string("Café & Croissant"), "cafe-croissant");
+        assert_eq!(slugify_string("Crème brûlée"), "creme-brulee");
+        assert_eq!(slugify_string("Œuf au plat"), "oeuf-au-plat");
+    }
+
+    #[test]
+    fn slugify_collapses_and_trims_hyphens() {
+        assert_eq!(slugify_string("  ---hello---  "), "hello");
+        assert_eq!(slugify_string("a___b   c"), "a-b-c");
+    }
+
+    #[test]
+    fn slugify_empty_and_punctuation_only() {
+        assert_eq!(slugify_string(""), "");
+        assert_eq!(slugify_string("!!!"), "");
+    }
+
+    #[test]
+    fn slugify_keeps_digits() {
+        assert_eq!(slugify_string("Pizza 4 You"), "pizza-4-you");
     }
 }

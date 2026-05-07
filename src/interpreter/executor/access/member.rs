@@ -1847,7 +1847,7 @@ impl Interpreter {
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
-            | "truncate" | "parse_json" | "to_sym"
+            | "truncate" | "parse_json" | "to_sym" | "slugify"
             // Universal method with args
             | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),

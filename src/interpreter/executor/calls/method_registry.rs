@@ -811,6 +811,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "slugify",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "split",
         zero_arg: true,
         ret: "array",
