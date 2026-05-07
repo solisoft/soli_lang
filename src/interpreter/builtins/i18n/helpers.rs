@@ -629,9 +629,18 @@ mod tests {
         // fr only declares the one form; zero/other should fall back to en.
         write_yaml(&locales, "fr.yml", "fr:\n  items_one: Un article\n");
         load_locales_from_config_dir(&cfg);
-        assert_eq!(lookup_plural("fr", "items", 1), Some("Un article".to_string()));
-        assert_eq!(lookup_plural("fr", "items", 0), Some("No items".to_string()));
-        assert_eq!(lookup_plural("fr", "items", 5), Some("Many items".to_string()));
+        assert_eq!(
+            lookup_plural("fr", "items", 1),
+            Some("Un article".to_string())
+        );
+        assert_eq!(
+            lookup_plural("fr", "items", 0),
+            Some("No items".to_string())
+        );
+        assert_eq!(
+            lookup_plural("fr", "items", 5),
+            Some("Many items".to_string())
+        );
     }
 
     #[test]
@@ -647,6 +656,9 @@ mod tests {
             "en:\n  delta_one: One\n  delta_other: \"{count}\"\n",
         );
         load_locales_from_config_dir(&cfg);
-        assert_eq!(lookup_plural("en", "delta", -3), Some("{count}".to_string()));
+        assert_eq!(
+            lookup_plural("en", "delta", -3),
+            Some("{count}".to_string())
+        );
     }
 }

@@ -152,10 +152,12 @@ pub fn register_i18n_class(env: &mut Environment) {
                     Value::String(s) => locale = s.clone(),
                     Value::Null => {}
                     Value::Hash(h) => values = Some(h.borrow().clone()),
-                    other => return Err(format!(
+                    other => {
+                        return Err(format!(
                         "I18n.translate second arg must be a locale string or values hash, got {}",
                         other.type_name()
-                    )),
+                    ))
+                    }
                 }
             }
             if args.len() > 2 {
