@@ -3918,6 +3918,25 @@
       ]
     },
     {
+      "title": ".slugify()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.slugify()",
+      "description": "Convert to a URL-friendly slug: lowercased, ASCII-folded accents, non-alphanumerics replaced with hyphens",
+      "keywords": [
+        "string",
+        "slugify",
+        "slug",
+        "url",
+        "ascii",
+        "accents",
+        "fold",
+        "permalink",
+        "kebab"
+      ]
+    },
+    {
       "title": ".insert()",
       "type": "method",
       "category": "String",

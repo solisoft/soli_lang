@@ -365,6 +365,7 @@ print(s.ends_with("!"));      # true
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_case = "hello_world".camel_case(); # "helloWorld"
+slug = "Café & Restaurant".slugify();    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 
 # String interpolation
 name = "World";
