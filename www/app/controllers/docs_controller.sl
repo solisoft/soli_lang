@@ -159,6 +159,15 @@ fn development_tools_editor_integration(req)
     )
 end
 
+fn development_tools_ai_agents(req)
+    render_docs(
+        "docs/development-tools/ai-agents",
+        "AI Agents",
+        "development_tools",
+        "ai_agents"
+    )
+end
+
 # ============================================================================
 # Language Reference
 # ============================================================================

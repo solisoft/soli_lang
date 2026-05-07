@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 
-use crate::scaffold::templates::app;
+use crate::scaffold::templates::{agents, app};
 use crate::scaffold::ui::{ProgressDisplay, Spinner};
 
 /// Create directories for a new application
@@ -31,6 +31,8 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
         "public/images",
         "stdlib",
         "tests",
+        ".claude",
+        ".claude/commands",
     ];
 
     for dir in dirs {
@@ -101,6 +103,59 @@ pub fn create_gitignore(app_path: &Path) -> Result<(), String> {
 /// Create the CLAUDE.md file
 pub fn create_claude_md(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join("CLAUDE.md"), app::CLAUDE_MD_TEMPLATE)
+}
+
+/// Create the AGENTS.md tool-agnostic stub at the project root.
+pub fn create_agents_md(app_path: &Path) -> Result<(), String> {
+    write_file(&app_path.join("AGENTS.md"), agents::AGENTS_MD_TEMPLATE)
+}
+
+/// Drop a short, directory-scoped CLAUDE.md into each app/ subdir, tests/, and db/migrations/.
+/// Claude Code auto-loads CLAUDE.md from the cwd up to the project root, so these scope
+/// rules to where the agent is actually working.
+pub fn create_nested_claude_mds(app_path: &Path) -> Result<(), String> {
+    let nested = [
+        (
+            "app/controllers/CLAUDE.md",
+            agents::CLAUDE_CONTROLLERS_TEMPLATE,
+        ),
+        ("app/models/CLAUDE.md", agents::CLAUDE_MODELS_TEMPLATE),
+        ("app/views/CLAUDE.md", agents::CLAUDE_VIEWS_TEMPLATE),
+        (
+            "app/middleware/CLAUDE.md",
+            agents::CLAUDE_MIDDLEWARE_TEMPLATE,
+        ),
+        ("tests/CLAUDE.md", agents::CLAUDE_TESTS_TEMPLATE),
+        (
+            "db/migrations/CLAUDE.md",
+            agents::CLAUDE_MIGRATIONS_TEMPLATE,
+        ),
+    ];
+    for (rel, content) in nested {
+        write_file(&app_path.join(rel), content)?;
+    }
+    Ok(())
+}
+
+/// Create the .claude/ directory: permissions allowlist + project slash commands.
+/// Pre-allowing safe `soli` subcommands removes the per-prompt permission tax for agents.
+pub fn create_dot_claude(app_path: &Path) -> Result<(), String> {
+    write_file(
+        &app_path.join(".claude/settings.json"),
+        agents::CLAUDE_SETTINGS_TEMPLATE,
+    )?;
+    write_file(
+        &app_path.join(".claude/commands/soli-verify.md"),
+        agents::CMD_SOLI_VERIFY_TEMPLATE,
+    )?;
+    write_file(
+        &app_path.join(".claude/commands/soli-test.md"),
+        agents::CMD_SOLI_TEST_TEMPLATE,
+    )?;
+    write_file(
+        &app_path.join(".claude/commands/soli-resource.md"),
+        agents::CMD_SOLI_RESOURCE_TEMPLATE,
+    )
 }
 
 /// Create the application helper
@@ -486,6 +541,9 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_env_file(app_path)?;
     create_gitignore(app_path)?;
     create_claude_md(app_path)?;
+    create_agents_md(app_path)?;
+    create_nested_claude_mds(app_path)?;
+    create_dot_claude(app_path)?;
     create_tailwind_config(app_path)?;
     create_package_json(app_path, name)?;
     create_soli_toml(app_path, name)?;
@@ -537,7 +595,9 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     ProgressDisplay::info("\x1b[1mProject structure:\x1b[0m");
     println!("  \x1b[2m│\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[36m{}/\x1b[0m", name);
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m CLAUDE.md        \x1b[2m# AI assistant guidance\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m CLAUDE.md        \x1b[2m# AI agent guide (root + per-dir)\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m AGENTS.md        \x1b[2m# tool-agnostic agent stub\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m .claude/         \x1b[2m# permissions + /soli-verify, /soli-test, /soli-resource\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
     println!(
         "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers\x1b[0m"

@@ -1,5 +1,6 @@
 //! Template strings for scaffold generation
 
+pub mod agents;
 pub mod app;
 pub mod controller;
 pub mod migration;

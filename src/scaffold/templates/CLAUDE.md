@@ -2,6 +2,72 @@
 
 Soli is a dynamically-typed, high-performance web framework written in Rust. This file orients an AI assistant (and future you) to how *this* application is laid out and what the language syntax actually looks like.
 
+## For AI agents — read this first
+
+You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirks; skim the **Footgun cheatsheet** below before generating code. Per-directory `CLAUDE.md` files in `app/controllers/`, `app/models/`, `app/views/`, `app/middleware/`, `tests/`, and `db/migrations/` give you the local rules — Claude Code loads them automatically when you work in those directories.
+
+### Verification loop (mandatory before reporting done)
+
+1. `soli lint <files-you-changed>` — naming, smells, undefined-locals.
+2. `soli test tests/<the-relevant-spec>.sl` — narrow, fast feedback.
+3. `soli test --coverage --coverage-min 90.0` — full sweep before handing off.
+4. `soli serve . --dev`, then hit the route in a browser if you changed a UI/route — confirm 200 and that the page renders.
+
+If a step fails, fix the root cause. Don't weaken assertions, lower the coverage bar, or `--no-verify` past hooks. The `/soli-verify` slash command bundles steps 1-3.
+
+### Reach for generators first
+
+| Task                                     | Command                                       |
+|------------------------------------------|-----------------------------------------------|
+| New controller (+ views + spec)          | `soli generate controller posts`              |
+| New model                                | `soli generate model post`                    |
+| New migration                            | `soli generate migration create_posts`        |
+| Full RESTful resource end-to-end         | `/soli-resource posts` (slash command)        |
+
+Generators encode the naming, location, and boilerplate the framework expects. Hand-writing diverges and triggers lint failures.
+
+## Footgun cheatsheet (Soli ≠ Ruby ≠ JS)
+
+| You'd type…                                | In Soli it's…                              | Why                                                                          |
+|--------------------------------------------|--------------------------------------------|------------------------------------------------------------------------------|
+| `// comment`                               | `# comment`                                | `//` was standardized away — lint flags it.                                  |
+| `${name}` / `#{name}` in a string          | `\(name)`                                  | Backslash-paren is the only interpolation form.                              |
+| `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
+| `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
+| `x \|\| default`                           | `x ?? default`                             | `\|\|` returns the wrong side when `x` is `0` or `""` (those are TRUTHY).    |
+| `if (xs.length)`                           | `if xs.length() > 0`                       | `0` and `""` are truthy in Soli — only `false` and `null` are falsy.         |
+| `import "../models/post.sl"` in controller | nothing — already auto-loaded              | Triggers `style/redundant-model-import` lint.                                |
+| Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
+| Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |
+
+## Recipes
+
+### Add a RESTful resource end-to-end
+
+1. `soli generate model post` → fill fields, validations, associations.
+2. `soli generate migration create_posts` → fill `up`/`down`, then `soli db:migrate up`.
+3. `soli generate controller posts` → fill `index`/`show`/`create`/etc.
+4. In `config/routes.sl` add `resources("posts")`.
+5. Edit `app/views/posts/*.html.slv`.
+6. Add specs in `tests/posts_controller_spec.sl`.
+7. Run the verification loop.
+
+(Or just: `/soli-resource post` — bundles steps 1-4 and stubs 5-6.)
+
+### Add an authenticated route
+
+Wrap the routes in a `middleware("authenticate", -> { … })` block in `config/routes.sl`. The `authenticate` middleware in `app/middleware/auth.sl` is `scope_only`, so unscoped routes are unaffected.
+
+### Debug a request live
+
+Run `soli serve . --dev`. The dev bar shows the AQL queries (`dev_queries()`) issued for the request, with bind vars and durations.
+
+### Add a partial
+
+- File: `app/views/<dir>/_name.html.slv` (leading underscore is mandatory).
+- Render: `<%= partial("dir/name", { "key": value }) %>`.
+- Inside the partial: read via `key` (or `locals["key"]` if it collides with a builtin/helper).
+
 ## Project Structure
 
 ```
@@ -74,8 +140,6 @@ let label = match value {
 print("adult") if age >= 18
 let data = fetch() rescue null     # returns null if fetch() throws
 ```
-
-> **Truthiness:** Only `false` and `null` are falsy. `0` and `""` are truthy.
 
 ## Routes (`config/routes.sl`)
 

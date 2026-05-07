@@ -57,6 +57,7 @@ get("/docs/development-tools/debugging", "docs#development_tools_debugging");
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold");
 get("/docs/development-tools/deploy", "docs#development_tools_deploy");
 get("/docs/development-tools/editor-integration", "docs#development_tools_editor_integration");
+get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents");
 
 # Language Reference
 get("/docs/language", "docs#language_index");
