@@ -13,6 +13,7 @@ pub mod lockfile;
 mod package;
 pub mod registry;
 mod resolver;
+mod tar_extract;
 
 pub use package::{Dependency, Package};
 pub use resolver::{ModuleResolver, ResolvedModule};

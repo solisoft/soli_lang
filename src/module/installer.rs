@@ -4,11 +4,11 @@
 //! their archive download APIs. No git binary required.
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use super::lockfile::{LockEntry, LockFile};
 use super::package::{Dependency, Package};
+use super::tar_extract;
 
 /// Cache directory for downloaded packages (~/.soli/packages/).
 fn cache_dir() -> PathBuf {
@@ -156,44 +156,10 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
     // Create destination directory
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create cache directory: {}", e))?;
 
-    // Extract, stripping the top-level directory (GitHub/GitLab archives have one)
-    for entry in archive
-        .entries()
-        .map_err(|e| format!("Failed to read archive entries: {}", e))?
-    {
-        let mut entry = entry.map_err(|e| format!("Failed to read archive entry: {}", e))?;
-        let path = entry
-            .path()
-            .map_err(|e| format!("Failed to read entry path: {}", e))?
-            .into_owned();
-
-        // Strip the first component (e.g., "repo-sha/")
-        let components: Vec<_> = path.components().collect();
-        if components.len() <= 1 {
-            continue; // Skip the top-level directory itself
-        }
-
-        let mut out_path = dest.to_path_buf();
-        for component in &components[1..] {
-            out_path.push(component);
-        }
-
-        if entry.header().entry_type() == tar::EntryType::Directory {
-            fs::create_dir_all(&out_path)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-            }
-            let mut out_file =
-                fs::File::create(&out_path).map_err(|e| format!("Failed to create file: {}", e))?;
-            io::copy(&mut entry, &mut out_file)
-                .map_err(|e| format!("Failed to extract file: {}", e))?;
-        }
-    }
-
-    Ok(())
+    // GitHub/GitLab archives nest contents under a top-level `repo-sha/`
+    // directory; strip it during extraction. SEC-075a: the shared helper
+    // also rejects `..`/absolute-root path components and link entries.
+    tar_extract::extract_archive(&mut archive, dest, true)
 }
 
 /// Install a single git dependency.
