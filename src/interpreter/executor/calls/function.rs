@@ -22,6 +22,27 @@ fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
     })
 }
 
+/// SEC-086a: stamp `_errors = [{"message": "...callback aborted persistence"}]`
+/// onto an instance when a `before_*` callback returns `false`. Mirrors the
+/// validation-failure / DB-failure shape (`Array<Hash>`) that
+/// `instance.update`, `Model.create`, etc. already use, so callers
+/// inspecting `instance._errors` see a single uniform contract.
+fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &str) {
+    let mut entry = crate::interpreter::value::HashPairs::default();
+    entry.insert(
+        HashKey::String("message".to_string()),
+        Value::String(format!(
+            "{} callback returned false; persistence aborted",
+            callback_kind
+        )),
+    );
+    let error_hash = Value::Hash(Rc::new(RefCell::new(entry)));
+    instance.borrow_mut().set(
+        "_errors".to_string(),
+        Value::Array(Rc::new(RefCell::new(vec![error_hash]))),
+    );
+}
+
 /// SEC-086: pick the (before-events, after-events) pair the persist
 /// interceptor should fire for `method_name`. `instance.save` branches on
 /// whether the instance is already persisted (`has_key == true`) — new
@@ -267,55 +288,19 @@ impl Interpreter {
         }
         let inst_rc = Rc::new(RefCell::new(instance));
 
-        // Run each callback method with `this` bound to the temp instance.
-        for cb_name in &callback_names {
-            let Some(method) = class.find_method(cb_name) else {
-                continue;
+        // SEC-086a: a `before_*` callback that returns `false` vetoes the
+        // operation. Subsequent callbacks don't run, the native isn't
+        // dispatched, and we hand back a Model.create-shaped instance with
+        // `_errors` populated so callers see a uniform "persistence
+        // failed" contract (same shape as a validation failure).
+        if !self.run_model_callbacks(&class, &inst_rc, &callback_names, before_events, span)? {
+            let kind = if method_name == "create" {
+                "before_create / before_save"
+            } else {
+                "before_update / before_save"
             };
-            let mut bound_env = Environment::with_enclosing(method.closure.clone());
-            bound_env.define("this".to_string(), Value::Instance(inst_rc.clone()));
-
-            let bound_method = crate::interpreter::value::Function {
-                name: method.name.clone(),
-                params: method.params.clone(),
-                body: method.body.clone(),
-                closure: Rc::new(RefCell::new(bound_env)),
-                is_method: true,
-                span: method.span,
-                source_path: method.source_path.clone(),
-                defining_superclass: None,
-                return_type: method.return_type.clone(),
-                cached_env: RefCell::new(None),
-                jit_cache: RefCell::new(None),
-            };
-            self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
-        }
-
-        // Closure-based callbacks registered via `Model.add_callback`.
-        // Mirrors the method-name callback ordering above.
-        for ev in before_events {
-            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
-                &class.name,
-                ev,
-            ) {
-                let mut bound_env = Environment::with_enclosing(closure.closure.clone());
-                bound_env.define("this".to_string(), Value::Instance(inst_rc.clone()));
-                bound_env.define("self".to_string(), Value::Instance(inst_rc.clone()));
-                let bound = crate::interpreter::value::Function {
-                    name: closure.name.clone(),
-                    params: closure.params.clone(),
-                    body: closure.body.clone(),
-                    closure: Rc::new(RefCell::new(bound_env)),
-                    is_method: true,
-                    span: closure.span,
-                    source_path: closure.source_path.clone(),
-                    defining_superclass: None,
-                    return_type: closure.return_type.clone(),
-                    cached_env: RefCell::new(None),
-                    jit_cache: RefCell::new(None),
-                };
-                self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
-            }
+            set_callback_aborted_error(&inst_rc, kind);
+            return Ok(Some(Value::Instance(inst_rc)));
         }
 
         // Copy the instance's fields back into a new hash — preserving any
@@ -480,7 +465,14 @@ impl Interpreter {
             return Ok(None);
         }
 
-        self.run_model_callbacks(&class, &instance, &before_names, before_events, span)?;
+        // SEC-086a: a `before_delete` callback returning `false` vetoes
+        // the deletion. Skip the native call and the after-callbacks; the
+        // instance keeps its DB-side state. Surface `_errors` and return
+        // `Bool(false)` so callers can branch on the result.
+        if !self.run_model_callbacks(&class, &instance, &before_names, before_events, span)? {
+            set_callback_aborted_error(&instance, "before_delete");
+            return Ok(Some(Value::Bool(false)));
+        }
 
         let callee_val = self.evaluate_callee(callee)?;
         let result = self.call_value(callee_val, Vec::new(), span)?;
@@ -591,7 +583,21 @@ impl Interpreter {
             return Ok(None);
         }
 
-        self.run_model_callbacks(&class, &instance, &before_names, before_events, span)?;
+        // SEC-086a: a `before_*` callback returning `false` vetoes the
+        // persistence. The native (which is what triggers `exec_update` /
+        // `exec_insert`) does NOT run; the instance keeps its DB-side
+        // state, picks up `_errors`, and we surface `Bool(false)` —
+        // matching the existing failure signal used by
+        // `instance.save` / `update` / `restore`.
+        if !self.run_model_callbacks(&class, &instance, &before_names, before_events, span)? {
+            let kind = if before_events.contains(&"before_create") {
+                "before_create / before_save"
+            } else {
+                "before_update / before_save"
+            };
+            set_callback_aborted_error(&instance, kind);
+            return Ok(Some(Value::Bool(false)));
+        }
 
         // Evaluate the original arguments and dispatch the native method.
         let callee_val = self.evaluate_callee(callee)?;
@@ -615,6 +621,13 @@ impl Interpreter {
         Ok(Some(result))
     }
 
+    /// Run a list of model callbacks (method-name + closure form) with
+    /// `this` bound to `instance`. SEC-086a: returns `Ok(false)` as soon
+    /// as any callback returns `Value::Bool(false)`, signalling an abort.
+    /// Subsequent callbacks in the chain are NOT run on abort — the first
+    /// `false` is the veto. Returns `Ok(true)` if every callback either
+    /// ran cleanly or returned a non-`Bool(false)` value (the historical
+    /// "discard return value" behaviour for non-veto cases).
     fn run_model_callbacks(
         &mut self,
         class: &Rc<crate::interpreter::value::Class>,
@@ -622,7 +635,7 @@ impl Interpreter {
         callback_names: &[String],
         events: &[&str],
         span: Span,
-    ) -> RuntimeResult<()> {
+    ) -> RuntimeResult<bool> {
         for cb_name in callback_names {
             let Some(method) = class.find_method(cb_name) else {
                 continue;
@@ -642,7 +655,11 @@ impl Interpreter {
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
             };
-            self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
+            let result =
+                self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
+            if matches!(result, Value::Bool(false)) {
+                return Ok(false);
+            }
         }
 
         for ev in events {
@@ -666,11 +683,14 @@ impl Interpreter {
                     cached_env: RefCell::new(None),
                     jit_cache: RefCell::new(None),
                 };
-                self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+                let result = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+                if matches!(result, Value::Bool(false)) {
+                    return Ok(false);
+                }
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Implement `respond_to(req, block_or_hash)` — Ruby-style content negotiation.

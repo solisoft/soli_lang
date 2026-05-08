@@ -257,6 +257,25 @@ end</code></pre>
         </table>
     </div>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Vetoing persistence from a <code>before_*</code> callback</h3>
+    <p class="text-gray-400 mb-4">
+        Returning <code>false</code> from any <code>before_*</code> callback aborts the operation. The native DB write is skipped, after-callbacks don't run, and the instance picks up an <code>_errors</code> entry of the form <code>[{ "message": "before_&lt;event&gt; callback returned false; persistence aborted" }]</code>. Callers receive <code>false</code> (or, for <code>Model.create</code>&nbsp;/&nbsp;<code>Model.update</code>, the instance with <code>_errors</code> populated) so they can branch on the result identically to a validation failure.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Audited &lt; Model
+  before_save("can_save")
+
+  def can_save
+    return false if User.current.is_nil?  # returns false → save() / update() aborts
+  end
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The veto fires at the first <code>false</code> &mdash; subsequent before-callbacks in the chain don't run. Use this for authorization gates, integrity checks, or any "deny by default" pattern. Mutating-only callbacks (the common case) just don't return <code>false</code> and run end-to-end as before.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">

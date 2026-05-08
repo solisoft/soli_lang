@@ -379,6 +379,22 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
+### Vetoing persistence from a `before_*` callback
+
+Returning `false` from any `before_*` callback aborts the operation. The native DB write is skipped, after-callbacks don't run, and the instance picks up an `_errors` entry of the form `[{"message": "before_<event> callback returned false; persistence aborted"}]`. Callers receive `false` (or, for `Model.create` / `Model.update`, the instance with `_errors` populated) so they can branch on the result identically to a validation failure.
+
+```soli
+class Audited < Model
+  before_save("can_save")
+
+  def can_save
+    return false if User.current.is_nil?  # returns false → save() / update() aborts
+  end
+end
+```
+
+The veto fires at the first `false` — subsequent before-callbacks in the chain don't run. Use this for authorization gates, integrity checks, or any "deny by default" pattern. Mutating-only callbacks (the common case) just don't return `false` and run end-to-end as before.
+
 ## Uploaders
 
 Declare a blob attachment with `uploader(name, options)`. Soli registers the field, validates incoming files against the rules, stores the blob in SoliDB, and auto-generates instance methods so the controller stays a one-liner.
