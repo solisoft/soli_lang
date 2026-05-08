@@ -447,7 +447,7 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
             if !code.starts_with("for ") {
                 return Err(format!("Expected 'for' statement at line {}", for_line));
             }
-            parse_for_statement(&code[4..])?
+            parse_for_statement(&code[4..], for_line)?
         }
         _ => return Err(format!("Expected 'for' statement at line {}", for_line)),
     };
@@ -502,10 +502,30 @@ fn parse_for_block(tokens: &[Token], for_line: usize) -> Result<(TemplateNode, u
     ))
 }
 
+/// Reject a loop variable name that collides with a Soli reserved keyword.
+///
+/// Without this check the cryptic core-parser error fires only when the
+/// loop body references the variable (e.g. `<%= fn %>` lexes `fn` as the
+/// `Fn` token and the parser then complains about an unexpected EOF
+/// "expected identifier"). Catching the keyword here keeps the diagnostic
+/// pointed at the offending `<% for ... %>` tag.
+fn ensure_loop_var_not_keyword(name: &str, role: &str, line: usize) -> Result<(), String> {
+    if crate::lexer::TokenKind::keyword(name).is_some() {
+        Err(format!(
+            "Template for-loop {} '{}' at line {} is a reserved keyword. \
+             Rename it (e.g. '{}_') so it doesn't collide with Soli syntax.",
+            role, name, line, name
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 /// Parse a for statement like "item in items" or "(item, index in items)"
 /// Supports: "x in items" or "x, i in items" where i is the index
 fn parse_for_statement(
     s: &str,
+    line: usize,
 ) -> Result<(String, Option<String>, crate::ast::expr::Expr), String> {
     let s = s.trim();
 
@@ -566,7 +586,12 @@ fn parse_for_statement(
             (var_part, None)
         };
 
-        Ok((var, index_var, parse_core_expr(iterable_str, 0)?))
+        ensure_loop_var_not_keyword(&var, "variable", line)?;
+        if let Some(ref idx) = index_var {
+            ensure_loop_var_not_keyword(idx, "index variable", line)?;
+        }
+
+        Ok((var, index_var, parse_core_expr(iterable_str, line)?))
     } else {
         Err(format!(
             "Invalid for statement: expected 'var in iterable', got '{}'",
@@ -1496,6 +1521,47 @@ mod tests {
                 line: 1,
             }]
         );
+    }
+
+    /// BUG-001: a reserved keyword used as the loop variable in
+    /// `<% for KW in items %>` previously produced a cryptic
+    /// "Unexpected token 'EOF', expected identifier at 1:3" coming from
+    /// the core parser when the body referenced the variable. The
+    /// template parser now rejects it up-front with a message that
+    /// names the offending keyword and the template line.
+    #[test]
+    fn test_for_loop_keyword_var_rejected() {
+        let err = parse_template("\n<% for fn in items %><%= fn %><% end %>").unwrap_err();
+        assert!(
+            err.contains("'fn'") && err.contains("reserved keyword"),
+            "expected keyword diagnostic, got: {}",
+            err
+        );
+        // The error should include the template line of the `for`,
+        // not a synthetic span from the core parser.
+        assert!(
+            err.contains("line 2"),
+            "expected template line in error, got: {}",
+            err
+        );
+    }
+
+    /// Same protection for the index variable: `<% for x, KW in items %>`.
+    #[test]
+    fn test_for_loop_keyword_index_var_rejected() {
+        let err = parse_template("<% for x, class in items %><% end %>").unwrap_err();
+        assert!(
+            err.contains("'class'") && err.contains("reserved keyword"),
+            "expected keyword diagnostic for index var, got: {}",
+            err
+        );
+    }
+
+    /// Sanity: legitimate non-keyword names still parse.
+    #[test]
+    fn test_for_loop_non_keyword_var_accepted() {
+        assert!(parse_template("<% for func in items %><% end %>").is_ok());
+        assert!(parse_template("<% for item, idx in items %><% end %>").is_ok());
     }
 
     #[test]
