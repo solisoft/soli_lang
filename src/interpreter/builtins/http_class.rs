@@ -121,51 +121,55 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
         return Err("URL cannot be empty".to_string());
     }
 
-    let (scheme, rest) = match url.split_once("://") {
-        Some((s, r)) => (s.to_lowercase(), r),
-        None => {
-            return Err("URL must have a scheme (e.g., http:// or https://)".to_string());
-        }
-    };
+    // SEC-087: parse with `reqwest::Url` (a re-export of `url::Url`) so
+    // bracketed IPv6 literals like `http://[::1]:8080/` get normalised
+    // before reaching `is_blocked_host`. The previous hand-rolled
+    // authority parse split on `:` and produced `"["` as the host,
+    // letting any IPv6 literal slip past the SSRF blocklist (loopback,
+    // ULA, IPv4-mapped, link-local, ...). Routing through a real URL
+    // parser also handles userinfo, percent-encoding, and oddly-shaped
+    // authorities consistently with whatever the underlying HTTP client
+    // would observe.
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| format!("URL must have a scheme (e.g., http:// or https://): {}", e))?;
 
+    let scheme = parsed.scheme().to_ascii_lowercase();
     if scheme.is_empty() {
         return Err("URL scheme cannot be empty".to_string());
     }
-
     if BLOCKED_SCHEMES.contains(&scheme.as_str()) {
         return Err(format!(
             "URL scheme '{}:' is not allowed for security reasons",
             scheme
         ));
     }
-
     if scheme != "http" && scheme != "https" {
         return Err("Only HTTP and HTTPS URLs are allowed".to_string());
     }
 
-    let host = if let Some((h, _)) = rest.split_once('/') {
-        if let Some((_, h2)) = h.split_once('@') {
-            h2
-        } else {
-            h
+    // `host()` is `None` for non-special schemes; for http/https it's
+    // always populated unless the URL has no authority (e.g. `http:`
+    // alone, which `parse` would reject anyway). Defensive: treat None
+    // as an empty host.
+    let host = parsed
+        .host()
+        .ok_or_else(|| "URL host cannot be empty".to_string())?;
+
+    let blocked = match host {
+        // Skip DNS — IP literals never resolve, the connect-time
+        // resolver wouldn't see them, so the up-front `is_blocked_ip`
+        // call is the only line of defence for these.
+        url::Host::Ipv4(v4) => is_blocked_ip(IpAddr::V4(v4)),
+        url::Host::Ipv6(v6) => is_blocked_ip(IpAddr::V6(v6)),
+        url::Host::Domain(domain) => {
+            if domain.is_empty() {
+                return Err("URL host cannot be empty".to_string());
+            }
+            is_blocked_host(domain)
         }
-    } else if let Some((_, h)) = rest.split_once('@') {
-        h
-    } else {
-        rest
     };
 
-    let host = if let Some((h, _)) = host.split_once(':') {
-        h
-    } else {
-        host
-    };
-
-    if host.is_empty() {
-        return Err("URL host cannot be empty".to_string());
-    }
-
-    if is_blocked_host(host) {
+    if blocked {
         // SEC-017 / SEC-084: bypass loopback/private only when the
         // process is running under the test runner (in-process
         // `AtomicBool` set by `soli test`, or by `main.rs` after
@@ -2434,6 +2438,120 @@ mod parallel_logging_tests {
         match prev_env {
             Some(v) => std::env::set_var("APP_ENV", v),
             None => std::env::remove_var("APP_ENV"),
+        }
+    }
+
+    // SEC-087 — IPv6 literals must be parsed correctly so the SSRF blocklist
+    // sees the real address, not the `[` byte the previous string-splitting
+    // parser handed it.
+
+    /// All these tests run with the SSRF test-mode flag forced OFF so the
+    /// blocklist actually fires. Serialised behind `SSRF_FLAG_TEST_LOCK`
+    /// because the flag is process-global.
+    fn with_ssrf_blocklist_active<F: FnOnce()>(body: F) {
+        let _guard = SSRF_FLAG_TEST_LOCK.lock().unwrap();
+        let prev_flag = super::SSRF_TEST_MODE.load(std::sync::atomic::Ordering::SeqCst);
+        super::SSRF_TEST_MODE.store(false, std::sync::atomic::Ordering::SeqCst);
+        body();
+        super::SSRF_TEST_MODE.store(prev_flag, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv6_loopback_literal() {
+        with_ssrf_blocklist_active(|| {
+            for url in ["http://[::1]/", "http://[::1]:8080/path"] {
+                let err =
+                    super::validate_url_for_ssrf(url).unwrap_err_or_else_else_panic_with_url(url);
+                assert!(
+                    err.contains("private/localhost"),
+                    "expected loopback rejection for {}, got: {}",
+                    url,
+                    err
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv4_mapped_ipv6_loopback() {
+        // `[::ffff:127.0.0.1]` — IPv4-mapped IPv6 form of 127.0.0.1.
+        // is_blocked_ip's v6_to_ipv4_mapped branch handles this; the
+        // SEC-087 fix is making sure the URL parser hands the right
+        // address to that branch in the first place.
+        with_ssrf_blocklist_active(|| {
+            let err = super::validate_url_for_ssrf("http://[::ffff:127.0.0.1]/")
+                .expect_err("IPv4-mapped loopback must be rejected");
+            assert!(err.contains("private/localhost"), "{}", err);
+        });
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv6_ula_literal() {
+        with_ssrf_blocklist_active(|| {
+            let err = super::validate_url_for_ssrf("http://[fd00::1]/")
+                .expect_err("ULA fd00::/8 must be rejected");
+            assert!(err.contains("private/localhost"), "{}", err);
+        });
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv6_link_local_literal() {
+        with_ssrf_blocklist_active(|| {
+            let err = super::validate_url_for_ssrf("http://[fe80::1]/")
+                .expect_err("link-local fe80::/10 must be rejected");
+            assert!(err.contains("private/localhost"), "{}", err);
+        });
+    }
+
+    #[test]
+    fn ssrf_rejects_ipv6_documentation_prefix() {
+        with_ssrf_blocklist_active(|| {
+            let err = super::validate_url_for_ssrf("http://[2001:db8::1]/")
+                .expect_err("RFC3849 docs prefix must be rejected");
+            assert!(err.contains("private/localhost"), "{}", err);
+        });
+    }
+
+    #[test]
+    fn ssrf_allows_public_ipv6_literal() {
+        // Cloudflare DNS is the canonical "public reachable IPv6" — make
+        // sure the new parser-based path doesn't accidentally over-block.
+        with_ssrf_blocklist_active(|| {
+            super::validate_url_for_ssrf("http://[2606:4700:4700::1111]/")
+                .expect("public IPv6 literal must be allowed");
+        });
+    }
+
+    #[test]
+    fn ssrf_existing_ipv4_and_hostname_behaviour_unchanged() {
+        // SEC-087 regression coverage: the parser swap must not change
+        // the behaviour for the two cases that already worked.
+        with_ssrf_blocklist_active(|| {
+            // Loopback IPv4 — still blocked.
+            let err = super::validate_url_for_ssrf("http://127.0.0.1/")
+                .expect_err("IPv4 loopback must still be rejected");
+            assert!(err.contains("private/localhost"), "{}", err);
+            // Public hostname — still allowed.
+            super::validate_url_for_ssrf("https://example.com/")
+                .expect("public hostname must remain allowed");
+            // Blocked scheme — still rejected by the scheme guard.
+            let err = super::validate_url_for_ssrf("file:///etc/passwd")
+                .expect_err("file:// must remain rejected");
+            assert!(err.contains("not allowed"), "{}", err);
+        });
+    }
+
+    /// Tiny extension trait so the test loop above can produce a useful
+    /// panic message when `validate_url_for_ssrf` unexpectedly succeeds.
+    trait UnwrapErrPanic<T> {
+        fn unwrap_err_or_else_else_panic_with_url(self, url: &str) -> T;
+    }
+    impl<T, E: std::fmt::Display> UnwrapErrPanic<E> for Result<T, E> {
+        fn unwrap_err_or_else_else_panic_with_url(self, url: &str) -> E {
+            match self {
+                Ok(_) => panic!("expected error for {}, got Ok", url),
+                Err(e) => e,
+            }
         }
     }
 }
