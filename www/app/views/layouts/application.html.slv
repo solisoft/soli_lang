@@ -233,7 +233,6 @@
                         <li><a href="/docs/authentication" class="text-gray-400 hover:text-white transition-colors">Authentication</a></li>
                         <li><a href="/docs/sessions" class="text-gray-400 hover:text-white transition-colors">Sessions</a></li>
                         <li><a href="/docs/validation" class="text-gray-400 hover:text-white transition-colors">Validation</a></li>
-                        <li><a href="/users/validation-demo" class="text-indigo-400 hover:text-indigo-300 transition-colors">Try Validation</a></li>
                     </ul>
                 </div>
 

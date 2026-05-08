@@ -172,58 +172,10 @@ router_live("counter", "live#counter");
 router_live("metrics", "live#metrics");
 
 # ============================================================================
-# Users Controller - Authentication, Sessions, and Validation Demo
-# ============================================================================
-
-# Authentication routes
-get("/users/login", "users#login");
-post("/users/login", "users#login_post");
-get("/users/register", "users#register");
-post("/users/register", "users#register_post");
-get("/users/logout", "users#logout");
-get("/users/profile", "users#profile");
-
-# Session management
-get("/users/regenerate-session", "users#regenerate_session");
-
-# Validation demo
-get("/users/validation-demo", "users#validation_demo");
-post("/users/validate-registration", "users#validate_registration");
-
-# JWT demo endpoints
-post("/users/create-token", "users#create_token");
-post("/users/verify-token", "users#verify_token");
-post("/users/decode-token", "users#decode_token");
-
-# ============================================================================
-# State Machine Controller - REST API for State Machine management
-# ============================================================================
-
-# API endpoints
-get("/api/state-machines", "state_machines#list");
-post("/api/state-machines", "state_machines#create");
-get("/api/state-machines/:id", "state_machines#get");
-delete("/api/state-machines/:id", "state_machines#delete");
-post("/api/state-machines/:id/transition", "state_machines#transition");
-put("/api/state-machines/:id/context", "state_machines#set_context");
-get("/api/state-machines/:id/context/:key", "state_machines#get_context");
-
-# Demo page
-get("/state-machines", "state_machines#demo");
-
-# ============================================================================
-# Documentation
-# ============================================================================
-
-get("/docs/core-concepts/state-machines", "docs#core_concepts_state_machines");
-
-# ============================================================================
 # Wildcard Route Examples
 # ============================================================================
-//
 # These demonstrate the dynamic action resolution feature:
 # Path /wildcard/* maps to wildcard_controller.sl functions
-//
 # Example: /wildcard/demo → wildcard#demo
 
 get("/wildcard/*", "wildcard#*");
@@ -231,7 +183,6 @@ get("/wildcard/*", "wildcard#*");
 # ============================================================================
 # Splat Route Examples
 # ============================================================================
-//
 # Splat routes use *param_name to capture remaining path segments
 # The captured value includes a leading slash
 
