@@ -5,37 +5,59 @@
 
 use std::path::{Path, PathBuf};
 
-/// Platform-specific Tailwind standalone CLI download URL and binary name
-fn tailwind_binary_info() -> (&'static str, &'static str) {
+/// One platform's standalone Tailwind binary: download URL, on-disk
+/// filename, and the pinned SHA-256 checksum from the upstream release's
+/// `sha256sums.txt`. SEC-081: every download is hash-verified before the
+/// binary is renamed into place and made executable, so a compromised
+/// release asset, CDN problem, or in-flight tampering can't slip an
+/// arbitrary executable past `cargo run` / `soli serve --dev`.
+struct BinaryAsset {
+    url: &'static str,
+    name: &'static str,
+    sha256: &'static str,
+}
+
+/// Platform-specific Tailwind standalone CLI download URL, filename, and
+/// SHA-256 checksum. The hashes match v3.4.17's published `sha256sums.txt`
+/// (verified out-of-band when the version was pinned). To bump Tailwind:
+/// fetch `https://github.com/tailwindlabs/tailwindcss/releases/download/<vTAG>/sha256sums.txt`,
+/// update both the URL version and the matching checksum here in lock-step.
+fn tailwind_binary_info() -> Option<BinaryAsset> {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        (
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-macos-arm64",
-            "tailwindcss-macos-arm64",
-        )
+        Some(BinaryAsset {
+            url: "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-macos-arm64",
+            name: "tailwindcss-macos-arm64",
+            sha256: "a1d0c7985759accca0bf12e51ac1dcbf0f6cf2fffb62e6e0f62d091c477a10a3",
+        })
     }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     {
-        (
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-macos-x64",
-            "tailwindcss-macos-x64",
-        )
+        Some(BinaryAsset {
+            url: "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-macos-x64",
+            name: "tailwindcss-macos-x64",
+            sha256: "6cbdad74be776c087ffa5e9a057512c54898f9fe8828d3362212dfe32fc933a3",
+        })
     }
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
-        (
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-linux-x64",
-            "tailwindcss-linux-x64",
-        )
+        Some(BinaryAsset {
+            url: "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64",
+            name: "tailwindcss-linux-x64",
+            sha256: "7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4",
+        })
     }
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
     {
-        (
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/3.4.17/tailwindcss-linux-arm64",
-            "tailwindcss-linux-arm64",
-        )
+        Some(BinaryAsset {
+            url: "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-arm64",
+            name: "tailwindcss-linux-arm64",
+            sha256: "69b1378b8133192d7d2feb12a116fa12d035594f58db3eff215879e4ad8cf39b",
+        })
     }
-    // Fallback for other platforms
+    // No pinned hash for other platforms — refuse to download an
+    // unverified binary rather than fall back to the previous trust-on-
+    // first-use pattern.
     #[cfg(not(any(
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
@@ -43,7 +65,7 @@ fn tailwind_binary_info() -> (&'static str, &'static str) {
         all(target_os = "linux", target_arch = "aarch64"),
     )))]
     {
-        ("", "tailwindcss")
+        None
     }
 }
 
@@ -53,17 +75,53 @@ fn tailwind_cache_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".soli").join("bin"))
 }
 
-/// Download the standalone Tailwind CSS CLI binary.
-fn download_tailwind_binary(dest: &Path) -> bool {
-    let (url, _) = tailwind_binary_info();
-    if url.is_empty() {
-        eprintln!("   ✗ No standalone Tailwind binary available for this platform");
-        return false;
+/// Compute the SHA-256 of `path` as a lowercase hex string.
+fn sha256_hex_of_file(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path)?;
+    let digest = Sha256::digest(&bytes);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{:02x}", b);
     }
+    Ok(out)
+}
+
+/// Verify a freshly-downloaded file against the pinned SHA-256. Returns
+/// `Ok(())` on match, `Err(message)` on read failure or mismatch. The
+/// caller is responsible for cleaning up the file on `Err`.
+fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
+    let actual = sha256_hex_of_file(path)
+        .map_err(|e| format!("failed to read {} for hashing: {}", path.display(), e))?;
+    if !actual.eq_ignore_ascii_case(expected_hex) {
+        return Err(format!(
+            "SHA-256 mismatch for {}: expected {}, got {}",
+            path.display(),
+            expected_hex,
+            actual
+        ));
+    }
+    Ok(())
+}
+
+/// Download the standalone Tailwind CSS CLI binary, verify its checksum,
+/// then atomically rename into place and mark it executable. SEC-081:
+/// the binary is written to a `.partial` sibling first; only after
+/// `verify_sha256` returns Ok does it get renamed to `dest`. Mismatches
+/// fail closed with the partial file deleted, so a hostile or corrupted
+/// download never leaves an executable cached file behind.
+fn download_tailwind_binary(dest: &Path) -> bool {
+    let asset = match tailwind_binary_info() {
+        Some(a) => a,
+        None => {
+            eprintln!("   ✗ No standalone Tailwind binary available for this platform");
+            return false;
+        }
+    };
 
     println!("   Downloading Tailwind CSS standalone CLI...");
 
-    // Create parent directory
     if let Some(parent) = dest.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             eprintln!("   ✗ Failed to create directory: {}", e);
@@ -71,34 +129,68 @@ fn download_tailwind_binary(dest: &Path) -> bool {
         }
     }
 
-    // Use curl (available on macOS and Linux) to follow redirects and download
-    let output = std::process::Command::new("curl")
-        .args(["-sL", "-o"])
-        .arg(dest)
-        .arg(url)
+    // Stage download to `<dest>.partial` so a failed verification (or a
+    // crashed download mid-flight) can never leave an executable cached
+    // file at `dest`.
+    let partial = dest.with_extension("partial");
+
+    let curl_result = std::process::Command::new("curl")
+        .args(["-sL", "--fail", "-o"])
+        .arg(&partial)
+        .arg(asset.url)
         .output();
 
-    match output {
-        Ok(result) if result.status.success() => {
-            // Make executable
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755));
-            }
-            println!("   ✓ Tailwind CSS CLI downloaded");
-            true
-        }
+    match curl_result {
+        Ok(result) if result.status.success() => {}
         Ok(result) => {
+            let _ = std::fs::remove_file(&partial);
             let stderr = String::from_utf8_lossy(&result.stderr);
             eprintln!("   ✗ Download failed: {}", stderr);
-            false
+            return false;
         }
         Err(e) => {
+            let _ = std::fs::remove_file(&partial);
             eprintln!("   ✗ Failed to run curl: {}", e);
-            false
+            return false;
         }
     }
+
+    if let Err(e) = verify_sha256(&partial, asset.sha256) {
+        let _ = std::fs::remove_file(&partial);
+        eprintln!(
+            "   ✗ {}\n     Refusing to install an unverified Tailwind binary. \
+             Delete {} (if anything is left), check your network path, and re-run.",
+            e,
+            partial.display()
+        );
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)) {
+            let _ = std::fs::remove_file(&partial);
+            eprintln!("   ✗ Failed to chmod cached binary: {}", e);
+            return false;
+        }
+    }
+
+    if let Err(e) = std::fs::rename(&partial, dest) {
+        let _ = std::fs::remove_file(&partial);
+        eprintln!(
+            "   ✗ Failed to install verified binary at {}: {}",
+            dest.display(),
+            e
+        );
+        return false;
+    }
+
+    println!(
+        "   ✓ Tailwind CSS CLI downloaded and verified ({})",
+        asset.name
+    );
+    true
 }
 
 /// Find or download the Tailwind CSS binary.
@@ -111,17 +203,16 @@ fn find_tailwind_binary(folder: &Path) -> Option<PathBuf> {
     }
 
     // 2. Check cached standalone binary in ~/.soli/bin/
-    let (_, binary_name) = tailwind_binary_info();
-    if let Some(cache_dir) = tailwind_cache_dir() {
-        let cached = cache_dir.join(binary_name);
-        if cached.exists() {
-            return Some(cached);
-        }
+    let asset = tailwind_binary_info()?;
+    let cache_dir = tailwind_cache_dir()?;
+    let cached = cache_dir.join(asset.name);
+    if cached.exists() {
+        return Some(cached);
+    }
 
-        // 3. Download standalone binary
-        if download_tailwind_binary(&cached) {
-            return Some(cached);
-        }
+    // 3. Download standalone binary (verifies SHA-256 before installing).
+    if download_tailwind_binary(&cached) {
+        return Some(cached);
     }
 
     None
@@ -203,4 +294,73 @@ pub(crate) fn compile_tailwind_css_once(folder: &Path) -> bool {
     }
 
     all_ok
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn sha256_matches_known_vector() {
+        // SHA-256 of "abc" — RFC 6234 test vector.
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("abc.bin");
+        write(&p, b"abc");
+        let hex = sha256_hex_of_file(&p).unwrap();
+        assert_eq!(
+            hex,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn verify_sha256_passes_on_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("abc.bin");
+        write(&p, b"abc");
+        verify_sha256(
+            &p,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        )
+        .expect("matching hash must verify");
+    }
+
+    #[test]
+    fn verify_sha256_passes_uppercase_expected() {
+        // Pinned hashes are commonly written lowercase, but tolerate
+        // accidental uppercase entries too — `eq_ignore_ascii_case`.
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("abc.bin");
+        write(&p, b"abc");
+        verify_sha256(
+            &p,
+            "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
+        )
+        .expect("case-insensitive expected hash must verify");
+    }
+
+    #[test]
+    fn verify_sha256_fails_on_mismatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("abc.bin");
+        write(&p, b"abc");
+        let err = verify_sha256(&p, &"0".repeat(64)).unwrap_err();
+        assert!(err.contains("SHA-256 mismatch"), "{}", err);
+        assert!(err.contains(&"0".repeat(64)), "{}", err);
+    }
+
+    #[test]
+    fn verify_sha256_fails_when_file_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("never.bin");
+        let err = verify_sha256(&p, &"0".repeat(64)).unwrap_err();
+        assert!(err.contains("failed to read"), "{}", err);
+    }
 }
