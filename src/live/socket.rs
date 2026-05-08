@@ -71,17 +71,14 @@ pub fn clear_liveview_routes() {
     routes.clear();
 }
 
-/// Extract session ID from request cookies.
+/// Extract session ID from request cookies. SEC-077: delegates to the shared
+/// `interpreter::builtins::session::extract_session_id_from_cookie` so the
+/// LiveView socket reads both `session_id` and `__Host-session_id` cookie
+/// names, matching whatever the HTTP layer issued. Falls back to a synthetic
+/// `sess-<uuid>` handle when no cookie is present (LiveView needs a stable
+/// per-socket identifier; it does not have to be a real session UUID).
 pub fn extract_session_id(cookies: Option<&str>) -> String {
-    cookies
-        .and_then(|c| {
-            c.split(';')
-                .find(|c| c.trim_start().starts_with("session_id="))
-        })
-        .map(|c| {
-            let value = c.trim_start().strip_prefix("session_id=").unwrap();
-            value.to_string()
-        })
+    crate::interpreter::builtins::session::extract_session_id_from_cookie(cookies)
         .unwrap_or_else(|| format!("sess-{}", Uuid::new_v4()))
 }
 

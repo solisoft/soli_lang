@@ -556,17 +556,26 @@ pub fn is_valid_session_id(id: &str) -> bool {
     id.len() == 36 && Uuid::parse_str(id).is_ok()
 }
 
-/// Extract session ID from Cookie header.
+/// Extract session ID from Cookie header. SEC-077: when the deployment runs
+/// with `SOLI_SESSION_HOST_PREFIX=1`, the server emits the cookie under the
+/// `__Host-session_id` name; this read path now accepts both that prefixed
+/// form and the plain `session_id` form so requests are still recognised.
+/// `__Host-session_id` takes precedence when both are present (the prefixed
+/// cookie carries the `__Host-` browser guarantees, so prefer it over a
+/// plain replay smuggled in by an attacker on the same host).
 pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<String> {
-    cookie_header.and_then(|cookies| {
-        for cookie in cookies.split(';') {
-            let cookie = cookie.trim();
-            if let Some(value) = cookie.strip_prefix("session_id=") {
-                return Some(value.to_string());
-            }
+    let cookies = cookie_header?;
+    let mut host_prefixed: Option<String> = None;
+    let mut plain: Option<String> = None;
+    for cookie in cookies.split(';') {
+        let cookie = cookie.trim();
+        if let Some(value) = cookie.strip_prefix("__Host-session_id=") {
+            host_prefixed = Some(value.to_string());
+        } else if let Some(value) = cookie.strip_prefix("session_id=") {
+            plain = Some(value.to_string());
         }
-        None
-    })
+    }
+    host_prefixed.or(plain)
 }
 
 /// Create Set-Cookie header value for session.
@@ -1308,6 +1317,35 @@ mod tests {
             Some("abc".to_string())
         );
         assert_eq!(extract_session_id_from_cookie(Some("foo=1; bar=2")), None);
+    }
+
+    #[test]
+    fn extract_session_id_from_cookie_reads_host_prefixed_name() {
+        // SEC-077: when SOLI_SESSION_HOST_PREFIX=1 the server emits the cookie
+        // under `__Host-session_id`; the read path must accept it.
+        assert_eq!(
+            extract_session_id_from_cookie(Some("__Host-session_id=xyz")),
+            Some("xyz".to_string())
+        );
+        assert_eq!(
+            extract_session_id_from_cookie(Some("foo=1; __Host-session_id=xyz; bar=2")),
+            Some("xyz".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_session_id_from_cookie_prefers_host_prefixed_over_plain() {
+        // SEC-077: if both names are present, the `__Host-` cookie wins
+        // because it carries the browser-enforced Secure / Path=/ / no-Domain
+        // guarantees that the plain name lacks.
+        assert_eq!(
+            extract_session_id_from_cookie(Some("session_id=plain; __Host-session_id=prefixed")),
+            Some("prefixed".to_string())
+        );
+        assert_eq!(
+            extract_session_id_from_cookie(Some("__Host-session_id=prefixed; session_id=plain")),
+            Some("prefixed".to_string())
+        );
     }
 
     #[test]
