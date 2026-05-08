@@ -79,16 +79,35 @@ fn bytes_to_value(bytes: &[u8]) -> Value {
     Value::String(bytes_to_hex(bytes))
 }
 
-/// Perform X25519 scalar multiplication (Montgomery curve)
+/// Perform X25519 scalar multiplication (Montgomery curve).
+///
+/// SEC-088: previously this routed through `MontgomeryPoint::to_edwards(0).unwrap()`,
+/// which panicked for any 32-byte point that didn't decode to an Edwards
+/// point with sign bit 0 — including small-order, low-bit, and
+/// adversarial inputs. The unwind would crash the request-handling
+/// thread, giving any controller that does X25519 key agreement against
+/// untrusted clients a cheap DoS primitive. Multiplying directly on the
+/// Montgomery curve via `MontgomeryPoint * Scalar` is total over all
+/// 32-byte points: no panic for any input. Callers that derive a shared
+/// secret should additionally reject the all-zero output (small-order
+/// peer keys) — that check lives at the call site so public-key
+/// derivation against the standard basepoint stays unrestricted.
 fn x25519_scalar_mult(scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
     use curve25519_dalek::montgomery::MontgomeryPoint;
-    use curve25519_dalek::traits::MultiscalarMul;
 
     let scalar_val = Scalar::from_bytes_mod_order(*scalar);
     let mont_point = MontgomeryPoint(*point);
-    let ed_point = mont_point.to_edwards(0).unwrap();
-    let result = EdwardsPoint::multiscalar_mul([scalar_val], [ed_point]);
-    result.to_montgomery().0
+    (mont_point * scalar_val).0
+}
+
+/// SEC-088: per RFC 7748 §6.1 / §6.2, an X25519 shared secret of all
+/// zeros means the peer public key was a small-order point — accepting
+/// it lets an attacker downgrade the shared secret to a known constant.
+/// Used by the shared-secret entry points; not by public-key derivation
+/// (which always multiplies by the well-formed standard basepoint and
+/// can't produce an all-zero result for any clamped scalar).
+fn x25519_is_small_order_output(shared: &[u8; 32]) -> bool {
+    shared.iter().all(|&b| b == 0)
 }
 
 // ============================================================================
@@ -500,6 +519,11 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 let mut public_array = [0u8; 32];
                 public_array.copy_from_slice(&public_bytes[..32]);
                 let shared = x25519_scalar_mult(&private_key, &public_array);
+                if x25519_is_small_order_output(&shared) {
+                    return Err("Crypto.x25519_shared_secret(): invalid X25519 public key \
+                         (small-order point produced an all-zero shared secret)"
+                        .to_string());
+                }
                 Ok(bytes_to_value(&shared))
             },
         )),
@@ -1006,6 +1030,11 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 let mut public_array = [0u8; 32];
                 public_array.copy_from_slice(&public_bytes[..32]);
                 let shared = x25519_scalar_mult(&private_key, &public_array);
+                if x25519_is_small_order_output(&shared) {
+                    return Err("x25519_shared_secret(): invalid X25519 public key \
+                         (small-order point produced an all-zero shared secret)"
+                        .to_string());
+                }
                 Ok(bytes_to_value(&shared))
             },
         )),
@@ -1060,6 +1089,16 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             let mut scalar_array = [0u8; 32];
             scalar_array.copy_from_slice(&scalar_bytes[..32]);
             let result = x25519_scalar_mult(&scalar_array, &basepoint_array);
+            // SEC-088: same all-zero rejection as the shared-secret
+            // helpers — a caller passing a small-order basepoint would
+            // otherwise get a known-constant result they could confuse
+            // with a real DH shared secret.
+            if x25519_is_small_order_output(&result) {
+                return Err(
+                    "x25519(): invalid basepoint (small-order point produced an all-zero result)"
+                        .to_string(),
+                );
+            }
             Ok(bytes_to_value(&result))
         })),
     );
@@ -1101,5 +1140,81 @@ mod tests {
     fn secure_compare_unicode_safe() {
         assert!(do_secure_compare("café", "café"));
         assert!(!do_secure_compare("café", "cafe"));
+    }
+
+    // SEC-088 — X25519 must never panic on arbitrary 32-byte input.
+
+    fn clamped_scalar(seed: u8) -> [u8; 32] {
+        let mut s = [seed; 32];
+        s[0] &= 248;
+        s[31] &= 127;
+        s[31] |= 64;
+        s
+    }
+
+    #[test]
+    fn x25519_scalar_mult_does_not_panic_on_arbitrary_inputs() {
+        // Sweep a handful of "would have panicked" candidates: the
+        // previous `to_edwards(0).unwrap()` failed for any 32-byte point
+        // that didn't decode to an Edwards point with sign bit 0.
+        // Every byte pattern below now produces a well-formed result
+        // — the only contract we assert here is "no panic".
+        let scalar = clamped_scalar(0x42);
+        for point in [
+            [0u8; 32],  // all-zeros (small-order)
+            [0xff; 32], // all-ones (would unwind to_edwards on the old impl)
+            [1u8; 32],  // smooth pattern
+            [0x80; 32], // high bit on
+            {
+                // The standard X25519 basepoint (u=9) — should always work.
+                let mut p = [0u8; 32];
+                p[0] = 9;
+                p
+            },
+        ] {
+            let _ = x25519_scalar_mult(&scalar, &point);
+        }
+    }
+
+    #[test]
+    fn x25519_small_order_output_detected_for_zero_point() {
+        // The all-zero point is a canonical small-order generator: any
+        // scalar multiplication produces the all-zero output, which the
+        // SEC-088 small-order guard rejects at the call site.
+        let scalar = clamped_scalar(0x55);
+        let zero_point = [0u8; 32];
+        let shared = x25519_scalar_mult(&scalar, &zero_point);
+        assert!(
+            x25519_is_small_order_output(&shared),
+            "all-zero point must produce all-zero shared secret"
+        );
+    }
+
+    #[test]
+    fn x25519_small_order_output_passes_for_real_keypair() {
+        // Generate two real keypairs, derive both shared secrets, confirm
+        // (a) they agree, (b) they're not all-zero. This is the
+        // round-trip sanity check from the SEC-088 acceptance criteria.
+        let (priv_a, pub_a) = do_x25519_keypair();
+        let (priv_b, pub_b) = do_x25519_keypair();
+        let priv_a_bytes = hex_to_bytes(&priv_a).unwrap();
+        let priv_b_bytes = hex_to_bytes(&priv_b).unwrap();
+        let pub_a_bytes = hex_to_bytes(&pub_a).unwrap();
+        let pub_b_bytes = hex_to_bytes(&pub_b).unwrap();
+        let mut sa = [0u8; 32];
+        sa.copy_from_slice(&priv_a_bytes);
+        let mut sb = [0u8; 32];
+        sb.copy_from_slice(&priv_b_bytes);
+        let mut pa = [0u8; 32];
+        pa.copy_from_slice(&pub_a_bytes);
+        let mut pb = [0u8; 32];
+        pb.copy_from_slice(&pub_b_bytes);
+        let secret_ab = x25519_scalar_mult(&sa, &pb);
+        let secret_ba = x25519_scalar_mult(&sb, &pa);
+        assert_eq!(secret_ab, secret_ba, "shared secret must be symmetric");
+        assert!(
+            !x25519_is_small_order_output(&secret_ab),
+            "real keypair must not produce all-zero shared secret"
+        );
     }
 }
