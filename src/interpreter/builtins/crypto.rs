@@ -609,7 +609,19 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             };
             let period = if args.len() > 2 {
                 match &args[2] {
-                    Value::Int(p) => *p as u64,
+                    Value::Int(p) => {
+                        // SEC-089: reject zero / negative periods. The previous
+                        // `*p as u64` cast turned 0 into a divide-by-zero panic
+                        // in `do_totp_generate`, and any negative value into a
+                        // huge positive `u64` via wrap-around.
+                        if *p <= 0 {
+                            return Err(format!(
+                                "Crypto.totp_generate() period must be positive, got {}",
+                                p
+                            ));
+                        }
+                        *p as u64
+                    }
                     other => {
                         return Err(format!(
                             "Crypto.totp_generate() expects optional Int period, got {}",
@@ -671,7 +683,17 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             };
             let period = if args.len() > 3 {
                 match &args[3] {
-                    Value::Int(p) => *p as u64,
+                    Value::Int(p) => {
+                        // SEC-089: reject zero / negative periods (see the
+                        // matching guard in Crypto.totp_generate above).
+                        if *p <= 0 {
+                            return Err(format!(
+                                "Crypto.totp_verify() period must be positive, got {}",
+                                p
+                            ));
+                        }
+                        *p as u64
+                    }
                     other => {
                         return Err(format!(
                             "Crypto.totp_verify() expects optional Int period, got {}",
@@ -1216,5 +1238,107 @@ mod tests {
             !x25519_is_small_order_output(&secret_ab),
             "real keypair must not produce all-zero shared secret"
         );
+    }
+
+    // SEC-089 — TOTP helpers must not panic on zero / negative periods.
+
+    fn crypto_static(name: &str) -> Rc<NativeFunction> {
+        let mut env = Environment::new();
+        register_crypto_builtins(&mut env);
+        let crypto = env
+            .get("Crypto")
+            .unwrap_or_else(|| panic!("Crypto class not registered"));
+        let class = match &crypto {
+            Value::Class(c) => c.clone(),
+            other => panic!("Crypto is not a Class: {:?}", other),
+        };
+        class
+            .native_static_methods
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| panic!("Crypto.{} not registered", name))
+    }
+
+    #[test]
+    fn totp_generate_rejects_zero_period() {
+        let f = crypto_static("totp_generate");
+        let err = (f.func)(vec![
+            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::Int(1_700_000_000),
+            Value::Int(0),
+        ])
+        .expect_err("period=0 must error, not panic with divide-by-zero");
+        assert!(err.contains("period must be positive"), "{}", err);
+    }
+
+    #[test]
+    fn totp_generate_rejects_negative_period() {
+        // The previous `*p as u64` cast turned -30 into a huge positive
+        // period value, producing wildly wrong codes silently.
+        let f = crypto_static("totp_generate");
+        let err = (f.func)(vec![
+            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::Int(1_700_000_000),
+            Value::Int(-30),
+        ])
+        .expect_err("negative period must error");
+        assert!(err.contains("period must be positive"), "{}", err);
+    }
+
+    #[test]
+    fn totp_generate_default_period_still_works() {
+        // The 30-second default path (no period arg) must remain
+        // unchanged.
+        let f = crypto_static("totp_generate");
+        let result = (f.func)(vec![
+            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::Int(1_700_000_000),
+        ])
+        .expect("default 30s period must still produce a code");
+        match result {
+            Value::String(code) => assert_eq!(code.len(), 6, "expected 6-digit code, got {}", code),
+            other => panic!("expected String, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn totp_verify_rejects_zero_period() {
+        let f = crypto_static("totp_verify");
+        let err = (f.func)(vec![
+            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::String("000000".to_string()),
+            Value::Int(1_700_000_000),
+            Value::Int(0),
+        ])
+        .expect_err("period=0 must error before reaching the divide");
+        assert!(err.contains("period must be positive"), "{}", err);
+    }
+
+    #[test]
+    fn totp_verify_rejects_negative_period() {
+        let f = crypto_static("totp_verify");
+        let err = (f.func)(vec![
+            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::String("000000".to_string()),
+            Value::Int(1_700_000_000),
+            Value::Int(-1),
+        ])
+        .expect_err("negative period must error");
+        assert!(err.contains("period must be positive"), "{}", err);
+    }
+
+    #[test]
+    fn totp_generate_then_verify_round_trip() {
+        // Acceptance criterion: existing valid TOTP behaviour unchanged.
+        let gen = crypto_static("totp_generate");
+        let ver = crypto_static("totp_verify");
+        let secret = Value::String("JBSWY3DPEHPK3PXP".to_string());
+        let time = Value::Int(1_700_000_000);
+        let code = match (gen.func)(vec![secret.clone(), time.clone()]).unwrap() {
+            Value::String(s) => s,
+            other => panic!("expected String code, got {:?}", other),
+        };
+        let valid = (ver.func)(vec![secret, Value::String(code), time]).unwrap();
+        assert!(matches!(valid, Value::Bool(true)));
     }
 }
