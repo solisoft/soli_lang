@@ -220,7 +220,7 @@ fn is_blocked_host(host: &str) -> bool {
 /// stable Rust) — instead we check the bit patterns explicitly and let
 /// the standard `is_loopback` / `is_unspecified` / `is_multicast`
 /// helpers cover what they cover.
-fn is_blocked_ip(ip: IpAddr) -> bool {
+pub(crate) fn is_blocked_ip(ip: IpAddr) -> bool {
     if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
         return true;
     }

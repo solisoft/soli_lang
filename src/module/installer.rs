@@ -269,7 +269,7 @@ fn install_version_dep(name: &str, version: &str, lock: &mut LockFile) -> Result
         println!("  {} (already downloaded at {})", name, version);
     } else {
         println!("  {} (downloading {}...)", name, version);
-        registry::download_package(&info.download_url, &cache_path)?;
+        registry::download_package(registry_url, &info.download_url, &cache_path)?;
         println!("  {} (installed)", name);
     }
 
