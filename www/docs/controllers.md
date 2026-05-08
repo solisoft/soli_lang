@@ -8,7 +8,7 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 
 ```soli
 # app/controllers/users_controller.sl
-class UsersController extends Controller
+class UsersController < Controller
   fn index(req)
     render("users/index", {
       "title": "Users",
@@ -35,7 +35,7 @@ end
 Controllers are classes that extend the base `Controller` class:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   # Actions go here
   fn index(req) end
   fn show(req) end
@@ -47,7 +47,7 @@ end
 Configure controllers using a `static { ... }` block. The `static { ... }` block and the hook function bodies require brace syntax (the controller registry parses them textually):
 
 ```soli
-class ApplicationController extends Controller
+class ApplicationController < Controller
   static {
     # Set the layout for all actions
     this.layout = "application";
@@ -69,7 +69,7 @@ end
 Each public function in a controller is an action:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   fn index(req) end
   fn show(req) end
   fn new(req) end
@@ -97,7 +97,7 @@ Create an `ApplicationController` with shared configuration:
 
 ```soli
 # app/controllers/application_controller.sl
-class ApplicationController extends Controller
+class ApplicationController < Controller
   static {
     this.layout = "application";
 
@@ -124,7 +124,7 @@ Subclasses inherit the configuration and can override it:
 
 ```soli
 # app/controllers/posts_controller.sl
-class PostsController extends ApplicationController
+class PostsController < ApplicationController
   static {
     # Override layout for this controller
     this.layout = "posts";
@@ -164,7 +164,7 @@ You can create deeper hierarchies. Each level inherits hooks and methods from it
 ```soli
 # app/controllers/admin_controller.sl
 # Extends ApplicationController, which extends Controller
-class AdminController extends ApplicationController
+class AdminController < ApplicationController
   static {
     this.layout = "admin";
 
@@ -179,7 +179,7 @@ class AdminController extends ApplicationController
 end
 
 # app/controllers/admin_users_controller.sl
-class AdminUsersController extends AdminController
+class AdminUsersController < AdminController
   fn index(req)
     # Inherits: ApplicationController's auth + AdminController's admin check
     render("admin/users/index", { "users": User.all() })
@@ -202,7 +202,7 @@ end
 Run code before an action executes. Can filter to specific actions:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   static {
     # Run for all actions
     this.before_action = fn(req) {
@@ -239,7 +239,7 @@ this.before_action = fn(req) {
 Run code after an action executes:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   static {
     this.after_action = fn(req, response) {
       # Log the action
@@ -305,7 +305,7 @@ end
 The request object is automatically injected into your controller:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   fn show(req)
     # Access params directly
     id = req.params["id"];
@@ -336,7 +336,7 @@ end
 Any field set on the controller instance during an action — via either `this.foo = ...` or the `@foo` shorthand — is automatically available as a bare local in the view that action renders. You can drop the data hash entirely when you just want to pass data through.
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   fn show(req)
     @post = Post.find(req.params["id"]);
     @comments = Comment.where({"post_id": @post.id}).all;
@@ -392,7 +392,7 @@ For prefix matches (e.g. any path under `/users`), compose with string methods: 
 Set the layout in your controller:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   static {
     this.layout = "posts";  # Uses layouts/posts.html.slv
   }
@@ -545,7 +545,7 @@ end
 Controllers have access to context through `this`:
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   static {
     this.layout = "posts";
     this.before_action = fn(req) {

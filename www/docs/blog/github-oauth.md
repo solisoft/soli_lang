@@ -160,7 +160,7 @@ Note the `Accept: application/json` header on the token exchange — without it,
 ```soli
 # app/models/user.sl
 
-class User extends Model
+class User < Model
   id: Int
   github_id: Int
   username: String

@@ -8,17 +8,17 @@ pub fn model_template(
     validations: &str,
 ) -> String {
     format!(
-        r#"// {model_name} model - auto-generated scaffold
-// Collection: {collection_name}
+        r#"# {model_name} model - auto-generated scaffold
+# Collection: {collection_name}
 
 class {model_name} < Model
-  // Fields
+  # Fields
   {field_comments}
 
-  // Validations
+  # Validations
   {validations}
 
-  // Callbacks
+  # Callbacks
   before_save("normalize_fields")
 end
 "#,

@@ -1,11 +1,11 @@
 # Home controller - handles the root routes
 
-class HomeController extends Controller
+class HomeController < Controller
     # GET /
     def index(req)
         return render("home/index", {
             "title": "Welcome"
-        });
+        })
     end
 
     # GET /health
@@ -14,6 +14,6 @@ class HomeController extends Controller
             "status": 200,
             "headers": {"Content-Type": "application/json"},
             "body": "{\"status\":\"ok\"}"
-        };
+        }
     end
 end

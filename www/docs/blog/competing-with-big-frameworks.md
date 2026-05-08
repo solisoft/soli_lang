@@ -48,7 +48,7 @@ Instead of adapting a general-purpose language to the web, Soli can make web dev
 ```soli
 get("/users", "users#index")
 
-class User extends Model
+class User < Model
   name: String
   email: String
 

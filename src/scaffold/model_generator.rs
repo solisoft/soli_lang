@@ -31,18 +31,18 @@ pub fn create_model(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> 
 
     let field_comments = fields
         .iter()
-        .map(|f| format!("        // {} ({})", f.to_snake_case(), f.field_type))
+        .map(|f| format!("        # {} ({})", f.to_snake_case(), f.field_type))
         .collect::<Vec<_>>()
         .join("\n");
 
     let field_comments = if field_comments.is_empty() {
-        "        // (no additional fields)".to_string()
+        "        # (no additional fields)".to_string()
     } else {
         field_comments
     };
 
     let validations = if validations.is_empty() {
-        "        // (no validations defined)".to_string()
+        "        # (no validations defined)".to_string()
     } else {
         format!("        {}", validations.replace("\n", "\n        "))
     };

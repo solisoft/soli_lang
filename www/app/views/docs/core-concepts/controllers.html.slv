@@ -14,7 +14,7 @@
         Recommended for most applications. They provide structure, inheritance, and powerful hooks like <code>before_action</code>.
     </p>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
   static {
     this.layout = "layouts/posts";
   }
@@ -61,7 +61,7 @@ end</code></pre>
         </div>
     </div>
 
-    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController extends ApplicationController
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < ApplicationController
   static {
     # Set layout for all actions
     this.layout = "layouts/posts";
@@ -103,7 +103,7 @@ end</code></pre>
         Hooks like <code>before_action</code>, <code>after_action</code>, and <code>layout</code> are automatically inherited by child controllers.
     </p>
 
-    <pre data-filename="app/controllers/base_controller.sl"><code class="language-soli text-sm">class BaseController extends Controller
+    <pre data-filename="app/controllers/base_controller.sl"><code class="language-soli text-sm">class BaseController < Controller
   static {
     this.layout = "application";
 
@@ -123,7 +123,7 @@ end</code></pre>
 end</code></pre>
 
     <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm"># Inherits layout, before_action, and _current_user from BaseController
-class PostsController extends BaseController
+class PostsController < BaseController
   static {
     # Add controller-specific hook (runs after parent's before_action)
     this.before_action(:show, :edit) = fn(req) {
@@ -144,7 +144,7 @@ class PostsController extends BaseController
 end</code></pre>
 
     <pre data-filename="app/controllers/admin_controller.sl"><code class="language-soli text-sm"># Even deeper inheritance works
-class AdminController extends BaseController
+class AdminController < BaseController
   static {
     this.layout = "admin";  # Override parent layout
 

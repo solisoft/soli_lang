@@ -819,7 +819,7 @@ class AppError
   end
 end
 
-class NotFoundError extends AppError
+class NotFoundError < AppError
   new(msg: String)
     super(msg)
   end
@@ -1787,7 +1787,7 @@ end
 In MVC controllers, fields set on the controller (via `@foo = ...` or `this.foo = ...`) inside an action are automatically exposed as view locals in the template that action renders — no data hash needed.
 
 ```soli
-class PostsController extends Controller
+class PostsController < Controller
   fn show(req)
     @post = Post.find(req.params["id"]);
     @related = Post.where({"category_id": @post.category_id}).limit(5);
@@ -1950,13 +1950,13 @@ class Controller
   end
 end
 
-class BaseController extends Controller
+class BaseController < Controller
   fn before() -> String
     "authenticated"
   end
 end
 
-class HomeController extends BaseController
+class HomeController < BaseController
   fn action() -> String
     super.action() + " -> home"
   end
@@ -2060,7 +2060,7 @@ class Circle ~ Drawable, Resizable
 end
 
 # `extends` + `~`
-class Dog extends Animal ~ Greetable
+class Dog < Animal ~ Greetable
   fn greet() "woof" end
 end
 

@@ -7,9 +7,9 @@
 #
 # Usage in routes.sl:
 #   middleware("authenticate", -> {
-#       get("/admin", "admin#index");
-#       get("/admin/settings", "admin#settings");
-#   });
+#       get("/admin", "admin#index")
+#       get("/admin/settings", "admin#settings")
+#   })
 #
 # Configuration:
 # - `# order: N` - Execution order (lower runs first)
@@ -21,10 +21,10 @@
 # scope_only: true
 
 def authenticate(req: Any) -> Any
-    let headers = req["headers"]
+    headers = req["headers"]
 
     # Example: Check for API key in header
-    let api_key = ""
+    api_key = ""
     if has_key(headers, "X-Api-Key")
         api_key = headers["X-Api-Key"]
     elsif has_key(headers, "x-api-key")

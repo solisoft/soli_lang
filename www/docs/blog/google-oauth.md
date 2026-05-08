@@ -124,7 +124,7 @@ end
 ```soli
 # app/models/user.sl
 
-class User extends Model
+class User < Model
   id: Int
   google_id: String
   email: String

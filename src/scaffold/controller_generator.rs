@@ -33,7 +33,7 @@ pub fn create_controller(
         .join(",\n");
 
     let permitted_params = if permitted_params.is_empty() {
-        "            // (no fields defined)".to_string()
+        "            # (no fields defined)".to_string()
     } else {
         permitted_params
     };

@@ -158,7 +158,7 @@ fn add_routes(app_path: &Path, name: &str) -> Result<(), String> {
     let new_routes = format!(
         r#"
 
-// {name} resource routes
+# {name} resource routes
 get("/{resource}", "{resource}#index")
 get("/{resource}/new", "{resource}#new")
 post("/{resource}", "{resource}#create")

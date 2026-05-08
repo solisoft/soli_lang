@@ -161,7 +161,7 @@ All migrations are up to date.
 Once configured, Models automatically connect to the database:
 
 ```soli
-class User extends Model
+class User < Model
 end
 
 # These all use the configured database

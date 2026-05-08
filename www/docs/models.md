@@ -18,13 +18,13 @@ Create model files in `app/models/`. The collection name is **automatically deri
 
 ```soli
 # app/models/user.sl
-class User extends Model
+class User < Model
 end
 ```
 
 ```soli
 # app/models/blog_post.sl
-class BlogPost extends Model
+class BlogPost < Model
 end
 ```
 
@@ -36,7 +36,7 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 
 ```soli
 # app/controllers/users_controller.sl — no import needed
-class UsersController extends Controller
+class UsersController < Controller
   fn index(req)
     render("users/index", { "users": User.all() })
   end
@@ -231,7 +231,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 By default, `Model.create(hash)` and `instance.update(hash)` write **every** key in the supplied hash straight to the document. If `hash` came from a request body, that includes any field a client decides to send — `role`, `is_admin`, `password_digest`, etc. Declare `attr_accessible(...)` on the model to lock down which keys mass-assign accepts.
 
 ```soli
-class User extends Model
+class User < Model
   # Variadic form
   attr_accessible("name", "email", "bio")
 
@@ -268,7 +268,7 @@ end
 Define validation rules in your model class:
 
 ```soli
-class User extends Model
+class User < Model
   validates("email", { "presence": true, "uniqueness": true })
   validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
   validates("age", { "numericality": true, "min": 0, "max": 150 })
@@ -333,7 +333,7 @@ silently lost.
 Define lifecycle callbacks to run code at specific points:
 
 ```soli
-class User extends Model
+class User < Model
   before_save("normalize_email")
   after_create("send_welcome_email")
   before_update("log_changes")
@@ -367,7 +367,7 @@ Declare a blob attachment with `uploader(name, options)`. Soli registers the fie
 **Single attachment:**
 
 ```soli
-class Contact extends Model
+class Contact < Model
   uploader("photo", {
     "multiple":      false,
     "content_types": ["image/jpeg", "image/png", "image/webp"],
@@ -382,7 +382,7 @@ Auto-generated on each instance: `attach_<field>(file)`, `detach_<field>([blob_i
 **Multiple attachments** (array of blob ids in `<name>_blob_ids`):
 
 ```soli
-class Contact extends Model
+class Contact < Model
   uploader("document", {
     "multiple":      true,
     "content_types": ["application/pdf", "image/jpeg", "image/png",
@@ -440,12 +440,12 @@ end
 Declare associations using the built-in DSL:
 
 ```soli
-class User extends Model
+class User < Model
   has_many("posts")
   has_one("profile")
 end
 
-class Post extends Model
+class Post < Model
   belongs_to("user")
   has_many("comments")
 end
@@ -465,7 +465,7 @@ The DSL applies Rails-style naming conventions automatically:
 Override defaults with an options hash:
 
 ```soli
-class Post extends Model
+class Post < Model
   belongs_to("author", { "class_name": "User", "foreign_key": "author_id" })
 
   has_and_belongs_to_many("labels", {
@@ -616,11 +616,11 @@ users = User.select("name")
 Many-to-many associations use a join table that stores `(<foreign_key>, <association_foreign_key>)` rows:
 
 ```soli
-class Post extends Model
+class Post < Model
   has_and_belongs_to_many("tags")
 end
 
-class Tag extends Model
+class Tag < Model
   has_and_belongs_to_many("posts")
 end
 ```
@@ -670,7 +670,7 @@ tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
 **Overrides** — supply an options hash to customize the join:
 
 ```soli
-class Article extends Model
+class Article < Model
   has_and_belongs_to_many("labels", {
     "class_name": "Tag",
     "join_table": "article_labels",
@@ -685,7 +685,7 @@ end
 You can also implement relationships as custom methods for more control:
 
 ```soli
-class Post extends Model
+class Post < Model
   fn author()
     User.find(this.author_id)
   end
@@ -857,7 +857,7 @@ Scopes compose: `User.active.recent` chains both closures' refinements. See [Met
 Mark records as deleted without removing them:
 
 ```soli
-class Post extends Model
+class Post < Model
   soft_delete
 end
 
@@ -1010,7 +1010,7 @@ tx.commit();
 
 All operations within the transaction either all succeed or all fail together.
 
-class User extends Model
+class User < Model
     fn posts()
         Post.where("doc.author_id == @id", { "id": this.id })
     end
@@ -1022,7 +1022,7 @@ end
 Add custom methods to your models:
 
 ```soli
-class User extends Model
+class User < Model
   fn is_admin() -> Bool
     this.role == "admin"
   end
@@ -1067,7 +1067,7 @@ SDBQL uses:
 
 ```soli
 # app/models/user.sl
-class User extends Model
+class User < Model
   has_many("posts")
   has_one("profile")
 
@@ -1086,7 +1086,7 @@ class User extends Model
 end
 
 # app/models/post.sl
-class Post extends Model
+class Post < Model
   belongs_to("user")
   has_many("comments")
 
@@ -1094,12 +1094,12 @@ class Post extends Model
 end
 
 # app/models/profile.sl
-class Profile extends Model
+class Profile < Model
   belongs_to("user")
 end
 
 # Usage in controller
-class UsersController extends Controller
+class UsersController < Controller
   fn index(req)
     # Eager load posts and profiles to avoid N+1 queries
     users = User.includes("posts", "profile").all();

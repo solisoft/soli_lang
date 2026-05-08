@@ -36,7 +36,7 @@ pub fn index_view_template(
                     </td>
                 </tr>
                 <% end %>
-                <% {model_var}s.each(fn({model_var}) %>
+                <% {model_var}s.each do |{model_var}| %>
                 <tr class="hover:bg-slate-700/50 transition-colors">
                     <td class="px-6 py-4 whitespace-nowrap text-slate-300"><%= {model_var}["id"] %></td>
 {table_cells}
@@ -158,7 +158,7 @@ pub fn form_partial_template(
 <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
     <h3 class="text-red-400 font-medium mb-2">Errors:</h3>
     <ul class="list-disc list-inside text-red-300 text-sm">
-        <% {model_var}["errors"].each(fn(error)) %>
+        <% {model_var}["errors"].each do |error| %>
         <li><%= error["message"] %></li>
         <% end %>
     </ul>

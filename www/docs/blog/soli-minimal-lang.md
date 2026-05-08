@@ -20,7 +20,7 @@ Soli has fewer keywords than most languages:
 get("/users", "users#index")
 
 # A model with validation
-class User extends Model
+class User < Model
   name: String
   email: String
   

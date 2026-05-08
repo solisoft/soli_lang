@@ -210,13 +210,13 @@ end</code></pre>
   end
 end
 
-class NotFoundError extends AppError
+class NotFoundError < AppError
   new(msg: String)
     super(msg)
   end
 end
 
-class PermissionError extends AppError
+class PermissionError < AppError
   new(msg: String)
     super(msg)
   end

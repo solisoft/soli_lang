@@ -2,9 +2,9 @@
 # Define your application routes here
 
 # Home page
-get("/", "home#index");
+get("/", "home#index")
 
 # Health check endpoint
-get("/health", "home#health");
+get("/health", "home#health")
 
-print("Routes loaded!");
+print("Routes loaded!")

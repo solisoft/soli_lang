@@ -340,11 +340,13 @@ fn extract_suite_from_call(
         _ => return None,
     };
 
-    // Second argument should be a lambda (the suite body)
+    // Second argument should be a lambda (the suite body) — accept either a
+    // positional lambda (`describe("X", fn() { ... })`) or a trailing block
+    // (`describe("X") do ... end`).
     let second_arg = match &arguments[1] {
         Argument::Positional(expr) => expr,
+        Argument::Block(expr) => expr,
         Argument::Named(_) => return None,
-        Argument::Block(_) => return None,
     };
     let suite_body = match &second_arg.kind {
         ast::ExprKind::Lambda { body, .. } => body.clone(),
@@ -367,6 +369,17 @@ fn extract_suite_from_call(
     Some(suite)
 }
 
+/// Pull the first argument out of a `before_each`/`after_each`/`before_all`/
+/// `after_all` call, accepting either a positional lambda
+/// (`before_each(fn() { ... })`) or a trailing block (`before_each do ... end`).
+fn first_callback_expr(arguments: &[Argument]) -> Option<&ast::Expr> {
+    match arguments.first()? {
+        Argument::Positional(expr) => Some(expr),
+        Argument::Block(expr) => Some(expr),
+        Argument::Named(_) => None,
+    }
+}
+
 fn extract_tests_from_block(
     statements: &[ast::Stmt],
     suite: &mut interpreter::builtins::test_dsl::TestSuite,
@@ -384,19 +397,19 @@ fn extract_tests_from_block(
                             suite.nested_suites.push(nested);
                         }
                     } else if name == "before_each" {
-                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                        if let Some(callback) = first_callback_expr(arguments) {
                             suite.before_each = Some(ast_expr_to_value(callback));
                         }
                     } else if name == "after_each" {
-                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                        if let Some(callback) = first_callback_expr(arguments) {
                             suite.after_each = Some(ast_expr_to_value(callback));
                         }
                     } else if name == "before_all" {
-                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                        if let Some(callback) = first_callback_expr(arguments) {
                             suite.before_all = Some(ast_expr_to_value(callback));
                         }
                     } else if name == "after_all" {
-                        if let Some(Argument::Positional(callback)) = arguments.first() {
+                        if let Some(callback) = first_callback_expr(arguments) {
                             suite.after_all = Some(ast_expr_to_value(callback));
                         }
                     }

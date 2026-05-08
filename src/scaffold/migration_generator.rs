@@ -38,7 +38,7 @@ pub fn create_migration(
         .filter(|f| matches!(f.field_type.as_str(), "email" | "password"))
         .map(|f| {
             format!(
-                r#"    db.create_index("{collection}", "idx_{field_name}", ["{field_name}"], {{ "unique": true }});"#,
+                r#"    db.create_index("{collection}", "idx_{field_name}", ["{field_name}"], {{ "unique": true }})"#,
                 collection = collection_name,
                 field_name = f.to_snake_case()
             )
@@ -46,7 +46,7 @@ pub fn create_migration(
         .collect();
 
     let indexes = if unique_indexes.is_empty() {
-        "    // No indexes defined".to_string()
+        "    # No indexes defined".to_string()
     } else {
         unique_indexes.join("\n")
     };

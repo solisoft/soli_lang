@@ -20,8 +20,8 @@ end
 # `javascript:` (or similar) URL schemes. HTML-escaping the URL is *not*
 # enough — the browser still parses `javascript:alert(1)` inside an
 # `href` attribute. Mirror the allowlist used by the markdown sanitiser.
-def _is_safe_link_url(url: String) -> Bool
-    let lower = url.downcase()
+def _is_safe_link_url(url)
+    lower = url.downcase()
     if lower.starts_with("http://") or lower.starts_with("https://") or lower.starts_with("mailto:")
         return true
     end
@@ -31,23 +31,23 @@ def _is_safe_link_url(url: String) -> Bool
     # No allowed scheme prefix; treat as relative *only* if there is no
     # scheme separator (`:`) before the first /?#. Anything else is a
     # custom scheme like javascript:/data: and must be refused.
-    let cut = len(lower)
-    let s = lower.index_of("/")
+    cut = len(lower)
+    s = lower.index_of("/")
     if s != -1 and s < cut
         cut = s
     end
-    let q = lower.index_of("?")
+    q = lower.index_of("?")
     if q != -1 and q < cut
         cut = q
     end
-    let h = lower.index_of("#")
+    h = lower.index_of("#")
     if h != -1 and h < cut
         cut = h
     end
     return !lower.substring(0, cut).contains(":")
 end
 
-def _safe_link_url(url: String) -> String
+def _safe_link_url(url)
     if _is_safe_link_url(url)
         return url
     end
