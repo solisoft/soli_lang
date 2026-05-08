@@ -46,8 +46,11 @@ const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet",
 /// only by the `soli test` parent (in-process call to
 /// [`enable_ssrf_test_mode`]) and by `soli serve` children spawned by
 /// that parent (via the `SOLI_INTERNAL_TEST_RUNNER` env var, read once
-/// at startup in `main.rs`). Application code, controllers, and
-/// production deployments cannot set it.
+/// at startup in `main.rs`). SEC-084: the env value must be a fresh
+/// UUID v4 minted by the test runner — legacy `=1` payloads are
+/// rejected so an accidental env-var leak in production cannot disable
+/// the SSRF guardrail. Application code, controllers, and production
+/// deployments cannot set it.
 static SSRF_TEST_MODE: AtomicBool = AtomicBool::new(false);
 
 /// Mark this process as the test runner / a test-runner-spawned child.
@@ -163,9 +166,10 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
     }
 
     if is_blocked_host(host) {
-        // SEC-017: bypass loopback/private only when the process is
-        // running under the test runner (in-process `AtomicBool` set by
-        // `soli test` or by `main.rs` via `SOLI_INTERNAL_TEST_RUNNER`).
+        // SEC-017 / SEC-084: bypass loopback/private only when the
+        // process is running under the test runner (in-process
+        // `AtomicBool` set by `soli test`, or by `main.rs` after
+        // validating a UUID-v4 `SOLI_INTERNAL_TEST_RUNNER` token).
         // Production/dev/staging — no matter what `APP_ENV` says —
         // stays blocked.
         if !ssrf_test_mode() {

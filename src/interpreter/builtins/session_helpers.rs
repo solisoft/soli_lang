@@ -63,7 +63,7 @@ pub fn register_session_helpers(env: &mut Environment) {
             // any user against the live session store. The flag is the
             // same one SEC-017 uses for the SSRF bypass — it can only be
             // flipped by `soli test` startup or by a test-server child
-            // born of `SOLI_INTERNAL_TEST_RUNNER=1`.
+            // born of a `SOLI_INTERNAL_TEST_RUNNER=<uuid-v4>` token.
             if !super::test_server::is_test_runner_process() {
                 return Err("with_session is a test-only helper; it is not callable \
                             outside a test runner context"

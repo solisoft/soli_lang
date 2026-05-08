@@ -124,7 +124,10 @@ fn is_test_server_running() -> bool {
 /// relax the SSRF blocklist (`http_class::ssrf_test_mode`): the flag is
 /// flipped exactly once at startup — by `cli/commands/test_runner.rs` for
 /// the runner itself, and by `main.rs` for children that see
-/// `SOLI_INTERNAL_TEST_RUNNER=1` in their environment. REPLs, `soli run`,
+/// `SOLI_INTERNAL_TEST_RUNNER=<uuid-v4>` in their environment (SEC-084:
+/// only well-formed UUID v4 tokens trip the gate; the legacy `=1` shape
+/// is rejected so a stray env-var leak in production stays guarded).
+/// REPLs, `soli run`,
 /// dev tooling, and `soli serve --dev` cannot flip it, and Soli code has
 /// no way to set it. SEC-040: the dangerous test session helpers
 /// (currently `with_session`) consult this gate so that even if they were

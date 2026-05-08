@@ -465,6 +465,18 @@ pub fn run_test(
         None
     };
 
+    // SEC-084: per-run UUID v4 the test runner hands children via
+    // `SOLI_INTERNAL_TEST_RUNNER`. Children's `main.rs` only honours the
+    // signal when the value parses as a UUID v4 — replacing the previous
+    // `=1` token, which was easy for an operator to set accidentally
+    // (or to inherit from a shell that happened to export it) and would
+    // silently disable the SSRF guardrail.
+    let internal_test_runner_token = if needs_test_server {
+        uuid::Uuid::new_v4().to_string()
+    } else {
+        String::new()
+    };
+
     if needs_test_server {
         println!("Starting {} test server(s)...", num_workers);
 
@@ -504,11 +516,13 @@ pub fn run_test(
                 .arg("--workers")
                 .arg("1")
                 .env("APP_ENV", "test")
-                // SEC-017: hidden internal-only env signal for the SSRF
-                // bypass on test-server children. `main.rs` reads this
-                // once at startup and flips the in-process AtomicBool.
-                // Documented as not for operator use.
-                .env("SOLI_INTERNAL_TEST_RUNNER", "1")
+                // SEC-017 / SEC-084: hidden internal-only env signal for
+                // the SSRF bypass on test-server children. The value is
+                // a fresh UUID v4 minted per `soli test` run; `main.rs`
+                // only honours the signal when the value parses as v4
+                // so an operator who accidentally sets `=1` (legacy
+                // shape) doesn't silently lose the SSRF guardrail.
+                .env("SOLI_INTERNAL_TEST_RUNNER", &internal_test_runner_token)
                 .env("SOLIDB_HOST", &solidb_host)
                 .env("SOLIDB_DATABASE", &env.database)
                 .env("SOLIDB_USERNAME", &solidb_user)
