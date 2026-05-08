@@ -168,7 +168,9 @@ end);
 
 ## CSRF Protection
 
-Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `Referer` header doesn't match the request `Host`. Cross-origin form-CSRF and same-site browser attacks return 403 before any controller runs. Safe methods (GET/HEAD/OPTIONS), internal endpoints under `/_*`, and requests with neither `Origin` nor `Referer` (typical of non-browser API clients like cURL or mobile apps) are exempt.
+Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `Referer` header doesn't match the request `Host`. Cross-origin form-CSRF and same-site browser attacks return 403 before any controller runs. Safe methods (GET/HEAD/OPTIONS) and internal endpoints under `/_*` are exempt.
+
+When **neither** `Origin` nor `Referer` is present, Soli branches on the `Cookie` header: a cookie-bearing request is rejected (it has no proof of same-site provenance and is exactly the stripped-UA / proxy bypass surface), while a cookie-less request is allowed (typical of non-browser API clients like cURL or mobile apps that don't ride a session cookie). Cookie-bearing endpoints that legitimately can't rely on `Origin`/`Referer` should use the `skip_csrf` route-level opt-out below.
 
 For routes that legitimately accept cross-origin POSTs — Stripe webhooks, JSON APIs consumed by third-party services, OAuth callbacks — opt out per route via `skip_csrf`:
 

@@ -2548,9 +2548,15 @@ fn csrf_skipped_by_app(path: &str) -> bool {
 ///   is rejected.
 /// - When `Origin` is absent but `Referer` is present, the Referer's
 ///   authority must match.
-/// - When **neither** is present, allow — this is the non-browser path
-///   (curl, mobile API client). Browser-driven CSRF requires a cross-
-///   origin POST and modern browsers always set `Origin` on those.
+/// - When **neither** is present, the decision branches on the
+///   `Cookie` header (SEC-078). Cookie-bearing requests get rejected
+///   because they have no proof of same-site provenance — the threat
+///   surface is exactly a stripped UA / proxy / Origin-less form POST
+///   replaying the session cookie. Cookie-less requests stay on the
+///   non-browser API path and are allowed; route-level opt-outs via
+///   `skip_csrf("/path[/*]")` and the `SOLI_DISABLE_CSRF` operator
+///   kill switch remain available for non-browser endpoints that
+///   legitimately ride a cookie.
 ///
 /// The intent matches `websocket_origin_allowed`'s authority semantics so
 /// the two surfaces (HTTP + WebSocket) reject under the same rules.
@@ -2609,9 +2615,18 @@ fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Re
         ));
     }
 
-    // Neither Origin nor Referer — non-browser client. Browser-driven
-    // CSRF requires a cross-origin state-changing request, and every
-    // modern browser sets Origin on those.
+    // Neither Origin nor Referer. SEC-078: a cookie-bearing request in
+    // this state has no proof of same-site provenance — modern browsers
+    // do set Origin on cross-site state-changing requests, but stripped
+    // user agents, transparent proxies, and Origin-less form posts still
+    // happen, and the threat is precisely a session-cookie replay riding
+    // such a request. Reject. Cookie-less requests stay on the non-
+    // browser API path (curl, mobile clients) where there is no session
+    // to ride. Mirrors the same Cookie-presence rule that
+    // `websocket_origin_allowed` already enforces for WS upgrades.
+    if headers.contains_key(header::COOKIE) {
+        return Err("missing both Origin and Referer on cookie-bearing request".to_string());
+    }
     Ok(())
 }
 
@@ -6219,12 +6234,39 @@ mod tests {
     }
 
     #[test]
-    fn csrf_allows_when_neither_origin_nor_referer_present() {
-        // Non-browser clients (curl, mobile) typically don't send these,
-        // and they're not the CSRF threat (no cookie session in play).
+    fn csrf_allows_when_neither_origin_nor_referer_present_without_cookie() {
+        // SEC-078: Non-browser clients (curl, mobile API client) typically
+        // don't send Origin/Referer and don't ride a session cookie either,
+        // so they're not the CSRF threat. Allow.
         let _g = csrf_lock();
         let h = make_headers(&[("host", "example.com")]);
         assert!(check_csrf_origin(&h, "POST", "/users").is_ok());
+    }
+
+    #[test]
+    fn csrf_rejects_when_neither_origin_nor_referer_present_with_cookie() {
+        // SEC-078: a cookie-bearing POST without either header has no
+        // proof of same-site provenance — this is the stripped-UA / proxy
+        // / Origin-less form-post bypass surface the previous "allow" path
+        // left open. Reject by default.
+        let _g = csrf_lock();
+        let h = make_headers(&[("host", "example.com"), ("cookie", "session_id=x")]);
+        let err = check_csrf_origin(&h, "POST", "/users").unwrap_err();
+        assert!(err.contains("Origin"), "{}", err);
+        assert!(err.contains("Referer"), "{}", err);
+    }
+
+    #[test]
+    fn csrf_skip_pattern_still_allows_cookie_post_without_headers() {
+        // SEC-078: route-level skip_csrf is the documented escape hatch for
+        // cookie-bearing endpoints that legitimately can't rely on Origin
+        // (rare, but supportable).
+        let _g = csrf_lock();
+        clear_csrf_skip_patterns();
+        register_csrf_skip_pattern("/api/legacy/*".to_string());
+        let h = make_headers(&[("host", "example.com"), ("cookie", "session_id=x")]);
+        assert!(check_csrf_origin(&h, "POST", "/api/legacy/upload").is_ok());
+        clear_csrf_skip_patterns();
     }
 
     #[test]
