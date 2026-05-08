@@ -433,7 +433,15 @@ impl TemplateCache {
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        let nodes = Arc::new(parse_template(&source)?);
+        // Surface the .slv path on parse failures. Without this, errors from
+        // the template parser (e.g. a reserved keyword used as a `<% for ... %>`
+        // loop variable) bubble up through the controller's `render(...)` call,
+        // get tagged with the controller's file:line by the executor's frame
+        // tracking, and leave the user hunting a non-existent bug in the
+        // controller. Stamping the view path on the message keeps the
+        // diagnostic pointed at the offending template.
+        let nodes =
+            Arc::new(parse_template(&source).map_err(|e| format!("{} in {}", e, path.display()))?);
 
         // Update cache (with eviction if cache is too large)
         if let Ok(mut cache) = self.cache.write() {
@@ -806,6 +814,36 @@ mod tests {
                 html
             );
         }
+    }
+
+    /// BUG-001: parse errors raised while loading a template must mention
+    /// the template's path. Without this, the controller's `render(...)`
+    /// call propagates the bare parser error, and the executor's frame
+    /// tracking tags it with the controller file:line — sending the user
+    /// hunting in the wrong file.
+    #[test]
+    fn parse_error_mentions_template_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views).unwrap();
+
+        let view_path = views.join("foo.html.slv");
+        fs::write(&view_path, "<% for fn in items %><%= fn %><% end %>").unwrap();
+
+        let cache = TemplateCache::new(&views);
+        let err = cache
+            .render("foo", &Value::Null, Some(None))
+            .expect_err("template with reserved keyword loop var must fail to parse");
+        assert!(
+            err.contains("foo.html.slv"),
+            "expected template path in error, got: {}",
+            err
+        );
+        assert!(
+            err.contains("'fn'") && err.contains("reserved keyword"),
+            "expected keyword diagnostic, got: {}",
+            err
+        );
     }
 
     #[test]
