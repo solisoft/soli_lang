@@ -226,12 +226,32 @@ impl ModuleResolver {
     }
 
     /// Resolve an import path to an absolute file path.
+    ///
+    /// SEC-076: Every resolved file must stay inside an allowed containment
+    /// root: the project `base_dir`, a path-dependency root from `soli.toml`,
+    /// or a lockfile cache path. Absolute import strings are rejected
+    /// outright (they would otherwise escape `base_dir.join(...)` semantics).
     fn resolve_path(&self, import_path: &str, from_path: &Path) -> Result<PathBuf, ResolveError> {
+        // SEC-076: refuse absolute import strings — they bypass `base_dir.join`
+        // and let untrusted Soli source read arbitrary readable `.sl` files.
+        if Path::new(import_path).is_absolute() {
+            return Err(ResolveError::ImportError(format!(
+                "Absolute import paths are not allowed: '{}'",
+                import_path
+            )));
+        }
+
         // Relative path (starts with . or ..)
         if import_path.starts_with('.') {
             let from_dir = from_path.parent().unwrap_or(Path::new("."));
             let resolved = from_dir.join(import_path);
-            return self.find_module_file(&resolved);
+            let found = self.find_module_file(&resolved)?;
+            // Containment is anchored on whichever root currently owns
+            // `from_path` — the project, a path-dep, or a cached package —
+            // so a module inside `~/.soli/packages/foo/` can `./bar` to a
+            // sibling but cannot `../../../etc/passwd` out of its own tree.
+            let root = self.containment_root_for(from_path);
+            return self.validate_within(&found, &root);
         }
 
         // Check package dependencies
@@ -239,53 +259,94 @@ impl ModuleResolver {
             // Check if import_path matches a dependency name
             let parts: Vec<&str> = import_path.split('/').collect();
             if let Some(dep) = pkg.dependencies.get(parts[0]) {
-                match dep {
-                    super::package::Dependency::Path(dep_path) => {
-                        let mut resolved = self.base_dir.join(dep_path);
-                        // If there's a sub-path, append it
-                        for part in &parts[1..] {
-                            resolved = resolved.join(part);
-                        }
-                        return self.find_module_file(&resolved);
-                    }
-                    super::package::Dependency::Version(_) => {
-                        if let Some(entry) =
-                            self.lock.as_ref().and_then(|l| l.packages.get(parts[0]))
-                        {
-                            let mut resolved = entry.cache_path.clone();
-                            for part in &parts[1..] {
-                                resolved = resolved.join(part);
-                            }
-                            return self.find_module_file(&resolved);
-                        }
-                        return Err(ResolveError::NotFound(format!(
-                            "Package '{}' not installed. Run 'soli install'",
-                            import_path
-                        )));
-                    }
-                    super::package::Dependency::Git { .. } => {
-                        // Look up installed path from lock file
-                        if let Some(entry) =
-                            self.lock.as_ref().and_then(|l| l.packages.get(parts[0]))
-                        {
-                            let mut resolved = entry.cache_path.clone();
-                            for part in &parts[1..] {
-                                resolved = resolved.join(part);
-                            }
-                            return self.find_module_file(&resolved);
-                        }
-                        return Err(ResolveError::NotFound(format!(
-                            "Package '{}' not installed. Run 'soli install'",
-                            import_path
-                        )));
+                let dep_root: PathBuf = match dep {
+                    super::package::Dependency::Path(dep_path) => self.base_dir.join(dep_path),
+                    super::package::Dependency::Version(_)
+                    | super::package::Dependency::Git { .. } => self
+                        .lock
+                        .as_ref()
+                        .and_then(|l| l.packages.get(parts[0]))
+                        .map(|e| e.cache_path.clone())
+                        .ok_or_else(|| {
+                            ResolveError::NotFound(format!(
+                                "Package '{}' not installed. Run 'soli install'",
+                                import_path
+                            ))
+                        })?,
+                };
+
+                let mut resolved = dep_root.clone();
+                for part in &parts[1..] {
+                    resolved = resolved.join(part);
+                }
+                let found = self.find_module_file(&resolved)?;
+                // SEC-076: a malicious package shipped via the registry or as
+                // a path-dep could include sub-paths like `pkg/../../etc` —
+                // verify the resolved file stays inside the dep's own root.
+                return self.validate_within(&found, &dep_root);
+            }
+        }
+
+        // Bare-name fallback: resolve under the project base directory.
+        // (The earlier absolute-path check ensures `import_path` is relative,
+        // so `base_dir.join(...)` cannot be replaced by an absolute root.)
+        let resolved = self.base_dir.join(import_path);
+        let found = self.find_module_file(&resolved)?;
+        self.validate_within(&found, &self.base_dir)
+    }
+
+    /// Pick the containment root that owns `from_path`. Order of preference:
+    /// any matching lockfile cache path → any matching path-dependency root
+    /// → the project `base_dir`. Roots are canonicalised on the fly so
+    /// symlinked paths resolve consistently.
+    fn containment_root_for(&self, from_path: &Path) -> PathBuf {
+        let canonical_from = from_path
+            .canonicalize()
+            .unwrap_or_else(|_| from_path.to_path_buf());
+
+        if let Some(lock) = &self.lock {
+            for entry in lock.packages.values() {
+                if let Ok(canon_cache) = entry.cache_path.canonicalize() {
+                    if canonical_from.starts_with(&canon_cache) {
+                        return canon_cache;
                     }
                 }
             }
         }
 
-        // Absolute path from base directory
-        let resolved = self.base_dir.join(import_path);
-        self.find_module_file(&resolved)
+        if let Some(pkg) = &self.package {
+            for dep in pkg.dependencies.values() {
+                if let super::package::Dependency::Path(p) = dep {
+                    if let Ok(canon_dep) = self.base_dir.join(p).canonicalize() {
+                        if canonical_from.starts_with(&canon_dep) {
+                            return canon_dep;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.base_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.base_dir.clone())
+    }
+
+    /// Reject `resolved` if it does not sit under `root` after both are
+    /// canonicalised. Symlink escapes are caught here because `resolved`
+    /// comes back canonicalised from `find_module_file`, so any symlink in
+    /// the path or as the target is already resolved.
+    fn validate_within(&self, resolved: &Path, root: &Path) -> Result<PathBuf, ResolveError> {
+        let canon_root = root
+            .canonicalize()
+            .map_err(|_| ResolveError::NotFound(root.display().to_string()))?;
+        if !resolved.starts_with(&canon_root) {
+            return Err(ResolveError::ImportError(format!(
+                "Import '{}' resolves outside its allowed root '{}'",
+                resolved.display(),
+                canon_root.display()
+            )));
+        }
+        Ok(resolved.to_path_buf())
     }
 
     /// Find the actual module file (handles .sl extension).
@@ -547,5 +608,121 @@ fn set_stmt_source_path(stmt: &Stmt, source_path: PathBuf) -> Stmt {
     new_stmt
 }
 
-// Module resolution tests would require tempfile crate which is not in dev-dependencies.
-// These tests should be moved to integration tests or tempfile should be added.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, content: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn rejects_absolute_import_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let from = tmp.path().join("main.sl");
+        write(&from, "");
+        write(&tmp.path().join("evil.sl"), "");
+
+        let resolver = ModuleResolver::new(tmp.path());
+        let err = resolver
+            .resolve_path("/tmp/evil.sl", &from)
+            .expect_err("absolute path must be rejected");
+        match err {
+            ResolveError::ImportError(msg) => {
+                assert!(msg.contains("Absolute import"), "{}", msg);
+            }
+            other => panic!("expected ImportError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rejects_relative_import_escaping_project_root() {
+        // Layout:
+        //   <root>/proj/main.sl    (the project)
+        //   <root>/outside.sl      (outside the project root)
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join("proj");
+        write(&proj.join("main.sl"), "");
+        write(&tmp.path().join("outside.sl"), "");
+
+        let resolver = ModuleResolver::new(&proj);
+        let err = resolver
+            .resolve_path("../outside.sl", &proj.join("main.sl"))
+            .expect_err("relative escape must be rejected");
+        match err {
+            ResolveError::ImportError(msg) => {
+                assert!(msg.contains("outside its allowed root"), "{}", msg);
+            }
+            ResolveError::NotFound(_) => panic!("file existed; should be ImportError"),
+            other => panic!("expected ImportError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rejects_relative_import_escaping_via_symlink() {
+        // Layout:
+        //   <root>/proj/main.sl
+        //   <root>/proj/escape  -> <root>/outside    (symlink)
+        //   <root>/outside/secret.sl
+        // Importing "./escape/secret.sl" should be rejected because the
+        // canonical path resolves outside the project root.
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        write(&proj.join("main.sl"), "");
+        write(&outside.join("secret.sl"), "");
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, proj.join("escape")).unwrap();
+        #[cfg(not(unix))]
+        return; // skip on non-Unix where symlink semantics differ
+
+        let resolver = ModuleResolver::new(&proj);
+        let err = resolver
+            .resolve_path("./escape/secret.sl", &proj.join("main.sl"))
+            .expect_err("symlink escape must be rejected");
+        match err {
+            ResolveError::ImportError(msg) => {
+                assert!(msg.contains("outside its allowed root"), "{}", msg);
+            }
+            other => panic!("expected ImportError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn accepts_valid_relative_import_inside_root() {
+        // Layout:
+        //   <root>/proj/main.sl
+        //   <root>/proj/lib/util.sl
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join("proj");
+        write(&proj.join("main.sl"), "");
+        write(&proj.join("lib/util.sl"), "");
+
+        let resolver = ModuleResolver::new(&proj);
+        let resolved = resolver
+            .resolve_path("./lib/util.sl", &proj.join("main.sl"))
+            .expect("valid relative import must resolve");
+        assert!(resolved.ends_with("lib/util.sl"), "{}", resolved.display());
+    }
+
+    #[test]
+    fn accepts_valid_bare_name_under_base_dir() {
+        // Layout:
+        //   <root>/proj/main.sl
+        //   <root>/proj/helper.sl
+        let tmp = tempfile::tempdir().unwrap();
+        let proj = tmp.path().join("proj");
+        write(&proj.join("main.sl"), "");
+        write(&proj.join("helper.sl"), "");
+
+        let resolver = ModuleResolver::new(&proj);
+        let resolved = resolver
+            .resolve_path("helper.sl", &proj.join("main.sl"))
+            .expect("bare-name import under base must resolve");
+        assert!(resolved.ends_with("helper.sl"));
+    }
+}
