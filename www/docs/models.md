@@ -360,6 +360,25 @@ end
 | `before_delete` | Before deleting record |
 | `after_delete` | After deleting record |
 
+### Firing order per persistence method
+
+Both class-level methods (`Model.create`, `Model.update`) and instance-level mutators run the matching callbacks. Rails-style: the `_save` callbacks fire on every persistence path, plus the more specific event for the operation.
+
+| Method | Before-callbacks (in order) | DB write | After-callbacks (in order) |
+|--------|------------------------------|----------|-----------------------------|
+| `Model.create(attrs)` | `before_save` → `before_create` | INSERT | `after_create` → `after_save` |
+| `Model.update(id, attrs)` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.save([attrs])` — new record (no `_key`) | `before_save` → `before_create` | INSERT | `after_create` → `after_save` |
+| `instance.save([attrs])` — persisted record | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.update(attrs)` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.restore()` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.increment(field, n?)` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.decrement(field, n?)` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.touch()` | `before_save` → `before_update` | UPDATE | `after_update` → `after_save` |
+| `instance.delete()` (soft + hard) | `before_delete` | UPDATE / DELETE | `after_delete` |
+
+After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
+
 ## Uploaders
 
 Declare a blob attachment with `uploader(name, options)`. Soli registers the field, validates incoming files against the rules, stores the blob in SoliDB, and auto-generates instance methods so the controller stays a one-liner.

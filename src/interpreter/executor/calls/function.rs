@@ -22,6 +22,39 @@ fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
     })
 }
 
+/// SEC-086: pick the (before-events, after-events) pair the persist
+/// interceptor should fire for `method_name`. `instance.save` branches on
+/// whether the instance is already persisted (`has_key == true`) — new
+/// records run the create chain, persisted records run the update chain.
+/// All other instance mutators (`update`, `restore`, `increment`,
+/// `decrement`, `touch`) run the update chain regardless. Returns
+/// `None` for method names this interceptor doesn't handle.
+fn persist_events_for(
+    method_name: &str,
+    has_key: bool,
+) -> Option<(&'static [&'static str], &'static [&'static str])> {
+    match method_name {
+        "save" => {
+            if has_key {
+                Some((
+                    &["before_save", "before_update"],
+                    &["after_update", "after_save"],
+                ))
+            } else {
+                Some((
+                    &["before_save", "before_create"],
+                    &["after_create", "after_save"],
+                ))
+            }
+        }
+        "update" | "restore" | "increment" | "decrement" | "touch" => Some((
+            &["before_save", "before_update"],
+            &["after_update", "after_save"],
+        )),
+        _ => None,
+    }
+}
+
 impl Interpreter {
     /// Evaluate a function call expression.
     pub(crate) fn evaluate_call(
@@ -64,6 +97,9 @@ impl Interpreter {
                 return Ok(result);
             }
             if let Some(result) = self.try_run_model_delete_callbacks(callee, arguments, span)? {
+                return Ok(result);
+            }
+            if let Some(result) = self.try_run_model_persist_callbacks(callee, arguments, span)? {
                 return Ok(result);
             }
             if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
@@ -451,6 +487,127 @@ impl Interpreter {
 
         let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
             || matches!(&result, Value::Bool(false));
+        if !failed {
+            self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
+        }
+
+        Ok(Some(result))
+    }
+
+    /// SEC-086: intercept persistence-side instance mutators on Model
+    /// instances so user-defined `before_*` / `after_*` callbacks fire
+    /// the same way they do for `Model.create` / `Model.update` at the
+    /// class level. Covers `instance.update`, `instance.save`,
+    /// `instance.restore`, `instance.increment`, `instance.decrement`,
+    /// and `instance.touch`. `instance.delete` keeps its dedicated
+    /// `try_run_model_delete_callbacks` interceptor (above).
+    ///
+    /// Per-method callback set (Rails-style: `_save` callbacks fire on
+    /// every persistence path, plus the matching specific event):
+    ///
+    /// - `update(attrs)` / `restore()` / `increment(...)` / `decrement(...)`
+    ///   / `touch()` → before_save → before_update → DB write →
+    ///   after_update → after_save.
+    /// - `save([attrs])` branches on whether the instance has a `_key`
+    ///   field: persisted instances run the update chain; brand-new
+    ///   instances run the create chain (before_save → before_create →
+    ///   DB write → after_create → after_save).
+    ///
+    /// Falls through to default dispatch (returns Ok(None)) when:
+    /// - The callee shape doesn't match (not a Member access).
+    /// - The method name isn't one of the six mutators above.
+    /// - The receiver isn't a Model-subclass instance.
+    /// - No callbacks are registered for any of the matched events
+    ///   (cheap path — keeps the existing native dispatch fast).
+    /// - Any argument is non-positional (named args / blocks fall
+    ///   through to the regular dispatcher).
+    fn try_run_model_persist_callbacks(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::get_or_create_metadata;
+
+        let (object, method_name) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str()),
+            _ => return Ok(None),
+        };
+        if !matches!(
+            method_name,
+            "update" | "save" | "restore" | "increment" | "decrement" | "touch"
+        ) {
+            return Ok(None);
+        }
+        // Named args / blocks: defer to default dispatch. We don't want to
+        // half-run before-callbacks and then bail.
+        if arguments
+            .iter()
+            .any(|a| !matches!(a, Argument::Positional(_)))
+        {
+            return Ok(None);
+        }
+
+        let obj_val = self.evaluate(object)?;
+        let instance = match &obj_val {
+            Value::Instance(inst) if inst.borrow().class.is_model_subclass() => inst.clone(),
+            _ => return Ok(None),
+        };
+        let class = instance.borrow().class.clone();
+        let metadata = get_or_create_metadata(&class.name);
+
+        // For `save()`, the create-vs-update branch is decided at runtime
+        // by the presence of `_key` on the instance — match the native
+        // method's logic. Other mutators always run the update chain.
+        let has_key = matches!(instance.borrow().get("_key"), Some(Value::String(_)));
+        let (before_events, after_events) = match persist_events_for(method_name, has_key) {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+
+        let collect_names = |evs: &[&str]| -> Vec<String> {
+            evs.iter()
+                .flat_map(|ev| match *ev {
+                    "before_save" => metadata.callbacks.before_save.clone(),
+                    "before_create" => metadata.callbacks.before_create.clone(),
+                    "before_update" => metadata.callbacks.before_update.clone(),
+                    "after_save" => metadata.callbacks.after_save.clone(),
+                    "after_create" => metadata.callbacks.after_create.clone(),
+                    "after_update" => metadata.callbacks.after_update.clone(),
+                    _ => Vec::new(),
+                })
+                .collect()
+        };
+        let before_names = collect_names(before_events);
+        let after_names = collect_names(after_events);
+
+        // No callbacks registered for any matched event → fall through so
+        // the native method runs at the usual cost.
+        if before_names.is_empty()
+            && after_names.is_empty()
+            && !has_closure_callbacks(&class.name, before_events)
+            && !has_closure_callbacks(&class.name, after_events)
+        {
+            return Ok(None);
+        }
+
+        self.run_model_callbacks(&class, &instance, &before_names, before_events, span)?;
+
+        // Evaluate the original arguments and dispatch the native method.
+        let callee_val = self.evaluate_callee(callee)?;
+        let mut arg_values = Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            if let Argument::Positional(expr) = arg {
+                arg_values.push(self.evaluate(expr)?);
+            }
+        }
+        let result = self.call_value(callee_val, arg_values, span)?;
+
+        // Native methods that report failure return `Bool(false)` (update,
+        // save, restore on validation/DB error). `increment`/`decrement`/
+        // `touch` either return the instance on success or propagate Err.
+        // After-callbacks run only on success — Bool(false) suppresses them.
+        let failed = matches!(&result, Value::Bool(false));
         if !failed {
             self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
         }
@@ -1506,6 +1663,82 @@ impl Interpreter {
             Value::Method(method) => self.call_method(method, arguments, span),
 
             _ => Err(RuntimeError::not_callable(span)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::persist_events_for;
+
+    // SEC-086 — `persist_events_for` regression coverage.
+
+    #[test]
+    fn persist_events_save_with_key_runs_update_chain() {
+        // A persisted instance (has _key) running save() goes through the
+        // update path: before_save → before_update → DB → after_update → after_save.
+        let (before, after) = persist_events_for("save", true).unwrap();
+        assert_eq!(before, &["before_save", "before_update"]);
+        assert_eq!(after, &["after_update", "after_save"]);
+    }
+
+    #[test]
+    fn persist_events_save_without_key_runs_create_chain() {
+        // A brand-new instance (no _key) running save() goes through the
+        // create path: before_save → before_create → DB → after_create → after_save.
+        let (before, after) = persist_events_for("save", false).unwrap();
+        assert_eq!(before, &["before_save", "before_create"]);
+        assert_eq!(after, &["after_create", "after_save"]);
+    }
+
+    #[test]
+    fn persist_events_update_runs_update_chain() {
+        let (before, after) = persist_events_for("update", true).unwrap();
+        assert_eq!(before, &["before_save", "before_update"]);
+        assert_eq!(after, &["after_update", "after_save"]);
+        // `update` ignores `has_key` — it's defined as an update-only path.
+        let (before2, after2) = persist_events_for("update", false).unwrap();
+        assert_eq!(before, before2);
+        assert_eq!(after, after2);
+    }
+
+    #[test]
+    fn persist_events_restore_increment_decrement_touch_run_update_chain() {
+        // SEC-086: all four mutate an existing record's fields; they fire
+        // the update + save callbacks (Rails-style, not bespoke
+        // `after_increment` / `after_touch` events).
+        for method in ["restore", "increment", "decrement", "touch"] {
+            let (before, after) = persist_events_for(method, true).unwrap();
+            assert_eq!(
+                before,
+                &["before_save", "before_update"],
+                "{method}: before-events"
+            );
+            assert_eq!(
+                after,
+                &["after_update", "after_save"],
+                "{method}: after-events"
+            );
+        }
+    }
+
+    #[test]
+    fn persist_events_returns_none_for_non_persist_methods() {
+        // The persist interceptor must not claim methods that have their
+        // own dedicated handler (`delete`) or that aren't persist-related
+        // at all (`find`, `where`, etc.). Returning `None` here lets the
+        // call fall through to the default dispatcher.
+        for method in [
+            "delete", "find", "where", "create", "all", "reload", "errors",
+        ] {
+            assert!(
+                persist_events_for(method, true).is_none(),
+                "expected None for {method}"
+            );
+            assert!(
+                persist_events_for(method, false).is_none(),
+                "expected None for {method}"
+            );
         }
     }
 }

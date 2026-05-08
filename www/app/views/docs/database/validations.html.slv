@@ -228,6 +228,35 @@ end</code></pre>
         </div>
     </div>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Firing order per persistence method</h3>
+    <p class="text-gray-400 mb-4">
+        Both class-level methods (<code>Model.create</code>, <code>Model.update</code>) and instance-level mutators run the matching callbacks. Rails-style: <code>_save</code> callbacks fire on every persistence path, plus the more specific event for the operation. After-callbacks only fire when the persist call succeeds &mdash; if the native method returns <code>false</code> (validation or DB error) the after-callbacks are skipped and the instance carries <code>_errors</code>.
+    </p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Before-callbacks (in order)</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">DB write</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">After-callbacks (in order)</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr><td class="py-3 px-4"><code>Model.create(attrs)</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_create</code></td><td class="py-3 px-4">INSERT</td><td class="py-3 px-4"><code>after_create</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>Model.update(id, attrs)</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.save([attrs])</code> &mdash; new record</td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_create</code></td><td class="py-3 px-4">INSERT</td><td class="py-3 px-4"><code>after_create</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.save([attrs])</code> &mdash; persisted</td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.update(attrs)</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.restore()</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.increment(field, n?)</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.decrement(field, n?)</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.touch()</code></td><td class="py-3 px-4"><code>before_save</code> &rarr; <code>before_update</code></td><td class="py-3 px-4">UPDATE</td><td class="py-3 px-4"><code>after_update</code> &rarr; <code>after_save</code></td></tr>
+                <tr><td class="py-3 px-4"><code>instance.delete()</code> (soft + hard)</td><td class="py-3 px-4"><code>before_delete</code></td><td class="py-3 px-4">UPDATE / DELETE</td><td class="py-3 px-4"><code>after_delete</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
