@@ -170,17 +170,12 @@ pub(super) fn render_error_page(
         }
     }
 
-    let query_json = format!("{:?}", request_data.query);
-    let headers_json = format!("{:?}", request_data.headers);
-    let request_data_json = format!(
-        r#"{{"method":"{}","path":"{}","params":{},"query":{},"headers":{},"body":"{}","session":"N/A"}}"#,
-        request_data.method,
-        request_data.path,
-        query_json,
-        query_json,
-        headers_json,
-        request_data.body
-    );
+    // SEC-083: redact the body in remote-allowed dev mode (page can be
+    // rendered by anyone reaching the host, so login / signup payloads
+    // would leak); preserve it on loopback-only dev so the in-page REPL
+    // can still evaluate snippets that touch `req.body`.
+    let request_data_json =
+        build_redacted_request_data_json(request_data, super::dev_repl_allows_remote());
 
     render_dev_error_page(
         &actual_error,
@@ -833,6 +828,114 @@ fn dev_repl_token_for_html() -> String {
     }
 }
 
+/// SEC-083: secret-bearing header names. Match case-insensitively against
+/// the full header name (HTTP headers don't have substructure, so an
+/// exact-after-lowercase match is enough). Anything in this list gets
+/// replaced with `"[REDACTED]"` before the request snapshot is embedded
+/// in the dev error page's JavaScript.
+const REDACTED_HEADER_NAMES: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-auth-token",
+    "x-csrf-token",
+    "x-xsrf-token",
+    "x-session-token",
+    "x-coverage-token",
+];
+
+/// SEC-083: substrings that signal a secret-bearing query / form / param
+/// key. Match case-insensitively as a substring so `csrf_token`,
+/// `access_token`, `user_password`, etc. all get redacted along with the
+/// bare names.
+const REDACTED_PARAM_SUBSTRINGS: &[&str] = &[
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "private_key",
+    "privatekey",
+    "authorization",
+    "auth",
+    "session_id",
+    "sessionid",
+    "csrf",
+];
+
+/// Lower-case match against the redaction list. `value`-side casing is
+/// irrelevant — we're inspecting the *key*.
+fn header_should_redact(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    REDACTED_HEADER_NAMES.iter().any(|n| *n == lower)
+}
+
+fn param_should_redact(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    REDACTED_PARAM_SUBSTRINGS
+        .iter()
+        .any(|sub| lower.contains(sub))
+}
+
+/// Apply the redaction pattern to a key/value map: key preserved, value
+/// replaced with `"[REDACTED]"` whenever `should_redact(key)` returns
+/// true. Values pass through serde_json so quotes / control chars get
+/// escaped properly (the previous `format!("{:?}", map)` rendering would
+/// silently break on values containing `"` or `\`).
+fn redact_map<F>(map: &HashMap<String, String>, should_redact: F) -> serde_json::Value
+where
+    F: Fn(&str) -> bool,
+{
+    let mut out = serde_json::Map::with_capacity(map.len());
+    for (k, v) in map {
+        let value = if should_redact(k) {
+            serde_json::Value::String("[REDACTED]".to_string())
+        } else {
+            serde_json::Value::String(v.clone())
+        };
+        out.insert(k.clone(), value);
+    }
+    serde_json::Value::Object(out)
+}
+
+/// Build the JSON document the dev error page embeds as
+/// `currentRequestData`. SEC-083: secret-bearing headers (auth, cookie,
+/// CSRF tokens, etc.) and params (passwords, tokens, api keys, ...) are
+/// replaced with `"[REDACTED]"` before serialisation. When
+/// `redact_body` is true (remote-allowed dev mode), the raw body is
+/// also redacted because the page can be rendered by anyone reaching
+/// the host and login / signup POSTs would otherwise leak cleartext
+/// credentials. On loopback-only dev (`redact_body == false`) the body
+/// passes through so the in-page REPL can evaluate snippets that touch
+/// `req.body`. Routing through `serde_json` also fixes the previous
+/// JSON-breakage hazard from the hand-rolled `format!("{:?}", hashmap)`
+/// rendering.
+fn build_redacted_request_data_json(request_data: &RequestData, redact_body: bool) -> String {
+    let query = redact_map(&request_data.query, param_should_redact);
+    let headers = redact_map(&request_data.headers, header_should_redact);
+    let body = if redact_body {
+        serde_json::Value::String("[REDACTED]".to_string())
+    } else {
+        serde_json::Value::String(request_data.body.clone())
+    };
+    let doc = serde_json::json!({
+        "method": request_data.method.as_ref(),
+        "path": request_data.path,
+        // The page treats `params` and `query` as the same view (both fed
+        // from the URL query string at this layer); keep the shape so
+        // existing JS consumers don't break.
+        "params": query,
+        "query": query,
+        "headers": headers,
+        "body": body,
+        "session": "N/A",
+    });
+    serde_json::to_string(&doc).unwrap_or_else(|_| "{}".to_string())
+}
+
 #[allow(dead_code)]
 pub(super) fn get_source_file(
     file_path: &str,
@@ -1114,5 +1217,219 @@ mod tests {
         // Unknown-to-the-explicit-match but get_status_text still covers 418?
         // Actually 418 isn't in get_status_text, so the heading is "Error".
         assert!(html.contains("error-code info"));
+    }
+
+    // SEC-083 — request snapshot redaction.
+
+    #[test]
+    fn header_redaction_matches_common_secret_carriers() {
+        for name in [
+            "Authorization",
+            "authorization",
+            "AUTHORIZATION",
+            "Cookie",
+            "cookie",
+            "Set-Cookie",
+            "X-Api-Key",
+            "X-Auth-Token",
+            "X-CSRF-Token",
+            "X-Coverage-Token",
+            "Proxy-Authorization",
+        ] {
+            assert!(
+                header_should_redact(name),
+                "expected {:?} to be redacted",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn header_redaction_lets_routine_headers_pass() {
+        for name in [
+            "Content-Type",
+            "Accept",
+            "Host",
+            "User-Agent",
+            "X-Request-Id",
+            "X-Forwarded-For",
+        ] {
+            assert!(
+                !header_should_redact(name),
+                "expected {:?} to pass through",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn param_redaction_matches_secret_substrings() {
+        for key in [
+            "password",
+            "user_password",
+            "PASSWORD",
+            "Passwd",
+            "secret",
+            "client_secret",
+            "token",
+            "access_token",
+            "refresh_token",
+            "api_key",
+            "ApiKey",
+            "private_key",
+            "csrf_token",
+            "session_id",
+            "authorization",
+        ] {
+            assert!(
+                param_should_redact(key),
+                "expected {:?} to be redacted",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn param_redaction_lets_routine_keys_pass() {
+        for key in ["page", "id", "name", "email", "query", "limit", "offset"] {
+            assert!(
+                !param_should_redact(key),
+                "expected {:?} to pass through",
+                key
+            );
+        }
+    }
+
+    fn make_request_data() -> RequestData {
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut headers = HashMap::new();
+        headers.insert("authorization".to_string(), "Bearer leaked-jwt".to_string());
+        headers.insert(
+            "cookie".to_string(),
+            "session_id=abc; theme=dark".to_string(),
+        );
+        headers.insert("content-type".to_string(), "application/json".to_string());
+        headers.insert("user-agent".to_string(), "tests/1.0".to_string());
+
+        let mut query = HashMap::new();
+        query.insert("page".to_string(), "2".to_string());
+        query.insert("password".to_string(), "p4ssw0rd".to_string());
+        query.insert("api_key".to_string(), "secret-key".to_string());
+        query.insert("csrf_token".to_string(), "abc123".to_string());
+
+        RequestData {
+            method: std::borrow::Cow::Borrowed("POST"),
+            path: "/login".to_string(),
+            query,
+            headers,
+            body: "password=hunter2&user=alice".to_string(),
+            body_bytes: None,
+            multipart_form: None,
+            multipart_files: None,
+            peer_ip: "127.0.0.1".to_string(),
+            response_tx: tx,
+        }
+    }
+
+    #[test]
+    fn build_redacted_json_strips_sensitive_headers_and_params() {
+        let req = make_request_data();
+        // Loopback-only dev: body passes through, but headers and params
+        // are still redacted.
+        let json = build_redacted_request_data_json(&req, false);
+
+        // Sensitive bits in headers / query must NOT appear verbatim.
+        assert!(!json.contains("Bearer leaked-jwt"), "{}", json);
+        assert!(!json.contains("p4ssw0rd"), "{}", json);
+        assert!(!json.contains("secret-key"), "{}", json);
+        assert!(!json.contains("abc123"), "{}", json); // csrf_token value
+                                                       // The cookie value (which carries `session_id=abc`) must be redacted
+                                                       // — `cookie` is a redacted header, so the whole value is replaced.
+        assert!(
+            !json.contains("session_id=abc"),
+            "cookie header must be redacted: {}",
+            json
+        );
+
+        // Non-sensitive metadata must still be there so the dev REPL can
+        // operate on the request shape.
+        assert!(json.contains("\"method\":\"POST\""), "{}", json);
+        assert!(json.contains("\"path\":\"/login\""), "{}", json);
+        assert!(json.contains("\"page\":\"2\""), "{}", json);
+        assert!(json.contains("application/json"), "{}", json);
+        assert!(json.contains("tests/1.0"), "{}", json);
+
+        // Loopback mode preserves the body so REPL snippets can read it.
+        assert!(
+            json.contains("hunter2"),
+            "body must pass through on loopback: {}",
+            json
+        );
+
+        // Sentinel — sensitive keys are present (shape preserved) with the
+        // redaction marker as the value.
+        assert!(json.contains("[REDACTED]"), "{}", json);
+    }
+
+    #[test]
+    fn build_redacted_json_strips_body_in_remote_dev_mode() {
+        // In remote-allowed dev mode the page can be rendered by anyone
+        // reaching the host, so the body — which routinely carries
+        // login / signup credentials — must be redacted alongside the
+        // headers and params.
+        let req = make_request_data();
+        let json = build_redacted_request_data_json(&req, true);
+        assert!(
+            !json.contains("hunter2"),
+            "body must be redacted in remote dev mode: {}",
+            json
+        );
+        // Headers and params still redacted — same rules apply.
+        assert!(!json.contains("Bearer leaked-jwt"), "{}", json);
+        assert!(!json.contains("p4ssw0rd"), "{}", json);
+    }
+
+    #[test]
+    fn build_redacted_json_is_valid_serde_json() {
+        // The previous hand-rolled `format!("{:?}", hashmap)` rendering
+        // could produce malformed JSON when values contained quotes or
+        // backslashes; the new builder routes through serde_json so the
+        // embedded blob always round-trips.
+        let req = make_request_data();
+        let json = build_redacted_request_data_json(&req, false);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("redacted request data must be valid JSON");
+        assert_eq!(parsed["method"], "POST");
+        assert_eq!(parsed["headers"]["authorization"], "[REDACTED]");
+        assert_eq!(parsed["query"]["password"], "[REDACTED]");
+        assert_eq!(parsed["query"]["page"], "2");
+    }
+
+    #[test]
+    fn build_redacted_json_escapes_quotes_in_values() {
+        // Regression for the previous `format!("{:?}", hashmap)` path:
+        // values with embedded quotes used to break JSON parsing on the
+        // page. serde_json escapes them properly.
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        let mut headers = HashMap::new();
+        headers.insert(
+            "x-test".to_string(),
+            r#"value with "quotes" and \backslash"#.to_string(),
+        );
+        let req = RequestData {
+            method: std::borrow::Cow::Borrowed("GET"),
+            path: "/x".to_string(),
+            query: HashMap::new(),
+            headers,
+            body: r#"{"k":"v\\""}"#.to_string(),
+            body_bytes: None,
+            multipart_form: None,
+            multipart_files: None,
+            peer_ip: "127.0.0.1".to_string(),
+            response_tx: tx,
+        };
+        let json = build_redacted_request_data_json(&req, false);
+        let _: serde_json::Value =
+            serde_json::from_str(&json).expect("must be valid JSON despite quoted values");
     }
 }
