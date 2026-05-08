@@ -2292,6 +2292,7 @@ mod value_misc_tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is test data for float formatting, not π
     fn display_basic_values() {
         assert_eq!(format!("{}", Value::Int(42)), "42");
         assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
@@ -2303,6 +2304,7 @@ mod value_misc_tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is test data for JSON float parsing, not π
     fn parse_json_primitives() {
         assert_eq!(parse_json("42").unwrap(), Value::Int(42));
         assert_eq!(parse_json("3.14").unwrap(), Value::Float(3.14));

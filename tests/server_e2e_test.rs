@@ -66,9 +66,10 @@ impl ServerProcess {
     fn wait_ready(&self) {
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
-            if let Ok(_) = ureq::get(&format!("http://127.0.0.1:{}/ping", self.port))
+            if ureq::get(&format!("http://127.0.0.1:{}/ping", self.port))
                 .timeout(Duration::from_millis(500))
                 .call()
+                .is_ok()
             {
                 return;
             }

@@ -3385,6 +3385,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // "3.14" is test input for to_f(), not π
     fn test_vm_string_to_i_to_f() {
         assert_eq!(
             compile_and_get_global(r#"let x = "42".to_i();"#, "x"),
