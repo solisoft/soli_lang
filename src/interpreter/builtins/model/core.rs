@@ -2851,15 +2851,9 @@ impl Model {
             )),
         );
 
-        // instance.delete() - Delete (or soft-delete) the document from DB
-        //
-        // NOTE: before_delete/after_delete callbacks are not yet invoked for
-        // instance.delete() (hard or soft). This is a known gap — the callback
-        // interception architecture (try_run_model_before_save in the executor)
-        // only hooks Model.create and Model.update, not delete operations.
-        // Both hard and soft delete skip callbacks equally. The fix requires
-        // a try_run_model_delete executor interceptor to run method-name and
-        // closure callbacks with access to &mut Interpreter.
+        // instance.delete() - Delete (or soft-delete) the document from DB.
+        // before_delete/after_delete run in the executor interceptor so user
+        // methods and closures can execute with `this` bound to the instance.
         native_methods.insert(
             "delete".to_string(),
             Rc::new(NativeFunction::new("Model#delete", Some(0), |args| {
@@ -2881,8 +2875,6 @@ impl Model {
 
                 if is_soft_delete(&class_name) {
                     // Soft delete: set deleted_at timestamp
-                    // NOTE: before_delete callback NOT invoked for soft delete
-                    // (see NOTE above re: callback architecture gap)
                     let now = chrono::Utc::now().to_rfc3339();
                     let mut map = serde_json::Map::new();
                     map.insert(
@@ -2900,8 +2892,6 @@ impl Model {
                     }
                 } else {
                     // Hard delete: remove document
-                    // NOTE: before_delete callback NOT invoked for hard delete
-                    // (see NOTE above re: callback architecture gap)
                     match exec_delete(&collection, &key_str) {
                         Ok(result) => Ok(json_to_value(&result)),
                         Err(e) => Ok(Value::String(format!("Error: {}", e))),

@@ -63,6 +63,9 @@ impl Interpreter {
             if let Some(result) = self.try_run_model_before_save(callee, arguments, span)? {
                 return Ok(result);
             }
+            if let Some(result) = self.try_run_model_delete_callbacks(callee, arguments, span)? {
+                return Ok(result);
+            }
             if let Some(result) = self.try_evaluate_hash_string_key_call(callee, arguments, span)? {
                 return Ok(result);
             }
@@ -396,6 +399,121 @@ impl Interpreter {
         }
 
         Ok(Some(result))
+    }
+
+    /// Intercept `record.delete()` for model instances so before_delete /
+    /// after_delete callbacks can execute with access to the current
+    /// interpreter. Native methods cannot invoke user-defined Soli methods on
+    /// their own because they only receive evaluated values.
+    fn try_run_model_delete_callbacks(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::get_or_create_metadata;
+
+        let (object, method_name) = match &callee.kind {
+            ExprKind::Member { object, name } => (object.as_ref(), name.as_str()),
+            _ => return Ok(None),
+        };
+        if method_name != "delete" {
+            return Ok(None);
+        }
+        if !arguments.is_empty() {
+            return Ok(None);
+        }
+
+        let obj_val = self.evaluate(object)?;
+        let instance = match &obj_val {
+            Value::Instance(inst) if inst.borrow().class.is_model_subclass() => inst.clone(),
+            _ => return Ok(None),
+        };
+        let class = instance.borrow().class.clone();
+        let metadata = get_or_create_metadata(&class.name);
+        let before_names = metadata.callbacks.before_delete.clone();
+        let after_names = metadata.callbacks.after_delete.clone();
+        let before_events: &[&str] = &["before_delete"];
+        let after_events: &[&str] = &["after_delete"];
+
+        if before_names.is_empty()
+            && after_names.is_empty()
+            && !has_closure_callbacks(&class.name, before_events)
+            && !has_closure_callbacks(&class.name, after_events)
+        {
+            return Ok(None);
+        }
+
+        self.run_model_callbacks(&class, &instance, &before_names, before_events, span)?;
+
+        let callee_val = self.evaluate_callee(callee)?;
+        let result = self.call_value(callee_val, Vec::new(), span)?;
+
+        let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
+            || matches!(&result, Value::Bool(false));
+        if !failed {
+            self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
+        }
+
+        Ok(Some(result))
+    }
+
+    fn run_model_callbacks(
+        &mut self,
+        class: &Rc<crate::interpreter::value::Class>,
+        instance: &Rc<RefCell<Instance>>,
+        callback_names: &[String],
+        events: &[&str],
+        span: Span,
+    ) -> RuntimeResult<()> {
+        for cb_name in callback_names {
+            let Some(method) = class.find_method(cb_name) else {
+                continue;
+            };
+            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+            bound_env.define("this".to_string(), Value::Instance(instance.clone()));
+            let bound_method = crate::interpreter::value::Function {
+                name: method.name.clone(),
+                params: method.params.clone(),
+                body: method.body.clone(),
+                closure: Rc::new(RefCell::new(bound_env)),
+                is_method: true,
+                span: method.span,
+                source_path: method.source_path.clone(),
+                defining_superclass: None,
+                return_type: method.return_type.clone(),
+                cached_env: RefCell::new(None),
+                jit_cache: RefCell::new(None),
+            };
+            self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
+        }
+
+        for ev in events {
+            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
+                &class.name,
+                ev,
+            ) {
+                let mut bound_env = Environment::with_enclosing(closure.closure.clone());
+                bound_env.define("this".to_string(), Value::Instance(instance.clone()));
+                bound_env.define("self".to_string(), Value::Instance(instance.clone()));
+                let bound = crate::interpreter::value::Function {
+                    name: closure.name.clone(),
+                    params: closure.params.clone(),
+                    body: closure.body.clone(),
+                    closure: Rc::new(RefCell::new(bound_env)),
+                    is_method: true,
+                    span: closure.span,
+                    source_path: closure.source_path.clone(),
+                    defining_superclass: None,
+                    return_type: closure.return_type.clone(),
+                    cached_env: RefCell::new(None),
+                    jit_cache: RefCell::new(None),
+                };
+                self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Implement `respond_to(req, block_or_hash)` — Ruby-style content negotiation.
