@@ -3524,6 +3524,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `smell/empty-catch` | Catch blocks should not be empty (silently swallowing errors) |
 | `smell/deep-nesting` | Nesting depth should not exceed 4 levels |
 | `smell/duplicate-methods` | A class should not have two methods with the same name |
+| `smell/dangerous-server-builtin` | Calls to `db_query_raw`, `Trusted.*`, `System.shell` / `System.shell_sync`, or backtick command substitution from `app/controllers/`, `app/middleware/`, or `app/views/`. Suggests the safe alternative: parameterised `@sdbql{ ... #{value} ... }`, the jailed `File.*` API, or `System.run([...])` with an argv array. Models, migrations, and tests are out of scope. |
 
 ### Editor Integration
 

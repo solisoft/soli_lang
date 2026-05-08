@@ -5,6 +5,15 @@ use super::Linter;
 
 impl Linter {
     pub(crate) fn lint_expr(&mut self, expr: &Expr) {
+        // SEC-085: catch dangerous-builtin calls in request-handling code
+        // before recursing — the helper inspects the immediate node only,
+        // so we still walk into call arguments / subexpressions below.
+        rules::security::check_dangerous_server_builtin(
+            expr,
+            self.file_path.as_deref(),
+            &mut self.diagnostics,
+        );
+
         match &expr.kind {
             ExprKind::IntLiteral(_)
             | ExprKind::FloatLiteral(_)

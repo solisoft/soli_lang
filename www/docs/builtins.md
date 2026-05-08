@@ -3882,7 +3882,7 @@ print(result["exit_code"])
 
 ### System.shell(command)
 
-Runs a command asynchronously through `sh -c <command>`. Use this when you explicitly want shell features (pipes, redirection, globbing, etc.). **Never pass unsanitised user input here** — every metacharacter is interpreted by the shell.
+Runs a command asynchronously through `sh -c <command>`. Use this when you explicitly want shell features (pipes, redirection, globbing, etc.). **Never pass unsanitised user input here** — every metacharacter is interpreted by the shell. For request-controlled arguments use `System.run([program, arg1, ...])` with an argv array instead, which never invokes a shell. The `smell/dangerous-server-builtin` lint flags `System.shell` calls in `app/controllers/`, `app/middleware/`, and `app/views/`.
 
 **Parameters:**
 - `command` (String) - The shell command to execute

@@ -420,7 +420,7 @@ Key rules:
 - `naming/snake-case`, `naming/pascal-case`
 - `style/empty-block`, `style/line-length` (≤120 chars)
 - `style/redundant-model-import` — don't `import "../models/*.sl"` inside `app/controllers/`; models are auto-loaded
-- `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`
+- `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`, `smell/dangerous-server-builtin` (flags `db_query_raw` / `Trusted.*` / `System.shell` / backticks in `app/controllers/`, `app/middleware/`, `app/views/`)
 - `smell/deep-nesting` (≤4 levels)
 - `smell/undefined-local` — reads of a name never assigned in scope (catches typos)
 

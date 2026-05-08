@@ -150,6 +150,17 @@ end</code></pre>
                 <code class="text-indigo-400 font-mono text-sm">smell/duplicate-methods</code>
                 <p class="text-gray-400 mt-2">A class should not have two methods with the same name.</p>
             </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">smell/dangerous-server-builtin</code>
+                <p class="text-gray-400 mt-2">Calls to <code>db_query_raw</code>, <code>Trusted.*</code>, <code>System.shell</code> / <code>System.shell_sync</code>, or backtick command substitution from <code>app/controllers/</code>, <code>app/middleware/</code>, or <code>app/views/</code>. These primitives are powerful but become injection / traversal sinks when fed request-controlled data. The diagnostic spells out the safe alternative for each:</p>
+                <ul class="text-gray-400 mt-2 list-disc list-inside">
+                    <li><code>db_query_raw</code> &rarr; parameterised <code>@sdbql{ ... #{value} ... }</code> block, or <code>Model.where(&quot;x = #{v}&quot;, { &quot;v&quot;: v })</code>.</li>
+                    <li><code>Trusted.*</code> &rarr; jailed <code>File.*</code> (read/write/exists), which keeps every operation under the app root.</li>
+                    <li><code>System.shell</code> / backticks &rarr; <code>System.run([&quot;prog&quot;, &quot;arg1&quot;, ...])</code> with an argv array, which never invokes a shell.</li>
+                </ul>
+                <p class="text-gray-400 mt-2">Models, migrations, and tests are out of scope &mdash; those layers legitimately use these APIs against operator-controlled data.</p>
+            </div>
         </div>
     </section>
 

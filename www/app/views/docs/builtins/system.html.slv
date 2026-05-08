@@ -84,7 +84,7 @@ print(result["exit_code"])</code></pre>
             </p>
             <div class="mt-2 mb-4 p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
                 <p class="text-rose-300">
-                    <strong>Warning:</strong> Never pass unsanitised user input here — every metacharacter is interpreted by the shell. For commands built from user data, use <code>System.run</code> with an argv array.
+                    <strong>Warning:</strong> Never pass unsanitised user input here — every metacharacter is interpreted by the shell. For commands built from user data, use <code>System.run</code> with an argv array. The <code>smell/dangerous-server-builtin</code> lint flags <code>System.shell</code> calls in <code>app/controllers/</code>, <code>app/middleware/</code>, and <code>app/views/</code>.
                 </p>
             </div>
 
