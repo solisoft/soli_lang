@@ -59,9 +59,10 @@ pub fn create_routes_file(app_path: &Path) -> Result<(), String> {
 }
 
 /// Create the application boot config file. Loaded by `soli serve` before
-/// routes; ships with `enable_trust_proxy` active so apps behind a reverse
-/// proxy honour `X-Forwarded-Host` / `X-Forwarded-Proto` for CSRF, redirects,
-/// and `request.host`.
+/// routes. SEC-082: ships with `enable_trust_proxy` commented out so a
+/// freshly-scaffolded app does NOT trust `X-Forwarded-*` headers by default
+/// — apps deployed directly to the internet would otherwise let a remote
+/// client spoof request authority. The template explains when to opt in.
 pub fn create_application_config(app_path: &Path) -> Result<(), String> {
     write_file(
         &app_path.join("config/application.sl"),
