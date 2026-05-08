@@ -84,6 +84,45 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+  # SEC-094: scan Cargo.lock for known RustSec advisories on every push
+  # and PR. Default policy: cargo audit exits non-zero on a confirmed
+  # vulnerability, making CI fail; informational notices (unmaintained /
+  # unsound dependency tree) surface as warnings without blocking.
+  #
+  # Waiving a finding: prefer fixing the upstream version. If a wait is
+  # justified (no fix available, transitive-only, etc.), commit a
+  # `.cargo/audit.toml` with an `[advisories] ignore = ["RUSTSEC-..."]`
+  # entry and a comment explaining why and when to revisit.
+  #
+  # Not gated on by `release` on purpose — fresh advisories can land at
+  # any moment and shouldn't block an in-flight tag; they surface on the
+  # next push/PR for prompt remediation.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+          key: ${{ runner.os }}-cargo-audit-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
+
   release:
     needs: [test, clippy, fmt]
     if: startsWith(github.ref, 'refs/tags/v')
