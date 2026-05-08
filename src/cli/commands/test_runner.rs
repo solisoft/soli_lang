@@ -455,6 +455,16 @@ pub fn run_test(
         })
         .collect();
 
+    // SEC-080: per-process random token gating the `/__coverage__` dump.
+    // Minted once and shared across the spawned children + the runner's
+    // collection request so an accidentally-enabled coverage endpoint can
+    // never be scraped without proving knowledge of this token.
+    let coverage_token = if needs_test_server && enable_coverage {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+
     if needs_test_server {
         println!("Starting {} test server(s)...", num_workers);
 
@@ -522,6 +532,10 @@ pub fn run_test(
                 );
             if enable_coverage {
                 cmd.env("SOLI_COVERAGE_ENABLED", "1");
+                if let Some(ref token) = coverage_token {
+                    // SEC-080: child server gates `/__coverage__` on this token.
+                    cmd.env("SOLI_COVERAGE_TOKEN", token);
+                }
             }
             let child = cmd.spawn().expect("Failed to spawn test server subprocess");
             test_server_children.0.push(child);
@@ -989,11 +1003,18 @@ pub fn run_test(
                 for env in &worker_envs {
                     let Some(port) = env.port else { continue };
                     let url = format!("http://127.0.0.1:{}/__coverage__", port);
-                    let Ok(resp) = solilang::interpreter::builtins::http_class::ureq_agent()
+                    // SEC-080: present the per-process token the runner
+                    // handed each child via SOLI_COVERAGE_TOKEN. Without
+                    // it the server returns 403, by design — scrapers
+                    // outside this process must not be able to read the
+                    // coverage dump even if `SOLI_COVERAGE_ENABLED` is set.
+                    let mut req = solilang::interpreter::builtins::http_class::ureq_agent()
                         .get(&url)
-                        .timeout(Duration::from_secs(5))
-                        .call()
-                    else {
+                        .timeout(Duration::from_secs(5));
+                    if let Some(ref token) = coverage_token {
+                        req = req.set("X-Coverage-Token", token);
+                    }
+                    let Ok(resp) = req.call() else {
                         continue;
                     };
                     let Ok(text) = resp.into_string() else {

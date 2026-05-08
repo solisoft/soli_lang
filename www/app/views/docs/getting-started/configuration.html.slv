@@ -190,7 +190,8 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
                     <tr><td class="py-3 px-4"><code>SOLI_DEPLOY_API_KEY</code></td><td class="py-3 px-4">API key required by <code>soli deploy</code> for proxy deployment.</td><td class="py-3 px-4">required for deploy</td></tr>
-                    <tr><td class="py-3 px-4"><code>SOLI_COVERAGE_ENABLED</code></td><td class="py-3 px-4">Enables the server-side coverage dump endpoint for test aggregation. Normally set by Soli tooling.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_COVERAGE_ENABLED</code></td><td class="py-3 px-4">Enables the server-side coverage dump endpoint for test aggregation. Normally set by Soli tooling. The endpoint also requires <code>SOLI_COVERAGE_TOKEN</code> &mdash; without a matching <code>X-Coverage-Token</code> request header it returns 403.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_COVERAGE_TOKEN</code></td><td class="py-3 px-4">Per-process secret gating <code>/__coverage__</code>. The test runner mints a fresh random token per run and sends it as <code>X-Coverage-Token</code> when scraping; without this token the endpoint refuses every caller, even when <code>SOLI_COVERAGE_ENABLED</code> is set.</td><td class="py-3 px-4">required when <code>SOLI_COVERAGE_ENABLED</code> is set</td></tr>
                 </tbody>
             </table>
         </div>

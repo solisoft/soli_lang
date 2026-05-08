@@ -124,7 +124,7 @@ fn do_hmac_sha256(message: &str, key: &str) -> Result<String, String> {
 /// Constant-time byte comparison. Returns false immediately for unequal-length
 /// inputs (length is not secret); for equal-length inputs the running time
 /// depends only on the length, not on the position of any differing byte.
-fn do_secure_compare(a: &str, b: &str) -> bool {
+pub(crate) fn do_secure_compare(a: &str, b: &str) -> bool {
     let ab = a.as_bytes();
     let bb = b.as_bytes();
     if ab.len() != bb.len() {

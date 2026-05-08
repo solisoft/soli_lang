@@ -2232,8 +2232,34 @@ async fn handle_hyper_request(
     // Coverage dump endpoint: only active when the parent process asked us
     // to collect coverage (via SOLI_COVERAGE_ENABLED). Returns a JSON blob
     // the test runner merges into its own aggregated report.
+    //
+    // SEC-080: gate the dump on a per-process `SOLI_COVERAGE_TOKEN`. The
+    // test runner mints a fresh random token, hands it to each child via
+    // env, and presents it as `X-Coverage-Token` when scraping. Coverage
+    // accidentally enabled in production would otherwise let any remote
+    // client read source paths and line-hit counts; with the token gate
+    // an unauthenticated GET returns 403, even if `SOLI_COVERAGE_ENABLED`
+    // is set. The token is required — running without it (legacy callers,
+    // misconfiguration) is rejected too, so the endpoint is never open.
     if path == "/__coverage__" && method == "GET" && std::env::var("SOLI_COVERAGE_ENABLED").is_ok()
     {
+        let expected = std::env::var("SOLI_COVERAGE_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty());
+        let provided = req
+            .headers()
+            .get("x-coverage-token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !coverage_request_authorized(expected.as_deref(), provided) {
+            return Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(Full::new(Bytes::from(
+                    "coverage endpoint requires X-Coverage-Token matching SOLI_COVERAGE_TOKEN",
+                )))
+                .unwrap());
+        }
         let body = coverage_dump_json();
         return Ok(Response::builder()
             .status(StatusCode::OK)
@@ -2628,6 +2654,21 @@ fn check_csrf_origin(headers: &hyper::HeaderMap, method: &str, path: &str) -> Re
         return Err("missing both Origin and Referer on cookie-bearing request".to_string());
     }
     Ok(())
+}
+
+/// SEC-080: decide whether a `/__coverage__` GET is authorised. The
+/// endpoint is only reachable when `SOLI_COVERAGE_ENABLED` is set; the
+/// test runner additionally mints a random `SOLI_COVERAGE_TOKEN` per
+/// run and presents it as `X-Coverage-Token`. `expected` is the env
+/// value (None = not configured = reject), `provided` is the request
+/// header value (empty = no header = reject). Constant-time compare so
+/// the negative result doesn't leak token shape.
+fn coverage_request_authorized(expected: Option<&str>, provided: &str) -> bool {
+    let Some(tok) = expected else { return false };
+    if tok.is_empty() || provided.is_empty() {
+        return false;
+    }
+    crate::interpreter::builtins::crypto::do_secure_compare(tok, provided)
 }
 
 fn forbidden_csrf_response(reason: &str) -> Response<Full<Bytes>> {
@@ -6290,6 +6331,37 @@ mod tests {
         // Different path under /webhooks/: not skipped.
         assert!(check_csrf_origin(&h, "POST", "/webhooks/paypal").is_err());
         clear_csrf_skip_patterns();
+    }
+
+    // SEC-080 — `coverage_request_authorized` regression coverage.
+
+    #[test]
+    fn coverage_rejected_without_env_token() {
+        // Test runner forgot to set SOLI_COVERAGE_TOKEN — endpoint must
+        // refuse rather than fall back to "any caller wins".
+        assert!(!coverage_request_authorized(None, "anything"));
+        assert!(!coverage_request_authorized(Some(""), "anything"));
+    }
+
+    #[test]
+    fn coverage_rejected_without_request_header() {
+        assert!(!coverage_request_authorized(Some("secret-token"), ""));
+    }
+
+    #[test]
+    fn coverage_rejected_on_token_mismatch() {
+        assert!(!coverage_request_authorized(
+            Some("secret-token"),
+            "wrong-token"
+        ));
+    }
+
+    #[test]
+    fn coverage_accepted_on_token_match() {
+        assert!(coverage_request_authorized(
+            Some("secret-token"),
+            "secret-token"
+        ));
     }
 
     #[test]

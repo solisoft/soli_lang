@@ -119,7 +119,8 @@ These are normally set by Soli tooling rather than by applications.
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_COVERAGE_ENABLED` | Enables the server-side coverage dump endpoint for test aggregation. | unset |
+| `SOLI_COVERAGE_ENABLED` | Enables the server-side coverage dump endpoint for test aggregation. The endpoint requires `SOLI_COVERAGE_TOKEN` to be set as well — without a matching `X-Coverage-Token` request header it returns 403. | unset |
+| `SOLI_COVERAGE_TOKEN` | Per-process secret gating `/__coverage__`. The test runner mints a fresh random token per run and sends it as `X-Coverage-Token` when scraping; without this token the endpoint refuses every caller, even when `SOLI_COVERAGE_ENABLED` is set. | required when `SOLI_COVERAGE_ENABLED` is set |
 
 ## Runtime Overrides
 
