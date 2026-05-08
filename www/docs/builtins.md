@@ -1247,24 +1247,31 @@ token = jwt_sign(
 
 ### jwt_verify(token, secret, options?)
 
-Verifies and decodes a JWT token.
+Verifies and decodes a JWT token. **The verifier — not the token — chooses which algorithm is acceptable**, closing the classic JWT algorithm-confusion attack where an attacker who knew the verifier's RSA public key could sign an HS256 token using the public key bytes as an HMAC secret.
 
 **Parameters:**
 - `token` (String) - The JWT token
 - `secret` (String) - Secret key used for signing. Same 32-byte minimum for HMAC algorithms. Asymmetric algorithms (RS256, EdDSA) use PEM keys via the `key` option.
 - `options` (Hash, optional) - Verification options
-  - `key` (String) - PEM-encoded public key for RS256/EdDSA algorithms
+  - `algorithm` (String) - Pin verification to a specific algorithm (`HS256`, `HS384`, `HS512`, `RS256`, `EdDSA`). The token's header `alg` must match exactly or the call rejects with `"token algorithm ... does not match expected"`.
+  - `key` (String) - PEM-encoded public key for RS256/EdDSA algorithms. When `key` is provided without an explicit `algorithm`, the allowed set is `RS256` / `EdDSA` only — HMAC tokens are rejected (the algorithm-confusion attack vector).
+
+When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default.
 
 **Returns:** Hash - Decoded payload, or `{ "error": true, "message": String }` on failure
 
 **Example:**
 ```soli
+# 2-arg form: HMAC only.
 result = jwt_verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
   println("User: " + result["sub"])
 end
+
+# Asymmetric verification: pin the algorithm explicitly.
+result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
 ```
 
 ### jwt_decode_unsafe(token)

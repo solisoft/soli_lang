@@ -73,7 +73,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Verify and decode a JWT token.</p>
+                <p class="text-gray-400 mb-3">Verify and decode a JWT token. <strong>The verifier &mdash; not the token &mdash; chooses which algorithm is acceptable</strong> (SEC-091), closing the classic algorithm-confusion attack where an attacker who knew the verifier's RSA public key could sign an HS256 token using the public key bytes as an HMAC secret.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">token</code> : <code class="text-purple-400">String</code> - The JWT token to verify</div>
@@ -82,19 +82,27 @@
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - PEM-encoded public key for RS256/EdDSA algorithms</div>
+                    <div><code class="text-amber-400">algorithm</code> : <code class="text-purple-400">String</code> - Pin verification to a specific algorithm (<code>HS256</code>, <code>HS384</code>, <code>HS512</code>, <code>RS256</code>, <code>EdDSA</code>). The token's header <code>alg</code> must match exactly or the call rejects.</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - PEM-encoded public key for RS256/EdDSA algorithms. When <code>key</code> is provided without an explicit <code>algorithm</code>, the allowed set is <code>RS256</code>&nbsp;/&nbsp;<code>EdDSA</code> only &mdash; HMAC tokens are rejected (the algorithm-confusion attack vector).</div>
                 </div>
+                <p class="text-gray-400 mt-3 text-sm">
+                    Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>jwt_verify(token, secret)</code> callers.
+                </p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-purple-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">result = jwt_verify(token, getenv("JWT_SECRET"))
+                <pre data-filename="Example"><code class="language-soli text-sm"># 2-arg form: HMAC only.
+result = jwt_verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
   println("User: " + result["sub"])
   println("Role: " + result["role"])
-end</code></pre>
+end
+
+# Asymmetric verification: pin the algorithm explicitly.
+result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })</code></pre>
             </div>
         </section>
 

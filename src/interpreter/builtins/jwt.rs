@@ -154,10 +154,18 @@ pub fn register_jwt_builtins(env: &mut Environment) {
         })),
     );
 
-    // jwt_verify(token, secret) -> payload hash or error hash
+    // jwt_verify(token, secret, options?) -> payload hash or error hash.
+    // Arity is variable so the optional `options` hash (`{key: ..., algorithm: ...}`)
+    // is reachable — the previous `Some(2)` made the options path dead code.
     env.define(
         "jwt_verify".to_string(),
-        Value::NativeFunction(NativeFunction::new("jwt_verify", Some(2), |args| {
+        Value::NativeFunction(NativeFunction::new("jwt_verify", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "jwt_verify() expects 2 or 3 arguments (token, secret, options?), got {}",
+                    args.len()
+                ));
+            }
             let token = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -178,30 +186,74 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 }
             };
 
-            // Pull out the optional PEM key first — if the caller passes one,
-            // we treat the call as asymmetric and the `secret` argument is a
-            // placeholder that doesn't carry HMAC entropy.
+            // Pull out the optional PEM key + explicit expected algorithm.
+            // SEC-091: the verifier — not the token — picks which algorithm
+            // is acceptable. Without that, an attacker who knew the verifier's
+            // RSA public key could sign an HS256 token using the public key
+            // bytes as an HMAC secret and have it verified.
             let mut pem_key: Option<String> = None;
+            let mut expected_algorithm: Option<Algorithm> = None;
             if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
                         if let HashKey::String(key) = k {
-                            if key == "key" {
-                                if let Value::String(k) = v {
-                                    pem_key = Some(k.clone());
+                            match key.as_str() {
+                                "key" => {
+                                    if let Value::String(k) = v {
+                                        pem_key = Some(k.clone());
+                                    }
                                 }
+                                "algorithm" => {
+                                    if let Value::String(alg) = v {
+                                        expected_algorithm = Some(match alg.as_str() {
+                                            "HS256" => Algorithm::HS256,
+                                            "HS384" => Algorithm::HS384,
+                                            "HS512" => Algorithm::HS512,
+                                            "RS256" => Algorithm::RS256,
+                                            "EdDSA" => Algorithm::EdDSA,
+                                            _ => {
+                                                return Err(format!(
+                                                    "jwt_verify() unsupported algorithm: {}",
+                                                    alg
+                                                ))
+                                            }
+                                        });
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
                 }
             }
 
-            // SEC-054: enforce the HMAC secret floor before parsing the token
-            // header. A weak secret must be a hard reject regardless of how
-            // structurally valid the token is — otherwise a junk token would
-            // mask a misconfigured production secret. Skip when the caller
-            // supplied a PEM (asymmetric path).
-            if pem_key.is_none() && secret.len() < MIN_SECRET_BYTES {
+            // SEC-091: decide the allowed algorithm set up-front, never from
+            // the token header.
+            // - explicit `algorithm` option → only that algorithm.
+            // - PEM key provided, no explicit alg → asymmetric only
+            //   (RS256 / EdDSA). This is the case the algorithm-confusion
+            //   attack exploited: caller meant "verify with this RSA public
+            //   key", attacker switched to HS256 against the same bytes.
+            // - 2-arg form, no PEM, no explicit alg → HMAC only (back-compat
+            //   for the common `jwt_verify(token, secret)` callers).
+            let allowed_algorithms: Vec<Algorithm> = match (expected_algorithm, &pem_key) {
+                (Some(alg), _) => vec![alg],
+                (None, Some(_)) => vec![Algorithm::RS256, Algorithm::EdDSA],
+                (None, None) => {
+                    vec![Algorithm::HS256, Algorithm::HS384, Algorithm::HS512]
+                }
+            };
+
+            let header_carries_hmac = |algs: &[Algorithm]| {
+                algs.iter()
+                    .any(|a| !matches!(a, Algorithm::RS256 | Algorithm::EdDSA))
+            };
+
+            // SEC-054: enforce the HMAC secret floor when an HMAC algorithm
+            // is in the allowed set. A weak secret must be a hard reject
+            // regardless of how structurally valid the token is — otherwise
+            // a junk token would mask a misconfigured production secret.
+            if header_carries_hmac(&allowed_algorithms) && secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
                     "jwt_verify() secret must be at least {} bytes for security (got {})",
                     MIN_SECRET_BYTES,
@@ -209,29 +261,31 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 ));
             }
 
-            // Detect algorithm from token header for proper validation setup
+            // Decode the header — but only to enforce a match against the
+            // allow-list. The header's `alg` never picks the validation
+            // algorithm on its own.
             let token_header =
                 decode_header(&token).map_err(|e| format!("Failed to parse JWT header: {}", e))?;
-            let detected_algorithm = token_header.alg;
-            let is_asymmetric = matches!(detected_algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+            let token_alg = token_header.alg;
 
-            // Re-check after we know the algorithm — if the token claims an
-            // HMAC alg but a PEM was passed, the secret floor still applies.
-            if !is_asymmetric && pem_key.is_some() && secret.len() < MIN_SECRET_BYTES {
+            if !allowed_algorithms.contains(&token_alg) {
+                let expected = allowed_algorithms
+                    .iter()
+                    .map(|a| format!("{:?}", a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 return Err(format!(
-                    "jwt_verify() secret must be at least {} bytes for security (got {})",
-                    MIN_SECRET_BYTES,
-                    secret.len()
+                    "jwt_verify(): token algorithm {:?} does not match expected ({})",
+                    token_alg, expected
                 ));
             }
 
-            // Configure validation to accept the detected algorithm
-            let mut validation = Validation::new(detected_algorithm);
+            // Configure validation pinned to the (now-trusted) algorithm.
+            let mut validation = Validation::new(token_alg);
             validation.validate_exp = true;
 
-            // Try to decode and verify the token
-            let decoding_key =
-                build_decoding_key(&detected_algorithm, &secret, pem_key.as_deref())?;
+            // Try to decode and verify the token.
+            let decoding_key = build_decoding_key(&token_alg, &secret, pem_key.as_deref())?;
             match decode::<Claims>(&token, &decoding_key, &validation) {
                 Ok(token_data) => {
                     // Convert claims to Soli Value
@@ -568,5 +622,179 @@ mod tests {
             "expected SEC-029 migration error pointing at both alternatives, got: {}",
             err
         );
+    }
+
+    // SEC-091 — verifier picks the algorithm, not the token.
+
+    /// Sign an HMAC token (HS256) with the given secret and return the
+    /// JWS string. Always sets `expires_in: 3600` so the resulting token
+    /// has the `exp` claim that `Validation::new` requires by default
+    /// — without it, jwt_verify rejects the token as malformed and
+    /// algorithm-mismatch tests can't reach the SEC-091 check they want
+    /// to exercise.
+    fn sign_hs256(secret: &str, sub: &str) -> String {
+        let mut payload: HashPairs = HashPairs::default();
+        payload.insert(
+            HashKey::String("sub".to_string()),
+            Value::String(sub.to_string()),
+        );
+        let mut sign_opts: HashPairs = HashPairs::default();
+        sign_opts.insert(HashKey::String("expires_in".to_string()), Value::Int(3600));
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        let token = (sign.func)(vec![
+            Value::Hash(Rc::new(RefCell::new(payload))),
+            Value::String(secret.to_string()),
+            Value::Hash(Rc::new(RefCell::new(sign_opts))),
+        ])
+        .unwrap();
+        match token {
+            Value::String(s) => s,
+            other => panic!("expected token string, got {:?}", other),
+        }
+    }
+
+    fn opts(pairs: &[(&str, Value)]) -> Value {
+        let mut h: HashPairs = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(HashKey::String((*k).to_string()), v.clone());
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    /// SEC-091 core attack: an attacker who knows the verifier's RSA
+    /// public-key bytes signs an HS256 token using those bytes as the
+    /// HMAC secret. The previous code picked the algorithm from the
+    /// token header and would have verified the signature. With the fix,
+    /// `jwt_verify(token, public_key, {algorithm: "RS256"})` must reject
+    /// the algorithm mismatch before any signature verification runs.
+    #[test]
+    fn jwt_verify_rejects_hmac_token_when_rs256_expected() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+
+        // The "RSA public key" the verifier thinks it's using. In the
+        // attack, the attacker treats the bytes as an HMAC secret and
+        // signs with HS256.
+        let pretend_pub_key = "0123456789abcdef0123456789abcdef0123456789abcdef";
+        let attacker_token = sign_hs256(pretend_pub_key, "alice");
+
+        let result = (verify.func)(vec![
+            Value::String(attacker_token),
+            Value::String(pretend_pub_key.to_string()),
+            opts(&[("algorithm", Value::String("RS256".to_string()))]),
+        ])
+        .expect_err("HS256 token must be rejected when RS256 is expected");
+        assert!(
+            result.contains("does not match expected"),
+            "expected algorithm-mismatch rejection, got: {}",
+            result
+        );
+    }
+
+    /// Asymmetric default: when the caller passes a `key` option (the
+    /// asymmetric pattern) but no explicit `algorithm`, the allow list
+    /// is RS256 / EdDSA only. An HS256 token must be rejected.
+    #[test]
+    fn jwt_verify_with_pem_key_rejects_hmac_tokens_by_default() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+
+        let pretend_pub_key = "0123456789abcdef0123456789abcdef0123456789abcdef";
+        let attacker_token = sign_hs256(pretend_pub_key, "alice");
+
+        let err = (verify.func)(vec![
+            Value::String(attacker_token),
+            Value::String(pretend_pub_key.to_string()),
+            opts(&[("key", Value::String(pretend_pub_key.to_string()))]),
+        ])
+        .expect_err("HMAC token must be rejected when a PEM key is provided");
+        assert!(err.contains("does not match expected"), "{}", err);
+    }
+
+    /// Round-trip the standard 2-arg HMAC path (no options): the legacy
+    /// shape used by every existing caller still works end-to-end. SEC-091
+    /// keeps this path on HS256/HS384/HS512 only.
+    #[test]
+    fn jwt_verify_two_arg_form_still_round_trips_hmac() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+
+        let secret = "0123456789abcdef0123456789abcdef".to_string();
+        let token = sign_hs256(&secret, "alice");
+
+        let result = (verify.func)(vec![Value::String(token), Value::String(secret)]).unwrap();
+        let h = match result {
+            Value::Hash(h) => h,
+            other => panic!("expected verified-claims hash, got {:?}", other),
+        };
+        let h = h.borrow();
+        // Verified path returns claims at the top level (distinct from
+        // jwt_decode_unsafe which wraps them in `{unverified, claims}`).
+        let sub = h.get(&HashKey::String("sub".to_string()));
+        assert!(
+            matches!(sub, Some(Value::String(s)) if s == "alice"),
+            "{:?}",
+            sub
+        );
+    }
+
+    /// Explicit-algorithm pin: caller specifies `algorithm: "HS256"` and
+    /// the token's header alg matches → verify succeeds. Caller specifies
+    /// `algorithm: "HS512"` and the token's header is HS256 → reject.
+    #[test]
+    fn jwt_verify_explicit_algorithm_pin_strict_match() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+
+        let secret = "0123456789abcdef0123456789abcdef".to_string();
+        let token_hs256 = sign_hs256(&secret, "alice");
+
+        // Match → success.
+        let ok = (verify.func)(vec![
+            Value::String(token_hs256.clone()),
+            Value::String(secret.clone()),
+            opts(&[("algorithm", Value::String("HS256".to_string()))]),
+        ])
+        .unwrap();
+        assert!(matches!(ok, Value::Hash(_)));
+
+        // Mismatch → error.
+        let err = (verify.func)(vec![
+            Value::String(token_hs256),
+            Value::String(secret),
+            opts(&[("algorithm", Value::String("HS512".to_string()))]),
+        ])
+        .expect_err("HS256 token must be rejected when HS512 is pinned");
+        assert!(err.contains("does not match expected"), "{}", err);
+    }
+
+    #[test]
+    fn jwt_verify_unknown_algorithm_in_options_errors() {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+        let err = (verify.func)(vec![
+            Value::String("unused.token.value".to_string()),
+            Value::String("0123456789abcdef0123456789abcdef".to_string()),
+            opts(&[("algorithm", Value::String("none".to_string()))]),
+        ])
+        .expect_err("unsupported algorithm name must error");
+        assert!(err.contains("unsupported algorithm"), "{}", err);
+    }
+
+    #[test]
+    fn jwt_verify_too_many_args_errors() {
+        // Arity gate: previously `Some(2)` made the options path dead;
+        // now we accept 2 or 3 args and reject 4+.
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+        let err = (verify.func)(vec![
+            Value::String("t".to_string()),
+            Value::String("s".to_string()),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+            Value::String("extra".to_string()),
+        ])
+        .expect_err("4 args must be rejected");
+        assert!(err.contains("expects 2 or 3 arguments"), "{}", err);
     }
 }
