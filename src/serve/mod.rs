@@ -28,7 +28,7 @@ pub mod engine_loader;
 pub mod env_loader;
 mod error_pages;
 mod file_tracker;
-mod file_upload;
+pub(crate) mod file_upload;
 mod json;
 mod repl_session;
 mod tailwind;

@@ -338,12 +338,24 @@ fn extract_boundary(content_type: &str) -> Option<String> {
 }
 
 fn parse_multipart_data(body: &str, boundary: &str) -> Result<Vec<ParsedFile>, String> {
+    // SEC-031 / SEC-090: cap at the same `SOLI_MAX_UPLOAD_FILES` limit the
+    // server-side `parse_multipart_body` enforces. A multipart body packed
+    // with thousands of tiny parts would otherwise allocate one
+    // base64-encoded `ParsedFile` per part; the request body cap bounds
+    // the input size but not the output amplification.
+    let file_cap = crate::serve::file_upload::max_upload_files();
     let mut files = Vec::new();
 
     let boundary_line = format!("--{}", boundary);
-    let parts: Vec<&str> = body.split(&boundary_line).collect();
 
-    for part in parts {
+    // Iterate over `body.split(...)` directly instead of materialising the
+    // full `Vec<&str>` of parts up front: a hostile body shouldn't get to
+    // pre-allocate a parts vector either.
+    for part in body.split(&boundary_line) {
+        if files.len() >= file_cap {
+            break;
+        }
+
         let part = part.trim();
         if part.is_empty() || part == "--" {
             continue;
@@ -946,5 +958,78 @@ mod tests {
         let (_, pairs) = parse_upload_url_options(Some(&v));
         let url = append_query("/photos/42/img", &pairs);
         assert_eq!(url, "/photos/42/img?w=800&h=600&gray=1&fmt=webp&q=80");
+    }
+
+    // ---- parse_multipart_data (SEC-090) ----
+
+    /// Build a multipart body containing `n` tiny file parts. Each part
+    /// carries a 1-byte payload — what an attacker would actually send to
+    /// maximise per-part allocations against the worker.
+    fn multipart_with_n_files(boundary: &str, n: usize) -> String {
+        let mut s = String::new();
+        for i in 0..n {
+            s.push_str(&format!("--{}\r\n", boundary));
+            s.push_str(&format!(
+                "Content-Disposition: form-data; name=\"f{}\"; filename=\"a{}.bin\"\r\n",
+                i, i
+            ));
+            s.push_str("Content-Type: application/octet-stream\r\n\r\n");
+            s.push('X');
+            s.push_str("\r\n");
+        }
+        s.push_str(&format!("--{}--\r\n", boundary));
+        s
+    }
+
+    #[test]
+    fn parse_multipart_data_caps_at_max_upload_files() {
+        // SEC-090: a body packed with > cap parts must allocate at most
+        // `max_upload_files()` ParsedFile entries — the server-side parser
+        // already enforces this; the helper used to ignore it.
+        let cap = crate::serve::file_upload::max_upload_files();
+        let boundary = "----testbnd";
+        let body = multipart_with_n_files(boundary, cap + 5);
+        let files = parse_multipart_data(&body, boundary).unwrap();
+        assert!(
+            files.len() <= cap,
+            "expected at most {} files past the cap, got {}",
+            cap,
+            files.len()
+        );
+        assert_eq!(files.len(), cap, "should hit the cap exactly");
+    }
+
+    #[test]
+    fn parse_multipart_data_under_cap_returns_all_files() {
+        // Ensure the cap doesn't regress the common case.
+        let boundary = "----testbnd";
+        let body = multipart_with_n_files(boundary, 3);
+        let files = parse_multipart_data(&body, boundary).unwrap();
+        assert_eq!(files.len(), 3);
+        for (i, f) in files.iter().enumerate() {
+            assert_eq!(f.field_name, format!("f{}", i));
+            assert!(f.filename.starts_with(&format!("a{}", i)));
+        }
+    }
+
+    #[test]
+    fn parse_multipart_data_skips_form_field_parts_with_no_filename() {
+        // Plain form fields (no filename) are not files — they shouldn't
+        // count toward the cap or appear in the result either way.
+        let boundary = "----testbnd";
+        let body = format!(
+            "--{b}\r\n\
+             Content-Disposition: form-data; name=\"text\"\r\n\r\n\
+             hello\r\n\
+             --{b}\r\n\
+             Content-Disposition: form-data; name=\"file\"; filename=\"x.bin\"\r\n\
+             Content-Type: application/octet-stream\r\n\r\n\
+             A\r\n\
+             --{b}--\r\n",
+            b = boundary
+        );
+        let files = parse_multipart_data(&body, boundary).unwrap();
+        assert_eq!(files.len(), 1, "plain form field must not produce a file");
+        assert_eq!(files[0].field_name, "file");
     }
 }

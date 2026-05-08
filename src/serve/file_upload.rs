@@ -11,12 +11,17 @@ use crate::serve::UploadedFile;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// SEC-031: maximum number of files accepted per multipart request.
+/// SEC-031 / SEC-090: maximum number of files accepted per multipart request.
 /// A single 8 MiB body packed with ~1-byte parts could otherwise spawn
 /// hundreds of thousands of `UploadedFile` allocations (~200 bytes each
 /// once the Soli `file_map` is built) and OOM the worker before the
 /// handler ever runs. Operator override: `SOLI_MAX_UPLOAD_FILES`.
-fn max_upload_files() -> usize {
+///
+/// Pub so the Soli-level multipart helper in
+/// `src/interpreter/builtins/uploads.rs::parse_multipart_data` reads the
+/// same cap as the server-side parser. Without this the upload builtin
+/// would allocate per-file values for an unbounded number of parts.
+pub(crate) fn max_upload_files() -> usize {
     static CAP: OnceLock<usize> = OnceLock::new();
     *CAP.get_or_init(|| {
         std::env::var("SOLI_MAX_UPLOAD_FILES")
