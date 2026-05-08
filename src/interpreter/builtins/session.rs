@@ -584,11 +584,22 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
 /// browser drops the cookie on the same schedule the server expires the
 /// stored session. The previous hardcoded 86400 silently kept cookies
 /// alive for 24h regardless of the operator's TTL setting.
+///
+/// SEC-079: when the configured `SameSite` is `None`, the `Secure` flag is
+/// forced on regardless of the caller-detected request scheme. Browsers
+/// reject `SameSite=None` cookies that lack `Secure`, so the previous
+/// behaviour silently emitted a cookie the browser would refuse — leaving
+/// session-bearing cross-site flows broken under HTTP and tempting
+/// operators into insecure workarounds. Self-correcting (always Secure on
+/// SameSite=None) is preferable to hard-failing startup; the docs reflect
+/// the implicit pairing.
 pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
     let cfg = SESSION_CONFIG.read().ok();
     let max_age = cfg.as_ref().map(|c| c.ttl).unwrap_or(24 * 60 * 60);
     let same_site = cfg.as_ref().map(|c| c.same_site).unwrap_or(SameSite::Lax);
     let host_prefix = cfg.as_ref().map(|c| c.host_prefix).unwrap_or(false);
+    // SEC-079: SameSite=None requires Secure per browser policy.
+    let secure = secure || same_site == SameSite::None;
     let secure_flag = if secure { "; Secure" } else { "" };
     let cookie_name = if host_prefix && secure {
         "__Host-session_id"
@@ -1209,6 +1220,79 @@ mod tests {
         // Restore.
         let mut cfg = SESSION_CONFIG.write().unwrap();
         *cfg = prev;
+    }
+
+    /// SEC-079: SameSite=Lax / Strict cookies follow the caller's request-
+    /// scheme detection (no Secure on plain HTTP); SameSite=None always
+    /// carries Secure even when the caller passes `secure=false`, because
+    /// browsers reject `SameSite=None` without `Secure`.
+    #[test]
+    fn samesite_lax_omits_secure_on_plain_http() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prev = SESSION_CONFIG.read().unwrap().clone();
+        {
+            let mut cfg = SESSION_CONFIG.write().unwrap();
+            cfg.same_site = SameSite::Lax;
+        }
+        let cookie = create_session_cookie("abc", false);
+        assert!(cookie.contains("SameSite=Lax"), "{}", cookie);
+        assert!(!cookie.contains("Secure"), "{}", cookie);
+        *SESSION_CONFIG.write().unwrap() = prev;
+    }
+
+    #[test]
+    fn samesite_strict_omits_secure_on_plain_http() {
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prev = SESSION_CONFIG.read().unwrap().clone();
+        {
+            let mut cfg = SESSION_CONFIG.write().unwrap();
+            cfg.same_site = SameSite::Strict;
+        }
+        let cookie = create_session_cookie("abc", false);
+        assert!(cookie.contains("SameSite=Strict"), "{}", cookie);
+        assert!(!cookie.contains("Secure"), "{}", cookie);
+        *SESSION_CONFIG.write().unwrap() = prev;
+    }
+
+    #[test]
+    fn samesite_none_forces_secure_even_on_plain_http() {
+        // SEC-079: a `SameSite=None` cookie without `Secure` is rejected by
+        // every modern browser; emit Secure regardless of the caller's
+        // scheme detection so the cookie stays useful.
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prev = SESSION_CONFIG.read().unwrap().clone();
+        {
+            let mut cfg = SESSION_CONFIG.write().unwrap();
+            cfg.same_site = SameSite::None;
+        }
+        let cookie = create_session_cookie("abc", false);
+        assert!(cookie.contains("SameSite=None"), "{}", cookie);
+        assert!(
+            cookie.contains("; Secure"),
+            "SameSite=None must always carry Secure: {}",
+            cookie
+        );
+        *SESSION_CONFIG.write().unwrap() = prev;
+    }
+
+    #[test]
+    fn samesite_none_secure_idempotent_when_caller_already_secure() {
+        // The auto-Secure for SameSite=None must not double up the flag
+        // when the caller already detected HTTPS.
+        let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let prev = SESSION_CONFIG.read().unwrap().clone();
+        {
+            let mut cfg = SESSION_CONFIG.write().unwrap();
+            cfg.same_site = SameSite::None;
+        }
+        let cookie = create_session_cookie("abc", true);
+        assert_eq!(
+            cookie.matches("Secure").count(),
+            1,
+            "Secure must appear exactly once: {}",
+            cookie
+        );
+        *SESSION_CONFIG.write().unwrap() = prev;
     }
 
     /// SEC-038a: configure_session must swap the live store at runtime.

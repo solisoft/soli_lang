@@ -168,7 +168,7 @@ Sessions are stored in-memory by default. This means:
 
 Session cookies are automatically configured with:
 - `HttpOnly`: Prevents JavaScript access
-- `SameSite=Lax`: CSRF protection (override with `SOLI_SESSION_SAMESITE=Strict|None`)
+- `SameSite=Lax`: CSRF protection (override with `SOLI_SESSION_SAMESITE=Strict|None`). When set to `None`, Soli automatically forces `Secure` on the cookie regardless of the detected request scheme — browsers reject `SameSite=None` without `Secure`, so the pairing is non-optional.
 - `Path=/`: Available on all paths
 - `Max-Age`: tracks `SOLI_SESSION_TTL` (default `86400` — 24h)
 - `Secure`: set when serving over HTTPS

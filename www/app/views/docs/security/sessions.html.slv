@@ -153,7 +153,7 @@ end</code></pre>
                     <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_SAMESITE</code></td><td class="py-3 px-4"><code>Lax</code>, <code>Strict</code>, or <code>None</code>. <code>Strict</code> blocks the cookie on any cross-site navigation; <code>None</code> requires <code>Secure</code>.</td><td class="py-3 px-4"><code>Lax</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SESSION_SAMESITE</code></td><td class="py-3 px-4"><code>Lax</code>, <code>Strict</code>, or <code>None</code>. <code>Strict</code> blocks the cookie on any cross-site navigation; <code>None</code> automatically pairs with <code>Secure</code> &mdash; Soli forces the flag on regardless of the detected request scheme so browsers don't silently drop the cookie.</td><td class="py-3 px-4"><code>Lax</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_SESSION_HOST_PREFIX</code></td><td class="py-3 px-4">Set to <code>1</code> to emit the cookie as <code>__Host-session_id</code>. Browsers only accept <code>__Host-</code> cookies that are <code>Secure</code> and scoped to <code>Path=/</code> with no <code>Domain</code> &mdash; this prevents subdomain takeover from setting an attacker-controlled session cookie. Applied only when <code>Secure</code> is also active.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>

@@ -65,7 +65,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_SESSION_DRIVER` | Session backend: `in_memory`, `disk`, `solidb`, or `solikv`. | `in_memory` |
 | `SOLI_SESSION_PATH` | Directory for disk-backed session files. | `./sessions` |
 | `SOLI_SESSION_TTL` | Session timeout in seconds. | `86400` |
-| `SOLI_SESSION_SAMESITE` | `SameSite` attribute on the session cookie: `Lax`, `Strict`, or `None`. `Strict` blocks the cookie on any cross-site navigation; `None` requires `Secure` and is intended for cross-site embeds. Unknown values fall back to `Lax`. | `Lax` |
+| `SOLI_SESSION_SAMESITE` | `SameSite` attribute on the session cookie: `Lax`, `Strict`, or `None`. `Strict` blocks the cookie on any cross-site navigation; `None` is intended for cross-site embeds and **automatically pairs with `Secure`** — Soli forces the flag on regardless of the detected request scheme so browsers don't silently drop the cookie. Unknown values fall back to `Lax`. | `Lax` |
 | `SOLI_SESSION_HOST_PREFIX` | Set to `1`/`true`/`yes` to emit the cookie under the `__Host-` prefix (`__Host-session_id`). The browser only accepts `__Host-` cookies that are `Secure`, have `Path=/`, and carry no `Domain` attribute, which prevents subdomain takeover from setting an attacker-controlled session cookie. The prefix is only applied when `Secure` is also active (i.e. behind HTTPS); otherwise the plain `session_id` name is used. | unset |
 | `SOLI_SOLIDB_HOST` | SolidB host for the `solidb` session driver. Must be `https://` or a loopback (`localhost`, `127.0.0.1`, `::1`) — plaintext HTTP to a remote SolidB is rejected. | driver default |
 | `SOLI_SOLIDB_DATABASE` | SolidB database for sessions. | driver default |
