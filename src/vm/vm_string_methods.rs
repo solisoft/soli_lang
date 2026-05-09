@@ -181,6 +181,22 @@ impl Vm {
                     Err(RuntimeError::type_error("ord on empty string", span))
                 }
             }
+            "camelize" => {
+                if args.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let upper = match args.first() {
+                    None => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(_) => {
+                        return Err(RuntimeError::type_error(
+                            "camelize expects a boolean argument (true for PascalCase)",
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::String(camelize_string(s, upper)))
+            }
 
             // --- One-arg methods ---
             "contains" => {
@@ -713,6 +729,43 @@ fn has_regex_metacharacters(pattern: &str) -> bool {
                 | b'|'
         )
     })
+}
+
+/// Convert `snake_case` / `kebab-case` input to camel case. With `upper=false`
+/// the first emitted char is lowercased (`fooBar`); with `upper=true` it is
+/// uppercased (`FooBar`). Leading and consecutive separators are collapsed,
+/// internal capitals are preserved (so already-camelized input is idempotent).
+fn camelize_string(s: &str, upper: bool) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut emitted_first = false;
+    let mut capitalize_next = false;
+    for ch in s.chars() {
+        if ch == '_' || ch == '-' {
+            capitalize_next = true;
+            continue;
+        }
+        if !emitted_first {
+            if upper {
+                for u in ch.to_uppercase() {
+                    out.push(u);
+                }
+            } else {
+                for l in ch.to_lowercase() {
+                    out.push(l);
+                }
+            }
+            emitted_first = true;
+            capitalize_next = false;
+        } else if capitalize_next {
+            for u in ch.to_uppercase() {
+                out.push(u);
+            }
+            capitalize_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// String replacen without regex.

@@ -364,7 +364,8 @@ print(s.ends_with("!"));      # true
 
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
-camel_case = "hello_world".camel_case(); # "helloWorld"
+camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
+camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify();    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 
 # String interpolation

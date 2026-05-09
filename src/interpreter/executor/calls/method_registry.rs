@@ -586,6 +586,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "int",
     },
     MethodDef {
+        name: "camelize",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "capitalize",
         zero_arg: true,
         ret: "string",
