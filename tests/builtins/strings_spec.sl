@@ -233,6 +233,45 @@ describe("String.swapcase", fn() {
     });
 });
 
+describe("String.camelize", fn() {
+    test("converts snake_case to camelCase by default", fn() {
+        assert_eq("foo_bar".camelize(), "fooBar");
+        assert_eq("foo_bar_baz".camelize(), "fooBarBaz");
+    });
+    test("converts kebab-case to camelCase", fn() {
+        assert_eq("foo-bar".camelize(), "fooBar");
+        assert_eq("foo-bar-baz".camelize(), "fooBarBaz");
+    });
+    test("camelize(true) returns PascalCase", fn() {
+        assert_eq("foo_bar".camelize(true), "FooBar");
+        assert_eq("foo-bar-baz".camelize(true), "FooBarBaz");
+    });
+    test("idempotent on already-camelized input", fn() {
+        assert_eq("fooBar".camelize(), "fooBar");
+        assert_eq("FooBar".camelize(true), "FooBar");
+    });
+    test("lowercases first char in default mode", fn() {
+        assert_eq("FooBar".camelize(), "fooBar");
+    });
+    test("empty string returns empty", fn() {
+        assert_eq("".camelize(), "");
+        assert_eq("".camelize(true), "");
+    });
+    test("single word", fn() {
+        assert_eq("foo".camelize(), "foo");
+        assert_eq("foo".camelize(true), "Foo");
+    });
+    test("handles leading, trailing, and consecutive separators", fn() {
+        assert_eq("_foo_bar".camelize(), "fooBar");
+        assert_eq("foo_bar_".camelize(), "fooBar");
+        assert_eq("foo__bar".camelize(), "fooBar");
+        assert_eq("--foo--bar--".camelize(true), "FooBar");
+    });
+    test("mixes snake and kebab separators", fn() {
+        assert_eq("foo_bar-baz".camelize(), "fooBarBaz");
+    });
+});
+
 describe("String.insert", fn() {
     test("inserts string at index", fn() {
         assert_eq("hello".insert(0, "X"), "Xhello");

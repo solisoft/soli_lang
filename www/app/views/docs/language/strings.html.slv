@@ -377,6 +377,25 @@ print(text)  # "HELLO"</code></pre>
                 </div>
             </section>
 
+            <!-- Camelize -->
+            <section id="method-camelize" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-camelize" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.camelize</code> / <code class="text-lg font-mono text-indigo-400">.camelize(true)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Converts <code class="text-indigo-300">snake_case</code> or <code class="text-indigo-300">kebab-case</code> input to camel case. Default is lower-camel (<code class="text-indigo-300">fooBar</code>); pass <code class="text-indigo-300">true</code> for upper-camel / Pascal case (<code class="text-indigo-300">FooBar</code>). Leading and consecutive separators are collapsed, and internal capitals are preserved so already-camelized input is idempotent.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"foo_bar".camelize          # "fooBar"
+"foo-bar-baz".camelize      # "fooBarBaz"
+"foo_bar".camelize(true)    # "FooBar"   (PascalCase)
+"FooBar".camelize           # "fooBar"   (lowercases first char)
+"fooBar".camelize           # "fooBar"   (idempotent)
+"_foo__bar_".camelize       # "fooBar"   (collapses leading/consecutive separators)</code></pre>
+                </div>
+            </section>
+
             <!-- Search -->
             <section id="method-contains" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">

@@ -8,6 +8,43 @@ use crate::span::Span;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Convert `snake_case` / `kebab-case` input to camel case. With `upper=false`
+/// the first emitted char is lowercased (`fooBar`); with `upper=true` it is
+/// uppercased (`FooBar`). Leading and consecutive separators are collapsed,
+/// internal capitals are preserved (so already-camelized input is idempotent).
+pub(crate) fn camelize_string(s: &str, upper: bool) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut emitted_first = false;
+    let mut capitalize_next = false;
+    for ch in s.chars() {
+        if ch == '_' || ch == '-' {
+            capitalize_next = true;
+            continue;
+        }
+        if !emitted_first {
+            if upper {
+                for u in ch.to_uppercase() {
+                    out.push(u);
+                }
+            } else {
+                for l in ch.to_lowercase() {
+                    out.push(l);
+                }
+            }
+            emitted_first = true;
+            capitalize_next = false;
+        } else if capitalize_next {
+            for u in ch.to_uppercase() {
+                out.push(u);
+            }
+            capitalize_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// URL-safe slug: lowercase, ASCII-fold common Latin accents, collapse any
 /// run of non-`[a-z0-9]` chars to a single `-`, trim leading/trailing `-`.
 pub(crate) fn slugify_string(s: &str) -> String {
@@ -114,6 +151,22 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
                 Some(Ok(Value::String(slugify_string(s))))
+            }
+            "camelize" => {
+                if arguments.len() > 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let upper = match arguments.first() {
+                    None => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(_) => {
+                        return Some(Err(RuntimeError::type_error(
+                            "camelize expects a boolean argument (true for PascalCase)",
+                            span,
+                        )))
+                    }
+                };
+                Some(Ok(Value::String(camelize_string(s, upper))))
             }
             "empty?" => {
                 if !arguments.is_empty() {
@@ -1217,7 +1270,64 @@ impl Interpreter {
 
 #[cfg(test)]
 mod tests {
-    use super::slugify_string;
+    use super::{camelize_string, slugify_string};
+
+    #[test]
+    fn camelize_snake_case_lower() {
+        assert_eq!(camelize_string("foo_bar", false), "fooBar");
+        assert_eq!(camelize_string("foo_bar_baz", false), "fooBarBaz");
+    }
+
+    #[test]
+    fn camelize_snake_case_upper() {
+        assert_eq!(camelize_string("foo_bar", true), "FooBar");
+        assert_eq!(camelize_string("foo_bar_baz", true), "FooBarBaz");
+    }
+
+    #[test]
+    fn camelize_kebab_case() {
+        assert_eq!(camelize_string("foo-bar", false), "fooBar");
+        assert_eq!(camelize_string("foo-bar", true), "FooBar");
+        assert_eq!(camelize_string("a-b-c-d", false), "aBCD");
+    }
+
+    #[test]
+    fn camelize_mixed_separators() {
+        assert_eq!(camelize_string("foo_bar-baz", false), "fooBarBaz");
+    }
+
+    #[test]
+    fn camelize_idempotent_on_camelcase() {
+        assert_eq!(camelize_string("fooBar", false), "fooBar");
+        assert_eq!(camelize_string("FooBar", true), "FooBar");
+    }
+
+    #[test]
+    fn camelize_lowercases_first_char_in_lower_mode() {
+        assert_eq!(camelize_string("FooBar", false), "fooBar");
+    }
+
+    #[test]
+    fn camelize_uppercases_first_char_in_upper_mode() {
+        assert_eq!(camelize_string("fooBar", true), "FooBar");
+    }
+
+    #[test]
+    fn camelize_empty_and_single_word() {
+        assert_eq!(camelize_string("", false), "");
+        assert_eq!(camelize_string("", true), "");
+        assert_eq!(camelize_string("foo", false), "foo");
+        assert_eq!(camelize_string("foo", true), "Foo");
+    }
+
+    #[test]
+    fn camelize_handles_leading_trailing_consecutive_separators() {
+        assert_eq!(camelize_string("_foo_bar", false), "fooBar");
+        assert_eq!(camelize_string("foo_bar_", false), "fooBar");
+        assert_eq!(camelize_string("foo__bar", false), "fooBar");
+        assert_eq!(camelize_string("--foo--bar--", true), "FooBar");
+        assert_eq!(camelize_string("___", false), "");
+    }
 
     #[test]
     fn slugify_basic() {
