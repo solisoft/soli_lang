@@ -249,6 +249,54 @@ fn metadata_policy(path: &Path, follow_symlinks: bool) -> std::io::Result<std::f
     }
 }
 
+/// Split `pattern_str` into the directory portion the caller should
+/// resolve and read, and the basename portion to match against each
+/// entry. An empty parent (relative pattern like `*.md`) becomes `.`
+/// so the resolver lands at the cwd / jail root rather than failing on
+/// `read_dir("")`.
+fn split_glob_pattern(pattern_str: &str) -> (String, String) {
+    let path = Path::new(pattern_str);
+    let dir_str = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_string_lossy().to_string(),
+        _ => ".".to_string(),
+    };
+    let basename = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    (dir_str, basename)
+}
+
+/// Single-level glob. The caller supplies the resolver so the same
+/// helper handles both the jailed `File.glob` and the trusted
+/// `Trusted.glob` paths. BUG-002: the previous implementation built a
+/// `Pattern` from the *full* user-supplied string and matched it
+/// against bare basenames, which never succeeded for any pattern with
+/// a `/`. Splitting the pattern first and matching only the basename
+/// portion fixes that and makes relative patterns work too.
+fn glob_paths<R>(pattern_str: &str, resolve: R) -> Result<Vec<PathBuf>, String>
+where
+    R: Fn(&str) -> Result<PathBuf, String>,
+{
+    let (dir_str, basename_pattern_str) = split_glob_pattern(pattern_str);
+    let basename_pattern =
+        Pattern::new(&basename_pattern_str).map_err(|e| format!("invalid pattern: {}", e))?;
+    let resolved_dir = resolve(&dir_str)?;
+    let entries =
+        fs::read_dir(&resolved_dir).map_err(|e| format!("failed to read directory: {}", e))?;
+    Ok(entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            basename_pattern.matches(&name)
+        })
+        .collect())
+}
+
 /// Register all file I/O built-in functions.
 pub fn register_file_builtins(env: &mut Environment) {
     define_standalone_file_builtins(env, JAILED);
@@ -782,27 +830,10 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                         Value::String(s) => s.clone(),
                         _ => return Err(format!("{}.glob() expects string pattern", class_name)),
                     };
-                    let pattern = Pattern::new(&pattern_str)
-                        .map_err(|e| format!("{}.glob() invalid pattern: {}", class_name, e))?;
-                    let path = Path::new(&pattern_str);
-                    let dir_str = path
-                        .parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let resolved_dir = resolve(&dir_str, "glob")?;
-                    let entries = fs::read_dir(&resolved_dir).map_err(|e| {
-                        format!("{}.glob() failed to read directory: {}", class_name, e)
-                    })?;
-                    let matches: Vec<Value> = entries
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .filter(|p| {
-                            let name = p
-                                .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_default();
-                            pattern.matches(&name)
-                        })
+                    let paths = glob_paths(&pattern_str, |dir| resolve(dir, "glob"))
+                        .map_err(|e| format!("{}.glob() {}", class_name, e))?;
+                    let matches: Vec<Value> = paths
+                        .into_iter()
                         .map(|p| Value::String(p.to_string_lossy().to_string()))
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(matches))))
@@ -1050,6 +1081,121 @@ mod tests {
             .read_to_string(&mut s)
             .unwrap();
         assert_eq!(s, "hello");
+    }
+
+    // ----- BUG-002: glob basename matching ---------------------------------
+
+    #[test]
+    fn split_glob_pattern_extracts_dir_and_basename() {
+        assert_eq!(
+            split_glob_pattern("/abs/path/*"),
+            ("/abs/path".to_string(), "*".to_string())
+        );
+        assert_eq!(
+            split_glob_pattern("/abs/path/*.md"),
+            ("/abs/path".to_string(), "*.md".to_string())
+        );
+        assert_eq!(
+            split_glob_pattern("subdir/*.md"),
+            ("subdir".to_string(), "*.md".to_string())
+        );
+    }
+
+    #[test]
+    fn split_glob_pattern_uses_dot_for_relative_pattern_without_parent() {
+        // BUG-002 repro: parent() of `*.md` is `Some("")`, which used
+        // to flow through to `read_dir("")` and silently fail.
+        assert_eq!(
+            split_glob_pattern("*.md"),
+            (".".to_string(), "*.md".to_string())
+        );
+        assert_eq!(split_glob_pattern("*"), (".".to_string(), "*".to_string()));
+    }
+
+    #[test]
+    fn glob_paths_absolute_pattern_with_star_returns_children() {
+        // Direct repro of the BUG-002 scenario: an absolute pattern
+        // ending in `/*` must enumerate the directory's children.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let pattern = format!("{}/*", dir.path().display());
+        let paths = glob_paths(&pattern, |d| Ok(PathBuf::from(d))).unwrap();
+        let mut names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.md", "b.txt", "sub"]);
+    }
+
+    #[test]
+    fn glob_paths_absolute_pattern_filters_by_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "").unwrap();
+        std::fs::write(dir.path().join("b.md"), "").unwrap();
+        std::fs::write(dir.path().join("c.txt"), "").unwrap();
+        let pattern = format!("{}/*.md", dir.path().display());
+        let paths = glob_paths(&pattern, |d| Ok(PathBuf::from(d))).unwrap();
+        let mut names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.md", "b.md"]);
+    }
+
+    #[test]
+    fn glob_paths_relative_pattern_resolves_under_jail() {
+        // Covers the `File.glob` (jailed) class. A relative pattern
+        // `*.md` lands at the jail root via `split_glob_pattern`'s
+        // empty-parent → "." substitution.
+        let dir = tempfile::tempdir().unwrap();
+        let jail = dir.path().to_path_buf();
+        std::fs::write(jail.join("a.md"), "").unwrap();
+        std::fs::write(jail.join("b.md"), "").unwrap();
+        std::fs::write(jail.join("c.txt"), "").unwrap();
+        let paths = glob_paths("*.md", |d| resolve_with_jail(d, "glob", Some(&jail))).unwrap();
+        let mut names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.md", "b.md"]);
+    }
+
+    #[test]
+    fn glob_paths_handles_deeply_nested_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a/b/c");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("file.txt"), "").unwrap();
+        std::fs::write(nested.join("note.md"), "").unwrap();
+        let pattern = format!("{}/*.md", nested.display());
+        let paths = glob_paths(&pattern, |d| Ok(PathBuf::from(d))).unwrap();
+        let names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["note.md"]);
+    }
+
+    #[test]
+    fn glob_paths_uses_trusted_resolver_for_absolute_pattern() {
+        // Covers the `Trusted.glob` (unjailed) class via the same
+        // resolver the production registration uses.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alpha.txt"), "").unwrap();
+        std::fs::write(dir.path().join("beta.txt"), "").unwrap();
+        let pattern = format!("{}/*", dir.path().display());
+        let paths = glob_paths(&pattern, |d| trusted_resolver(d, "glob")).unwrap();
+        let mut names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha.txt", "beta.txt"]);
     }
 
     #[cfg(unix)]
