@@ -25,7 +25,7 @@ Identify whether the fix is:
 - **(B) uncommitted** — present in working tree / index.
 - **(C) missing** — neither.
 
-If **(C) missing**, stop and report. Do not move the file. Do not commit.
+If **(C) missing**, do not stop here. The right outcome may still be to close the ticket — e.g. the report turned out to be invalid/won't-fix, or the work is being deferred via new follow-up tickets in `tasks/todo/`. Continue to Step 3 and let the verdict drive the decision.
 
 ## Step 3 — Code review
 
@@ -38,7 +38,7 @@ Read the current state of the files referenced in the task's Location section. F
 5. **Run static checks** if practical: `cargo clippy --quiet -- -D warnings` and `cargo fmt --check` for Rust changes. If they fail, report and stop — do not commit broken code.
 
 Report findings as a short markdown bullet list to the user, structured as:
-- **Verdict:** Approved / Approved-with-notes / Rejected
+- **Verdict:** Approved / Approved-with-notes / Approved-no-fix-needed / Approved-with-followups / Rejected
 - **Coverage:** what was checked
 - **Findings:** issues found (each: severity, file:line, what's wrong, suggested follow-up)
 
@@ -46,6 +46,8 @@ Report findings as a short markdown bullet list to the user, structured as:
 
 - **Rejected** — Do NOT move the file. Do NOT commit. Tell the user what's missing and stop.
 - **Approved-with-notes** — Ask the user whether to proceed (notes are non-blocking). If yes, continue to Step 5. If no, stop.
+- **Approved-no-fix-needed** — Review concluded the report is invalid, describes intended behavior, or is won't-fix. Continue to Step 5; the commit message must record the reasoning.
+- **Approved-with-followups** — The work is deferred. Before Step 5, create one `tasks/todo/<TICKET>.md` file per follow-up (use the next free SEC-/TICKET- number; mirror the original's structure: Severity, Location, Issue, proposed Fix). Continue to Step 5; the new files will be staged with the move.
 - **Approved** — Continue to Step 5.
 
 ## Step 5 — Move the task file
@@ -58,12 +60,19 @@ git mv tasks/review/<filename>.md tasks/done/<filename>.md
 
 ## Step 6 — Commit
 
-Match the repo's commit style (look at recent `git log` messages — usually `<type>(<scope>): <subject>` or `security: ...`). Use a HEREDOC so the message formats correctly. Examples:
+Match the repo's commit style (look at recent `git log` messages — usually `<type>(<scope>): <subject>` or `security: ...`). Use a HEREDOC so the message formats correctly.
 
-- For a security fix: `fix(security): <SEC-NNN> <short title from the task md>`
-- For a non-security task: use the type that matches the repo (`fix:`, `feat:`, `chore:`, etc.)
+Stage everything that belongs to this task and commit it together:
+- the renamed task file (already tracked by `git mv`)
+- any uncommitted fix in the working tree (case B from Step 2)
+- any new `tasks/todo/<TICKET>.md` files created for follow-ups
 
-If the working tree has uncommitted fix changes (case B from Step 2), stage them along with the moved file and commit together. If the fix is already committed (case A), commit just the file move.
+If the fix was already committed in a prior commit (case A), or the verdict is **Approved-no-fix-needed** with no follow-ups, the commit will contain just the rename — that is a valid, non-empty change. Do not bail out as "nothing to commit" and **never** add `--allow-empty`. If `git status` shows no staged changes after `git add`, it means `git mv` never ran or was undone — investigate, don't paper over it.
+
+Pick a commit subject that matches the verdict:
+- **Approved** / **Approved-with-notes** — `fix(...)` / `feat(...)` style; subject describes the fix.
+- **Approved-no-fix-needed** — `chore(<scope>): close <TICKET> (won't fix)` or `(invalid)`; the body must explain the decision.
+- **Approved-with-followups** — `chore(<scope>): close <TICKET> (deferred)`; the body must list the new `tasks/todo/...` files.
 
 ```bash
 git commit -m "$(cat <<'EOF'
