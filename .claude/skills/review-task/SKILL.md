@@ -32,10 +32,14 @@ If **(C) missing**, do not stop here. The right outcome may still be to close th
 Read the current state of the files referenced in the task's Location section. For each location:
 
 1. **Verify the change addresses the described issue.** The proposed Fix in the task md is a *suggestion* — accept any equivalent implementation, but reject changes that paper over the issue (e.g. catching an exception instead of fixing the root cause).
-2. **Check completeness.** If the issue lists multiple call sites (e.g. SEC-007 lists every `ureq::*` call), verify every one was patched. Grep for similar patterns elsewhere — e.g. for an SSRF check, search for other outbound HTTP call sites that may have the same flaw.
+2. **Check completeness.** If the issue lists multiple call sites (e.g. SEC-007 lists every `ureq::*` call), verify every one was patched. Do NOT search for similar patterns elsewhere — only verify what's explicitly described in the task.
 3. **Look for regressions.** Read the diff for the touched files in full. Flag: new unsafe blocks, new error handling that swallows errors silently, broadened privileges, removed validation, weaker types.
-4. **Check tests.** If `tests/` has a relevant existing test, verify it still passes (`cargo test <relevant>` if cheap, otherwise note that tests should be run). If the fix is non-trivial and there is no test, flag this as a review concern but do not block on it unless the issue is Critical/High.
-5. **Run static checks** if practical: `cargo clippy --quiet -- -D warnings` and `cargo fmt --check` for Rust changes. If they fail, report and stop — do not commit broken code.
+4. **Check docs (user-facing changes).** If the change adds or alters a builtin function, method, language feature, or config flag, verify all three docs surfaces are updated together:
+    - `www/docs/*.md`
+    - `www/app/views/docs/**/*.html.slv`
+    - `www/public/js/search-index.json` — there must be an `entries[]` record for the new/changed API. Missing this entry is a blocking review finding: the docs page renders but search can't find it. Reject (or Approved-with-followups + new `tasks/todo/<TICKET>.md` to backfill the index) if it's missing.
+5. **Check tests.** If `tests/` has a relevant existing test, verify it still passes (`cargo test <relevant>` if cheap, otherwise note that tests should be run). If the fix is non-trivial and there is no test, flag this as a review concern but do not block on it unless the issue is Critical/High.
+6. **Run static checks** if practical: `cargo clippy --quiet -- -D warnings` and `cargo fmt --check` for Rust changes. If they fail, report and stop — do not commit broken code.
 
 Report findings as a short markdown bullet list to the user, structured as:
 - **Verdict:** Approved / Approved-with-notes / Approved-no-fix-needed / Approved-with-followups / Rejected

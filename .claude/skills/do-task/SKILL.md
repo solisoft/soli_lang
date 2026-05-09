@@ -33,9 +33,12 @@ git mv tasks/todo/<filename>.md tasks/inprogress/<filename>.md
 
 1. Read every file referenced in the task's Location section in full before editing.
 2. Apply the proposed Fix, or an equivalent implementation that addresses the root cause. The Fix in the task md is a *suggestion* — deviate when there's a better approach, but never paper over the issue (e.g. swallowing an error instead of fixing it).
-3. **Cover every call site.** If the issue lists several locations, patch all of them. Grep for the same pattern elsewhere in the codebase and patch any other matches.
+3. **Cover every call site listed in the task.** If the issue lists several locations, patch all of them. Do NOT search for similar patterns elsewhere — only fix what's explicitly described in the task.
 4. **Stay focused.** Don't refactor unrelated code, rename symbols, or fix neighboring issues — those belong in their own task. If you find a new issue, drop a `tasks/todo/<NEW>.md` for it instead of expanding scope.
-5. **Docs.** If the change is user-facing (new builtin, config flag, behavior change), update both `www/docs/*.md` AND the matching `www/app/views/docs/**/*.html.slv` in the same change (per the project's documentation policy in `CLAUDE.md`).
+5. **Docs.** If the change is user-facing (new builtin, config flag, behavior change), update **all three** docs surfaces in the same change (per the project's documentation policy in `CLAUDE.md`):
+    - `www/docs/*.md` — source markdown.
+    - `www/app/views/docs/**/*.html.slv` — the matching rendered view.
+    - `www/public/js/search-index.json` — the docs-site search index. Add or update an `entries[]` record for the new builtin, method, or language feature so users can find it via the search box. Mirror the format of existing entries (`title`, `type`, `category`, `path`, `signature`, `description`, `keywords`). Missing entries here ship as silent regressions — the API is documented but unsearchable.
 
 ## Step 5 — Verify
 

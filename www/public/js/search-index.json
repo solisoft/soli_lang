@@ -3937,6 +3937,24 @@
       ]
     },
     {
+      "title": ".camelize()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.camelize(upper?)",
+      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
+      "keywords": [
+        "string",
+        "camelize",
+        "camelcase",
+        "pascalcase",
+        "snake_case",
+        "kebab",
+        "case",
+        "convert"
+      ]
+    },
+    {
       "title": ".insert()",
       "type": "method",
       "category": "String",
