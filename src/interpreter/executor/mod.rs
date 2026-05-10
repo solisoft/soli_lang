@@ -462,10 +462,13 @@ impl Interpreter {
                 let captured_env = self.environment.borrow().get_all_variables();
                 let env_json = self.serialize_environment(&captured_env);
 
-                // Get current file path for error location
+                // Get current file path for error location.
+                // Prefer the top stack frame's file (e.g., a helper's source
+                // path) over `current_source_path`, which is the entry
+                // script and would otherwise mislabel errors thrown from
+                // helpers/imported functions with the caller's filename.
                 let file_path = self
-                    .current_source_path
-                    .as_ref()
+                    .current_file_path()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string());
 
@@ -840,6 +843,78 @@ do_stuff()
 "#;
         let result = run(src);
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod helper_error_path_tests {
+    use super::*;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+
+    /// Regression test: an error thrown from inside a helper function (loaded
+    /// from a different file than the entry script) must report the helper's
+    /// path, not the entry script's path. Prior to the fix, `execute_block`
+    /// derived the file_path from `current_source_path` (the entry file),
+    /// which mislabeled errors raised inside `if`/`while`/block constructs
+    /// nested in a helper as belonging to the caller's file.
+    #[test]
+    fn error_in_helper_block_reports_helper_path_not_entry_path() {
+        // A helper with the offending reference inside an `if` block — that
+        // block is dispatched through `execute_block`, the path with the bug.
+        let helper_src = "fn buggy_helper { if true { return missing_var; } }";
+        let helper_path = "/fake/app/helpers/buggy_helper.sl".to_string();
+        let helper_tokens = Scanner::new(helper_src).scan_tokens().unwrap();
+        let helper_program = Parser::new(helper_tokens).parse().unwrap();
+
+        let mut interpreter = Interpreter::new();
+        let helper_func = helper_program
+            .statements
+            .iter()
+            .find_map(|s| match &s.kind {
+                StmtKind::Function(decl) => Some(Function::from_decl(
+                    decl,
+                    interpreter.environment.clone(),
+                    Some(helper_path.clone()),
+                )),
+                _ => None,
+            })
+            .expect("helper function should parse");
+
+        interpreter.environment.borrow_mut().define(
+            "buggy_helper".to_string(),
+            Value::Function(Rc::new(helper_func)),
+        );
+
+        // Pretend the script being executed is a middleware/controller — the
+        // same situation as the bug report (cors.sl as entry, helper.sl as
+        // the file containing the actual offending line).
+        interpreter.set_source_path(PathBuf::from("/fake/app/middleware/cors.sl"));
+
+        let caller_tokens = Scanner::new("buggy_helper();").scan_tokens().unwrap();
+        let caller_program = Parser::new(caller_tokens).parse().unwrap();
+        let err = interpreter
+            .interpret(&caller_program)
+            .expect_err("expected an UndefinedVariable error from inside the helper");
+
+        let stack_trace = err
+            .breakpoint_stack_trace()
+            .expect("error should carry a captured stack trace");
+
+        let any_helper = stack_trace
+            .iter()
+            .any(|f| f.contains("buggy_helper.sl"));
+        let any_entry = stack_trace.iter().any(|f| f.contains("cors.sl"));
+        assert!(
+            any_helper,
+            "stack trace should mention the helper file, got: {:?}",
+            stack_trace
+        );
+        assert!(
+            !any_entry,
+            "stack trace should not mention the entry file, got: {:?}",
+            stack_trace
+        );
     }
 }
 
