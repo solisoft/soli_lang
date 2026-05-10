@@ -240,6 +240,32 @@ fn redraw_grid(
     num_workers + 1
 }
 
+/// Compute the app/project root for a given test invocation.
+///
+/// `test_path` is what the user passed (or the implicit `tests/` default);
+/// `is_file` is whether it points at a single spec rather than a directory.
+/// File specs need to walk up two parents (`tests/foo_spec.sl` → `.`),
+/// directory specs need one (`tests/` → `.`).
+///
+/// `Path::parent()` returns `Some("")` rather than `None` when there's
+/// nothing above the current component (e.g. `Path::new("tests")`'s parent
+/// is the empty path). The previous `unwrap_or_else(|| Path::new("."))`
+/// only fired on `None`, so a relative spec like `tests/foo_spec.sl` left
+/// `app_dir` as `""` and downstream `soli serve ""` could never serve
+/// `/health` — the test runner then sat in its 200×50ms probe loop and
+/// looked like it hung. This helper treats empty paths the same as `None`.
+fn resolve_app_dir(test_path: &Path, is_file: bool) -> PathBuf {
+    let parent_chain = if is_file {
+        test_path.parent().and_then(|p| p.parent())
+    } else {
+        test_path.parent()
+    };
+    parent_chain
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 fn format_duration(duration: Duration) -> String {
     let micros = duration.as_micros();
     if micros < 1000 {
@@ -281,14 +307,7 @@ pub fn run_test(
     // `SOLI_INTERNAL_TEST_RUNNER` which `main.rs` translates into the
     // same in-process flag.
     solilang::interpreter::builtins::http_class::enable_ssrf_test_mode();
-    let app_dir = if test_path.is_file() {
-        test_path
-            .parent()
-            .and_then(|p| p.parent())
-            .unwrap_or_else(|| Path::new("."))
-    } else {
-        test_path.parent().unwrap_or_else(|| Path::new("."))
-    };
+    let app_dir = resolve_app_dir(&test_path, test_path.is_file());
     let env_test_path = app_dir.join(".env.test");
     if !env_test_path.exists() {
         eprintln!(
@@ -297,7 +316,7 @@ pub fn run_test(
         );
         process::exit(1);
     }
-    solilang::serve::env_loader::load_env_files(app_dir);
+    solilang::serve::env_loader::load_env_files(&app_dir);
 
     solilang::interpreter::builtins::model::init_db_config();
 
@@ -384,13 +403,13 @@ pub fn run_test(
             exclude_lines: Vec::new(),
             show_uncovered: true,
             per_test: false,
-            root_dir: Some(app_dir.to_path_buf()),
+            root_dir: Some(app_dir.clone()),
         };
         let tracker = CoverageTracker::new(config);
         let tracker = Arc::new(Mutex::new(tracker));
         {
             let mut tracker_guard = tracker.lock().unwrap();
-            register_app_source_lines(&mut tracker_guard, app_dir);
+            register_app_source_lines(&mut tracker_guard, &app_dir);
         }
         set_global_coverage_tracker(tracker.clone());
         Some(tracker)
@@ -412,7 +431,14 @@ pub fn run_test(
     // wall time. Default to 3 in that case (sweet spot in benches), and
     // 1 otherwise (no subprocesses → linear scaling, but `lang/`-style
     // suites are short enough that a single worker is fine by default).
-    let num_workers = jobs.unwrap_or(if needs_test_server { 3 } else { 1 }).max(1);
+    // Cap at the number of test files — a single-file run pays no benefit
+    // from spawning spare workers, and each spare test-server subprocess is
+    // ~80-120ms of boot+probe before it sits idle for the entire suite.
+    let num_workers = jobs
+        .unwrap_or(if needs_test_server { 3 } else { 1 })
+        .max(1)
+        .min(test_files.len())
+        .max(1);
     println!(
         "Running {} test(s) with {} worker(s)...",
         test_files.len(),
@@ -509,7 +535,7 @@ pub fn run_test(
             let log_path = format!("/tmp/soli_test_server_w{}.log", i);
             let mut cmd = std::process::Command::new(&exe);
             cmd.arg("serve")
-                .arg(app_dir)
+                .arg(&app_dir)
                 .arg("--dev")
                 .arg("--port")
                 .arg(port.to_string())
@@ -1096,7 +1122,7 @@ pub fn run_test(
                     exclude_lines: Vec::new(),
                     show_uncovered: true,
                     per_test: false,
-                    root_dir: Some(app_dir.to_path_buf()),
+                    root_dir: Some(app_dir.clone()),
                 };
                 let reporter = CoverageReporter::new(config);
                 reporter.generate_reports(&app_coverage);
@@ -1266,5 +1292,57 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_app_dir_bare_filename() {
+        // `foo.sl` — no parent components, falls through to ".".
+        assert_eq!(
+            resolve_app_dir(Path::new("foo.sl"), true),
+            PathBuf::from(".")
+        );
+    }
+
+    #[test]
+    fn resolve_app_dir_relative_spec_in_tests_dir() {
+        // The bug case: `tests/foo.sl` — `parent().and_then(parent)` yields
+        // `Some("")` (empty path), not `None`. Pre-fix this short-circuited
+        // `unwrap_or_else` and `app_dir` was the empty path.
+        assert_eq!(
+            resolve_app_dir(Path::new("tests/foo.sl"), true),
+            PathBuf::from(".")
+        );
+    }
+
+    #[test]
+    fn resolve_app_dir_dot_prefixed_relative_spec() {
+        // `./tests/foo.sl` — parent chain produces `Some(".")`, kept as-is.
+        assert_eq!(
+            resolve_app_dir(Path::new("./tests/foo.sl"), true),
+            PathBuf::from(".")
+        );
+    }
+
+    #[test]
+    fn resolve_app_dir_absolute_spec() {
+        // `/path/to/tests/foo.sl` — parent chain produces `/path/to`.
+        assert_eq!(
+            resolve_app_dir(Path::new("/path/to/tests/foo.sl"), true),
+            PathBuf::from("/path/to")
+        );
+    }
+
+    #[test]
+    fn resolve_app_dir_directory_arg() {
+        // Directory case: `tests/` — one level up should resolve to ".".
+        assert_eq!(
+            resolve_app_dir(Path::new("tests"), false),
+            PathBuf::from(".")
+        );
     }
 }
