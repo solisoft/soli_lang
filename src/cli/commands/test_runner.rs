@@ -1183,14 +1183,23 @@ fn base_test_database() -> String {
 /// Returns one DB name per worker, derived from `SOLIDB_DATABASE`. With a
 /// single worker the base name is used as-is; with multiple workers each
 /// worker gets `{base}_w{i}` so parallel tests don't share rows.
+///
+/// The base name is normalised to end with `_spec` or `_test` so that
+/// spec-file detection (`*_spec.sl`) is reliable regardless of how
+/// `SOLIDB_DATABASE` is set.
 fn worker_database_names(num_workers: usize) -> Vec<String> {
     let base = base_test_database();
+    let base = if base.ends_with("_spec") || base.ends_with("_test") {
+        base
+    } else {
+        format!("{}_spec", base)
+    };
     if num_workers <= 1 {
         return vec![base];
     }
-    (0..num_workers)
-        .map(|i| format!("{}_w{}", base, i))
-        .collect()
+    let mut names = vec![base.clone()];
+    names.extend((1..num_workers).map(|i| format!("{}_w{}", base, i)));
+    names
 }
 
 fn ensure_test_databases(db_names: &[String]) {
@@ -1344,5 +1353,52 @@ mod tests {
             resolve_app_dir(Path::new("tests"), false),
             PathBuf::from(".")
         );
+    }
+
+    #[test]
+    fn worker_database_names_single_bare_default() {
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(worker_database_names(1), vec!["default_spec"]);
+    }
+
+    #[test]
+    fn worker_database_names_single_explicit_test_suffix() {
+        std::env::set_var("SOLIDB_DATABASE", "myapp_test");
+        let result = worker_database_names(1);
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(result, vec!["myapp_test"]);
+    }
+
+    #[test]
+    fn worker_database_names_multiple_default_base() {
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(
+            worker_database_names(3),
+            vec!["default_spec", "default_spec_w1", "default_spec_w2"]
+        );
+    }
+
+    #[test]
+    fn worker_database_names_existing_spec_base() {
+        std::env::set_var("SOLIDB_DATABASE", "foo_spec");
+        let result = worker_database_names(1);
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(result, vec!["foo_spec"]);
+    }
+
+    #[test]
+    fn worker_database_names_existing_test_base() {
+        std::env::set_var("SOLIDB_DATABASE", "foo_test");
+        let result = worker_database_names(1);
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(result, vec!["foo_test"]);
+    }
+
+    #[test]
+    fn worker_database_names_explicit_spec_no_double_suffix() {
+        std::env::set_var("SOLIDB_DATABASE", "foo_spec");
+        let result = worker_database_names(3);
+        std::env::remove_var("SOLIDB_DATABASE");
+        assert_eq!(result, vec!["foo_spec", "foo_spec_w1", "foo_spec_w2"]);
     }
 }
