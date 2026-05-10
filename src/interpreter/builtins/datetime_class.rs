@@ -408,6 +408,114 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         })),
     );
 
+    dur_native_methods.insert(
+        "humanize".to_string(),
+        Rc::new(NativeFunction::new("Duration.humanize", Some(0), |args| {
+            use super::i18n::helpers as i18n_helpers;
+
+            fn humanize_unit(n: i64, unit: &str) -> String {
+                match unit {
+                    "days" => {
+                        if n == 1 {
+                            "1 day".to_string()
+                        } else {
+                            format!("{} days", n)
+                        }
+                    }
+                    "hours" => {
+                        if n == 1 {
+                            "1 hour".to_string()
+                        } else {
+                            format!("{} hours", n)
+                        }
+                    }
+                    "minutes" => {
+                        if n == 1 {
+                            "1 minute".to_string()
+                        } else {
+                            format!("{} minutes", n)
+                        }
+                    }
+                    "seconds" => {
+                        if n == 1 {
+                            "1 second".to_string()
+                        } else {
+                            format!("{} seconds", n)
+                        }
+                    }
+                    _ => format!("{} {}", n, unit),
+                }
+            }
+
+            fn plural_or_raw(locale: &str, key: &str, n: i64) -> String {
+                let result = i18n_helpers::lookup_plural(locale, key, n);
+                if result.is_none()
+                    || result.as_ref().is_some_and(|r| {
+                        let suffix = if n == 0 {
+                            "_zero"
+                        } else if n == 1 {
+                            "_one"
+                        } else {
+                            "_other"
+                        };
+                        r == &format!("{}{}", key, suffix)
+                    })
+                {
+                    let unit = key.split('.').next_back().unwrap_or(key);
+                    humanize_unit(n, unit)
+                } else {
+                    result.unwrap_or_default()
+                }
+            }
+
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Duration.humanize() called on non-Duration".to_string()),
+            };
+            let seconds_f = match this.borrow().fields.get("seconds").cloned() {
+                Some(Value::Float(s)) => s,
+                Some(Value::Int(s)) => s as f64,
+                _ => return Err("Duration missing seconds".to_string()),
+            };
+            let total_seconds = seconds_f.abs() as i64;
+            let locale = i18n_helpers::get_locale();
+
+            if total_seconds >= 86400 {
+                let days = total_seconds / 86400;
+                let remainder = total_seconds % 86400;
+                let day_part = plural_or_raw(&locale, "datetime.duration.days", days);
+                if remainder > 0 {
+                    let hours = remainder / 3600;
+                    let hour_part = plural_or_raw(&locale, "datetime.duration.hours", hours);
+                    return Ok(Value::String(format!("{} {}", day_part, hour_part)));
+                }
+                Ok(Value::String(day_part))
+            } else if total_seconds >= 3600 {
+                let hours = total_seconds / 3600;
+                let remainder = total_seconds % 3600;
+                let hour_part = plural_or_raw(&locale, "datetime.duration.hours", hours);
+                if remainder > 0 {
+                    let minutes = remainder / 60;
+                    let min_part = plural_or_raw(&locale, "datetime.duration.minutes", minutes);
+                    return Ok(Value::String(format!("{} {}", hour_part, min_part)));
+                }
+                Ok(Value::String(hour_part))
+            } else if total_seconds >= 60 {
+                let minutes = total_seconds / 60;
+                let remainder = total_seconds % 60;
+                let min_part = plural_or_raw(&locale, "datetime.duration.minutes", minutes);
+                if remainder > 0 {
+                    let sec_part = plural_or_raw(&locale, "datetime.duration.seconds", remainder);
+                    return Ok(Value::String(format!("{} {}", min_part, sec_part)));
+                }
+                Ok(Value::String(min_part))
+            } else {
+                let sec_part = plural_or_raw(&locale, "datetime.duration.seconds", total_seconds);
+                Ok(Value::String(sec_part))
+            }
+        })),
+    );
+
     // Clone for use in instance methods that create new DateTime instances
     let dt_methods_for_add_days = dt_native_methods.clone();
     let dt_methods_for_add_hours = dt_native_methods.clone();
@@ -1038,7 +1146,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: dur_static_methods,
-        native_methods: HashMap::new(),
+        native_methods: dur_native_methods,
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,

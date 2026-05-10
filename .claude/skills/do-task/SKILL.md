@@ -1,70 +1,61 @@
 ---
 name: do-task
-description: Pick a task file from tasks/todo/, move it to tasks/inprogress/, implement the fix, run verification, and move it to tasks/review/. Use when the user wants to start work on one of the SEC-NNN (or any) task tickets and progress it from todo through implementation to ready-for-review.
+description: Implement the fix described in tasks/todo/<slug>.md, run the project's verification loop, and stop without committing. Use when the orchestrator dispatches a task into a fresh worktree and asks you to do the work.
 ---
 
 # do-task
 
-Workflow: pick a single task md from `tasks/todo/`, move it to `tasks/inprogress/`, implement the fix, verify it builds, and move the file to `tasks/review/`. Pairs with `review-task` (which handles `review/` → `done/`).
+You are running inside a fresh git worktree that the task-orchestrator just created. The DB row owns the task's lifecycle (queued → inprogress → review → done) — your job is the **implementation**, nothing more.
 
-## Step 1 — Pick the task
+## Inputs
 
-- If the user passed an argument (e.g. `SEC-007` or `007` or a full filename), match it against `tasks/todo/*.md` (case-insensitive prefix match). If no match, list the files in `tasks/todo/` and stop.
-- If no argument, list `tasks/todo/` sorted alphabetically and pick the first file. If the directory is empty, tell the user and stop.
-- Read the file. It should contain a Severity, Location (file:line refs), Issue description, and proposed Fix.
+- **Argument**: the task slug. The spec lives at `tasks/todo/<slug>.md`. If no argument is passed, list `tasks/todo/*.md`, pick the alphabetically-first entry, and infer the slug from its filename.
+- **`CLAUDE.md`** at the worktree root (and per-directory) describes the project's conventions and verification loop. Read it before editing.
+
+Do **not** move, rename, or delete the spec md. The orchestrator excludes it from git via `.git/info/exclude`; leave it where it is.
+
+## Step 1 — Read the spec
+
+Read `tasks/todo/<slug>.md` in full. It should describe Severity, Location (file:line refs), the Issue, and a proposed Fix.
 
 ## Step 2 — Inspect repo state
 
-Run in parallel:
-- `git status` (working tree must be clean of unrelated edits before starting — if it isn't, stop and ask the user how to proceed)
-- `git log --oneline -5` (commit-style reference)
+In parallel:
+- `git status` — expect exactly one untracked file: `tasks/todo/<slug>.md` (the spec the orchestrator just seeded). Anything else untracked or modified means something is wrong; stop and report.
+- `git log --oneline -5` — to match the project's commit-message style later.
 
-If `tasks/inprogress/` already contains a file, stop and ask the user whether to resume that task or move it back to `todo/` first. Process **one** task at a time.
+Read every file referenced in the spec's Location section before editing.
 
-## Step 3 — Move to inprogress
+## Step 3 — Implement
 
-Use `git mv` so the move is tracked as a rename:
+1. Apply the proposed Fix, or an equivalent that addresses the root cause. The Fix in the spec is a *suggestion* — deviate when there's a better approach, but never paper over the issue (e.g. swallowing an error instead of fixing it).
+2. **Cover every call site listed in the spec.** Patch all of them. Do **not** search for similar patterns elsewhere — only fix what the spec explicitly describes.
+3. **Stay in scope.** No drive-by refactors, renames, or fixes to neighboring issues. If you spot a separate problem, drop a `tasks/todo/<NEW-slug>.md` for it (the orchestrator will pick it up next ingest) and continue with the original task.
+4. **Docs.** If the change is user-facing (new API, config flag, behavior change) and `CLAUDE.md` describes a documentation policy, follow it — update every surface the policy names in the same change.
 
-```bash
-git mv tasks/todo/<filename>.md tasks/inprogress/<filename>.md
-```
+## Step 4 — Verify
 
-## Step 4 — Implement the fix
+Run the project's verification loop **as defined in `CLAUDE.md`**. If `CLAUDE.md` lists explicit commands (lint / test / coverage / format), run those. If it doesn't, fall back to the obvious-for-the-stack equivalents — but read `CLAUDE.md` first.
 
-1. Read every file referenced in the task's Location section in full before editing.
-2. Apply the proposed Fix, or an equivalent implementation that addresses the root cause. The Fix in the task md is a *suggestion* — deviate when there's a better approach, but never paper over the issue (e.g. swallowing an error instead of fixing it).
-3. **Cover every call site listed in the task.** If the issue lists several locations, patch all of them. Do NOT search for similar patterns elsewhere — only fix what's explicitly described in the task.
-4. **Stay focused.** Don't refactor unrelated code, rename symbols, or fix neighboring issues — those belong in their own task. If you find a new issue, drop a `tasks/todo/<NEW>.md` for it instead of expanding scope.
-5. **Docs.** If the change is user-facing (new builtin, config flag, behavior change), update **all three** docs surfaces in the same change (per the project's documentation policy in `CLAUDE.md`):
-    - `www/docs/*.md` — source markdown.
-    - `www/app/views/docs/**/*.html.slv` — the matching rendered view.
-    - `www/public/js/search-index.json` — the docs-site search index. Add or update an `entries[]` record for the new builtin, method, or language feature so users can find it via the search box. Mirror the format of existing entries (`title`, `type`, `category`, `path`, `signature`, `description`, `keywords`). Missing entries here ship as silent regressions — the API is documented but unsearchable.
+If verification fails, fix the root cause. **Never** suppress warnings, skip hooks (`--no-verify`), bypass signing, or weaken assertions to make checks pass.
 
-## Step 5 — Verify
+If a check fails on a pre-existing issue clearly unrelated to your change, note it in your summary and continue — but be conservative about that judgement.
 
-Run the relevant subset for the changes made:
+## Step 5 — Stop
 
-- Rust changes: `cargo clippy --quiet -- -D warnings` and `cargo fmt --check`
-- Tests: `cargo test <relevant>` if a targeted test exists; otherwise note in the summary that broader tests should be run.
-- Soli changes: `soli test` if `tests/` covers the area.
+Leave all implementation changes **uncommitted** in the working tree. The `review-task` skill, which the orchestrator runs immediately after, is responsible for reviewing the diff and creating the commit. Pre-committing forces an amend or revert if review rejects the fix.
 
-If verification fails, fix the root cause. **Never** suppress warnings, skip hooks, or weaken assertions to make checks pass. If clippy fails on a pre-existing issue unrelated to your change, note it in your summary and continue.
-
-## Step 6 — Move to review
-
-```bash
-git mv tasks/inprogress/<filename>.md tasks/review/<filename>.md
-```
-
-Leave the implementation changes **uncommitted** in the working tree. The `review-task` skill is responsible for reviewing the diff and committing — pre-committing would force an amend or revert if review rejects the fix.
-
-End with a short summary to the user: which task, what was changed (file list), what was verified, and any follow-ups noted as new `todo/` files.
+End with a short summary to the user:
+- Which task (slug).
+- What was changed (file list).
+- What was verified (commands run + outcome).
+- Any follow-ups dropped as new `tasks/todo/<slug>.md` files.
 
 ## Constraints
 
-- Process exactly **one** task per invocation. Do not loop through `todo/`.
-- **Never** skip hooks (`--no-verify`) or bypass signing.
-- **Never** modify the task md content. The md is the historical record of the issue; if implementation surfaces follow-up work, create a separate `tasks/todo/<NEW>.md` rather than editing the original.
-- **Never** commit. Leave changes staged-or-unstaged in the working tree for `review-task` to handle.
-- If the user passed an explicit task argument that doesn't exist in `tasks/todo/`, stop and list the files that ARE there. Don't silently pick a different one.
-- If verification fails and you can't fix it within the scope of this task, move the file **back** to `tasks/todo/` (`git mv`), revert your code changes, and report — don't leave a half-done task in `inprogress/`.
+- Process exactly **one** task per invocation.
+- **Never** commit, push, or skip hooks.
+- **Never** edit the spec md content. It's the historical record. Surface follow-ups via new `tasks/todo/<slug>.md` files instead.
+- **Never** `git mv` the spec between `tasks/todo/`, `tasks/inprogress/`, `tasks/review/`, etc. The DB tracks status; folder-shuffling is the old file-based queue.
+- If verification fails and you can't fix it within the scope of the spec, revert your changes (`git restore .`) and report — don't leave a half-done task in the worktree.
+- If the user passed a slug that doesn't have a matching `tasks/todo/<slug>.md`, stop and list what *is* there. Don't silently pick a different one.
