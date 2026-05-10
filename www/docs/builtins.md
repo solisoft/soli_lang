@@ -2191,6 +2191,25 @@ duration = Duration.of_seconds(3661)
 println(duration.to_string())  # "3661s"
 ```
 
+#### .humanize(locale?)
+
+Gets the duration as a human-readable compound string (e.g., "1 hour 1 minute"). Selects the most appropriate unit(s) based on the duration length — for sub-hour durations it combines minutes + seconds; for sub-day it combines hours + minutes; for longer durations it combines days + hours. The optional locale parameter overrides the current I18n locale for translation.
+
+**Parameters:**
+- `locale` (String, optional) - Locale code for translation (defaults to current I18n locale)
+
+**Returns:** String
+
+**Example:**
+```soli
+Duration.seconds(3661).humanize()    # "1 hour 1 minute"
+Duration.seconds(1000).humanize()   # "16 minutes 40 seconds"
+Duration.seconds(7200).humanize()   # "2 hours"
+Duration.seconds(90).humanize()     # "1 minute 30 seconds"
+Duration.minutes(5).humanize()       # "5 minutes"
+Duration.humanize("fr")             # respects fr locale if translations exist
+```
+
 ### Complete Example
 
 ```soli

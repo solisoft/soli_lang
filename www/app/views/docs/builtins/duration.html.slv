@@ -217,6 +217,31 @@ println(duration.total_days())  # 7</code></pre>
 println(duration.to_string())  # "3661s"</code></pre>
             </div>
         </section>
+
+        <section id="def-humanize" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-humanize" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.humanize(locale?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Get the duration as a human-readable compound string (e.g., "1 hour 1 minute"). Selects the most appropriate unit(s) based on the duration length.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-amber-400">locale</code> : <code class="text-purple-400">String?</code> - Optional locale code (defaults to current I18n locale)
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> - Humanized duration string
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">Duration.seconds(3661).humanize()   # "1 hour 1 minute"
+Duration.seconds(1000).humanize()  # "16 minutes 40 seconds"
+Duration.seconds(7200).humanize()  # "2 hours"
+Duration.seconds(90).humanize()    # "1 minute 30 seconds"
+Duration.minutes(5).humanize()      # "5 minutes"</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Complete Example -->

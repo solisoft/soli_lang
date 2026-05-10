@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 use chrono::{Datelike, Local, Timelike};
 
+use super::i18n::helpers::{get_locale as i18n_get_locale, interpolate, lookup_translation};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
 
@@ -61,6 +62,117 @@ fn parse_datetime_string(s: &str) -> Result<i64, String> {
             None => Ok(dt.timestamp() * 1_000_000_000),
         },
         Err(_) => Err(format!("Invalid datetime format: {}", s)),
+    }
+}
+
+fn humanize_duration(seconds: f64, locale: &str) -> String {
+    let total_secs = seconds.abs();
+    let (primary_unit, primary_count, secondary_count) = if total_secs < 60.0 {
+        ("seconds", total_secs as i64, 0)
+    } else if total_secs < 3600.0 {
+        let minutes = (total_secs / 60.0).floor();
+        let remaining_secs = (total_secs % 60.0).floor();
+        (
+            "minutes",
+            minutes as i64,
+            if remaining_secs > 0.0 {
+                remaining_secs as i64
+            } else {
+                0
+            },
+        )
+    } else if total_secs < 86400.0 {
+        let hours = (total_secs / 3600.0).floor();
+        let remaining_mins = ((total_secs % 3600.0) / 60.0).floor();
+        (
+            "hours",
+            hours as i64,
+            if remaining_mins > 0.0 {
+                remaining_mins as i64
+            } else {
+                0
+            },
+        )
+    } else {
+        let days = (total_secs / 86400.0).floor();
+        let remaining_hrs = ((total_secs % 86400.0) / 3600.0).floor();
+        (
+            "days",
+            days as i64,
+            if remaining_hrs > 0.0 {
+                remaining_hrs as i64
+            } else {
+                0
+            },
+        )
+    };
+    let key = format!("duration.{}", primary_unit);
+    let primary_translated = lookup_translation(locale, &key).unwrap_or_else(|| {
+        let count_str = primary_count.to_string();
+        match primary_unit {
+            "seconds" => format!(
+                "{} second{}",
+                count_str,
+                if primary_count == 1 { "" } else { "s" }
+            ),
+            "minutes" => format!(
+                "{} minute{}",
+                count_str,
+                if primary_count == 1 { "" } else { "s" }
+            ),
+            "hours" => format!(
+                "{} hour{}",
+                count_str,
+                if primary_count == 1 { "" } else { "s" }
+            ),
+            "days" => format!(
+                "{} day{}",
+                count_str,
+                if primary_count == 1 { "" } else { "s" }
+            ),
+            _ => format!("{} {}", count_str, primary_unit),
+        }
+    });
+    let primary_formatted = interpolate(
+        &primary_translated,
+        &[("count".to_string(), primary_count.to_string())],
+    );
+    if secondary_count > 0 {
+        let sec_key = if primary_unit == "minutes" {
+            "seconds"
+        } else if primary_unit == "hours" {
+            "minutes"
+        } else {
+            "hours"
+        };
+        let secondary_translated = lookup_translation(locale, sec_key).unwrap_or_else(|| {
+            let count_str = secondary_count.to_string();
+            match sec_key {
+                "seconds" => format!(
+                    "{} second{}",
+                    count_str,
+                    if secondary_count == 1 { "" } else { "s" }
+                ),
+                "minutes" => format!(
+                    "{} minute{}",
+                    count_str,
+                    if secondary_count == 1 { "" } else { "s" }
+                ),
+                "hours" => format!(
+                    "{} hour{}",
+                    count_str,
+                    if secondary_count == 1 { "" } else { "s" }
+                ),
+                _ => format!("{} {}", count_str, sec_key),
+            }
+        });
+        let secondary_formatted = interpolate(
+            &secondary_translated,
+            &[("count".to_string(), secondary_count.to_string())],
+        );
+        format!("{} {}", primary_formatted, secondary_formatted)
+    } else {
+        primary_formatted
     }
 }
 
@@ -406,6 +518,35 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 _ => Err("Duration missing seconds".to_string()),
             }
         })),
+    );
+
+    dur_native_methods.insert(
+        String::from("humanize"),
+        Rc::new(NativeFunction::new(
+            "Duration.humanize",
+            None,
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("Duration.humanize() called on non-Duration".to_string()),
+                };
+                let locale = if args.len() > 1 {
+                    match &args[1] {
+                        Value::String(s) => s.clone(),
+                        Value::Null => i18n_get_locale(),
+                        _ => return Err("Duration.humanize() locale must be a string".to_string()),
+                    }
+                } else {
+                    i18n_get_locale()
+                };
+                let seconds = match this.borrow().fields.get("seconds").cloned() {
+                    Some(Value::Float(s)) => s,
+                    Some(Value::Int(s)) => s as f64,
+                    _ => return Err("Duration missing seconds".to_string()),
+                };
+                Ok(Value::String(humanize_duration(seconds, &locale)))
+            },
+        )),
     );
 
     // Clone for use in instance methods that create new DateTime instances
