@@ -13,3 +13,8 @@ en:
   app:
     welcome: Welcome
     greeting: "Hello, {name}!"
+  duration:
+    seconds: "{count} second{count}"
+    minutes: "{count} minute{count}"
+    hours: "{count} hour{count}"
+    days: "{count} day{count}"
