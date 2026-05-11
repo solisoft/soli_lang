@@ -454,6 +454,43 @@ impl Vm {
                 let result: Vec<Value> = items.iter().skip(n).cloned().collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
+            "slice" => {
+                let start = if !args.is_empty() {
+                    match &args[0] {
+                        Value::Int(n) => Some(*n),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let end = if args.len() >= 2 {
+                    match &args[1] {
+                        Value::Int(n) => Some(*n),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let items = arr.borrow();
+                let len = items.len() as i64;
+                let start_idx = match start {
+                    Some(s) if s < 0 => (len + s).max(0) as usize,
+                    Some(s) => (s as usize).min(len as usize),
+                    None => 0,
+                };
+                let end_idx = match end {
+                    Some(e) if e < 0 => (len + e).max(0) as usize,
+                    Some(e) => (e as usize).min(len as usize),
+                    None => len as usize,
+                };
+                let result: Vec<Value> = items
+                    .iter()
+                    .skip(start_idx)
+                    .take(end_idx.saturating_sub(start_idx))
+                    .cloned()
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
             "to_string" | "to_s" => {
                 let items = arr.borrow();
                 if items.is_empty() {

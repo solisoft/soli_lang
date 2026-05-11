@@ -67,7 +67,7 @@ pub fn call_array_method(
         }
         "map" | "filter" | "each" | "reduce" | "find" | "any?" | "all?" | "sort"
         | "sort_by" | "uniq" | "compact" | "flatten" | "include?" | "sample" 
-        | "shuffle" | "take" | "drop" | "zip" => {
+        | "shuffle" | "take" | "drop" | "slice" | "zip" => {
             Err(format!(
                 "Method '{}' requires a function argument - not supported in templates. Use the full language in <% %> tags instead.",
                 method_name

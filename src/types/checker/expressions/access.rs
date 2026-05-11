@@ -113,8 +113,8 @@ impl TypeChecker {
                 params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Bool),
             }),
-            "take" | "drop" => Ok(Type::Function {
-                params: vec![Type::Int],
+            "take" | "drop" | "slice" => Ok(Type::Function {
+                params: vec![Type::Int, Type::Int],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
             "zip" => Ok(Type::Function {

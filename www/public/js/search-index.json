@@ -3942,7 +3942,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -4446,6 +4446,21 @@
         "skip",
         "tail",
         "rest"
+      ]
+    },
+    {
+      "title": ".slice()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-slice",
+      "signature": "array.slice(start?, end?)",
+      "description": "Extract a sub-array by start and end index",
+      "keywords": [
+        "array",
+        "slice",
+        "subarray",
+        "extract",
+        "range"
       ]
     },
     {
