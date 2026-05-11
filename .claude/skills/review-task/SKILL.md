@@ -1,101 +1,98 @@
 ---
 name: review-task
-description: Pick a task file from tasks/review/, perform a code review of the implemented fix, move the file to tasks/done/ if the fix is correct, and commit. Use when the user wants to verify a fix that has been implemented for one of the SEC-NNN (or any) task tickets and progress it to done.
+description: Review the uncommitted fix in this worktree against tasks/todo/<slug>.md, then commit (or stop with a Rejected verdict). Use after /do-task — the orchestrator runs us in the same worktree to verify and commit the change.
 ---
 
 # review-task
 
-Workflow: pick a single task md from `tasks/review/`, verify the fix in the codebase, move the file to `tasks/done/`, and commit.
+You are running inside the same worktree where `/do-task` just implemented a fix. The orchestrator's DB row tracks the task's lifecycle; your job is the **code review** of the diff and, if approved, the **commit**.
 
-## Step 1 — Pick the task
+## Inputs
 
-- If the user passed an argument (e.g. `SEC-007` or `007` or a full filename), match it against `tasks/review/*.md` (case-insensitive prefix match). If no match, list the files in `tasks/review/` and stop.
-- If no argument, list `tasks/review/` sorted alphabetically and pick the first file. If the directory is empty, tell the user and stop.
-- Read the file. It should contain a Severity, Location (file:line refs), Issue description, and proposed Fix.
+- **Argument**: the task slug. The spec lives at `tasks/todo/<slug>.md`. If no argument is passed, infer the slug from the single spec md present.
+- **`CLAUDE.md`** describes the project's conventions, verification loop, and (often) commit-message style.
+
+Do **not** move, rename, or delete the spec md. The orchestrator owns it; leave it where it is — but **never commit it** (see Step 5).
+
+## Step 1 — Read the spec
+
+Read `tasks/todo/<slug>.md` in full: Severity, Location, Issue, proposed Fix.
 
 ## Step 2 — Inspect repo state
 
-Run in parallel:
-- `git status` (see uncommitted changes)
-- `git log --oneline -10` (recent commits — the fix may already be committed)
-- `git diff` and `git diff --cached` (current working-tree and staged diffs)
+In parallel:
+- `git status`
+- `git log --oneline -10` (to match the project's commit-message style)
+- `git diff` and `git diff --cached`
 
-Identify whether the fix is:
-- **(A) committed** — find the commit(s) that touched the files in the task's Location section.
-- **(B) uncommitted** — present in working tree / index.
-- **(C) missing** — neither.
+The fix is normally **uncommitted** in the working tree (that's how `/do-task` leaves it). If `git status` shows nothing changed, the verdict will likely be **Approved-no-fix-needed** — continue and let Step 4 decide.
 
-If **(C) missing**, do not stop here. The right outcome may still be to close the ticket — e.g. the report turned out to be invalid/won't-fix, or the work is being deferred via new follow-up tickets in `tasks/todo/`. Continue to Step 3 and let the verdict drive the decision.
+## Step 3 — Review
 
-## Step 3 — Code review
+Read the current state of the files referenced in the spec's Location section. For each:
 
-Read the current state of the files referenced in the task's Location section. For each location:
+1. **Verify the change addresses the described issue.** The proposed Fix in the spec is a *suggestion* — accept any equivalent implementation, but reject changes that paper over the issue (e.g. catching and ignoring an exception instead of fixing the root cause).
+2. **Check completeness.** If the spec lists multiple call sites, verify every one was patched. Do **not** broaden scope — only verify what the spec explicitly described.
+3. **Look for regressions.** Read the diff for the touched files in full. Flag: new unsafe paths, swallowed errors, broadened privileges, removed validation, weakened types.
+4. **Check docs (user-facing changes).** If the project's `CLAUDE.md` describes a documentation policy, verify every surface it names was updated.
+5. **Run static checks** as defined in `CLAUDE.md` (lint / typecheck / format / test / coverage). If they fail, report and stop — do not commit broken code.
 
-1. **Verify the change addresses the described issue.** The proposed Fix in the task md is a *suggestion* — accept any equivalent implementation, but reject changes that paper over the issue (e.g. catching an exception instead of fixing the root cause).
-2. **Check completeness.** If the issue lists multiple call sites (e.g. SEC-007 lists every `ureq::*` call), verify every one was patched. Do NOT search for similar patterns elsewhere — only verify what's explicitly described in the task.
-3. **Look for regressions.** Read the diff for the touched files in full. Flag: new unsafe blocks, new error handling that swallows errors silently, broadened privileges, removed validation, weaker types.
-4. **Check docs (user-facing changes).** If the change adds or alters a builtin function, method, language feature, or config flag, verify all three docs surfaces are updated together:
-    - `www/docs/*.md`
-    - `www/app/views/docs/**/*.html.slv`
-    - `www/public/js/search-index.json` — there must be an `entries[]` record for the new/changed API. Missing this entry is a blocking review finding: the docs page renders but search can't find it. Reject (or Approved-with-followups + new `tasks/todo/<TICKET>.md` to backfill the index) if it's missing.
-5. **Check tests.** If `tests/` has a relevant existing test, verify it still passes (`cargo test <relevant>` if cheap, otherwise note that tests should be run). If the fix is non-trivial and there is no test, flag this as a review concern but do not block on it unless the issue is Critical/High.
-6. **Run static checks** if practical: `cargo clippy --quiet -- -D warnings` and `cargo fmt --check` for Rust changes. If they fail, report and stop — do not commit broken code.
-
-Report findings as a short markdown bullet list to the user, structured as:
+Report findings as a short markdown bullet list:
 - **Verdict:** Approved / Approved-with-notes / Approved-no-fix-needed / Approved-with-followups / Rejected
 - **Coverage:** what was checked
-- **Findings:** issues found (each: severity, file:line, what's wrong, suggested follow-up)
+- **Findings:** issues (each: severity, file:line, what's wrong, suggested follow-up)
 
 ## Step 4 — Decision
 
-- **Rejected** — Do NOT move the file. Do NOT commit. Tell the user what's missing and stop.
-- **Approved-with-notes** — Ask the user whether to proceed (notes are non-blocking). If yes, continue to Step 5. If no, stop.
-- **Approved-no-fix-needed** — Review concluded the report is invalid, describes intended behavior, or is won't-fix. Continue to Step 5; the commit message must record the reasoning.
-- **Approved-with-followups** — The work is deferred. Before Step 5, create one `tasks/todo/<TICKET>.md` file per follow-up (use the next free SEC-/TICKET- number; mirror the original's structure: Severity, Location, Issue, proposed Fix). Continue to Step 5; the new files will be staged with the move.
+- **Rejected** — Do **not** commit. Report what's missing and stop. The orchestrator will mark the row failed.
+- **Approved-with-notes** — Notes are non-blocking. Continue to Step 5.
+- **Approved-no-fix-needed** — Review concluded the spec is invalid, describes intended behavior, or is won't-fix. Continue to Step 5; if there is no diff, stop without committing — the orchestrator detects "no commit produced" and treats it as a successful no-code-change close.
+- **Approved-with-followups** — Work is deferred. Before Step 5, drop one `tasks/todo/<NEW-slug>.md` per follow-up. Mirror the original's structure (Severity, Location, Issue, proposed Fix). Continue to Step 5.
+
+    **Reality check before creating any follow-up.** For every symbol you name in a follow-up's title or Issue (function, method, file path, doc id), `grep` the worktree to confirm it exists OR explicitly frame the follow-up as a feature task ("Add `<X>`...", with rationale). Don't materialize a follow-up referencing a name you can't find. If unsure, drop the follow-up and note the uncertainty in the verdict.
 - **Approved** — Continue to Step 5.
 
-## Step 5 — Move the task file
+## Step 5 — Commit
 
-Use `git mv` so the move is tracked as a rename:
+Match the project's commit style — read the recent `git log` output and any guidance in `CLAUDE.md`.
+
+Stage everything that belongs to this task:
+- the implementation diff
+- any new `tasks/todo/<NEW-slug>.md` follow-up files
+
+`git add -A` will sweep up the orchestrator-seeded spec md too, which we do **not** want in the commit. Always run, immediately after staging:
 
 ```bash
-git mv tasks/review/<filename>.md tasks/done/<filename>.md
+git restore --staged tasks/todo/<slug>.md
 ```
 
-## Step 6 — Commit
+(Substitute the actual slug.) This drops the spec from the index while keeping the file on disk. Verify with `git status` that `tasks/todo/<slug>.md` shows as untracked again before committing.
 
-Match the repo's commit style (look at recent `git log` messages — usually `<type>(<scope>): <subject>` or `security: ...`). Use a HEREDOC so the message formats correctly.
-
-Stage everything that belongs to this task and commit it together:
-- the renamed task file (already tracked by `git mv`)
-- any uncommitted fix in the working tree (case B from Step 2)
-- any new `tasks/todo/<TICKET>.md` files created for follow-ups
-
-If the fix was already committed in a prior commit (case A), or the verdict is **Approved-no-fix-needed** with no follow-ups, the commit will contain just the rename — that is a valid, non-empty change. Do not bail out as "nothing to commit" and **never** add `--allow-empty`. If `git status` shows no staged changes after `git add`, it means `git mv` never ran or was undone — investigate, don't paper over it.
-
-Pick a commit subject that matches the verdict:
-- **Approved** / **Approved-with-notes** — `fix(...)` / `feat(...)` style; subject describes the fix.
-- **Approved-no-fix-needed** — `chore(<scope>): close <TICKET> (won't fix)` or `(invalid)`; the body must explain the decision.
-- **Approved-with-followups** — `chore(<scope>): close <TICKET> (deferred)`; the body must list the new `tasks/todo/...` files.
+Use a HEREDOC so the message formats correctly. Pick a subject that matches the verdict:
+- **Approved** / **Approved-with-notes** — `fix(...)` / `feat(...)` describing the change.
+- **Approved-no-fix-needed** — `chore(<scope>): close <slug> (won't fix)` or `(invalid)`; the body must explain the decision.
+- **Approved-with-followups** — `chore(<scope>): close <slug> (deferred)`; the body must list the new `tasks/todo/...` files.
 
 ```bash
 git commit -m "$(cat <<'EOF'
-fix(security): SEC-007 enforce SSRF re-validation on HTTP redirects
+fix(<scope>): <subject>
 
-Closes tasks/review/SEC-007-ssrf-redirect-bypass.md.
+Closes <slug>.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
 )"
 ```
 
-After commit, run `git status` to confirm the working tree is clean (or only contains unrelated changes).
+After commit, run `git status` to confirm the working tree is clean (the spec md will still appear excluded; that's expected).
 
 ## Constraints
 
-- **Never** move the file if the review verdict is Rejected.
+- **Never** use `pkill`, `kill`, `killall`, or any process-killing command.
+- **Never** commit if the verdict is Rejected.
 - **Never** skip hooks (`--no-verify`) or bypass signing. If a pre-commit hook fails, fix the underlying issue and create a new commit.
-- **Never** push. Stop after the local commit.
-- **Do not** modify the task md content during review. The md is the historical record of the issue; if the review surfaces new follow-up work, create a separate file in `tasks/todo/` (e.g. `SEC-007a-followup.md`) rather than editing the original.
-- If the user passed an explicit task argument that doesn't exist in `tasks/review/`, stop and list the files that ARE there. Don't fall back to picking a different one.
-- Process exactly **one** task per invocation. Do not loop through `review/`.
+- **Never** push. The orchestrator handles push + PR after this skill returns.
+- **Never** `git mv` the spec between `tasks/{todo,inprogress,review,done}/`. The DB tracks status; folder-shuffling is the old file-based queue.
+- **Do not** edit the spec md content. If review surfaces follow-ups, write new `tasks/todo/<slug>.md` files instead.
+- Process exactly **one** task per invocation.
+- If `--allow-empty` feels tempting, stop and re-read Step 4 — an Approved-no-fix-needed with no diff means **no commit**, not an empty commit.

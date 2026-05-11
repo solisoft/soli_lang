@@ -186,4 +186,54 @@ describe("Array Methods", fn() {
         let sum = arr.reduce(fn(acc, x) { return acc + x; }, 0);
         assert_eq(sum, 10);
     });
+
+    test("slice with start and end", fn() {
+        let arr = [1, 2, 3, 4, 5];
+        let result = arr.slice(1, 3);
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 3);
+    });
+
+    test("slice with negative start", fn() {
+        let arr = [1, 2, 3, 4, 5];
+        let result = arr.slice(-2);
+        assert_eq(len(result), 2);
+        assert_eq(result[0], 4);
+        assert_eq(result[1], 5);
+    });
+
+    test("slice with negative end", fn() {
+        let arr = [1, 2, 3, 4, 5];
+        let result = arr.slice(1, -1);
+        assert_eq(len(result), 3);
+        assert_eq(result[0], 2);
+        assert_eq(result[1], 3);
+        assert_eq(result[2], 4);
+    });
+
+    test("slice out of bounds returns empty", fn() {
+        let arr = [1, 2, 3];
+        let result = arr.slice(5);
+        assert_eq(len(result), 0);
+    });
+
+    test("slice does not mutate original", fn() {
+        let arr = [1, 2, 3, 4, 5];
+        let original_len = len(arr);
+        arr.slice(1, 3);
+        assert_eq(len(arr), original_len);
+        assert_eq(arr[0], 1);
+        assert_eq(arr[1], 2);
+        assert_eq(arr[2], 3);
+    });
+
+    test("slice with no arguments returns copy", fn() {
+        let arr = [1, 2, 3];
+        let result = arr.slice();
+        assert_eq(len(result), 3);
+        assert_eq(result[0], 1);
+        assert_eq(result[1], 2);
+        assert_eq(result[2], 3);
+    });
 });

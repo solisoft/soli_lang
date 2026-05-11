@@ -1223,7 +1223,7 @@ fn compile_chained_access(base: Expr, field: &str) -> Expr {
         "length" | "len" | "size" | "first" | "last" | "reverse" | "join" | "empty"
         | "is_empty" | "sum" | "min" | "max" | "map" | "filter" | "each" | "reduce" | "find"
         | "any?" | "all?" | "include?" | "sort" | "sort_by" | "uniq" | "compact" | "flatten"
-        | "sample" | "shuffle" | "take" | "drop" | "zip" => {
+        | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" => {
             Expr::Method(Box::new(base), current_field.to_string())
         }
         _ => Expr::Field(Box::new(base), current_field.to_string()),

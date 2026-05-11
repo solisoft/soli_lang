@@ -686,6 +686,38 @@ print(rest);  # [4, 5]</code></pre>
                 </div>
             </section>
 
+            <section id="method-slice" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-slice" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.slice(start?, end?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Extract a sub-array by start and end index. Both arguments are optional and support negative indices counting from the end. Returns a new array (non-mutating).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
+
+# Extract by start and end index
+print(arr.slice(1, 3));  # [2, 3]
+
+# Negative start (last n elements)
+print(arr.slice(-2));     # [4, 5]
+
+# Negative end (all but last n)
+print(arr.slice(1, -1));  # [2, 3, 4]
+
+# Out of bounds returns empty
+print(arr.slice(5));     # []
+
+# No args returns a copy
+copy = arr.slice()
+print(copy);             # [1, 2, 3, 4, 5]
+
+# Original unchanged
+print(arr);              # [1, 2, 3, 4, 5]</code></pre>
+                </div>
+            </section>
+
             <section id="method-zip" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-zip" class="group flex items-center gap-2 mb-3">

@@ -363,6 +363,48 @@ pub fn register_array_class(env: &mut Environment) {
     );
 
     array_native_methods.insert(
+        "slice".to_string(),
+        Rc::new(NativeFunction::new("Array.slice", Some(0), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Array.slice() called on non-Array".to_string()),
+            };
+            let start = match args.get(1) {
+                Some(Value::Int(n)) => Some(*n),
+                _ => None,
+            };
+            let end = match args.get(2) {
+                Some(Value::Int(n)) => Some(*n),
+                _ => None,
+            };
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::Array(arr)) => {
+                    let arr = arr.borrow();
+                    let len = arr.len() as i64;
+                    let start_idx = match start {
+                        Some(s) if s < 0 => (len + s).max(0) as usize,
+                        Some(s) => (s as usize).min(len as usize),
+                        None => 0,
+                    };
+                    let end_idx = match end {
+                        Some(e) if e < 0 => (len + e).max(0) as usize,
+                        Some(e) => (e as usize).min(len as usize),
+                        None => len as usize,
+                    };
+                    let result: Vec<Value> = arr
+                        .iter()
+                        .skip(start_idx)
+                        .take(end_idx.saturating_sub(start_idx))
+                        .cloned()
+                        .collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+                _ => Err("Array missing internal value".to_string()),
+            }
+        })),
+    );
+
+    array_native_methods.insert(
         "zip".to_string(),
         Rc::new(NativeFunction::new("Array.zip", Some(1), |args| {
             let this = match args.first() {

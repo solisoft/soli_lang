@@ -648,6 +648,7 @@ impl Interpreter {
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),
             "drop" => self.array_drop(items, arguments, span),
+            "slice" => self.array_slice(items, arguments, span),
             "zip" => self.array_zip(items, arguments, span),
             "sum" => self.array_sum(items, arguments, span),
             "min" => self.array_min(items, arguments, span),
@@ -1569,6 +1570,48 @@ impl Interpreter {
             }
         };
         let result: Vec<Value> = items.iter().skip(n).cloned().collect();
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_slice(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        _span: Span,
+    ) -> RuntimeResult<Value> {
+        let start = if !arguments.is_empty() {
+            match &arguments[0] {
+                Value::Int(n) => Some(*n),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let end = if arguments.len() >= 2 {
+            match &arguments[1] {
+                Value::Int(n) => Some(*n),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let len = items.len() as i64;
+        let start_idx = match start {
+            Some(s) if s < 0 => (len + s).max(0) as usize,
+            Some(s) => (s as usize).min(len as usize),
+            None => 0,
+        };
+        let end_idx = match end {
+            Some(e) if e < 0 => (len + e).max(0) as usize,
+            Some(e) => (e as usize).min(len as usize),
+            None => len as usize,
+        };
+        let result: Vec<Value> = items
+            .iter()
+            .skip(start_idx)
+            .take(end_idx.saturating_sub(start_idx))
+            .cloned()
+            .collect();
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 

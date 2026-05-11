@@ -1672,12 +1672,14 @@ impl Interpreter {
             "length" | "len" | "size" | "map" | "filter" | "each" | "each_with_index"
             | "reduce" | "find" | "index_of" | "any?" | "all?" | "sort" | "sort_by" | "reverse"
             | "uniq" | "compact" | "compact_blank" | "flatten" | "first" | "last" | "empty?"
-            | "includes?" | "contains" | "sample" | "shuffle" | "take" | "drop" | "zip" | "sum"
-            | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string" | "to_json"
-            | "join" | "is_a?" | "all" | "includes" | "order" => Ok(Value::Method(ValueMethod {
-                receiver: Box::new(obj_val),
-                method_name: name.to_string(),
-            })),
+            | "includes?" | "contains" | "sample" | "shuffle" | "take" | "drop" | "slice"
+            | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string"
+            | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" => {
+                Ok(Value::Method(ValueMethod {
+                    receiver: Box::new(obj_val),
+                    method_name: name.to_string(),
+                }))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
@@ -1778,7 +1780,7 @@ impl Interpreter {
             | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"
             | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"
             | "compact_blank" | "flatten" | "last" | "empty?" | "includes?" | "contains"
-            | "sample" | "shuffle" | "take" | "drop" | "zip" | "to_string" | "to_json"
+            | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "to_string" | "to_json"
             | "to_a" | "to_array" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
