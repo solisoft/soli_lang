@@ -1,6 +1,9 @@
 get("/ping", "api#ping");
 get("/echo", "api#echo_path");
 get("/add", "api#add");
+get("/named_routes", "api#named_routes_probe");
+get("/about", "api#about_stub", name: "about");
+resources("posts");
 get("/method", "api#echo_method");
 post("/method", "api#echo_method");
 put("/method", "api#echo_method");

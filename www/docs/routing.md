@@ -114,6 +114,23 @@ get("/about", "pages#about", name: "about");
 
 (`name:` rather than Rails' `as:` because `as` is a reserved keyword in Soli.)
 
+### Plural-to-singular limitations
+
+`resources()` derives the member-route helper (`<singular>_path`) and the nested-resource param (`:<singular>_id`) from the resource name by a small built-in inflector. It handles three cases:
+
+- **Trailing `s`** — `posts → post`, `users → user`.
+- **`ies → y` after a consonant** — `categories → category`, `parties → party`, `companies → company`.
+- **A short irregulars table** — `people → person`, `men → man`, `women → woman`, `children → child`, `mice → mouse`, `geese → goose`, `feet → foot`, `teeth → tooth`.
+
+Anything else falls through unchanged, which can produce a confusing helper name or a collision with the collection helper. The two failure modes worth knowing:
+
+- **Words whose plural doesn't end in `s` and aren't in the irregulars table** (e.g. `data`, `sheep`, `series`, `news`) leave the singular equal to the plural, so `data_path()` would mean *both* the collection and the member route. The member registration overwrites the collection in the route table — usually not what you want. Pick a different resource name (e.g. `entries`).
+- **Words where `ies → y` produces nonsense** are caught by the consonant guard (`pies → pie`, not `py`), but exotic forms still won't round-trip. When in doubt, register the routes manually with `get(..., name: "...")`.
+
+### Duplicate names
+
+Registering two routes with the same `name:` is allowed; the **last** route to be added wins the helper. Hot reload follows the same rule because the lookup table is rebuilt from the live route list on every reload. There is no compile-time warning today, so audit `config/routes.sl` if `<name>_path` ever returns a path you weren't expecting.
+
 ## Nested Controllers
 
 Controllers nested in subdirectories of `app/controllers/` are addressed with a `/`-separated key:

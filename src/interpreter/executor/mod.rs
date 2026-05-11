@@ -901,9 +901,7 @@ mod helper_error_path_tests {
             .breakpoint_stack_trace()
             .expect("error should carry a captured stack trace");
 
-        let any_helper = stack_trace
-            .iter()
-            .any(|f| f.contains("buggy_helper.sl"));
+        let any_helper = stack_trace.iter().any(|f| f.contains("buggy_helper.sl"));
         let any_entry = stack_trace.iter().any(|f| f.contains("cors.sl"));
         assert!(
             any_helper,

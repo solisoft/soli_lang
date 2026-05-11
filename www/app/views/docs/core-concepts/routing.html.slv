@@ -375,6 +375,28 @@ post_comment_path(5, 9)</code></pre>
         (<code>name:</code> rather than Rails' <code>as:</code> because <code>as</code> is a reserved keyword in Soli.)
     </p>
 
+    <h3 class="text-xl font-semibold text-white mb-4">Plural-to-singular limitations</h3>
+    <p class="text-gray-400 mb-4">
+        <code>resources()</code> derives the member-route helper (<code>&lt;singular&gt;_path</code>) and the nested-resource param (<code>:&lt;singular&gt;_id</code>) from the resource name by a small built-in inflector. It handles three cases:
+    </p>
+    <ul class="list-disc list-inside text-gray-400 mb-6 space-y-1">
+        <li><strong>Trailing <code>s</code></strong> &mdash; <code>posts &rarr; post</code>, <code>users &rarr; user</code>.</li>
+        <li><strong><code>ies &rarr; y</code> after a consonant</strong> &mdash; <code>categories &rarr; category</code>, <code>parties &rarr; party</code>, <code>companies &rarr; company</code>.</li>
+        <li><strong>A short irregulars table</strong> &mdash; <code>people &rarr; person</code>, <code>men &rarr; man</code>, <code>women &rarr; woman</code>, <code>children &rarr; child</code>, <code>mice &rarr; mouse</code>, <code>geese &rarr; goose</code>, <code>feet &rarr; foot</code>, <code>teeth &rarr; tooth</code>.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">
+        Anything else falls through unchanged, which can produce a confusing helper name or a collision with the collection helper. The two failure modes worth knowing:
+    </p>
+    <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+        <li><strong>Words whose plural doesn't end in <code>s</code> and aren't in the irregulars table</strong> (e.g. <code>data</code>, <code>sheep</code>, <code>series</code>, <code>news</code>) leave the singular equal to the plural, so <code>data_path()</code> would mean <em>both</em> the collection and the member route. The member registration overwrites the collection in the route table &mdash; usually not what you want. Pick a different resource name (e.g. <code>entries</code>).</li>
+        <li><strong>Words where <code>ies &rarr; y</code> produces nonsense</strong> are caught by the consonant guard (<code>pies &rarr; pie</code>, not <code>py</code>), but exotic forms still won't round-trip. When in doubt, register the routes manually with <code>get(..., name: "...")</code>.</li>
+    </ul>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Duplicate names</h3>
+    <p class="text-gray-400 mb-12">
+        Registering two routes with the same <code>name:</code> is allowed; the <strong>last</strong> route to be added wins the helper. Hot reload follows the same rule because the lookup table is rebuilt from the live route list on every reload. There is no compile-time warning today, so audit <code>config/routes.sl</code> if <code>&lt;name&gt;_path</code> ever returns a path you weren't expecting.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Namespaces</h2>
     <p class="text-gray-400 mb-6">Group routes under a common prefix, like <code>/admin</code>:</p>
 

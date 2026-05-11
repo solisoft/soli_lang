@@ -145,3 +145,30 @@ fn closure_demo(req: Any) -> Any {
     let add5 = make_adder(5);
     return {"status": 200, "body": str(add5(7))};
 }
+
+# Stub action so the `name: "about"` route in routes.sl has a target.
+fn about_stub(req: Any) -> Any {
+    return {"status": 200, "body": "about"};
+}
+
+# Probe action that exercises every auto-generated named-route helper —
+# the ones from `resources("posts")` plus the `name: "about"` one-off.
+# Returns a JSON object the e2e test asserts on field-by-field; the keys
+# match the helper names so failures are easy to read.
+fn named_routes_probe(req: Any) -> Any {
+    let result = {
+        "posts_path": posts_path(),
+        "new_post_path": new_post_path(),
+        "post_path": post_path(1),
+        "edit_post_path": edit_post_path(1),
+        "about_path": about_path(),
+        "posts_url": posts_url(),
+        "post_url": post_url(1),
+        "about_url": about_url()
+    };
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify(result)
+    };
+}

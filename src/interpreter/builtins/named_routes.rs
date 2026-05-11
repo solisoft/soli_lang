@@ -447,6 +447,56 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_name_registration_last_wins() {
+        // Two routes claim the same name. `rebuild_named_routes` walks the
+        // route list in order and `map.insert` overwrites, so the LAST
+        // route registered with a given name owns the helper's pattern.
+        // This is the contract documented in `www/docs/routing.md` — if a
+        // user defines `name: "about"` twice, only the later one resolves.
+        let routes = vec![
+            Route {
+                method: "GET".to_string(),
+                path_pattern: "/about".to_string(),
+                handler_name: "pages#about".to_string(),
+                name: Some("about".to_string()),
+                middleware: vec![],
+                middleware_names: vec![],
+            },
+            Route {
+                method: "GET".to_string(),
+                path_pattern: "/about-us".to_string(),
+                handler_name: "pages#about_us".to_string(),
+                name: Some("about".to_string()),
+                middleware: vec![],
+                middleware_names: vec![],
+            },
+        ];
+        rebuild_named_routes(&routes);
+        assert_eq!(build_path_for_name("about", &[]).unwrap(), "/about-us");
+    }
+
+    #[test]
+    fn rebuild_clears_routes_removed_by_hot_reload() {
+        // Hot reload re-runs `rebuild_named_routes` with a smaller list.
+        // The named-route lookup must drop stale entries — otherwise
+        // `<name>_path` would resolve to a route that no longer exists.
+        let routes = vec![Route {
+            method: "GET".to_string(),
+            path_pattern: "/old".to_string(),
+            handler_name: "pages#old".to_string(),
+            name: Some("old".to_string()),
+            middleware: vec![],
+            middleware_names: vec![],
+        }];
+        rebuild_named_routes(&routes);
+        assert_eq!(build_path_for_name("old", &[]).unwrap(), "/old");
+
+        rebuild_named_routes(&[]);
+        let err = build_path_for_name("old", &[]).unwrap_err();
+        assert!(err.contains("no route registered"), "got: {}", err);
+    }
+
+    #[test]
     fn url_errors_when_no_host_available() {
         let _lock = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let _g_host = EnvVarGuard::capture("SOLI_DEFAULT_URL_HOST");
