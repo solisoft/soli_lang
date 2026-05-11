@@ -4,6 +4,11 @@
 
 - Node.js (v16 or higher)
 - npm or yarn
+- OpenSSL — required to build from source via Cargo
+  - Debian/Ubuntu: `sudo apt install libssl-dev`
+  - Fedora/RHEL: `sudo dnf install openssl-devel`
+  - macOS (Homebrew): `brew install openssl`
+  - Verify: `openssl version`
 
 ## Install SoliLang
 
