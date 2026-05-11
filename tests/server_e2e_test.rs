@@ -342,6 +342,41 @@ fn closure_in_handler() {
 }
 
 #[test]
+fn named_route_helpers_resolve_through_running_server() {
+    // End-to-end verification of `*_path` / `*_url` registered through
+    // `resources("posts")` and a `name: "about"` one-off in routes.sl. We hit
+    // a probe action that calls each helper and returns the resolved strings;
+    // failing the assertion means the registration path
+    // (router_resource_enter → register_route_with_name → rebuild_named_routes
+    // → register_named_route_helpers) is broken end-to-end.
+    let server = ServerProcess::start();
+    let resp = ureq::get(&server.url("/named_routes"))
+        .timeout(Duration::from_secs(3))
+        .set("Host", "test.example.com")
+        .call()
+        .expect("named-routes probe request");
+    assert_eq!(resp.status(), 200);
+    let body = body_string(resp);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("invalid JSON {:?}: {}", body, e));
+
+    // resources("posts") — collection + member + edit/new variants.
+    assert_eq!(parsed["posts_path"], "/posts");
+    assert_eq!(parsed["new_post_path"], "/posts/new");
+    assert_eq!(parsed["post_path"], "/posts/1");
+    assert_eq!(parsed["edit_post_path"], "/posts/1/edit");
+
+    // `name:` one-off route.
+    assert_eq!(parsed["about_path"], "/about");
+
+    // *_url variants pull the scheme + host from the live request — Host
+    // header we sent above plus http (no TLS / no X-Forwarded-Proto).
+    assert_eq!(parsed["posts_url"], "http://test.example.com/posts");
+    assert_eq!(parsed["post_url"], "http://test.example.com/posts/1");
+    assert_eq!(parsed["about_url"], "http://test.example.com/about");
+}
+
+#[test]
 fn server_handles_concurrent_requests() {
     let server = ServerProcess::start();
     let url = server.url("/ping");
