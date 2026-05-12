@@ -90,6 +90,8 @@ The dev bar uses that integration instead of asking each app to wire its own deb
 
 Because it is built in, new Soli apps get the tool automatically. Because it is development-only, production keeps the instrumentation out of the response path.
 
+The injector also recognises HTMx swap traffic: requests that arrive with the `HX-Request: true` header are partial fragments destined for a page that already carries the dev bar, so Soli skips injection on those responses. Without this gate, every HTMx swap would append a fresh bar into the live DOM and you would quickly see a stack of dev bars at the bottom of the page.
+
 ## Small Tools Change How You Work
 
 The dev bar is not a replacement for logs, breakpoints, tests, or production observability. It is the fast feedback layer between "I changed the page" and "I understand what the page did."
