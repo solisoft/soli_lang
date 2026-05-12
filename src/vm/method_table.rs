@@ -42,7 +42,7 @@ pub fn resolve_method_id(name: &str) -> MethodId {
         "count" => 26,
         "delete" => 27,
         "replace" => 28,
-        "gsub" => 29,
+        "gsub" | "replace_all" => 29,
         "sub" => 30,
         "tr" => 31,
         "center" => 32,

@@ -285,7 +285,7 @@ impl Interpreter {
             "rstrip" => self.string_rstrip(s, arguments, span),
             "squeeze" => self.string_squeeze(s, arguments, span),
             "count" => self.string_count(s, arguments, span),
-            "gsub" => self.string_gsub(s, arguments, span),
+            "gsub" | "replace_all" => self.string_gsub(s, arguments, span),
             "sub" => self.string_sub(s, arguments, span),
             "match" => self.string_match(s, arguments, span),
             "scan" => self.string_scan(s, arguments, span),

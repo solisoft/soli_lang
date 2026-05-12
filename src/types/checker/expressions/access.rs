@@ -259,7 +259,7 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
-            "gsub" | "sub" | "tr" | "replace" => Ok(Type::Function {
+            "gsub" | "replace_all" | "sub" | "tr" | "replace" => Ok(Type::Function {
                 params: vec![Type::String, Type::String],
                 return_type: Box::new(Type::String),
             }),

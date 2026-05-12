@@ -128,6 +128,15 @@ describe("String.gsub and String.sub", fn() {
     test("sub replaces first match only", fn() {
         assert_eq("hello hello".sub("hello", "hi"), "hi hello");
     });
+    test("replace_all is an alias for gsub", fn() {
+        assert_eq("hello world".replace_all("o", "0"), "hell0 w0rld");
+    });
+    test("replace_all with regex pattern", fn() {
+        assert_eq("foo123bar".replace_all("[0-9]+", "#"), "foo#bar");
+    });
+    test("replace_all with limit", fn() {
+        assert_eq("aaa".replace_all("a", "b", 2), "bba");
+    });
 });
 
 describe("String.scan", fn() {

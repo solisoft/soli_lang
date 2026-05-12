@@ -1845,7 +1845,7 @@ impl Interpreter {
             | "rpad" | "join" | "empty?"
             // Ruby-style methods
             | "starts_with?" | "ends_with?" | "includes?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
-            | "count" | "gsub" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
+            | "count" | "gsub" | "replace_all" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"

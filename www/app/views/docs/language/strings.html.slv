@@ -523,17 +523,18 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-replace" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-replace" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.replace(search, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.gsub(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.sub(pattern, replacement)</code>
+                        <code class="text-lg font-mono text-indigo-400">.replace(search, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.gsub(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.replace_all(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.sub(pattern, replacement)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">replace</code> replaces all occurrences. <code class="text-indigo-300">gsub</code> replaces all regex matches. <code class="text-indigo-300">sub</code> replaces first regex match only.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">replace</code> replaces all occurrences. <code class="text-indigo-300">gsub</code> (alias: <code class="text-indigo-300">replace_all</code>) replaces all regex matches. <code class="text-indigo-300">sub</code> replaces first regex match only.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello world".replace("world", "Soli")  # "hello Soli"
 "aaa".replace("a", "b")                 # "bbb"
 
-"hello 42 world 7".gsub(r"\d+", "X")   # "hello X world X"
-"hello 42 world 7".sub(r"\d+", "X")    # "hello X world 7"</code></pre>
+"hello 42 world 7".gsub(r"\d+", "X")        # "hello X world X"
+"hello 42 world 7".replace_all(r"\d+", "X") # "hello X world X" (alias for gsub)
+"hello 42 world 7".sub(r"\d+", "X")         # "hello X world 7"</code></pre>
                 </div>
             </section>
 

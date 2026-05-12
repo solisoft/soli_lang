@@ -3703,6 +3703,23 @@
       ]
     },
     {
+      "title": ".replace_all()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.replace_all(pattern, replacement, limit?)",
+      "description": "Replace all matches of a pattern (alias for gsub)",
+      "keywords": [
+        "string",
+        "replace_all",
+        "replace",
+        "gsub",
+        "regex",
+        "substitute",
+        "global"
+      ]
+    },
+    {
       "title": ".sub()",
       "type": "method",
       "category": "String",
