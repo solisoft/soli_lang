@@ -786,6 +786,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "replace_all",
+        zero_arg: false,
+        ret: "string",
+    },
+    MethodDef {
         name: "reverse",
         zero_arg: true,
         ret: "string",

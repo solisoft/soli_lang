@@ -318,7 +318,7 @@ impl Vm {
                 let to = expect_string(&args[1], "replace to", span)?;
                 Ok(Value::String(s.replace(from, to)))
             }
-            "gsub" => {
+            "gsub" | "replace_all" => {
                 if args.len() < 2 || args.len() > 3 {
                     return Err(RuntimeError::wrong_arity(2, args.len(), span));
                 }
