@@ -1163,7 +1163,9 @@ impl Interpreter {
         if start_usize >= end_usize || start_usize >= chars.len() {
             Ok(Value::String(String::new()))
         } else {
-            Ok(Value::String(chars[start_usize..end_usize].iter().collect()))
+            Ok(Value::String(
+                chars[start_usize..end_usize].iter().collect(),
+            ))
         }
     }
 
