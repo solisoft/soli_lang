@@ -70,6 +70,7 @@ pub mod trust_proxy;
 pub mod types;
 pub mod uploads;
 pub mod validation;
+pub mod vapid;
 
 thread_local! {
     /// When `Some`, Soli's `print`/`println` builtins write here instead of
@@ -358,6 +359,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register JWT builtins
     jwt::register_jwt_builtins(env);
+
+    // Register VAPID / Web Push builtins
+    vapid::register_vapid_builtins(env);
 
     // Register test-only builtins (skipped in serve mode)
     if include_test_builtins {

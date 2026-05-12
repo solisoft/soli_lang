@@ -1293,6 +1293,51 @@ println(result["claims"]["sub"])  # Inspection only — DO NOT use for auth
 
 ---
 
+## VAPID / Web Push Functions
+
+Soli has native Web Push support — see [VAPID / Web Push Functions](/docs/builtins/vapid) for the full
+reference.
+
+### vapid_generate_keys()
+
+Generates a fresh P-256 application server key pair. Returns
+`{"public_key": String, "private_key": String}` (both base64url, no padding). Run once at setup time and
+store the result in `.env`.
+
+### vapid_sign(private_key, audience, subject, expiry_seconds?)
+
+Signs an ES256 VAPID JWT for the `Authorization: vapid t=<jwt>, k=<public_key>` header. `audience` must
+be the `scheme://host[:port]` origin of the push endpoint. Defaults to a 12 h expiry; RFC 8292 caps at
+24 h.
+
+### vapid_encrypt(payload, subscription, public_key, private_key)
+
+Encrypts a push payload per RFC 8291 (`aes128gcm`). Returns
+`{"ciphertext", "salt", "server_public_key"}`. A fresh ephemeral P-256 keypair is generated internally —
+the VAPID identity keys are never reused for ECDH. The trailing `public_key` / `private_key` arguments
+mirror `vapid_send`'s signature but are not consumed by encryption.
+
+### vapid_send(subscription, payload, private_key, public_key, subject, options?)
+
+End-to-end Web Push delivery: signs the JWT, encrypts the payload, and POSTs it to
+`subscription["endpoint"]`. Options: `ttl` (Int, default 60), `urgency` (String), `topic` (String),
+`expiry_seconds` (Int). Returns `{"status": Int, "body": String}` — 201 on success, 404/410 means the
+subscription is dead and should be deleted from your store.
+
+**Example:**
+
+```soli
+let result = vapid_send(
+  subscription,
+  json_stringify({ "title": "Hi", "body": "From Alice" }),
+  getenv("VAPID_PRIVATE_KEY"),
+  getenv("VAPID_PUBLIC_KEY"),
+  "mailto:ops@example.com"
+)
+```
+
+---
+
 ## Regex Class
 
 The `Regex` class provides static methods for regular expression operations.

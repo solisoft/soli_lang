@@ -1394,6 +1394,72 @@
       ]
     },
     {
+      "title": "vapid_generate_keys",
+      "type": "function",
+      "category": "VAPID",
+      "path": "/docs/builtins/vapid#def-vapid-generate-keys",
+      "signature": "vapid_generate_keys()",
+      "description": "Generate a fresh P-256 VAPID key pair for Web Push (base64url)",
+      "keywords": [
+        "push",
+        "notification",
+        "web push",
+        "vapid",
+        "p256",
+        "keys",
+        "pwa"
+      ]
+    },
+    {
+      "title": "vapid_sign",
+      "type": "function",
+      "category": "VAPID",
+      "path": "/docs/builtins/vapid#def-vapid-sign",
+      "signature": "vapid_sign(private_key, audience, subject, expiry_seconds?)",
+      "description": "Sign an ES256 VAPID JWT for the Authorization: vapid header",
+      "keywords": [
+        "push",
+        "notification",
+        "web push",
+        "vapid",
+        "jwt",
+        "es256",
+        "pwa"
+      ]
+    },
+    {
+      "title": "vapid_encrypt",
+      "type": "function",
+      "category": "VAPID",
+      "path": "/docs/builtins/vapid#def-vapid-encrypt",
+      "signature": "vapid_encrypt(payload, subscription, public_key, private_key)",
+      "description": "Encrypt a Web Push payload per RFC 8291 (aes128gcm)",
+      "keywords": [
+        "push",
+        "notification",
+        "web push",
+        "vapid",
+        "encrypt",
+        "aes128gcm",
+        "pwa"
+      ]
+    },
+    {
+      "title": "vapid_send",
+      "type": "function",
+      "category": "VAPID",
+      "path": "/docs/builtins/vapid#def-vapid-send",
+      "signature": "vapid_send(subscription, payload, private_key, public_key, subject, options?)",
+      "description": "Encrypt and deliver a Web Push notification to a browser push endpoint",
+      "keywords": [
+        "push",
+        "notification",
+        "web push",
+        "vapid",
+        "pwa"
+      ]
+    },
+    {
       "title": "getenv",
       "type": "function",
       "category": "Env",
