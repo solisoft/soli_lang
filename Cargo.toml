@@ -82,6 +82,11 @@ multer = "3"
 # JWT support
 jsonwebtoken = "9"
 
+# VAPID / Web Push (RFC 8291 / 8292): P-256 ECDH+ECDSA, HKDF, AES-128-GCM.
+p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
+hkdf = "0.12"
+aes-gcm = "0.10"
+
 # LiveView support
 diff = "0.1.13"
 async-channel = "2.3"

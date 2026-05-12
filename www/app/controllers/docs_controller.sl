@@ -300,6 +300,10 @@ fn builtins_jwt(req)
     render_docs("docs/builtins/jwt", "JWT Functions", "builtins", "jwt")
 end
 
+fn builtins_vapid(req)
+    render_docs("docs/builtins/vapid", "VAPID / Web Push Functions", "builtins", "vapid")
+end
+
 fn builtins_regex(req)
     render_docs("docs/builtins/regex", "Regex Functions", "builtins", "regex")
 end

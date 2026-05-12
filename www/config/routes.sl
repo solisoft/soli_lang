@@ -93,6 +93,7 @@ get("/docs/builtins/s3", "docs#builtins_s3");
 get("/docs/builtins/json", "docs#builtins_json");
 get("/docs/builtins/crypto", "docs#builtins_crypto");
 get("/docs/builtins/jwt", "docs#builtins_jwt");
+get("/docs/builtins/vapid", "docs#builtins_vapid");
 get("/docs/builtins/regex", "docs#builtins_regex");
 get("/docs/builtins/env", "docs#builtins_env");
 get("/docs/builtins/datetime", "docs#builtins_datetime");
