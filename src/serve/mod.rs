@@ -4787,6 +4787,12 @@ fn handle_request(
         data.headers.get("host").cloned().unwrap_or_default()
     };
 
+    // Capture whether this is an HTMx partial-swap request before `headers`
+    // is moved into `RequestData`. HTMx returns the response fragment into
+    // the live DOM, where the page-level dev bar already exists — injecting
+    // a second one into the fragment produces stacked bars.
+    let is_htmx_request = dev_bar::is_htmx_request(&data.headers);
+
     // Take ownership of headers and query to avoid cloning individual keys/values
     let headers = std::mem::take(&mut data.headers);
     let query = std::mem::take(&mut data.query);
@@ -4839,7 +4845,10 @@ fn handle_request(
                 .headers
                 .iter()
                 .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
-            if is_html {
+            // HTMx partial responses share the page that already carries the
+            // dev bar; injecting again would append a second one into the
+            // live DOM on each swap.
+            if is_html && !is_htmx_request {
                 if let Ok(body_str) = std::str::from_utf8(&resp.body) {
                     let queries = crate::interpreter::builtins::model::query_log::snapshot();
                     let http_requests = crate::interpreter::builtins::http_log::snapshot();
