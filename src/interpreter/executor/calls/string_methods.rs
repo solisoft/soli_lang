@@ -1153,16 +1153,17 @@ impl Interpreter {
                 ))
             }
         };
+        let chars: Vec<char> = s.chars().collect();
         let start_usize = if start < 0 { 0 } else { start as usize };
-        let end_usize = if end > s.len() as i64 {
-            s.len()
+        let end_usize = if end < 0 {
+            0
         } else {
-            end as usize
+            (end as usize).min(chars.len())
         };
-        if start_usize >= end_usize || start_usize >= s.len() {
+        if start_usize >= end_usize || start_usize >= chars.len() {
             Ok(Value::String(String::new()))
         } else {
-            Ok(Value::String(s[start_usize..end_usize].to_string()))
+            Ok(Value::String(chars[start_usize..end_usize].iter().collect()))
         }
     }
 

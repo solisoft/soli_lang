@@ -70,6 +70,13 @@ describe("Collection Classes", fn() {
             assert_eq(s.substring(6, 11).to_string(), "world");
         });
 
+        test("String.substring() handles multi-byte UTF-8 without panicking", fn() {
+            let s = "ab↩cd";
+            assert_eq(s.substring(0, 3).to_string(), "ab↩");
+            assert_eq(s.substring(2, 3).to_string(), "↩");
+            assert_eq(s.substring(0, 100).to_string(), "ab↩cd");
+        });
+
         test("String.replace() replaces substring", fn() {
             let s = "hello world";
             let replaced = s.replace("world", "soli");
