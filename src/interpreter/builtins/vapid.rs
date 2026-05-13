@@ -311,7 +311,7 @@ fn encrypt_payload(
     key_info.extend_from_slice(b"WebPush: info\0");
     key_info.extend_from_slice(&p256dh);
     key_info.extend_from_slice(&as_public_bytes);
-    let ikm = hkdf_extract_expand(&auth, shared_secret.as_slice(), &key_info, 32)?;
+    let ikm = hkdf_extract_expand(&auth, shared_secret.as_ref(), &key_info, 32)?;
 
     // Step 2: CEK + nonce keyed off the per-record salt.
     let cek = hkdf_extract_expand(&salt, &ikm, b"Content-Encoding: aes128gcm\0", 16)?;
@@ -324,6 +324,7 @@ fn encrypt_payload(
 
     let cipher = Aes128Gcm::new_from_slice(&cek)
         .map_err(|e| format!("vapid_encrypt(): AES-128-GCM key error: {}", e))?;
+    #[allow(deprecated)]
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(
