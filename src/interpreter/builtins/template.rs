@@ -1816,6 +1816,39 @@ mod tests {
     }
 
     #[test]
+    fn inject_request_context_exposes_params_as_top_level_local() {
+        let mut params_map = HashPairs::default();
+        params_map.insert(
+            HashKey::String("q".to_string()),
+            Value::String("search".into()),
+        );
+        set_current_request(make_request(&[(
+            "params",
+            Value::Hash(Rc::new(RefCell::new(params_map))),
+        )]));
+        let data = empty_data();
+        inject_request_context(&data);
+        let Value::Hash(h) = &data else {
+            unreachable!()
+        };
+        let h = h.borrow();
+        assert!(
+            h.contains_key(&HashKey::String("params".to_string())),
+            "params should be injected as top-level view local"
+        );
+        let params = h.get(&HashKey::String("params".to_string())).unwrap();
+        let Value::Hash(params_hash) = params else {
+            unreachable!("params should be a Hash")
+        };
+        let params = params_hash.borrow();
+        assert_eq!(
+            params.get(&HashKey::String("q".to_string())),
+            Some(&Value::String("search".into()))
+        );
+        clear_current_request();
+    }
+
+    #[test]
     fn explicit_render_data_wins_over_instance_field() {
         set_current_controller(make_instance(&[(
             "title",
