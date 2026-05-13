@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
@@ -804,6 +804,22 @@ lazy_static::lazy_static! {
 /// Get the global WebSocket registry.
 pub fn get_ws_registry() -> std::sync::Arc<WebSocketRegistry> {
     GLOBAL_WS_REGISTRY.clone()
+}
+
+// Global tokio runtime handle, initialized once during server startup.
+// Used by WS builtins (ws_send, ws_broadcast, etc.) to spawn async tasks
+// from non-tokio worker threads.
+static WS_RUNTIME_HANDLE: OnceLock<tokio::runtime::Handle> = OnceLock::new();
+
+/// Set the global tokio runtime handle. Called once during server initialization
+/// from within the tokio runtime thread.
+pub fn set_runtime_handle(handle: tokio::runtime::Handle) {
+    let _ = WS_RUNTIME_HANDLE.set(handle);
+}
+
+/// Get the global tokio runtime handle. Panics if called before initialization.
+pub fn get_runtime_handle() -> &'static tokio::runtime::Handle {
+    WS_RUNTIME_HANDLE.get().expect("WS runtime handle not initialized")
 }
 
 #[cfg(test)]

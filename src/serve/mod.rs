@@ -43,8 +43,9 @@ pub use middleware::{
 };
 pub use router::{derive_routes_from_controller, ControllerRoute};
 pub use websocket::{
-    clear_websocket_routes, get_websocket_routes, match_websocket_route, register_websocket_route,
-    restore_websocket_routes, take_websocket_routes, WebSocketConnection, WebSocketEvent,
+    clear_websocket_routes, get_websocket_routes, get_runtime_handle, match_websocket_route,
+    register_websocket_route, restore_websocket_routes, set_runtime_handle, take_websocket_routes,
+    WebSocketConnection, WebSocketEvent,
     WebSocketHandlerAction, WebSocketRegistry,
 };
 
@@ -669,7 +670,9 @@ fn run_hyper_server_worker_pool(
 
         runtime.block_on(async move {
             // Send runtime handle to main thread for workers to use
-            let _ = runtime_handle_tx.send(tokio::runtime::Handle::current());
+            let handle = tokio::runtime::Handle::current();
+            crate::serve::websocket::set_runtime_handle(handle.clone());
+            let _ = runtime_handle_tx.send(handle);
 
             // Try the requested port, then scan for a free one
             let mut try_port = port;

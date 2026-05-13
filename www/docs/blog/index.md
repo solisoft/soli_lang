@@ -4,11 +4,11 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [Web Push from Soli: Goodbye `web-push`, Hello Native VAPID](/docs/blog/web-push-notifications) - Drop the web-push Node module and send Web Push notifications natively from Soli with the four VAPID builtins (RFC 8291 / 8292)
 - [The New Soli Dev Bar](/docs/blog/dev-bar) - Request timing, render breakdowns, SolidB queries, outgoing HTTP calls, N+1 detection, flamegraphs, and trace exports directly in development pages
 - [How Soli Competes with Big Frameworks](/docs/blog/competing-with-big-frameworks) - How Soli competes with Rails, Laravel, Django, Next.js, and other mature frameworks by focusing on simplicity, coherence, and fast product development
 - [From `_handle_photo` to `uploader("photo", { ... })` — Soli's New Attachment Pipeline](/docs/blog/uploads-and-image-transforms) - The model declares an uploader, the framework ships the controller, the URL drives image transforms (resize, crop, fit, blur, brightness, format conversion). Zero boilerplate per app.
 - [Importing CSV & Excel Files in Soli](/docs/blog/spreadsheet-functions) - Parse and process spreadsheet data with built-in functions for CSV and Excel files
-- [Web Push from Soli: Goodbye `web-push`, Hello Native VAPID](/docs/blog/web-push-notifications) - Drop the web-push Node module and send Web Push notifications natively from Soli with the four VAPID builtins (RFC 8291 / 8292)
 - [Adding "Sign in with GitHub" to Your Soli App](/docs/blog/github-oauth) - Full OAuth 2.0 flow with GitHub, sessions, JWT tokens, and security best practices
 - [HTMx: The Missing Link Between Traditional MVC and Modern Interactivity](/docs/blog/htmx-integration) - How HTMx brings simplicity to Soli web apps with server-rendered partials
 - [Soli: A Minimal Language for Web Development](/docs/blog/soli-minimal-lang) - Why Soli is designed as a minimal, focused language for web development, ideal for AI-assisted coding

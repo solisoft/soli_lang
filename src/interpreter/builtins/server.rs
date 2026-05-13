@@ -1290,7 +1290,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
             // Spawn async task to send message
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 let _ = registry_clone.send_to(&uuid, &message).await;
             });
 
@@ -1314,7 +1314,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
             let registry = get_ws_registry();
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 registry_clone.broadcast_all(&message).await;
             });
 
@@ -1348,7 +1348,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
             let registry = get_ws_registry();
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 registry_clone
                     .broadcast_to_channel(&channel, &message)
                     .await;
@@ -1454,7 +1454,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             let registry = get_ws_registry();
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 registry_clone.close(&uuid, &reason).await;
             });
 
@@ -1492,7 +1492,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             // Use a channel to get the result back synchronously
             let (tx, rx) = std::sync::mpsc::channel();
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 let presences = registry_clone.list_presence(&channel).await;
                 let _ = tx.send(presences);
             });
@@ -1575,7 +1575,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
             let (tx, rx) = std::sync::mpsc::channel();
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 let count = registry_clone.presence_count(&channel).await;
                 let _ = tx.send(count);
             });
@@ -1616,7 +1616,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
             let (tx, rx) = std::sync::mpsc::channel();
             let registry_clone = registry.clone();
-            tokio::spawn(async move {
+            crate::serve::websocket::get_runtime_handle().spawn(async move {
                 let presence = registry_clone.get_user_presence(&channel, &user_id).await;
                 let _ = tx.send(presence);
             });
