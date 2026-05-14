@@ -81,6 +81,31 @@ V.string().email()                 # Valid email format
 V.string().url()                   # Valid URL format
 ```
 
+### Password Rules
+
+Password character-class requirements for server-side validation and HTML `passwordrules` attribute generation:
+
+```soli
+V.string().letters()               # Must contain at least one letter
+V.string().mixed_case()            # Must contain uppercase and lowercase
+V.string().numbers()               # Must contain at least one digit
+V.string().symbols()              # Must contain at least one symbol
+
+# Generate the HTML passwordrules attribute for password managers
+password_rules = V.string()
+    .min_length(12)
+    .max_length(64)
+    .mixed_case()
+    .numbers()
+    .symbols()
+    .to_password_rules_string();
+
+# password_rules → "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;"
+
+# Use in a template:
+# <input type="password" passwordrules="<%= password_rules %>">
+```
+
 ### Enumeration
 
 ```soli
@@ -241,7 +266,9 @@ Returns `{ "valid": Bool, "data": Hash, "errors": Array }`
 
 All validators support: `.required()`, `.optional()`, `.nullable()`, `.default(value)`
 
-String validators: `.min_length(n)`, `.max_length(n)`, `.pattern(regex)`, `.email()`, `.url()`
+String validators: `.min_length(n)`, `.max_length(n)`, `.pattern(regex)`, `.email()`, `.url()`, `.letters()`, `.mixed_case()`, `.numbers()`, `.symbols()`
+
+All validators: `.to_password_rules_string()` — serializes password-relevant rules into the `passwordrules` HTML attribute format (used by Safari, 1Password, Bitwarden, etc.). Returns a semicolon-separated string of rules; returns `""` when no password-relevant rules are present.
 
 Numeric validators: `.min(n)`, `.max(n)`
 

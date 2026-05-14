@@ -200,6 +200,46 @@ impl Validator {
                     Ok(v.to_value())
                 })),
             );
+
+            let validator_for_letters = validator_rc.clone();
+            pairs.insert(
+                HashKey::String("letters".to_string()),
+                Value::NativeFunction(NativeFunction::new("letters", Some(0), move |_args| {
+                    let mut v = validator_for_letters.borrow().clone();
+                    v.rules.push(ValidationRule::Letters);
+                    Ok(v.to_value())
+                })),
+            );
+
+            let validator_for_mixed_case = validator_rc.clone();
+            pairs.insert(
+                HashKey::String("mixed_case".to_string()),
+                Value::NativeFunction(NativeFunction::new("mixed_case", Some(0), move |_args| {
+                    let mut v = validator_for_mixed_case.borrow().clone();
+                    v.rules.push(ValidationRule::MixedCase);
+                    Ok(v.to_value())
+                })),
+            );
+
+            let validator_for_numbers = validator_rc.clone();
+            pairs.insert(
+                HashKey::String("numbers".to_string()),
+                Value::NativeFunction(NativeFunction::new("numbers", Some(0), move |_args| {
+                    let mut v = validator_for_numbers.borrow().clone();
+                    v.rules.push(ValidationRule::Numbers);
+                    Ok(v.to_value())
+                })),
+            );
+
+            let validator_for_symbols = validator_rc.clone();
+            pairs.insert(
+                HashKey::String("symbols".to_string()),
+                Value::NativeFunction(NativeFunction::new("symbols", Some(0), move |_args| {
+                    let mut v = validator_for_symbols.borrow().clone();
+                    v.rules.push(ValidationRule::Symbols);
+                    Ok(v.to_value())
+                })),
+            );
         }
 
         // Numeric methods (Int and Float)
@@ -249,6 +289,25 @@ impl Validator {
                 v.rules.push(ValidationRule::OneOf(allowed));
                 Ok(v.to_value())
             })),
+        );
+
+        // to_password_rules_string() - available on any validator
+        let validator_for_password_rules = validator_rc.clone();
+        pairs.insert(
+            HashKey::String("to_password_rules_string".to_string()),
+            Value::NativeFunction(NativeFunction::new(
+                "to_password_rules_string",
+                Some(0),
+                move |_args| {
+                    let v = validator_for_password_rules.borrow().clone();
+                    let parts: Vec<String> = v
+                        .rules
+                        .iter()
+                        .filter_map(|r| r.to_password_rule_str())
+                        .collect();
+                    Ok(Value::String(parts.join(" ")))
+                },
+            )),
         );
 
         Value::Hash(Rc::new(RefCell::new(pairs)))

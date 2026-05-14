@@ -26,6 +26,14 @@ pub enum ValidationRule {
     Url,
     /// Must be one of the allowed values
     OneOf(Vec<Value>),
+    /// Must contain at least one letter (alphabetic character)
+    Letters,
+    /// Must contain both uppercase and lowercase characters
+    MixedCase,
+    /// Must contain at least one digit
+    Numbers,
+    /// Must contain at least one symbol (non-alphanumeric character)
+    Symbols,
 }
 
 impl ValidationRule {
@@ -190,6 +198,84 @@ impl ValidationRule {
                     ));
                 }
             }
+            ValidationRule::Letters => {
+                let s = match value {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(create_error(
+                            field_name,
+                            "must be a string for letters validation",
+                            "type_error",
+                        ))
+                    }
+                };
+                if !s.chars().any(|c| c.is_ascii_alphabetic()) {
+                    return Err(create_error(
+                        field_name,
+                        "must contain at least one letter",
+                        "letters",
+                    ));
+                }
+            }
+            ValidationRule::MixedCase => {
+                let s = match value {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(create_error(
+                            field_name,
+                            "must be a string for mixed_case validation",
+                            "type_error",
+                        ))
+                    }
+                };
+                let has_lower = s.chars().any(|c| c.is_ascii_lowercase());
+                let has_upper = s.chars().any(|c| c.is_ascii_uppercase());
+                if !has_lower || !has_upper {
+                    return Err(create_error(
+                        field_name,
+                        "must contain both uppercase and lowercase characters",
+                        "mixed_case",
+                    ));
+                }
+            }
+            ValidationRule::Numbers => {
+                let s = match value {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(create_error(
+                            field_name,
+                            "must be a string for numbers validation",
+                            "type_error",
+                        ))
+                    }
+                };
+                if !s.chars().any(|c| c.is_ascii_digit()) {
+                    return Err(create_error(
+                        field_name,
+                        "must contain at least one number",
+                        "numbers",
+                    ));
+                }
+            }
+            ValidationRule::Symbols => {
+                let s = match value {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(create_error(
+                            field_name,
+                            "must be a string for symbols validation",
+                            "type_error",
+                        ))
+                    }
+                };
+                if !s.chars().any(|c| !c.is_ascii_alphanumeric()) {
+                    return Err(create_error(
+                        field_name,
+                        "must contain at least one symbol",
+                        "symbols",
+                    ));
+                }
+            }
             ValidationRule::OneOf(allowed) => {
                 let is_match = allowed
                     .iter()
@@ -228,6 +314,10 @@ impl ValidationRule {
                 let values = arr.clone();
                 ("one_of", Value::Array(Rc::new(RefCell::new(values))))
             }
+            ValidationRule::Letters => ("letters", Value::Bool(true)),
+            ValidationRule::MixedCase => ("mixed_case", Value::Bool(true)),
+            ValidationRule::Numbers => ("numbers", Value::Bool(true)),
+            ValidationRule::Symbols => ("symbols", Value::Bool(true)),
         };
 
         let mut pairs: HashPairs = HashPairs::default();
@@ -237,6 +327,20 @@ impl ValidationRule {
         );
         pairs.insert(HashKey::String("value".to_string()), rule_value);
         Value::Hash(Rc::new(RefCell::new(pairs)))
+    }
+
+    /// Convert the rule to a passwordrules attribute fragment.
+    /// Returns None for rules that have no passwordrules equivalent.
+    pub fn to_password_rule_str(&self) -> Option<String> {
+        match self {
+            ValidationRule::MinLength(n) => Some(format!("minlength: {};", n)),
+            ValidationRule::MaxLength(n) => Some(format!("maxlength: {};", n)),
+            ValidationRule::Letters => Some("required: lower; required: upper;".to_string()),
+            ValidationRule::MixedCase => Some("required: lower; required: upper;".to_string()),
+            ValidationRule::Numbers => Some("required: digit;".to_string()),
+            ValidationRule::Symbols => Some("required: special;".to_string()),
+            _ => None,
+        }
     }
 
     /// Parse a rule from a Soli Value.
@@ -308,6 +412,10 @@ impl ValidationRule {
             }
             "email" => Some(ValidationRule::Email),
             "url" => Some(ValidationRule::Url),
+            "letters" => Some(ValidationRule::Letters),
+            "mixed_case" => Some(ValidationRule::MixedCase),
+            "numbers" => Some(ValidationRule::Numbers),
+            "symbols" => Some(ValidationRule::Symbols),
             "one_of" => {
                 let arr = match rule_value {
                     Value::Array(a) => a.borrow().clone(),
