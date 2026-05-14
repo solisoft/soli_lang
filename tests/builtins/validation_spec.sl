@@ -154,4 +154,109 @@ describe("Validation Functions", fn() {
         let result = validate(valid_data, schema);
         assert(result["valid"]);
     });
+
+    describe("to_password_rules_string", fn() {
+        test("outputs all password rules in correct order", fn() {
+            let rules = V.string()
+                .min_length(12)
+                .max_length(64)
+                .mixed_case()
+                .numbers()
+                .symbols()
+                .to_password_rules_string();
+            assert_eq(rules, "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;");
+        });
+
+        test("returns empty string when no password-relevant rules set", fn() {
+            let rules = V.string()
+                .email()
+                .to_password_rules_string();
+            assert_eq(rules, "");
+        });
+
+        test("handles letters rule in password rules string", fn() {
+            let rules = V.string()
+                .letters()
+                .to_password_rules_string();
+            // letters and mixed_case both map to required: lower; required: upper;
+            assert_eq(rules, "required: lower; required: upper;");
+        });
+
+        test("validates letters rule rejects value without letters", fn() {
+            let schema = hash();
+            schema["password"] = V.string().letters();
+            let invalid_data = hash();
+            invalid_data["password"] = "12345";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+        });
+
+        test("validates letters rule accepts value with letters", fn() {
+            let schema = hash();
+            schema["password"] = V.string().letters();
+            let valid_data = hash();
+            valid_data["password"] = "abc123";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+
+        test("validates mixed_case rule rejects value without mixed case", fn() {
+            let schema = hash();
+            schema["password"] = V.string().mixed_case();
+            let invalid_data = hash();
+            invalid_data["password"] = "alllowercase";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+        });
+
+        test("validates mixed_case rule accepts value with mixed case", fn() {
+            let schema = hash();
+            schema["password"] = V.string().mixed_case();
+            let valid_data = hash();
+            valid_data["password"] = "MixedCase1";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+
+        test("validates numbers rule rejects value without digits", fn() {
+            let schema = hash();
+            schema["password"] = V.string().numbers();
+            let invalid_data = hash();
+            invalid_data["password"] = "abcdef";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+        });
+
+        test("validates numbers rule accepts value with digits", fn() {
+            let schema = hash();
+            schema["password"] = V.string().numbers();
+            let valid_data = hash();
+            valid_data["password"] = "abc123";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+
+        test("validates symbols rule rejects value without symbols", fn() {
+            let schema = hash();
+            schema["password"] = V.string().symbols();
+            let invalid_data = hash();
+            invalid_data["password"] = "abc123";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+        });
+
+        test("validates symbols rule accepts value with symbols", fn() {
+            let schema = hash();
+            schema["password"] = V.string().symbols();
+            let valid_data = hash();
+            valid_data["password"] = "abc123!";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+
+        test("to_password_rules_string is available on non-string validators", fn() {
+            let rules = V.int().min(1).to_password_rules_string();
+            assert_eq(rules, "");
+        });
+    });
 });

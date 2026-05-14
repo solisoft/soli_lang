@@ -166,6 +166,41 @@
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Valid URL format</p>
                 </section>
+
+                <section id="method-letters" class="scroll-mt-20">
+                    <a href="#method-letters" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.letters()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Must contain at least one letter</p>
+                </section>
+
+                <section id="method-mixed_case" class="scroll-mt-20">
+                    <a href="#method-mixed_case" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.mixed_case()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Must contain uppercase and lowercase</p>
+                </section>
+
+                <section id="method-numbers" class="scroll-mt-20">
+                    <a href="#method-numbers" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.numbers()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Must contain at least one digit</p>
+                </section>
+
+                <section id="method-symbols" class="scroll-mt-20">
+                    <a href="#method-symbols" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.symbols()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Must contain at least one symbol</p>
+                </section>
+
+                <section id="method-to_password_rules_string" class="scroll-mt-20">
+                    <a href="#method-to_password_rules_string" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.to_password_rules_string()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Serializes password rules into the HTML <code>passwordrules</code> attribute format</p>
+                </section>
             </div>
         </div>
     </section>
