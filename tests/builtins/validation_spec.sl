@@ -93,6 +93,121 @@ describe("Validation Functions", fn() {
         assert_not(result2["valid"]);
     });
 
+    test("V.string().pattern() validates regex pattern", fn() {
+        let schema = hash();
+        schema["zip"] = V.string().pattern("^\\d{5}$");
+
+        let valid_data = hash();
+        valid_data["zip"] = "12345";
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let invalid_data = hash();
+        invalid_data["zip"] = "abc";
+        let result2 = validate(invalid_data, schema);
+        assert_not(result2["valid"]);
+    });
+
+    test("V.string().url() validates URL format", fn() {
+        let schema = hash();
+        schema["website"] = V.string().url();
+
+        let valid_data = hash();
+        valid_data["website"] = "https://example.com";
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let invalid_data = hash();
+        invalid_data["website"] = "not a url";
+        let result2 = validate(invalid_data, schema);
+        assert_not(result2["valid"]);
+    });
+
+    test("V.string().one_of() validates against allowed values", fn() {
+        let schema = hash();
+        schema["status"] = V.string().one_of(["active", "inactive", "pending"]);
+
+        let valid_data = hash();
+        valid_data["status"] = "active";
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let invalid_data = hash();
+        invalid_data["status"] = "deleted";
+        let result2 = validate(invalid_data, schema);
+        assert_not(result2["valid"]);
+    });
+
+    test("V.int().one_of() validates numeric values", fn() {
+        let schema = hash();
+        schema["priority"] = V.int().one_of([1, 2, 3]);
+
+        let valid_data = hash();
+        valid_data["priority"] = 2;
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let invalid_data = hash();
+        invalid_data["priority"] = 5;
+        let result2 = validate(invalid_data, schema);
+        assert_not(result2["valid"]);
+    });
+
+    test("field is optional when .optional() is used", fn() {
+        let schema = hash();
+        schema["nickname"] = V.string().optional();
+
+        let valid_data = hash();
+        valid_data["nickname"] = "nick";
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let missing_data = hash();
+        let result2 = validate(missing_data, schema);
+        assert(result2["valid"]);
+    });
+
+    test("field can be null when .nullable() is used", fn() {
+        let schema = hash();
+        schema["middle_name"] = V.string().nullable();
+
+        let valid_data = hash();
+        valid_data["middle_name"] = null;
+        let result = validate(valid_data, schema);
+        assert(result["valid"]);
+
+        let present_data = hash();
+        present_data["middle_name"] = "Marie";
+        let result2 = validate(present_data, schema);
+        assert(result2["valid"]);
+    });
+
+    test("field has default value when .default() is used", fn() {
+        let schema = hash();
+        schema["country"] = V.string().default("US");
+
+        let data_with_value = hash();
+        data_with_value["country"] = "FR";
+        let result = validate(data_with_value, schema);
+        assert(result["valid"]);
+        assert_eq(result["data"]["country"], "FR");
+
+        let data_without_value = hash();
+        let result2 = validate(data_without_value, schema);
+        assert(result2["valid"]);
+        assert_eq(result2["data"]["country"], "US");
+    });
+
+    test("V.int().default() applies default to missing field", fn() {
+        let schema = hash();
+        schema["attempts"] = V.int().default(0);
+
+        let data_without_value = hash();
+        let result = validate(data_without_value, schema);
+        assert(result["valid"]);
+        assert_eq(result["data"]["attempts"], 0);
+    });
+
     test("validation returns errors for invalid data", fn() {
         let schema = hash();
         schema["name"] = V.string().required();

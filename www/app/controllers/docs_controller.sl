@@ -123,14 +123,9 @@ fn security_authentication(req)
 end
 
 fn security_sessions(req)
-    render_docs("docs/security/sessions", "Session Management", "security", "sessions")
+    render_docs("docs/security/sessions", "Sessions", "security", "sessions")
 end
 
-fn security_validation(req)
-    render_docs("docs/security/validation", "Input Validation", "security", "validation")
-end
-
-# ============================================================================
 # Development Tools
 # ============================================================================
 
@@ -485,7 +480,7 @@ fn redirect_sessions(req)
 end
 
 fn redirect_validation(req)
-    redirect("/docs/security/validation")
+    redirect("/docs/builtins/validation")
 end
 
 fn redirect_live_reload(req)

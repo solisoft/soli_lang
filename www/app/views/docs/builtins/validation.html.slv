@@ -129,21 +129,21 @@
             </div>
         </div>
 
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <h3 class="text-lg font-semibold text-white mb-3">Constraints</h3>
+<div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">String Constraints</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="method-min" class="scroll-mt-20">
-                    <a href="#method-min" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.min(n)</code>
+                <section id="method-min_length" class="scroll-mt-20">
+                    <a href="#method-min_length" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.min_length(n)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Minimum value/length</p>
+                    <p class="text-gray-400 text-sm mt-1">Minimum string length</p>
                 </section>
 
-                <section id="method-max" class="scroll-mt-20">
-                    <a href="#method-max" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.max(n)</code>
+                <section id="method-max_length" class="scroll-mt-20">
+                    <a href="#method-max_length" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.max_length(n)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Maximum value/length</p>
+                    <p class="text-gray-400 text-sm mt-1">Maximum string length</p>
                 </section>
 
                 <section id="method-pattern" class="scroll-mt-20">
@@ -194,12 +194,36 @@
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must contain at least one symbol</p>
                 </section>
+            </div>
+        </div>
 
-                <section id="method-to_password_rules_string" class="scroll-mt-20">
-                    <a href="#method-to_password_rules_string" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.to_password_rules_string()</code>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Numeric Constraints</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="method-min" class="scroll-mt-20">
+                    <a href="#method-min" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.min(n)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Serializes password rules into the HTML <code>passwordrules</code> attribute format</p>
+                    <p class="text-gray-400 text-sm mt-1">Minimum value</p>
+                </section>
+
+                <section id="method-max" class="scroll-mt-20">
+                    <a href="#method-max" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">.max(n)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Maximum value</p>
+                </section>
+            </div>
+        </div>
+                    <pre data-filename="Example"><code class="language-soli text-sm">password_rules = V.string()
+    .min_length(12)
+    .max_length(64)
+    .mixed_case()
+    .numbers()
+    .symbols()
+    .to_password_rules_string();
+
+# → "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;"</code></pre>
                 </section>
             </div>
         </div>

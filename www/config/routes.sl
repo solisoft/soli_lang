@@ -49,7 +49,6 @@ get("/docs/database/migrations", "docs#database_migrations");
 # Security
 get("/docs/security/authentication", "docs#security_authentication");
 get("/docs/security/sessions", "docs#security_sessions");
-get("/docs/security/validation", "docs#security_validation");
 
 # Development Tools
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload");
