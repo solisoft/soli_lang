@@ -57,6 +57,11 @@
                     <td class="px-4 py-3">Layout insertion point</td>
                     <td class="px-4 py-3">Only inside a layout — marks where the rendered view is spliced in.</td>
                 </tr>
+                <tr>
+                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%# comment %&gt;</td>
+                    <td class="px-4 py-3">Nothing — stripped at parse time</td>
+                    <td class="px-4 py-3">Developer comments. Never sent to the browser. Single-line and multi-line both work.</td>
+                </tr>
             </tbody>
         </table>
         <p class="text-gray-400 text-sm mt-4"><code>&lt;%== expr %&gt;</code> was removed (SEC-023). It decoded HTML entities and emitted the result raw, which silently re-created <code>&lt;script&gt;</code> from <code>&amp;lt;script&amp;gt;</code> whenever a value had been round-tripped through escape-encoded storage. Use <code>&lt;%= html_unescape(expr) %&gt;</code> for entity-decoded but escaped output, or <code>&lt;%- expr %&gt;</code> for trusted raw HTML.</p>
