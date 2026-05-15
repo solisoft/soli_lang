@@ -4,6 +4,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [Server-Side Password Validation in Soli](/docs/blog/password-validation) - Enforce password character-class requirements with `.letters()`, `.mixed_case()`, `.numbers()`, and `.symbols()`, and drive the HTML `passwordrules` attribute from the same validator
 - [Web Push from Soli: Goodbye `web-push`, Hello Native VAPID](/docs/blog/web-push-notifications) - Drop the web-push Node module and send Web Push notifications natively from Soli with the four VAPID builtins (RFC 8291 / 8292)
 - [The New Soli Dev Bar](/docs/blog/dev-bar) - Request timing, render breakdowns, SolidB queries, outgoing HTTP calls, N+1 detection, flamegraphs, and trace exports directly in development pages
 - [How Soli Competes with Big Frameworks](/docs/blog/competing-with-big-frameworks) - How Soli competes with Rails, Laravel, Django, Next.js, and other mature frameworks by focusing on simplicity, coherence, and fast product development

@@ -291,6 +291,21 @@ impl Validator {
             })),
         );
 
+        // confirmation(field_name) - available on any validator
+        let validator_for_confirmation = validator_rc.clone();
+        pairs.insert(
+            HashKey::String("confirmation".to_string()),
+            Value::NativeFunction(NativeFunction::new("confirmation", Some(1), move |args| {
+                let field = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("confirmation() expects a string field name".to_string()),
+                };
+                let mut v = validator_for_confirmation.borrow().clone();
+                v.rules.push(ValidationRule::Confirmation(field));
+                Ok(v.to_value())
+            })),
+        );
+
         // to_password_rules_string() - available on any validator
         let validator_for_password_rules = validator_rc.clone();
         pairs.insert(

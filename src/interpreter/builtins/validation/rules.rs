@@ -1,6 +1,7 @@
 //! Validation rules and constraint implementations.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::value::{HashKey, HashPairs, Value};
@@ -34,11 +35,19 @@ pub enum ValidationRule {
     Numbers,
     /// Must contain at least one symbol (non-alphanumeric character)
     Symbols,
+    /// Must match the value of another field (cross-field confirmation)
+    Confirmation(String),
 }
 
 impl ValidationRule {
     /// Validate a value against this rule.
-    pub fn validate(&self, field_name: &str, value: &Value) -> Result<(), Value> {
+    /// `data` is the full data hash for cross-field rules like Confirmation.
+    pub fn validate(
+        &self,
+        field_name: &str,
+        value: &Value,
+        data: &HashMap<String, Value>,
+    ) -> Result<(), Value> {
         match self {
             ValidationRule::Min(min) => {
                 let num = match value {
@@ -296,6 +305,19 @@ impl ValidationRule {
                     ));
                 }
             }
+            ValidationRule::Confirmation(confirmed_field) => {
+                let other = data.get(confirmed_field.as_str());
+                match other {
+                    Some(other_val) => {
+                        if value != other_val {
+                            return Err(create_error(field_name, "does not match", "confirmation"));
+                        }
+                    }
+                    None => {
+                        return Err(create_error(field_name, "does not match", "confirmation"));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -318,6 +340,7 @@ impl ValidationRule {
             ValidationRule::MixedCase => ("mixed_case", Value::Bool(true)),
             ValidationRule::Numbers => ("numbers", Value::Bool(true)),
             ValidationRule::Symbols => ("symbols", Value::Bool(true)),
+            ValidationRule::Confirmation(field) => ("confirmation", Value::String(field.clone())),
         };
 
         let mut pairs: HashPairs = HashPairs::default();
@@ -422,6 +445,13 @@ impl ValidationRule {
                     _ => return None,
                 };
                 Some(ValidationRule::OneOf(arr))
+            }
+            "confirmation" => {
+                let field = match rule_value {
+                    Value::String(s) => s,
+                    _ => return None,
+                };
+                Some(ValidationRule::Confirmation(field))
             }
             _ => None,
         }

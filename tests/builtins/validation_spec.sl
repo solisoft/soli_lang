@@ -270,6 +270,52 @@ describe("Validation Functions", fn() {
         assert(result["valid"]);
     });
 
+    describe("confirmation", fn() {
+        test("confirmation passes when values match", fn() {
+            let schema = hash();
+            schema["password"] = V.string().required();
+            schema["confirm_password"] = V.string().required().confirmation("password");
+            let valid_data = hash();
+            valid_data["password"] = "Secret123!";
+            valid_data["confirm_password"] = "Secret123!";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+
+        test("confirmation fails when values do not match", fn() {
+            let schema = hash();
+            schema["password"] = V.string().required();
+            schema["confirm_password"] = V.string().required().confirmation("password");
+            let invalid_data = hash();
+            invalid_data["password"] = "Secret123!";
+            invalid_data["confirm_password"] = "Different!";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+            assert_contains(result["errors"][0]["message"], "not match");
+        });
+
+        test("confirmation fails when confirmed field is missing", fn() {
+            let schema = hash();
+            schema["password"] = V.string().required();
+            schema["confirm_password"] = V.string().required().confirmation("password");
+            let invalid_data = hash();
+            invalid_data["confirm_password"] = "Secret123!";
+            let result = validate(invalid_data, schema);
+            assert_not(result["valid"]);
+        });
+
+        test("confirmation works with non-string types", fn() {
+            let schema = hash();
+            schema["email"] = V.string().required().email();
+            schema["email_confirm"] = V.string().required().confirmation("email");
+            let valid_data = hash();
+            valid_data["email"] = "user@example.com";
+            valid_data["email_confirm"] = "user@example.com";
+            let result = validate(valid_data, schema);
+            assert(result["valid"]);
+        });
+    });
+
     describe("to_password_rules_string", fn() {
         test("outputs all password rules in correct order", fn() {
             let rules = V.string()

@@ -158,7 +158,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
         let field_value = data_map.get(&field_name).cloned();
 
-        match validate_field(&field_name, field_value, validator_value) {
+        match validate_field(&field_name, field_value, validator_value, &data_map) {
             Ok(Some(validated_value)) => {
                 validated_data.insert(HashKey::String(field_name), validated_value);
             }
@@ -189,10 +189,12 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
 
 /// Validate a single field.
 /// Returns Ok(Some(value)) if valid, Ok(None) if optional and missing, Err(error) if invalid.
+/// `data` is the full data hash, needed for cross-field rules like Confirmation.
 fn validate_field(
     field_name: &str,
     value: Option<Value>,
     validator_value: &Value,
+    data: &HashMap<String, Value>,
 ) -> Result<Option<Value>, Value> {
     let validator = Validator::from_value(validator_value)?;
 
@@ -223,7 +225,7 @@ fn validate_field(
 
     // Validate against rules
     for rule in &validator.rules {
-        rule.validate(field_name, &coerced)?;
+        rule.validate(field_name, &coerced, data)?;
     }
 
     // Handle nested validation for arrays and hashes
@@ -279,7 +281,12 @@ fn validate_array_elements(array: &Value, element_schema: &Value) -> Result<Valu
 
     for (i, element) in elements.iter().enumerate() {
         let field_name = format!("[{}]", i);
-        match validate_field(&field_name, Some(element.clone()), element_schema) {
+        match validate_field(
+            &field_name,
+            Some(element.clone()),
+            element_schema,
+            &HashMap::new(),
+        ) {
             Ok(Some(v)) => validated_elements.push(v),
             Ok(None) => {}
             Err(e) => return Err(e),

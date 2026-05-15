@@ -106,6 +106,30 @@ password_rules = V.string()
 # <input type="password" passwordrules="<%= password_rules %>">
 ```
 
+### Confirmation
+
+Cross-field validation that ensures a field's value matches another field:
+
+```soli
+V.string().confirmation("password")       # Must match "password" field
+V.int().confirmation("user_id")           # Works with any type
+```
+
+Uses the validation framework's data awareness — no post-validation checks required:
+
+```soli
+let schema = {
+  "password": V.string().required().min_length(8),
+  "confirm_password": V.string().required().confirmation("password")
+};
+
+let result = validate(data, schema);
+# result["valid"] is false if confirm_password != password
+# Error: { "field": "confirm_password", "message": "does not match", "code": "confirmation" }
+```
+
+The field argument is the name of the field in the same data hash to match against.
+
 ### Enumeration
 
 ```soli
@@ -185,7 +209,7 @@ fn create(req)
       .pattern(r"^[a-zA-Z0-9_]+$"),
     "email": V.string().required().email(),
     "password": V.string().required().min_length(8),
-    "confirm_password": V.string().required(),
+    "confirm_password": V.string().required().confirmation("password"),
     "age": V.int().optional().min(13)
   };
 
@@ -201,20 +225,6 @@ fn create(req)
   end
 
   data = result["data"];
-
-  # Check password confirmation
-  if data["password"] != data["confirm_password"]
-    return {
-      "status": 422,
-      "body": json_stringify({
-        "errors": [{
-          "field": "confirm_password",
-          "message": "passwords do not match",
-          "code": "mismatch"
-        }]
-      })
-    };
-  end
 
   # Create user (example)
   user = create_user(data["username"], data["email"], data["password"]);
@@ -264,7 +274,7 @@ Returns `{ "valid": Bool, "data": Hash, "errors": Array }`
 
 ### Chainable Methods
 
-All validators support: `.required()`, `.optional()`, `.nullable()`, `.default(value)`
+All validators support: `.required()`, `.optional()`, `.nullable()`, `.default(value)`, `.confirmation(field)`
 
 String validators: `.min_length(n)`, `.max_length(n)`, `.pattern(regex)`, `.email()`, `.url()`, `.letters()`, `.mixed_case()`, `.numbers()`, `.symbols()`
 
