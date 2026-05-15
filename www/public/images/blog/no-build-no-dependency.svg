@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">One binary vs. the npm dependency graph</title>
+  <desc id="desc">On the left, a single glowing hexagonal Soli binary sits alone on a clean baseline. On the right, a tangled web of small package nodes and crossing arrows represents a typical npm dependency graph. A vertical divider separates the two halves; the right side is faintly tinted amber to suggest supply-chain risk.</desc>
+
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="78%">
+      <stop offset="0%"  stop-color="#312e81" stop-opacity="0.55"/>
+      <stop offset="45%" stop-color="#0f172a" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="1"/>
+    </radialGradient>
+
+    <linearGradient id="soli" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#22d3ee"/>
+      <stop offset="35%"  stop-color="#6366f1"/>
+      <stop offset="70%"  stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+
+    <radialGradient id="soliInner" cx="50%" cy="40%" r="65%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="35%"  stop-color="#c4b5fd" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#1e1b4b" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="dangerHalo" cx="50%" cy="50%" r="60%">
+      <stop offset="0%"   stop-color="#f59e0b" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+
+    <pattern id="grid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#ffffff" stroke-opacity="0.025" stroke-width="1"/>
+    </pattern>
+
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="22" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="haloBlur" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="55"/>
+    </filter>
+
+    <filter id="nodeShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Right-half amber tint (supply-chain risk) -->
+  <rect x="600" y="0" width="600" height="630" fill="url(#dangerHalo)"/>
+
+  <!-- Soft purple halo behind Soli core -->
+  <g filter="url(#haloBlur)" opacity="0.5">
+    <circle cx="300" cy="315" r="190" fill="#6366f1"/>
+  </g>
+
+  <!-- Concentric calm rings around Soli -->
+  <g fill="none" stroke="#a5b4fc" stroke-opacity="0.12">
+    <circle cx="300" cy="315" r="220"/>
+    <circle cx="300" cy="315" r="170"/>
+    <circle cx="300" cy="315" r="120"/>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- LEFT: single Soli binary                       -->
+  <!-- ============================================== -->
+
+  <g filter="url(#glow)">
+    <!-- Outer hex with brand gradient -->
+    <polygon points="300,170 415,237 415,393 300,460 185,393 185,237" fill="url(#soli)"/>
+    <!-- Inner hex (dark interior) -->
+    <polygon points="300,196 392,250 392,380 300,434 208,380 208,250" fill="#0c0a1f"/>
+    <!-- Inner glow -->
+    <circle cx="300" cy="315" r="86" fill="url(#soliInner)"/>
+  </g>
+
+  <g font-family="Inter, Arial, sans-serif" text-anchor="middle">
+    <text x="300" y="308" font-size="54" font-weight="800" fill="#ffffff">Soli</text>
+    <text x="300" y="346" font-size="11" font-weight="600" fill="#c4b5fd" letter-spacing="0.32em">ONE STATIC BINARY</text>
+  </g>
+
+  <!-- Chips around Soli core -->
+  <g font-family="'JetBrains Mono', monospace" font-weight="600">
+    <g transform="translate(300, 138)">
+      <rect x="-70" y="-18" width="140" height="30" rx="15" fill="#020617" stroke="#22d3ee" stroke-opacity="0.65"/>
+      <text x="0" y="2" text-anchor="middle" font-size="12" fill="#67e8f9">0 dependencies</text>
+    </g>
+    <g transform="translate(140, 315)">
+      <rect x="-56" y="-16" width="112" height="28" rx="14" fill="#020617" stroke="#a855f7" stroke-opacity="0.55"/>
+      <text x="0" y="3" text-anchor="middle" font-size="11" fill="#d8b4fe">no node_modules</text>
+    </g>
+    <g transform="translate(460, 315)">
+      <rect x="-48" y="-16" width="96" height="28" rx="14" fill="#020617" stroke="#6366f1" stroke-opacity="0.55"/>
+      <text x="0" y="3" text-anchor="middle" font-size="11" fill="#a5b4fc">no build</text>
+    </g>
+    <g transform="translate(300, 496)">
+      <rect x="-72" y="-16" width="144" height="28" rx="14" fill="#020617" stroke="#f472b6" stroke-opacity="0.55"/>
+      <text x="0" y="3" text-anchor="middle" font-size="11" fill="#fbcfe8">ship the binary</text>
+    </g>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- Divider                                        -->
+  <!-- ============================================== -->
+
+  <g>
+    <line x1="600" y1="80" x2="600" y2="550" stroke="#475569" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="4 8"/>
+    <g transform="translate(600, 315)">
+      <circle r="22" fill="#020617" stroke="#475569" stroke-opacity="0.7"/>
+      <text x="0" y="6" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#64748b">vs</text>
+    </g>
+  </g>
+
+  <!-- ============================================== -->
+  <!-- RIGHT: tangled npm dependency graph            -->
+  <!-- Center of the cluster ~ (900, 315)             -->
+  <!-- ============================================== -->
+
+  <!-- Background lattice / edges between nodes -->
+  <g stroke="#64748b" stroke-opacity="0.35" stroke-width="1" fill="none" stroke-linecap="round">
+    <!-- spokes from the root -->
+    <path d="M 900 200 L 780 150"/>
+    <path d="M 900 200 L 1020 150"/>
+    <path d="M 900 200 L 760 230"/>
+    <path d="M 900 200 L 1040 230"/>
+    <path d="M 900 200 L 830 280"/>
+    <path d="M 900 200 L 970 280"/>
+
+    <!-- cross-connections (the gnarly part) -->
+    <path d="M 780 150 L 760 230"/>
+    <path d="M 780 150 L 830 280"/>
+    <path d="M 760 230 L 700 320"/>
+    <path d="M 830 280 L 750 360"/>
+    <path d="M 830 280 L 870 380"/>
+    <path d="M 970 280 L 950 380"/>
+    <path d="M 970 280 L 1030 360"/>
+    <path d="M 1020 150 L 1040 230"/>
+    <path d="M 1040 230 L 1100 320"/>
+    <path d="M 1100 320 L 1030 360"/>
+    <path d="M 700 320 L 750 360"/>
+    <path d="M 750 360 L 720 440"/>
+    <path d="M 870 380 L 820 460"/>
+    <path d="M 870 380 L 950 380"/>
+    <path d="M 950 380 L 920 460"/>
+    <path d="M 1030 360 L 1080 450"/>
+    <path d="M 700 320 L 660 410"/>
+    <path d="M 660 410 L 720 440"/>
+    <path d="M 720 440 L 820 460"/>
+    <path d="M 820 460 L 920 460"/>
+    <path d="M 920 460 L 1080 450"/>
+
+    <!-- back-edges, the kind that make `npm audit` cry -->
+    <path d="M 780 150 L 1020 150" stroke-dasharray="2 4"/>
+    <path d="M 700 320 L 1100 320" stroke-dasharray="2 4"/>
+    <path d="M 750 360 L 1030 360" stroke-dasharray="2 4"/>
+  </g>
+
+  <!-- Package nodes -->
+  <g filter="url(#nodeShadow)">
+    <!-- Root package -->
+    <g transform="translate(900, 200)">
+      <circle r="22" fill="#1e293b" stroke="#cbd5e1" stroke-opacity="0.8" stroke-width="1.5"/>
+      <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#e2e8f0">app</text>
+    </g>
+
+    <!-- Inner ring (direct deps) -->
+    <g fill="#334155" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1">
+      <circle cx="780"  cy="150" r="13"/>
+      <circle cx="1020" cy="150" r="13"/>
+      <circle cx="760"  cy="230" r="13"/>
+      <circle cx="1040" cy="230" r="13"/>
+      <circle cx="830"  cy="280" r="13"/>
+      <circle cx="970"  cy="280" r="13"/>
+    </g>
+
+    <!-- Transitive deps -->
+    <g fill="#1e293b" stroke="#64748b" stroke-opacity="0.55" stroke-width="1">
+      <circle cx="700"  cy="320" r="9"/>
+      <circle cx="750"  cy="360" r="9"/>
+      <circle cx="870"  cy="380" r="9"/>
+      <circle cx="950"  cy="380" r="9"/>
+      <circle cx="1030" cy="360" r="9"/>
+      <circle cx="1100" cy="320" r="9"/>
+      <circle cx="660"  cy="410" r="9"/>
+      <circle cx="720"  cy="440" r="9"/>
+      <circle cx="820"  cy="460" r="9"/>
+      <circle cx="920"  cy="460" r="9"/>
+      <circle cx="1080" cy="450" r="9"/>
+    </g>
+
+    <!-- Two "compromised" nodes — amber outline + warning dot -->
+    <g>
+      <circle cx="870" cy="380" r="13" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+      <circle cx="870" cy="380" r="3"  fill="#fbbf24"/>
+    </g>
+    <g>
+      <circle cx="1040" cy="230" r="17" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+      <text x="1040" y="234" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800" fill="#fca5a5">!</text>
+    </g>
+  </g>
+
+  <!-- Chips for the right side -->
+  <g font-family="'JetBrains Mono', monospace" font-weight="600">
+    <g transform="translate(900, 100)">
+      <rect x="-80" y="-18" width="160" height="30" rx="15" fill="#020617" stroke="#f59e0b" stroke-opacity="0.7"/>
+      <text x="0" y="2" text-anchor="middle" font-size="12" fill="#fbbf24">847 packages</text>
+    </g>
+    <g transform="translate(760, 500)">
+      <rect x="-78" y="-16" width="156" height="28" rx="14" fill="#020617" stroke="#94a3b8" stroke-opacity="0.55"/>
+      <text x="0" y="3" text-anchor="middle" font-size="11" fill="#cbd5e1">node_modules / 1.4 GB</text>
+    </g>
+    <g transform="translate(1020, 500)">
+      <rect x="-72" y="-16" width="144" height="28" rx="14" fill="#020617" stroke="#ef4444" stroke-opacity="0.55"/>
+      <text x="0" y="3" text-anchor="middle" font-size="11" fill="#fca5a5">12 vulnerabilities</text>
+    </g>
+  </g>
+
+  <!-- Title strip -->
+  <text x="600" y="588" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700" fill="#f8fafc" letter-spacing="-0.01em">
+    No build. No dependencies. No supply chain to attack.
+  </text>
+</svg>
