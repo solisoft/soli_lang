@@ -819,7 +819,9 @@ pub fn set_runtime_handle(handle: tokio::runtime::Handle) {
 
 /// Get the global tokio runtime handle. Panics if called before initialization.
 pub fn get_runtime_handle() -> &'static tokio::runtime::Handle {
-    WS_RUNTIME_HANDLE.get().expect("WS runtime handle not initialized")
+    WS_RUNTIME_HANDLE
+        .get()
+        .expect("WS runtime handle not initialized")
 }
 
 #[cfg(test)]
