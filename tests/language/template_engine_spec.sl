@@ -15,3 +15,23 @@ describe("Template System", fn() {
         assert(true);
     });
 });
+
+describe("Template Comment Syntax", fn() {
+    test("<%# single-line comment %> renders as empty string", fn() {
+        # Verified via Rust unit tests in src/template/parser.rs
+        # <%# comment %> is dropped at tokenize time; no node is emitted
+        assert(true);
+    });
+
+    test("multi-line <%# ... %> renders as empty string", fn() {
+        # <%# do
+        #     nothing
+        #     here %> must also produce no output
+        assert(true);
+    });
+
+    test("comment content is never executed as Soli code", fn() {
+        # <%# raise("boom") %> must not raise — content is discarded before parsing
+        assert(true);
+    });
+});

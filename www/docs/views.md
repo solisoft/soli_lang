@@ -12,6 +12,7 @@ SoliLang uses ERB-style templates. Tag types:
 | `<%- expr %>` | Raw, unescaped | Trusted HTML you've already produced — partials, `Markdown.to_safe_html(...)` output, `partial(...)` results. |
 | `<% stmt %>` | No output | Statements, control flow, `let` bindings. |
 | `<%= yield %>` | Layout insertion | Only valid inside a layout — marks where rendered content is spliced in. |
+| `<%# comment %>` | Nothing (stripped) | Developer comments — never sent to the browser. Single-line and multi-line both work. |
 
 > `<%== expr %>` was removed (SEC-023). It decoded HTML entities and emitted the result raw, which silently re-created `<script>` from `&lt;script&gt;` whenever a value had been round-tripped through escape-encoded storage. Use `<%= html_unescape(expr) %>` for entity-decoded but escaped output, or `<%- expr %>` for trusted raw HTML.
 

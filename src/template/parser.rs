@@ -230,12 +230,17 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 ));
             }
 
+            // Check for comment tag <%# ... %> — consumed silently, emits nothing
+            let is_comment = chars.peek() == Some(&'#');
+
             // Check for output tag types: <%== (unescape), <%= (escaped), or <%- (raw)
-            let is_output = chars.peek() == Some(&'=');
-            let is_raw = chars.peek() == Some(&'-');
+            let is_output = !is_comment && chars.peek() == Some(&'=');
+            let is_raw = !is_comment && chars.peek() == Some(&'-');
             let mut is_unescape = false;
 
-            if is_output {
+            if is_comment {
+                chars.next(); // consume '#'
+            } else if is_output {
                 chars.next(); // consume first '='
                               // Check for second '=' (<%==)
                 if chars.peek() == Some(&'=') {
@@ -263,16 +268,20 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
                 }
             }
 
-            let tag_content = tag_content.trim().to_string();
-
-            if is_raw {
-                tokens.push(Token::OutputRaw(tag_content, tag_line));
-            } else if is_unescape {
-                tokens.push(Token::OutputUnescape(tag_content, tag_line));
-            } else if is_output {
-                tokens.push(Token::OutputEscaped(tag_content, tag_line));
+            if is_comment {
+                // discard — <%# comment %> is silently dropped; content is never rendered or executed
             } else {
-                tokens.push(Token::Code(tag_content, tag_line));
+                let tag_content = tag_content.trim().to_string();
+
+                if is_raw {
+                    tokens.push(Token::OutputRaw(tag_content, tag_line));
+                } else if is_unescape {
+                    tokens.push(Token::OutputUnescape(tag_content, tag_line));
+                } else if is_output {
+                    tokens.push(Token::OutputEscaped(tag_content, tag_line));
+                } else {
+                    tokens.push(Token::Code(tag_content, tag_line));
+                }
             }
 
             // Reset literal start line for next literal
@@ -1578,5 +1587,61 @@ mod tests {
             }
             _ => panic!("Expected CoreOutput node"),
         }
+    }
+
+    #[test]
+    fn test_tokenize_comment_only() {
+        let tokens = tokenize("<%# single line comment %>").unwrap();
+        assert_eq!(tokens, vec![]);
+    }
+
+    #[test]
+    fn test_tokenize_comment_multiline() {
+        let tokens = tokenize("<%# do\n    nothing\n    here %>").unwrap();
+        assert_eq!(tokens, vec![]);
+    }
+
+    #[test]
+    fn test_tokenize_comment_inline() {
+        // <%# ... %> should be dropped; surrounding text becomes separate literals
+        let tokens = tokenize("before<%# this is a comment %>after").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Literal("before".to_string(), 1),
+                Token::Literal("after".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_comment_produces_no_nodes() {
+        let nodes = parse_template("<%# single line comment %>").unwrap();
+        assert_eq!(nodes, vec![]);
+    }
+
+    #[test]
+    fn test_parse_comment_multiline_produces_no_nodes() {
+        let nodes = parse_template("<%# do\n    nothing\n    here %>").unwrap();
+        assert_eq!(nodes, vec![]);
+    }
+
+    #[test]
+    fn test_parse_comment_between_literals() {
+        let nodes = parse_template("Hello<%# remove me %>World").unwrap();
+        assert_eq!(
+            nodes,
+            vec![
+                TemplateNode::Literal("Hello".to_string()),
+                TemplateNode::Literal("World".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_comment_not_executed() {
+        // Content inside <%# %> must not be parsed or executed as Soli code
+        let nodes = parse_template("ok<%# raise(\"boom\") %>end").unwrap();
+        assert!(nodes.iter().all(|n| matches!(n, TemplateNode::Literal(_))));
     }
 }
