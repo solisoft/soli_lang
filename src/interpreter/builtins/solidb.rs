@@ -12,33 +12,32 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, Instance, NativeFunction, Value};
 
-// Execute DB operation synchronously and return result directly
-fn exec_db_sync<F>(f: F) -> Value
+// Execute DB operation synchronously and propagate errors as Soli
+// runtime exceptions (the surrounding NativeFunction closure already
+// returns `Result<Value, String>`, so an Err here surfaces to user
+// code that can `rescue` it — and to the migration runner, which used
+// to silently stamp "Applied" because the previous implementation
+// converted DB errors into the literal string "Error: ..." instead).
+fn exec_db_sync<F>(f: F) -> Result<Value, String>
 where
     F: FnOnce() -> Result<String, String>,
 {
-    match f() {
-        Ok(json_str) => {
-            // Parse JSON and convert to Value
-            match serde_json::from_str::<serde_json::Value>(&json_str) {
-                Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
-                Err(_) => Value::String(json_str),
-            }
-        }
-        Err(e) => Value::String(format!("Error: {}", e)),
+    let json_str = f()?;
+    match serde_json::from_str::<serde_json::Value>(&json_str) {
+        Ok(json) => Ok(crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)),
+        Err(_) => Ok(Value::String(json_str)),
     }
 }
 
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
-fn exec_db_json<F>(f: F) -> Value
+/// Errors propagate as Soli runtime exceptions (see exec_db_sync).
+fn exec_db_json<F>(f: F) -> Result<Value, String>
 where
     F: FnOnce() -> Result<serde_json::Value, String>,
 {
-    match f() {
-        Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
-        Err(e) => Value::String(format!("Error: {}", e)),
-    }
+    let json = f()?;
+    Ok(crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null))
 }
 
 lazy_static::lazy_static! {
@@ -92,12 +91,12 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(exec_db_sync(move || {
+            exec_db_sync(move || {
                 let client = SoliDBClient::connect(&addr)
                     .map_err(|e| format!("Failed to connect to SoliDB: {}", e))?;
                 let version = client.ping().map_err(|e| format!("Ping failed: {}", e))?;
                 Ok(format!("Connected (ping: {})", version))
-            }))
+            })
         })),
     );
 
@@ -114,12 +113,12 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(exec_db_sync(move || {
+            exec_db_sync(move || {
                 let client = SoliDBClient::connect(&addr)
                     .map_err(|e| format!("Failed to connect: {}", e))?;
                 let timestamp = client.ping().map_err(|e| format!("Ping failed: {}", e))?;
                 Ok(timestamp.to_string())
-            }))
+            })
         })),
     );
 
@@ -166,12 +165,12 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 }
             };
 
-            Ok(exec_db_sync(move || {
+            exec_db_sync(move || {
                 let _client = SoliDBClient::connect(&addr)
                     .map_err(|e| format!("Failed to connect: {}", e))?
                     .with_basic_auth(&username, &password);
                 Ok("Authenticated".to_string())
-            }))
+            })
         })),
     );
 
@@ -225,7 +224,7 @@ fn register_global_solidb_functions(env: &mut Environment) {
                 None
             };
 
-            Ok(exec_db_json(move || {
+            exec_db_json(move || {
                 let mut client = SoliDBClient::connect(&addr)
                     .map_err(|e| format!("Failed to connect: {}", e))?;
                 client.set_database(&database);
@@ -234,7 +233,7 @@ fn register_global_solidb_functions(env: &mut Environment) {
                     .map_err(|e| format!("Query failed: {}", e))?;
                 // Return directly as JSON array - skip string serialization
                 Ok(serde_json::Value::Array(results))
-            }))
+            })
         })),
     );
 }
@@ -366,12 +365,12 @@ fn register_solidb_class(env: &mut Environment) {
                         state.connected = true;
                         drop(states);
 
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let _client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?
                                 .with_basic_auth(&username, &password);
                             Ok("Authenticated".to_string())
-                        }))
+                        })
                     }
                     "query" => {
                         let sdbql = match &args[1] {
@@ -401,7 +400,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -415,7 +414,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .map_err(|e| format!("Query failed: {}", e))?;
                             // Return directly as JSON array - skip string serialization
                             Ok(serde_json::Value::Array(results))
-                        }))
+                        })
                     }
                     "get" => {
                         let collection = match &args[1] {
@@ -438,7 +437,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -452,7 +451,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .map_err(|e| format!("Get failed: {}", e))?;
                             // Return doc or null if not found
                             Ok(doc.unwrap_or(serde_json::Value::Null))
-                        }))
+                        })
                     }
                     "insert" => {
                         let collection = match &args[1] {
@@ -477,7 +476,7 @@ fn register_solidb_class(env: &mut Environment) {
                         let document = value_to_json(&args[3])?;
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -490,7 +489,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .insert(&collection, key.as_deref(), document)
                                 .map_err(|e| format!("Insert failed: {}", e))?;
                             Ok(result)
-                        }))
+                        })
                     }
                     "update" | "upsert" => {
                         let collection = match &args[1] {
@@ -517,7 +516,7 @@ fn register_solidb_class(env: &mut Environment) {
                         let merge = method == "upsert";
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -530,7 +529,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .update(&collection, &key, document, merge)
                                 .map_err(|e| format!("Update failed: {}", e))?;
                             Ok(result)
-                        }))
+                        })
                     }
                     "delete" => {
                         let collection = match &args[1] {
@@ -553,7 +552,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -566,7 +565,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .delete(&collection, &key)
                                 .map_err(|e| format!("Delete failed: {}", e))?;
                             Ok("OK".to_string())
-                        }))
+                        })
                     }
                     "list" => {
                         let collection = match &args[1] {
@@ -580,7 +579,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -594,7 +593,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .map_err(|e| format!("List failed: {}", e))?;
                             // Return directly as JSON array - skip string serialization
                             Ok(serde_json::Value::Array(docs))
-                        }))
+                        })
                     }
                     "explain" => {
                         let sdbql = match &args[1] {
@@ -624,7 +623,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -637,12 +636,12 @@ fn register_solidb_class(env: &mut Environment) {
                                 .explain(&sdbql, bind_vars)
                                 .map_err(|e| format!("Explain failed: {}", e))?;
                             Ok(explanation)
-                        }))
+                        })
                     }
                     "ping" => {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -654,7 +653,7 @@ fn register_solidb_class(env: &mut Environment) {
                             let timestamp =
                                 client.ping().map_err(|e| format!("Ping failed: {}", e))?;
                             Ok(timestamp.to_string())
-                        }))
+                        })
                     }
                     "connected" => Ok(Value::Bool(state_connected)),
                     "close" => {
@@ -692,7 +691,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -705,7 +704,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .create_collection(&name, collection_type.as_deref())
                                 .map_err(|e| format!("Create collection failed: {}", e))?;
                             Ok(format!("Created collection: {}", name))
-                        }))
+                        })
                     }
                     "drop_collection" => {
                         let name = match &args[1] {
@@ -719,7 +718,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -732,12 +731,12 @@ fn register_solidb_class(env: &mut Environment) {
                                 .drop_collection(&name)
                                 .map_err(|e| format!("Drop collection failed: {}", e))?;
                             Ok(format!("Dropped collection: {}", name))
-                        }))
+                        })
                     }
                     "list_collections" => {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -751,7 +750,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .map_err(|e| format!("List collections failed: {}", e))?;
                             // Return directly as JSON array - skip string serialization
                             Ok(serde_json::Value::Array(collections))
-                        }))
+                        })
                     }
                     "collection_stats" => {
                         let collection = match &args[1] {
@@ -765,7 +764,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -778,7 +777,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .collection_stats(&collection)
                                 .map_err(|e| format!("Collection stats failed: {}", e))?;
                             Ok(stats)
-                        }))
+                        })
                     }
                     "create_index" => {
                         let collection = match &args[1] {
@@ -845,7 +844,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -858,7 +857,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .create_index(&collection, &name, fields, unique, sparse)
                                 .map_err(|e| format!("Create index failed: {}", e))?;
                             Ok(format!("Created index: {} on {}", name, collection))
-                        }))
+                        })
                     }
                     "drop_index" => {
                         let collection = match &args[1] {
@@ -881,7 +880,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -894,7 +893,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .drop_index(&collection, &name)
                                 .map_err(|e| format!("Drop index failed: {}", e))?;
                             Ok(format!("Dropped index: {} from {}", name, collection))
-                        }))
+                        })
                     }
                     "list_indexes" => {
                         let collection = match &args[1] {
@@ -908,7 +907,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -921,7 +920,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .list_indexes(&collection)
                                 .map_err(|e| format!("List indexes failed: {}", e))?;
                             Ok(serde_json::Value::Array(indexes))
-                        }))
+                        })
                     }
                     "store_blob" => {
                         let collection = match &args[1] {
@@ -965,7 +964,7 @@ fn register_solidb_class(env: &mut Environment) {
                             .map_err(|e| format!("Failed to decode base64: {}", e))?;
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -978,7 +977,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .store_blob(&collection, &data, &filename, &content_type)
                                 .map_err(|e| format!("Store blob failed: {}", e))?;
                             Ok(blob_id)
-                        }))
+                        })
                     }
                     "get_blob" => {
                         let collection = match &args[1] {
@@ -1001,7 +1000,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -1014,7 +1013,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .get_blob(&collection, &blob_id)
                                 .map_err(|e| format!("Get blob failed: {}", e))?;
                             Ok(STANDARD.encode(&data))
-                        }))
+                        })
                     }
                     "get_blob_metadata" => {
                         let collection = match &args[1] {
@@ -1037,7 +1036,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_json(move || {
+                        exec_db_json(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -1050,7 +1049,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .get_blob_metadata(&collection, &blob_id)
                                 .map_err(|e| format!("Get blob metadata failed: {}", e))?;
                             Ok(metadata)
-                        }))
+                        })
                     }
                     "delete_blob" => {
                         let collection = match &args[1] {
@@ -1073,7 +1072,7 @@ fn register_solidb_class(env: &mut Environment) {
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
-                        Ok(exec_db_sync(move || {
+                        exec_db_sync(move || {
                             let mut client = SoliDBClient::connect(&host)
                                 .map_err(|e| format!("Failed to connect: {}", e))?;
                             client.set_database(&database);
@@ -1086,7 +1085,7 @@ fn register_solidb_class(env: &mut Environment) {
                                 .delete_blob(&collection, &blob_id)
                                 .map_err(|e| format!("Delete blob failed: {}", e))?;
                             Ok("OK".to_string())
-                        }))
+                        })
                     }
                     _ => Err(format!("Unknown method: {}", method)),
                 }

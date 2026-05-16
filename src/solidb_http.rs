@@ -226,6 +226,14 @@ impl SoliDBClient {
             })?;
 
             if bytes.is_empty() {
+                // 204 No Content (and other empty-body 2xx replies, e.g.
+                // from DELETE) are legitimately empty. Surface them as
+                // a JSON null so the caller can treat "no body" as
+                // "operation succeeded with nothing to return" instead
+                // of getting a spurious error.
+                if status == reqwest::StatusCode::NO_CONTENT {
+                    return Ok(Value::Null);
+                }
                 return Err(SoliDBError {
                     message: format!("Empty response for HTTP {} {}", method_clone, path_owned),
                     code: None,
@@ -493,21 +501,26 @@ impl SoliDBClient {
             "unique": unique,
             "sparse": sparse
         });
-        let path = format!("/_api/database/{}/{}/indexes", db, collection);
+        // SolidB index routes are `/_api/database/{db}/index/{collection}`
+        // (NOT `/{collection}/indexes` — that path was retired and now
+        // 404s, which used to silently corrupt every migration that
+        // declared an index because the error was swallowed by
+        // exec_db_sync into a string return value).
+        let path = format!("/_api/database/{}/index/{}", db, collection);
         let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
         Ok(response)
     }
 
     pub fn drop_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/{}/indexes/{}", db, collection, name);
+        let path = format!("/_api/database/{}/index/{}/{}", db, collection, name);
         self.request(reqwest::Method::DELETE, &path, None)?;
         Ok(())
     }
 
     pub fn list_indexes(&self, collection: &str) -> Result<Vec<Value>, SoliDBError> {
         let db = self.get_db()?;
-        let path = format!("/_api/database/{}/{}/indexes", db, collection);
+        let path = format!("/_api/database/{}/index/{}", db, collection);
         let response: Value = self.request(reqwest::Method::GET, &path, None)?;
         Ok(response
             .get("indexes")

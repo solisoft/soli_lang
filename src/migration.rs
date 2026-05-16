@@ -345,6 +345,22 @@ impl MigrationRunner {
         // Create interpreter with db connection
         let config = self.config.clone();
 
+        // Surface the configured credentials to the migration script.
+        // Without this the inline Solidb instance below has no auth, so
+        // every operation that touches an authenticated endpoint (i.e.
+        // every real DB call) gets a 401 from SoliDB. Prior to the
+        // exec_db_sync error-propagation fix these 401s were silently
+        // converted into Value::String("Error: HTTP 401 ..."), letting
+        // the migration runner stamp "Applied" while the DB had no
+        // actual change applied.
+        let auth_username = config.username.as_deref().unwrap_or("");
+        let auth_password = config.password.as_deref().unwrap_or("");
+        let auth_snippet = if !auth_username.is_empty() {
+            format!("_db.auth({:?}, {:?});\n", auth_username, auth_password)
+        } else {
+            String::new()
+        };
+
         // Execute the migration using the interpreter
         let full_source = format!(
             r#"
@@ -354,7 +370,7 @@ impl MigrationRunner {
 let _db_host = "{}";
 let _db_name = "{}";
 let _db = Solidb(_db_host, _db_name);
-
+{}
 class MigrationDb {{
     // Run a raw SDBQL query
     fn query(sdbql: String) -> Any {{
@@ -404,7 +420,7 @@ let db = MigrationDb();
 // Run the migration
 {}(db);
 "#,
-            source, config.host, config.database, direction
+            source, config.host, config.database, auth_snippet, direction
         );
 
         // Run using tree-walk interpreter
