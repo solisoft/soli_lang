@@ -69,52 +69,72 @@ impl Linter {
     }
 
     /// Soli MVC auto-loads every `.sl` file in `app/controllers/`,
-    /// `app/helpers/`, `app/middleware/`, and `app/models/` into a shared
-    /// scope at runtime. So when we lint one file, top-level definitions
-    /// in its siblings are effectively in-scope too. Parse each sibling
-    /// and merge its program-level names in.
+    /// `app/helpers/`, `app/middleware/`, `app/models/`, `app/services/`,
+    /// and `app/jobs/` into a shared scope at runtime. When we lint one
+    /// file, top-level definitions from *all* of those directories are
+    /// effectively in-scope too. We find the nearest `app/` ancestor, then
+    /// scan every auto-load subdirectory under it.
     fn collect_sibling_definitions(&mut self) {
         let Some(file_path) = &self.file_path else {
             return;
         };
         let path = std::path::Path::new(file_path);
-        let Some(parent) = path.parent() else {
+
+        // Walk up the directory tree to find the nearest ancestor named "app/".
+        // If the file is not inside any "app/" tree it's a standalone script —
+        // return early so we don't silently pull names from random neighbours.
+        let app_dir = {
+            let mut dir = path.parent();
+            loop {
+                match dir {
+                    None => break None,
+                    Some(d) if d.file_name().and_then(|n| n.to_str()) == Some("app") => {
+                        break Some(d.to_path_buf());
+                    }
+                    Some(d) => dir = d.parent(),
+                }
+            }
+        };
+        let Some(app_dir) = app_dir else {
             return;
         };
-        // Only do this for conventional MVC auto-load directories. This
-        // keeps the behavior scoped: a script in an arbitrary directory
-        // doesn't silently pull names from its neighbors.
-        let is_autoload_dir = parent
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| matches!(n, "controllers" | "helpers" | "middleware" | "models"));
-        if !is_autoload_dir {
-            return;
-        }
-        let Ok(entries) = std::fs::read_dir(parent) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let sibling = entry.path();
-            if sibling == path {
+
+        const AUTOLOAD_DIRS: &[&str] = &[
+            "controllers",
+            "helpers",
+            "middleware",
+            "models",
+            "services",
+            "jobs",
+        ];
+
+        for dir_name in AUTOLOAD_DIRS {
+            let dir_path = app_dir.join(dir_name);
+            let Ok(entries) = std::fs::read_dir(&dir_path) else {
                 continue;
+            };
+            for entry in entries.flatten() {
+                let sibling = entry.path();
+                if sibling == path {
+                    continue;
+                }
+                if sibling.extension().and_then(|e| e.to_str()) != Some("sl") {
+                    continue;
+                }
+                let Ok(source) = std::fs::read_to_string(&sibling) else {
+                    continue;
+                };
+                let Ok(tokens) = crate::lexer::Scanner::new(&source).scan_tokens() else {
+                    continue;
+                };
+                let Ok(sibling_program) = crate::parser::Parser::new(tokens).parse() else {
+                    continue;
+                };
+                rules::scope::collect_program_names(
+                    &sibling_program.statements,
+                    &mut self.program_names,
+                );
             }
-            if sibling.extension().and_then(|e| e.to_str()) != Some("sl") {
-                continue;
-            }
-            let Ok(source) = std::fs::read_to_string(&sibling) else {
-                continue;
-            };
-            let Ok(tokens) = crate::lexer::Scanner::new(&source).scan_tokens() else {
-                continue;
-            };
-            let Ok(sibling_program) = crate::parser::Parser::new(tokens).parse() else {
-                continue;
-            };
-            rules::scope::collect_program_names(
-                &sibling_program.statements,
-                &mut self.program_names,
-            );
         }
     }
 
