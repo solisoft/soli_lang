@@ -607,10 +607,15 @@ fn extract_actions(source: &str, class_name: &str, info: &mut ControllerInfo) {
     for line in source.lines() {
         let trimmed = line.trim();
 
-        // Look for "fn name(req: Any)" pattern
-        if trimmed.starts_with("fn ") {
-            // Check if it's a public method (doesn't start with _)
-            if let Some(fn_name) = extract_fn_name(trimmed) {
+        // Accept both `fn name(...)` and `def name(...)` — the lexer treats
+        // them as the same keyword, so users writing Ruby-style function-only
+        // controllers should not be silently skipped here.
+        let after_kw = trimmed
+            .strip_prefix("fn ")
+            .or_else(|| trimmed.strip_prefix("def "));
+
+        if let Some(rest) = after_kw {
+            if let Some(fn_name) = extract_fn_name(rest) {
                 if !fn_name.starts_with('_') {
                     info.actions.push(ControllerAction {
                         controller_name: info.class_name.clone(),
@@ -624,11 +629,12 @@ fn extract_actions(source: &str, class_name: &str, info: &mut ControllerInfo) {
     }
 }
 
-/// Extract function name from "fn name(req: Any) -> Any {"
-fn extract_fn_name(line: &str) -> Option<String> {
-    let after_fn = line[3..].trim_start();
-    let name_end = after_fn.find('(')?;
-    Some(after_fn[..name_end].to_string())
+/// Extract function name from the post-keyword remainder, e.g. for
+/// `fn name(req: Any) -> Any {` the caller passes `name(req: Any) -> Any {`.
+fn extract_fn_name(rest: &str) -> Option<String> {
+    let trimmed = rest.trim_start();
+    let name_end = trimmed.find('(')?;
+    Some(trimmed[..name_end].to_string())
 }
 
 /// Set the current controller for this thread (for accessing from helpers).
@@ -1029,5 +1035,30 @@ class UsersController extends Controller {
             info.before_actions[1].actions,
             vec!["new", "create", "edit", "update", "destroy"]
         );
+    }
+
+    // `def` is a synonym for `fn` at the lexer level, so function-style
+    // controllers written with `def` must register actions too — otherwise
+    // routes silently 404 with no visible parse error.
+    #[test]
+    fn extract_actions_accepts_def_keyword() {
+        let source = r#"
+def index(req)
+  return render("posts/index")
+end
+
+def show(req)
+  return render("posts/show")
+end
+
+def _private_helper(req)
+  return null
+end
+"#;
+        let mut info = ControllerInfo::new("PostsController", "posts");
+        extract_actions(source, "PostsController", &mut info);
+
+        let names: Vec<&str> = info.actions.iter().map(|a| a.action_name.as_str()).collect();
+        assert_eq!(names, vec!["index", "show"]);
     }
 }

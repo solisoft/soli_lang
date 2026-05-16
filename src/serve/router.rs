@@ -72,29 +72,32 @@ pub fn controller_base_path(controller_name: &str) -> String {
 fn extract_function_names(source: &str) -> Vec<(String, bool)> {
     let mut functions = Vec::new();
 
-    // Simple regex-like parsing to find function declarations
-    // Looking for: fn function_name(params) or fn function_name()
+    // Simple regex-like parsing to find function declarations.
+    // Accept both `fn name(...)` and `def name(...)` — the lexer treats them
+    // as the same keyword, so route derivation must too. Without this, a
+    // function-style controller written with `def` silently has no routes.
     for line in source.lines() {
         let trimmed = line.trim();
 
-        if trimmed.starts_with("fn ") {
-            // Extract function name and check for params
-            if let Some(rest) = trimmed.strip_prefix("fn ") {
-                // Find the function name (until '(')
-                if let Some(paren_pos) = rest.find('(') {
-                    let func_name = rest[..paren_pos].trim().to_string();
+        let rest = trimmed
+            .strip_prefix("fn ")
+            .or_else(|| trimmed.strip_prefix("def "));
 
-                    // Check if there are parameters between ( and )
-                    if let Some(close_paren) = rest.find(')') {
-                        let params_str = &rest[paren_pos + 1..close_paren].trim();
-                        // Has params if the params string is not empty
-                        // Ignore the 'req' parameter as it's always present for handlers
-                        let has_id_param = !params_str.is_empty()
-                            && *params_str != "req"
-                            && *params_str != "req: Any";
+        if let Some(rest) = rest {
+            // Find the function name (until '(')
+            if let Some(paren_pos) = rest.find('(') {
+                let func_name = rest[..paren_pos].trim().to_string();
 
-                        functions.push((func_name, has_id_param));
-                    }
+                // Check if there are parameters between ( and )
+                if let Some(close_paren) = rest.find(')') {
+                    let params_str = &rest[paren_pos + 1..close_paren].trim();
+                    // Has params if the params string is not empty
+                    // Ignore the 'req' parameter as it's always present for handlers
+                    let has_id_param = !params_str.is_empty()
+                        && *params_str != "req"
+                        && *params_str != "req: Any";
+
+                    functions.push((func_name, has_id_param));
                 }
             }
         }
