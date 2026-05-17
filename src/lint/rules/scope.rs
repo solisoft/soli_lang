@@ -134,6 +134,11 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "hmac",
     "secure_compare",
     "sha256",
+    // VAPID / Web Push builtins
+    "vapid_generate_keys",
+    "vapid_sign",
+    "vapid_encrypt",
+    "vapid_send",
     // Module system
     "import",
     "export",
