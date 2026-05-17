@@ -1,6 +1,7 @@
 pub mod expressions;
 pub mod rules;
 pub mod statements;
+pub mod suppress;
 
 use crate::ast::Program;
 use crate::span::Span;
@@ -62,6 +63,13 @@ impl Linter {
         for stmt in &program.statements {
             self.lint_stmt(stmt);
         }
+
+        let suppressions = suppress::collect_suppressions(&self.source);
+        self.diagnostics.retain(|d| {
+            !suppressions
+                .get(&(d.span.line as u32))
+                .is_some_and(|s| s.suppresses(d.rule))
+        });
 
         self.diagnostics
             .sort_by_key(|d| (d.span.line, d.span.column));

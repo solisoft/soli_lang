@@ -3527,6 +3527,23 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `smell/duplicate-methods` | A class should not have two methods with the same name |
 | `smell/dangerous-server-builtin` | Calls to `db_query_raw`, `Trusted.*`, `System.shell` / `System.shell_sync`, or backtick command substitution from `app/controllers/`, `app/middleware/`, or `app/views/`. Suggests the safe alternative: parameterised `@sdbql{ ... #{value} ... }`, the jailed `File.*` API, or `System.run([...])` with an argv array. Models, migrations, and tests are out of scope. |
 
+### Suppressing Warnings
+
+When a warning is a known false-positive or an intentional exception, suppress it inline with a directive comment:
+
+```soli
+# soli-lint-disable-next-line smell/dangerous-server-builtin
+if Trusted.is_dir(wt_path)
+  ...
+end
+
+Trusted.read(p)  # soli-lint-disable-line smell/dangerous-server-builtin
+```
+
+- `# soli-lint-disable-next-line` applies to the line immediately below; `# soli-lint-disable-line` applies to the same line.
+- Omit the rule name to suppress every rule on the target line. Pass a comma-separated list to suppress more than one.
+- Prefer naming the exact rule so unrelated warnings on that line still surface.
+
 ### Editor Integration
 
 The VS Code / Cursor extension (`editors/vscode/`) provides full Language Server Protocol (LSP) support for Soli, including:
