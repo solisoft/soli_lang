@@ -193,13 +193,27 @@ impl Parser {
         let start_span = self.current_span();
         self.expect(&TokenKind::Return)?;
 
-        let value = if !self.check(&TokenKind::Semicolon)
-            && !self.check(&TokenKind::If)
-            && !self.check(&TokenKind::Unless)
-        {
-            Some(self.expression()?)
-        } else {
+        // Bare `return` terminates at semicolon, postfix `if`/`unless`, or
+        // any token that can't start an expression: `end`, `}`, `else`,
+        // `elsif`, `catch`, `finally`, EOF. Otherwise we try to parse a
+        // return value. Without this, `return\nend` (a common pattern after
+        // dropped semicolons) fails to parse.
+        let value = if matches!(
+            self.peek().kind,
+            TokenKind::Semicolon
+                | TokenKind::If
+                | TokenKind::Unless
+                | TokenKind::End
+                | TokenKind::RightBrace
+                | TokenKind::Else
+                | TokenKind::Elsif
+                | TokenKind::Catch
+                | TokenKind::Finally
+                | TokenKind::Eof
+        ) {
             None
+        } else {
+            Some(self.expression()?)
         };
 
         let return_end_line = self.previous_span().line;
