@@ -1,6 +1,5 @@
 //! Document formatting provider for LSP.
-
-use lsp_types::{Position, Range, TextEdit};
+use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
 pub fn format_document(source: &str) -> Vec<TextEdit> {
     let mut edits = Vec::new();
@@ -17,7 +16,6 @@ pub fn format_document(source: &str) -> Vec<TextEdit> {
         }
 
         let current_indent = line.len() - line.trim_start().len();
-        let expected_indent = indent_level * indent_str.len();
 
         if trimmed.starts_with("}") || trimmed.starts_with(")") || trimmed.starts_with("]") {
             indent_level = indent_level.saturating_sub(1);
@@ -62,8 +60,7 @@ pub fn format_range(source: &str, range: Range) -> Vec<TextEdit> {
     let mut edits = Vec::new();
     let mut indent_level: usize = 0;
 
-    for i in start_line..=end_line {
-        let line = lines[i];
+    for (i, line) in lines.iter().enumerate().take(end_line + 1).skip(start_line) {
         let trimmed = line.trim_start();
 
         if trimmed.is_empty() {
@@ -71,7 +68,6 @@ pub fn format_range(source: &str, range: Range) -> Vec<TextEdit> {
         }
 
         let current_indent = line.len() - line.trim_start().len();
-        let expected_indent = indent_level * 4;
 
         if trimmed.starts_with("}") || trimmed.starts_with(")") || trimmed.starts_with("]") {
             indent_level = indent_level.saturating_sub(1);

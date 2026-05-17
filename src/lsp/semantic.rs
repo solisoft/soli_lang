@@ -1,7 +1,5 @@
 //! Semantic tokens provider for LSP.
-
-use crate::lsp::symbols::SymbolTable;
-use lsp_types::{
+use tower_lsp::lsp_types::{
     SemanticToken, SemanticTokenType, SemanticTokensPartialResult, SemanticTokensResult,
 };
 

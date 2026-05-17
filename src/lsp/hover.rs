@@ -1,8 +1,6 @@
 //! Hover provider for LSP.
-
-use crate::lsp::symbols::SymbolTable;
 use crate::span::Span;
-use lsp_types::{Hover, HoverContents, HoverParams, MarkedString, Position, Range};
+use tower_lsp::lsp_types::{Hover, HoverContents, MarkedString, Position, Range};
 
 pub fn get_hover(source: &str, position: Position) -> Option<Hover> {
     let offset = position_to_offset(source, position)?;
@@ -77,22 +75,18 @@ fn get_builtin_docs(name: &str) -> Option<String> {
 }
 
 fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut line = 0;
     let mut offset = 0;
 
-    for line_str in source.lines() {
-        if line == position.line {
+    for (line, line_str) in source.lines().enumerate() {
+        if line as u32 == position.line {
             let col = position.character as usize;
-            let mut char_offset = 0;
-            for (i, c) in line_str.char_indices() {
+            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
                 if char_offset >= col {
                     return Some(offset + i);
                 }
-                char_offset += 1;
             }
             return Some(offset + line_str.len().min(col));
         }
-        line += 1;
         offset += line_str.len() + 1;
     }
     None

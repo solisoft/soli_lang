@@ -59,5 +59,6 @@ pub fn run() {
             no_coverage,
         } => commands::run_test(paths, *jobs, coverage_formats, *coverage_min, *no_coverage),
         Command::Engine { action } => commands::run_engine(action),
+        Command::Lsp => commands::run_lsp(),
     }
 }

@@ -219,6 +219,14 @@ pub fn run_repl() {
     solilang::repl_tui::run_tui_repl().unwrap();
 }
 
+pub fn run_lsp() {
+    // Logs go to stderr so they don't corrupt the LSP stdio framing.
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Stderr)
+        .try_init();
+    solilang::lsp::start_lsp();
+}
+
 pub fn run_lint(paths: &[String]) {
     let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));

@@ -1,7 +1,6 @@
 //! Completions provider for LSP.
-
 use crate::lsp::symbols::SymbolTable;
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionResponse, Position};
+use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, CompletionResponse, Position};
 
 const KEYWORDS: &[&str] = &[
     "let",
@@ -134,7 +133,9 @@ pub fn get_completions(
             };
 
             if let Some(type_name) = &scoped.symbol.type_name {
-                item.documentation = Some(lsp_types::Documentation::String(type_name.clone()));
+                item.documentation = Some(tower_lsp::lsp_types::Documentation::String(
+                    type_name.clone(),
+                ));
             }
 
             items.push(item);
@@ -145,10 +146,9 @@ pub fn get_completions(
 }
 
 fn split_at_offset(source: &str, offset: usize) -> (&str, &str) {
-    let mut chars = source.char_indices();
     let mut current_offset = 0;
 
-    while let Some((idx, c)) = chars.next() {
+    for (idx, c) in source.char_indices() {
         if current_offset >= offset {
             return (&source[..idx], &source[idx..]);
         }
@@ -171,22 +171,18 @@ fn extract_word_prefix(leading: &str) -> String {
 }
 
 fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut line = 0;
     let mut offset = 0;
 
-    for line_str in source.lines() {
-        if line == position.line {
+    for (line, line_str) in source.lines().enumerate() {
+        if line as u32 == position.line {
             let col = position.character as usize;
-            let mut char_offset = 0;
-            for (i, c) in line_str.char_indices() {
+            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
                 if char_offset >= col {
                     return Some(offset + i);
                 }
-                char_offset += 1;
             }
             return Some(offset + line_str.len().min(col));
         }
-        line += 1;
         offset += line_str.len() + 1;
     }
     None

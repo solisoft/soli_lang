@@ -1,0 +1,68 @@
+{
+  "identifier": "com.solilang.soli",
+  "name": "Soli",
+  "organization": "Solilang",
+  "description": "Soli language support for Nova: syntax highlighting, LSP-powered hover, completion, go-to-definition, rename, format, and diagnostics.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/solisoft/soli_lang",
+  "bugs": "https://github.com/solisoft/soli_lang/issues",
+  "funding": "https://github.com/solisoft/soli_lang",
+  "categories": [
+    "languages",
+    "completions",
+    "formatters",
+    "issues"
+  ],
+  "main": "main.js",
+  "entitlements": {
+    "process": true,
+    "filesystem": "readonly"
+  },
+  "activationEvents": [
+    "onLanguage:soli"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "soli",
+        "name": "Soli",
+        "extensions": ["sl"],
+        "files": ["Solifile"],
+        "syntax": "soli"
+      }
+    ],
+    "configuration": [
+      {
+        "key": "soli.lsp.path",
+        "title": "Soli binary",
+        "description": "Path to the `soli` executable that ships the LSP server. Leave blank to use whichever `soli` is on PATH.",
+        "type": "path",
+        "default": ""
+      },
+      {
+        "key": "soli.lsp.enabled",
+        "title": "Enable language server",
+        "description": "Run `soli lsp` for hover, completion, go-to-definition, rename, format, and diagnostics. Disable to fall back to grammar-only highlighting.",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "soli.lsp.trace",
+        "title": "LSP trace level",
+        "description": "Verbosity of the LSP server log (written to Nova's extension console).",
+        "type": "enum",
+        "values": ["off", "messages", "verbose"],
+        "default": "off"
+      }
+    ],
+    "commands": {
+      "extensions": [
+        {
+          "title": "Restart Soli Language Server",
+          "command": "soli.restartServer"
+        }
+      ]
+    }
+  }
+}

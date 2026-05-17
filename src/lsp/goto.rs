@@ -1,7 +1,6 @@
 //! Go-to definition provider for LSP.
-
 use crate::lsp::symbols::SymbolTable;
-use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
 
 pub fn goto_definition(
     source: &str,
@@ -81,22 +80,18 @@ fn extract_word_at_offset(source: &str, offset: usize) -> Option<String> {
 }
 
 fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut line = 0;
     let mut offset = 0;
 
-    for line_str in source.lines() {
-        if line == position.line {
+    for (line, line_str) in source.lines().enumerate() {
+        if line as u32 == position.line {
             let col = position.character as usize;
-            let mut char_offset = 0;
-            for (i, c) in line_str.char_indices() {
+            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
                 if char_offset >= col {
                     return Some(offset + i);
                 }
-                char_offset += 1;
             }
             return Some(offset + line_str.len().min(col));
         }
-        line += 1;
         offset += line_str.len() + 1;
     }
     None

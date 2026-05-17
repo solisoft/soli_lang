@@ -1,7 +1,6 @@
 //! Inlay hints provider for LSP.
-
 use crate::lsp::symbols::SymbolTable;
-use lsp_types::{InlayHint, InlayHintKind, Position};
+use tower_lsp::lsp_types::{InlayHint, InlayHintKind, Position};
 
 pub fn get_inlay_hints(source: &str, table: &SymbolTable) -> Vec<InlayHint> {
     let mut hints = Vec::new();
@@ -16,26 +15,9 @@ pub fn get_inlay_hints(source: &str, table: &SymbolTable) -> Vec<InlayHint> {
                             line: (scoped.symbol.span.line.saturating_sub(1)) as u32,
                             character: scoped.symbol.span.end as u32,
                         },
-                        label: lsp_types::InlayHintLabel::String(format!(": {}", type_name)),
-                        kind: Some(InlayHintKind::TYPE),
-                        text_edits: None,
-                        data: None,
-                        padding_left: Some(false),
-                        padding_right: Some(false),
-                        tooltip: None,
-                    });
-                }
-            }
-            crate::lsp::symbols::SymbolKind::Function => {
-                if scoped.symbol.name != "init" {
-                    hints.push(InlayHint {
-                        position: Position {
-                            line: (scoped.symbol.span.line.saturating_sub(1)) as u32,
-                            character: 0,
-                        },
-                        label: lsp_types::InlayHintLabel::String(format!(
-                            "fn {}",
-                            scoped.symbol.name
+                        label: tower_lsp::lsp_types::InlayHintLabel::String(format!(
+                            ": {}",
+                            type_name
                         )),
                         kind: Some(InlayHintKind::TYPE),
                         text_edits: None,
@@ -45,6 +27,24 @@ pub fn get_inlay_hints(source: &str, table: &SymbolTable) -> Vec<InlayHint> {
                         tooltip: None,
                     });
                 }
+            }
+            crate::lsp::symbols::SymbolKind::Function if scoped.symbol.name != "init" => {
+                hints.push(InlayHint {
+                    position: Position {
+                        line: (scoped.symbol.span.line.saturating_sub(1)) as u32,
+                        character: 0,
+                    },
+                    label: tower_lsp::lsp_types::InlayHintLabel::String(format!(
+                        "fn {}",
+                        scoped.symbol.name
+                    )),
+                    kind: Some(InlayHintKind::TYPE),
+                    text_edits: None,
+                    data: None,
+                    padding_left: Some(false),
+                    padding_right: Some(false),
+                    tooltip: None,
+                });
             }
             _ => {}
         }

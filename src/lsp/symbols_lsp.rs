@@ -1,8 +1,8 @@
 //! Document symbols provider for LSP.
-
 use crate::lsp::symbols::SymbolTable;
-use lsp_types::{DocumentSymbol, DocumentSymbolResponse, Position, Range, SymbolKind, SymbolTag};
+use tower_lsp::lsp_types::{DocumentSymbol, DocumentSymbolResponse, Position, Range, SymbolKind};
 
+#[allow(deprecated)]
 pub fn get_document_symbols(source: &str) -> DocumentSymbolResponse {
     let Some(table) = crate::lsp::symbols::build_symbol_table(source) else {
         return DocumentSymbolResponse::Flat(Vec::new());
@@ -56,6 +56,7 @@ pub fn get_document_symbols(source: &str) -> DocumentSymbolResponse {
     DocumentSymbolResponse::Nested(symbols)
 }
 
+#[allow(deprecated)]
 fn get_children_for_symbol(
     symbol: &crate::lsp::symbols::Symbol,
     table: &SymbolTable,
@@ -67,39 +68,39 @@ fn get_children_for_symbol(
             continue;
         }
 
-        if scoped.symbol.span.start > symbol.span.start && scoped.symbol.span.end <= symbol.span.end
+        if scoped.symbol.span.start > symbol.span.start
+            && scoped.symbol.span.end <= symbol.span.end
+            && scoped.symbol.scope_level == symbol.scope_level + 1
         {
-            if scoped.symbol.scope_level == symbol.scope_level + 1 {
-                let kind = match scoped.symbol.kind {
-                    crate::lsp::symbols::SymbolKind::Class => SymbolKind::CLASS,
-                    crate::lsp::symbols::SymbolKind::Function => SymbolKind::FUNCTION,
-                    crate::lsp::symbols::SymbolKind::Method => SymbolKind::METHOD,
-                    crate::lsp::symbols::SymbolKind::Property => SymbolKind::PROPERTY,
-                    crate::lsp::symbols::SymbolKind::Variable => SymbolKind::VARIABLE,
-                    crate::lsp::symbols::SymbolKind::Parameter => SymbolKind::VARIABLE,
-                    crate::lsp::symbols::SymbolKind::Constant => SymbolKind::CONSTANT,
-                };
+            let kind = match scoped.symbol.kind {
+                crate::lsp::symbols::SymbolKind::Class => SymbolKind::CLASS,
+                crate::lsp::symbols::SymbolKind::Function => SymbolKind::FUNCTION,
+                crate::lsp::symbols::SymbolKind::Method => SymbolKind::METHOD,
+                crate::lsp::symbols::SymbolKind::Property => SymbolKind::PROPERTY,
+                crate::lsp::symbols::SymbolKind::Variable => SymbolKind::VARIABLE,
+                crate::lsp::symbols::SymbolKind::Parameter => SymbolKind::VARIABLE,
+                crate::lsp::symbols::SymbolKind::Constant => SymbolKind::CONSTANT,
+            };
 
-                let range = lsp_range_from_span(scoped.symbol.span);
-                let selection_range = Range {
-                    start: range.start,
-                    end: Position {
-                        line: range.start.line,
-                        character: range.start.character + scoped.symbol.name.len() as u32,
-                    },
-                };
+            let range = lsp_range_from_span(scoped.symbol.span);
+            let selection_range = Range {
+                start: range.start,
+                end: Position {
+                    line: range.start.line,
+                    character: range.start.character + scoped.symbol.name.len() as u32,
+                },
+            };
 
-                children.push(DocumentSymbol {
-                    name: scoped.symbol.name.clone(),
-                    kind,
-                    tags: None,
-                    detail: scoped.symbol.type_name.clone(),
-                    deprecated: None,
-                    range,
-                    selection_range,
-                    children: None,
-                });
-            }
+            children.push(DocumentSymbol {
+                name: scoped.symbol.name.clone(),
+                kind,
+                tags: None,
+                detail: scoped.symbol.type_name.clone(),
+                deprecated: None,
+                range,
+                selection_range,
+                children: None,
+            });
         }
     }
 

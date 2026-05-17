@@ -208,19 +208,27 @@ fn build_symbols_recursive(
                 else_branch,
                 ..
             } => {
-                build_symbols_recursive(std::slice::from_ref(&*then_branch), table, scope_level);
+                build_symbols_recursive(
+                    std::slice::from_ref(then_branch.as_ref()),
+                    table,
+                    scope_level,
+                );
                 if let Some(else_stmt) = else_branch {
-                    build_symbols_recursive(std::slice::from_ref(&*else_stmt), table, scope_level);
+                    build_symbols_recursive(
+                        std::slice::from_ref(else_stmt.as_ref()),
+                        table,
+                        scope_level,
+                    );
                 }
             }
             crate::ast::StmtKind::While { body, .. } => {
                 *scope_level += 1;
-                build_symbols_recursive(std::slice::from_ref(&*body), table, scope_level);
+                build_symbols_recursive(std::slice::from_ref(body.as_ref()), table, scope_level);
                 *scope_level -= 1;
             }
             crate::ast::StmtKind::For { body, .. } => {
                 *scope_level += 1;
-                build_symbols_recursive(std::slice::from_ref(&*body), table, scope_level);
+                build_symbols_recursive(std::slice::from_ref(body.as_ref()), table, scope_level);
                 *scope_level -= 1;
             }
             crate::ast::StmtKind::Block(statements) => {

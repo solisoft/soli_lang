@@ -1,6 +1,5 @@
 //! Code actions provider for LSP.
-
-use lsp_types::{
+use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, Diagnostic, DiagnosticSeverity, Position, Range, TextEdit,
     WorkspaceEdit,
 };
@@ -24,7 +23,7 @@ pub fn get_code_actions(source: &str, range: Range) -> Vec<CodeAction> {
             };
 
             if diag_range.start.line >= range.start.line && diag_range.end.line <= range.end.line {
-                if let Some(fix) = get_fix_for_rule(&diag.rule, &diag.message, diag_range) {
+                if let Some(fix) = get_fix_for_rule(diag.rule, &diag.message, diag_range) {
                     actions.push(fix);
                 }
 
@@ -35,7 +34,9 @@ pub fn get_code_actions(source: &str, range: Range) -> Vec<CodeAction> {
                         range: diag_range,
                         severity: Some(DiagnosticSeverity::WARNING),
                         message: diag.message.clone(),
-                        code: Some(lsp_types::NumberOrString::String(diag.rule.to_string())),
+                        code: Some(tower_lsp::lsp_types::NumberOrString::String(
+                            diag.rule.to_string(),
+                        )),
                         source: Some("soli".to_string()),
                         ..Default::default()
                     }]),
@@ -63,7 +64,7 @@ fn get_fix_for_rule(rule: &str, message: &str, range: Range) -> Option<CodeActio
                 kind: Some(CodeActionKind::QUICKFIX),
                 edit: Some(WorkspaceEdit {
                     changes: Some(std::collections::HashMap::from([(
-                        lsp_types::Url::parse("file:///").unwrap(),
+                        tower_lsp::lsp_types::Url::parse("file:///").unwrap(),
                         vec![TextEdit {
                             range,
                             new_text: suggested.to_string(),
@@ -86,7 +87,7 @@ fn get_fix_for_rule(rule: &str, message: &str, range: Range) -> Option<CodeActio
                 kind: Some(CodeActionKind::QUICKFIX),
                 edit: Some(WorkspaceEdit {
                     changes: Some(std::collections::HashMap::from([(
-                        lsp_types::Url::parse("file:///").unwrap(),
+                        tower_lsp::lsp_types::Url::parse("file:///").unwrap(),
                         vec![TextEdit {
                             range,
                             new_text: suggested.to_string(),
@@ -109,7 +110,7 @@ fn get_fix_for_rule(rule: &str, message: &str, range: Range) -> Option<CodeActio
                 kind: Some(CodeActionKind::QUICKFIX),
                 edit: Some(WorkspaceEdit {
                     changes: Some(std::collections::HashMap::from([(
-                        lsp_types::Url::parse("file:///").unwrap(),
+                        tower_lsp::lsp_types::Url::parse("file:///").unwrap(),
                         vec![TextEdit {
                             range,
                             new_text: suggested.to_string(),
@@ -125,7 +126,7 @@ fn get_fix_for_rule(rule: &str, message: &str, range: Range) -> Option<CodeActio
             kind: Some(CodeActionKind::QUICKFIX),
             edit: Some(WorkspaceEdit {
                 changes: Some(std::collections::HashMap::from([(
-                    lsp_types::Url::parse("file:///").unwrap(),
+                    tower_lsp::lsp_types::Url::parse("file:///").unwrap(),
                     vec![TextEdit {
                         range,
                         new_text: String::new(),

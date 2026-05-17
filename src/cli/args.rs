@@ -86,6 +86,9 @@ pub enum Command {
     Engine {
         action: EngineAction,
     },
+    /// Start the Soli LSP server on stdio. Used by editor plugins
+    /// (Nova, VS Code, etc.) — not typically run interactively.
+    Lsp,
 }
 
 pub enum EngineAction {
@@ -125,6 +128,7 @@ pub fn print_usage() {
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
+    eprintln!("       soli lsp");
     eprintln!("       soli deploy [--folder <path>]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
@@ -148,6 +152,7 @@ pub fn print_usage() {
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
+    eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
     eprintln!(
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
     );
@@ -578,6 +583,10 @@ pub fn parse_args() -> Options {
             }
             "--no-type-check" => options.no_type_check = true,
             "--vm" => options.use_vm = true,
+            "lsp" => {
+                options.command = Command::Lsp;
+                return options;
+            }
             "lint" => {
                 i += 1;
                 let mut paths: Vec<String> = Vec::new();

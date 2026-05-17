@@ -1,6 +1,5 @@
 //! Folding ranges provider for LSP.
-
-use lsp_types::{FoldingRange, FoldingRangeKind};
+use tower_lsp::lsp_types::{FoldingRange, FoldingRangeKind};
 
 pub fn get_folding_ranges(source: &str) -> Vec<FoldingRange> {
     let mut ranges = Vec::new();
@@ -68,8 +67,8 @@ pub fn get_folding_ranges(source: &str) -> Vec<FoldingRange> {
             if let Some(start_brace) = line.find('{') {
                 let mut depth = 0;
                 let mut found = false;
-                for k in i + 1..lines.len() {
-                    for c in lines[k].chars() {
+                for (k, line_k) in lines.iter().enumerate().skip(i + 1) {
+                    for c in line_k.chars() {
                         if c == '{' {
                             depth += 1;
                         } else if c == '}' {
@@ -78,7 +77,7 @@ pub fn get_folding_ranges(source: &str) -> Vec<FoldingRange> {
                                     start_line: i as u32,
                                     start_character: Some(start_brace as u32 + 1),
                                     end_line: k as u32,
-                                    end_character: Some(lines[k].find('}').unwrap_or(0) as u32),
+                                    end_character: Some(line_k.find('}').unwrap_or(0) as u32),
                                     kind: Some(FoldingRangeKind::Region),
                                     collapsed_text: None,
                                 });

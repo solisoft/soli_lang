@@ -98,6 +98,68 @@ vsce package
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Nova <span class="text-base font-medium text-gray-400">(macOS)</span></h2>
+    <p class="text-gray-400 mb-6">
+        The Nova extension lives under <code class="text-indigo-400">editors/nova/soli.novaextension/</code> and uses Nova's <code class="text-indigo-400">LanguageClient</code> API to spawn <code class="text-indigo-400">soli lsp</code> on stdio.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Install from source</h3>
+    <p class="text-gray-400 mb-4">
+        Build and install the <code class="text-indigo-400">soli</code> binary so the LSP backend is available, then symlink the extension into Nova's extensions directory:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="bash"><code class="language-bash text-sm">cargo install --path .
+
+ln -s "$PWD/editors/nova/soli.novaextension" \
+  "$HOME/Library/Application Support/Nova/Extensions/com.solilang.soli.novaextension"</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Restart Nova and open any <code class="text-indigo-400">.sl</code> file — diagnostics, hover, and completion should activate within a second.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Install from the Extension Library</h3>
+    <p class="text-gray-400 mb-6">
+        Once published, just open Nova → <strong class="text-white">Extensions</strong> → search <strong class="text-white">Soli</strong> → <strong class="text-white">Install</strong>.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Settings</h3>
+    <p class="text-gray-400 mb-4">
+        Configure via <strong class="text-white">Nova → Preferences → Extensions → Soli</strong>:
+    </p>
+
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
+        <table class="w-full text-sm">
+            <thead class="bg-white/5 text-left text-gray-300">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Setting</th>
+                    <th class="px-4 py-3 font-semibold">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="px-4 py-3"><code class="text-indigo-400">soli.lsp.enabled</code></td>
+                    <td class="px-4 py-3">Toggle the language server. Off falls back to grammar-only highlighting.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-indigo-400">soli.lsp.path</code></td>
+                    <td class="px-4 py-3">Absolute path to <code class="text-indigo-400">soli</code>. Leave blank to use <code class="text-indigo-400">PATH</code>.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-indigo-400">soli.lsp.trace</code></td>
+                    <td class="px-4 py-3">LSP trace verbosity (<code class="text-indigo-400">off</code> / <code class="text-indigo-400">messages</code> / <code class="text-indigo-400">verbose</code>).</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="my-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/90 text-sm">
+            <strong class="text-amber-300">Heads up:</strong> Nova doesn't inherit your shell's full <code class="text-amber-300">PATH</code>. If the server doesn't start, set <strong class="text-white">Soli &gt; Soli binary</strong> to the absolute path of <code class="text-amber-300">soli</code> (for example, <code class="text-amber-300">/Users/you/.cargo/bin/soli</code>) and run <strong class="text-white">Editor → Extensions → Restart Soli Language Server</strong>.
+        </p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Neovim</h2>
     <p class="text-gray-400 mb-6">
         Neovim has built-in LSP support. Configure using <code class="text-indigo-400">lspconfig</code>:
