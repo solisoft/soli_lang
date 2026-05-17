@@ -1198,11 +1198,11 @@ fn base_test_database() -> String {
 
 /// Returns one DB name per worker, derived from `SOLIDB_DATABASE`. With a
 /// single worker the base name is used as-is; with multiple workers each
-/// worker gets `{base}_w{i}` so parallel tests don't share rows.
-///
-/// The base name is normalised to end with `_spec` or `_test` so that
-/// spec-file detection (`*_spec.sl`) is reliable regardless of how
-/// `SOLIDB_DATABASE` is set.
+/// worker gets `{stem}_w{i}{suffix}` so the `_test` / `_spec` marker stays
+/// at the end. App code commonly gates test-only behaviour on
+/// `SOLIDB_DATABASE.ends_with("_test")`; the previous `{base}_w{i}` shape
+/// (e.g. `tasks_test_w1`) silently masked the suffix on workers 1+ and
+/// produced wildly different timings between `--jobs 1` and parallel runs.
 fn worker_database_names(num_workers: usize, base_database_name: &str) -> Vec<String> {
     let base = if base_database_name.ends_with("_spec") || base_database_name.ends_with("_test") {
         base_database_name.to_string()
@@ -1212,8 +1212,14 @@ fn worker_database_names(num_workers: usize, base_database_name: &str) -> Vec<St
     if num_workers <= 1 {
         return vec![base];
     }
+    let suffix = if base.ends_with("_test") {
+        "_test"
+    } else {
+        "_spec"
+    };
+    let stem = &base[..base.len() - suffix.len()];
     let mut names = vec![base.clone()];
-    names.extend((1..num_workers).map(|i| format!("{}_w{}", base, i)));
+    names.extend((1..num_workers).map(|i| format!("{}_w{}{}", stem, i, suffix)));
     names
 }
 
@@ -1384,8 +1390,21 @@ mod tests {
     fn worker_database_names_multiple_default_base() {
         assert_eq!(
             worker_database_names(3, "default"),
-            vec!["default_spec", "default_spec_w1", "default_spec_w2"]
+            vec!["default_spec", "default_w1_spec", "default_w2_spec"]
         );
+    }
+
+    #[test]
+    fn worker_database_names_multiple_test_base_preserves_suffix() {
+        let names = worker_database_names(3, "myapp_test");
+        assert_eq!(names, vec!["myapp_test", "myapp_w1_test", "myapp_w2_test"]);
+        for n in &names {
+            assert!(
+                n.ends_with("_test"),
+                "{} should end with _test so app-level test gates work",
+                n
+            );
+        }
     }
 
     #[test]
@@ -1402,7 +1421,7 @@ mod tests {
     fn worker_database_names_explicit_spec_no_double_suffix() {
         assert_eq!(
             worker_database_names(3, "foo_spec"),
-            vec!["foo_spec", "foo_spec_w1", "foo_spec_w2"]
+            vec!["foo_spec", "foo_w1_spec", "foo_w2_spec"]
         );
     }
 }

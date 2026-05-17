@@ -11,15 +11,26 @@ use std::rc::Rc;
 
 const DEFAULT_TTL_SECONDS: u64 = 3600;
 
+/// Cache keys are scoped to the current per-thread SoliDB database so
+/// concurrent `soli test --jobs N` workers (each writing to its own
+/// DB) can't cross-poison each other's `Cache` reads through the
+/// shared SoliKV namespace. Production apps run with a single
+/// `SOLIDB_DATABASE`, so the scope collapses to a constant suffix
+/// (one extra colon-segment in the key) — invisible to callers.
+fn cache_scope() -> String {
+    super::model::db_config::get_database_name()
+}
+
 fn prefixed_key(key: &str) -> String {
     let cfg = get_solikv_config().read().unwrap();
-    format!("{}{}", cfg.prefix, key)
+    format!("{}{}:{}", cfg.prefix, cache_scope(), key)
 }
 
 fn strip_prefix(full_key: &str) -> String {
     let cfg = get_solikv_config().read().unwrap();
+    let scope_prefix = format!("{}{}:", cfg.prefix, cache_scope());
     full_key
-        .strip_prefix(cfg.prefix.as_str())
+        .strip_prefix(scope_prefix.as_str())
         .unwrap_or(full_key)
         .to_string()
 }
@@ -68,7 +79,10 @@ fn cache_delete_impl(key: &str) -> Result<Value, String> {
 fn cache_clear_impl() -> Result<Value, String> {
     let pattern = {
         let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
-        format!("{}*", cfg.prefix)
+        // Scope-aware: clear only this worker's DB keys, not every
+        // parallel worker's. Otherwise one worker's `Cache.clear()`
+        // would wipe siblings mid-suite under `soli test --jobs N`.
+        format!("{}{}:*", cfg.prefix, cache_scope())
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
 
@@ -85,7 +99,7 @@ fn cache_clear_impl() -> Result<Value, String> {
 fn cache_keys_impl() -> Result<Value, String> {
     let pattern = {
         let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
-        format!("{}*", cfg.prefix)
+        format!("{}{}:*", cfg.prefix, cache_scope())
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
 
@@ -103,7 +117,7 @@ fn cache_keys_impl() -> Result<Value, String> {
 fn cache_size_impl() -> Result<Value, String> {
     let pattern = {
         let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
-        format!("{}*", cfg.prefix)
+        format!("{}{}:*", cfg.prefix, cache_scope())
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
     let count = keys_result.as_array().map(|a| a.len()).unwrap_or(0);
