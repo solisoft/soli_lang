@@ -93,9 +93,8 @@ fn extract_function_names(source: &str) -> Vec<(String, bool)> {
                     let params_str = &rest[paren_pos + 1..close_paren].trim();
                     // Has params if the params string is not empty
                     // Ignore the 'req' parameter as it's always present for handlers
-                    let has_id_param = !params_str.is_empty()
-                        && *params_str != "req"
-                        && *params_str != "req: Any";
+                    let has_id_param =
+                        !params_str.is_empty() && *params_str != "req" && *params_str != "req: Any";
 
                     functions.push((func_name, has_id_param));
                 }

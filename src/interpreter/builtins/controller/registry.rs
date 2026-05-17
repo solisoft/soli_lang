@@ -1058,7 +1058,11 @@ end
         let mut info = ControllerInfo::new("PostsController", "posts");
         extract_actions(source, "PostsController", &mut info);
 
-        let names: Vec<&str> = info.actions.iter().map(|a| a.action_name.as_str()).collect();
+        let names: Vec<&str> = info
+            .actions
+            .iter()
+            .map(|a| a.action_name.as_str())
+            .collect();
         assert_eq!(names, vec!["index", "show"]);
     }
 }

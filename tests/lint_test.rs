@@ -6,7 +6,6 @@ use solilang::lexer::Scanner;
 use solilang::lint::{LintDiagnostic, Linter};
 use solilang::parser::Parser;
 use std::path::Path;
-use tempfile;
 
 fn lint(source: &str) -> Vec<LintDiagnostic> {
     let tokens = Scanner::new(source).scan_tokens().expect("lexer ok");
