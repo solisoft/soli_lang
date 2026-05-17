@@ -56,7 +56,9 @@ get("/docs/development-tools/debugging", "docs#development_tools_debugging");
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold");
 get("/docs/development-tools/deploy", "docs#development_tools_deploy");
 get("/docs/development-tools/editor-integration", "docs#development_tools_editor_integration");
+get("/docs/development-tools/formatting", "docs#development_tools_formatting");
 get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents");
+get("/docs/development-tools/linting", "docs#development_tools_linting");
 
 # Language Reference
 get("/docs/language", "docs#language_index");
@@ -80,7 +82,6 @@ get("/docs/language/decimal", "docs#language_decimal");
 get("/docs/language/symbols", "docs#language_symbols");
 get("/docs/language/modules", "docs#language_modules");
 get("/docs/language/blocks", "docs#language_blocks");
-get("/docs/language/linting", "docs#language_linting");
 get("/docs/language/metaprogramming", "docs#language_metaprogramming");
 
 # Builtins Reference

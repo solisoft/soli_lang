@@ -1398,6 +1398,10 @@ video {
   visibility: hidden;
 }
 
+.collapse {
+  visibility: collapse;
+}
+
 .static {
   position: static;
 }
@@ -3479,6 +3483,10 @@ video {
 
 .text-amber-200\/80 {
   color: rgb(253 230 138 / 0.8);
+}
+
+.text-amber-200\/90 {
+  color: rgb(253 230 138 / 0.9);
 }
 
 .text-amber-300 {

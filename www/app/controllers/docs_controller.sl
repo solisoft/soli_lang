@@ -154,6 +154,10 @@ fn development_tools_editor_integration(req)
     )
 end
 
+fn development_tools_formatting(req)
+    render_docs("docs/development-tools/formatting", "Formatting", "development_tools", "formatting")
+end
+
 fn development_tools_ai_agents(req)
     render_docs(
         "docs/development-tools/ai-agents",
@@ -161,6 +165,10 @@ fn development_tools_ai_agents(req)
         "development_tools",
         "ai_agents"
     )
+end
+
+fn development_tools_linting(req)
+    render_docs("docs/development-tools/linting", "Linting", "development_tools", "linting")
 end
 
 # ============================================================================
@@ -249,10 +257,6 @@ end
 
 fn language_blocks(req)
     render_docs("docs/language/blocks", "Block Syntax", "language", "blocks")
-end
-
-fn language_linting(req)
-    render_docs("docs/language/linting", "Linting", "language", "linting")
 end
 
 fn language_metaprogramming(req)

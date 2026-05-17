@@ -291,6 +291,90 @@ pub fn run_lint(paths: &[String]) {
     }
 }
 
+pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
+    use std::io::Read;
+    if stdin {
+        let mut source = String::new();
+        if let Err(e) = std::io::stdin().read_to_string(&mut source) {
+            eprintln!("Error reading stdin: {}", e);
+            process::exit(1);
+        }
+        match solilang::fmt::format_source(&source) {
+            Ok(formatted) => print!("{}", formatted),
+            Err(e) => {
+                eprintln!("fmt: {}", e);
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
+    let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        vec![cwd]
+    } else {
+        paths.iter().map(std::path::PathBuf::from).collect()
+    };
+
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for t in &targets {
+        if !t.exists() {
+            eprintln!("Error: Path '{}' does not exist", t.display());
+            process::exit(1);
+        }
+        if t.is_file() {
+            files.push(t.clone());
+        } else {
+            files.extend(test_runner::collect_test_files(t));
+        }
+    }
+
+    if files.is_empty() {
+        println!("No .sl files found.");
+        return;
+    }
+
+    let mut changed = 0usize;
+    let mut errors = 0usize;
+    for file in &files {
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}: error reading file: {}", file.display(), e);
+                errors += 1;
+                continue;
+            }
+        };
+        let formatted = match solilang::fmt::format_source(&source) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}: {}", file.display(), e);
+                errors += 1;
+                continue;
+            }
+        };
+        if formatted == source {
+            continue;
+        }
+        changed += 1;
+        if check {
+            println!("would reformat: {}", file.display());
+        } else if let Err(e) = fs::write(file, &formatted) {
+            eprintln!("{}: error writing: {}", file.display(), e);
+            errors += 1;
+        } else {
+            println!("formatted: {}", file.display());
+        }
+    }
+
+    if errors > 0 {
+        process::exit(1);
+    }
+    if check && changed > 0 {
+        process::exit(1);
+    }
+}
+
 pub fn run_deploy(folder: Option<&str>) {
     let path = if let Some(f) = folder {
         Path::new(f).to_path_buf()

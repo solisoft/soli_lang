@@ -1,0 +1,131 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Formatting</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            <code class="text-indigo-300">soli fmt</code> rewrites your <code>.sl</code> files into Soli's canonical style — 2-space indent, Ruby-style <code>end</code>, normalized operator spacing. Run it on save, in CI, or by hand.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <div class="flex items-start gap-4">
+            <div class="text-green-400 mt-1">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-lg font-semibold text-green-400 mb-1">AST-driven, never lossy</h4>
+                <p class="text-green-200/80 text-sm">
+                    The formatter parses your file, then re-emits the AST. Output is guaranteed to be the same program — only the whitespace and keyword spelling change.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Usage</h2>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Terminal"><code class="language-bash text-sm"># Format every .sl file under the cwd, in place
+soli fmt
+
+# Format a single file
+soli fmt path/to/file.sl
+
+# Format every .sl file under one or more paths
+soli fmt app/ lib/
+
+# Don't rewrite — exit non-zero if any file would change (CI-friendly)
+soli fmt --check
+
+# Filter mode for editor integration
+soli fmt --stdin &lt; in.sl &gt; out.sl</code></pre>
+    </div>
+
+    <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
+        <li>With no path argument, the current working directory is walked recursively.</li>
+        <li>Already-formatted files are left untouched — no spurious <code>mtime</code> bump.</li>
+        <li><code class="text-indigo-400">--check</code> prints <code>would reformat: &lt;path&gt;</code> for each unformatted file and exits with status <code>1</code> if any are found.</li>
+        <li><code class="text-indigo-400">--stdin</code> reads from stdin and writes to stdout — no file is touched. Use this for editor "format on save" hooks.</li>
+    </ul>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Style</h2>
+
+    <div class="overflow-hidden rounded-xl ring-1 ring-white/10 mb-12">
+        <table class="min-w-full divide-y divide-white/10 text-sm">
+            <thead class="bg-white/5">
+                <tr>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Rule</th>
+                    <th class="px-4 py-3 text-left font-semibold text-white">Detail</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr><td class="px-4 py-3 text-white">Indent</td><td class="px-4 py-3">2 spaces, never tabs</td></tr>
+                <tr><td class="px-4 py-3 text-white">Functions</td><td class="px-4 py-3"><code>def name() ... end</code> (parens kept even when empty)</td></tr>
+                <tr><td class="px-4 py-3 text-white">Classes</td><td class="px-4 py-3"><code>class X &lt; Y ... end</code></td></tr>
+                <tr><td class="px-4 py-3 text-white">Control flow</td><td class="px-4 py-3"><code>if cond ... end</code>, <code>while cond ... end</code>, etc.</td></tr>
+                <tr><td class="px-4 py-3 text-white">Operators</td><td class="px-4 py-3">Normalized spacing — <code>a + b</code>, <code>a == b</code>, <code>a &amp;&amp; b</code></td></tr>
+                <tr><td class="px-4 py-3 text-white">Comments</td><td class="px-4 py-3">Preserved at their original line positions</td></tr>
+                <tr><td class="px-4 py-3 text-white">Comment marker</td><td class="px-4 py-3"><code>//</code> line comments are normalized to <code>#</code></td></tr>
+                <tr><td class="px-4 py-3 text-white">Blank lines</td><td class="px-4 py-3">Multiple consecutive blank lines collapse to one</td></tr>
+                <tr><td class="px-4 py-3 text-white">Guard clauses</td><td class="px-4 py-3"><code>if cond return … end</code> with no <code>else</code> gets a trailing blank line</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Editor Integration</h2>
+    <p class="text-gray-400 mb-6">
+        Hook <code class="text-indigo-300">soli fmt --stdin</code> into your editor's "format document" command. The filter mode is the same shape as <code>gofmt</code>, <code>rustfmt --emit=stdout</code>, or <code>black -</code>, so most LSP and format-tool wrappers can drive it with no extra config.
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli fmt --stdin</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        See <a href="/docs/development-tools/editor-integration" class="text-indigo-400 underline">Editor Integration</a> for language-server setup.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">CI Usage</h2>
+    <p class="text-gray-400 mb-6">
+        The recommended CI gate:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli fmt --check</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        It exits non-zero on the first unformatted file it sees, listing each one as <code>would reformat: &lt;path&gt;</code>. Pair with <code class="text-indigo-300">soli lint</code> for a complete style gate.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Coverage &amp; Fallback</h2>
+    <p class="text-gray-400 mb-6">
+        A handful of advanced grammar forms aren't canonicalized yet — <code>@sdbql{ … }</code> query blocks, list/hash comprehensions, and some complex match patterns. For these nodes the formatter copies the original source bytes verbatim via the AST span: semantics are preserved, the surrounding code is still formatted, and the body of the un-modeled node is left exactly as you wrote it.
+    </p>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-300 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            Fixed point
+        </h4>
+        <p class="text-indigo-200/80 text-sm">
+            Running <code>soli fmt</code> on an already-formatted file is a no-op. You can mix formatted code and un-modeled forms freely without churn.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/language/linting" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Linting &rarr;</h3>
+            <p class="text-sm text-gray-400">Style and smell rules enforced by <code>soli lint</code>.</p>
+        </a>
+        <a href="/docs/development-tools/editor-integration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Editor Integration &rarr;</h3>
+            <p class="text-sm text-gray-400">Wire <code>soli fmt</code> and the LSP into your editor.</p>
+        </a>
+    </div>
+</div>

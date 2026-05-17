@@ -48,6 +48,13 @@ pub enum Command {
     Lint {
         paths: Vec<String>,
     },
+    Fmt {
+        paths: Vec<String>,
+        /// Don't rewrite — exit non-zero if any file isn't already formatted.
+        check: bool,
+        /// Read source from stdin, write formatted output to stdout.
+        stdin: bool,
+    },
     Init,
     Add {
         name: String,
@@ -141,6 +148,9 @@ pub fn print_usage() {
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
+    eprintln!(
+        "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
+    );
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
@@ -582,6 +592,31 @@ pub fn parse_args() -> Options {
                     i += 1;
                 }
                 options.command = Command::Lint { paths };
+                return options;
+            }
+            "fmt" => {
+                i += 1;
+                let mut paths: Vec<String> = Vec::new();
+                let mut check = false;
+                let mut stdin = false;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--check" => check = true,
+                        "--stdin" => stdin = true,
+                        s if !s.starts_with('-') => paths.push(args[i].clone()),
+                        other => {
+                            eprintln!("Unknown option for fmt: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::Fmt {
+                    paths,
+                    check,
+                    stdin,
+                };
                 return options;
             }
             "deploy" => {

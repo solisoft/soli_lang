@@ -25,6 +25,11 @@ pub fn run() {
             daemonize,
         } => commands::run_serve(folder, *port, *dev_mode, *workers, *daemonize),
         Command::Lint { paths } => commands::run_lint(paths),
+        Command::Fmt {
+            paths,
+            check,
+            stdin,
+        } => commands::run_fmt(paths, *check, *stdin),
         Command::Deploy { folder } => commands::run_deploy(folder.as_deref()),
         Command::Init => commands::run_init(),
         Command::Add {
