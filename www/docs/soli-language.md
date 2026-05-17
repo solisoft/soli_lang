@@ -3529,7 +3529,9 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 
 ### Suppressing Warnings
 
-When a warning is a known false-positive or an intentional exception, suppress it inline with a directive comment:
+When a warning is a known false-positive or an intentional exception, suppress it inline with a directive comment.
+
+**Single-line forms.** `disable-next-line` covers the line below; `disable-line` covers the same line.
 
 ```soli
 # soli-lint-disable-next-line smell/dangerous-server-builtin
@@ -3540,9 +3542,19 @@ end
 Trusted.read(p)  # soli-lint-disable-line smell/dangerous-server-builtin
 ```
 
-- `# soli-lint-disable-next-line` applies to the line immediately below; `# soli-lint-disable-line` applies to the same line.
-- Omit the rule name to suppress every rule on the target line. Pass a comma-separated list to suppress more than one.
-- Prefer naming the exact rule so unrelated warnings on that line still surface.
+**Block forms.** `disable` / `enable` toggle a rule for a region of code. Useful when several adjacent lines are intentional exceptions:
+
+```soli
+# soli-lint-disable smell/dangerous-server-builtin
+exists = Trusted.is_dir(path)
+data   = Trusted.read(path)
+# soli-lint-enable smell/dangerous-server-builtin
+```
+
+- Omit the rule name to suppress every rule (e.g. `# soli-lint-disable`). Pass a comma-separated list to scope to multiple rules.
+- An `enable` for a specific rule re-enables only that rule, even if the prior `disable` was a blanket one.
+- A block `disable` with no matching `enable` runs to the end of the file.
+- Prefer naming the exact rule so unrelated warnings still surface.
 
 ### Editor Integration
 

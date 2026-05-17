@@ -177,7 +177,12 @@ end</code></pre>
         <p class="text-gray-300 mb-4">
             When a warning is a known false-positive or an intentional exception, suppress it inline with a directive comment.
         </p>
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+
+        <h3 class="text-lg font-semibold text-white mb-2">Single-line forms</h3>
+        <p class="text-gray-300 mb-3">
+            <code>disable-next-line</code> covers the line below; <code>disable-line</code> covers the same line.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename="app/controllers/tasks_controller.sl"><code class="language-ruby text-sm"># soli-lint-disable-next-line smell/dangerous-server-builtin
 if Trusted.is_dir(wt_path)
   ...
@@ -185,10 +190,23 @@ end
 
 Trusted.read(p)  # soli-lint-disable-line smell/dangerous-server-builtin</code></pre>
         </div>
+
+        <h3 class="text-lg font-semibold text-white mb-2">Block forms</h3>
+        <p class="text-gray-300 mb-3">
+            <code>disable</code> / <code>enable</code> toggle a rule for a region. Useful when several adjacent lines are intentional exceptions.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="app/controllers/tasks_controller.sl"><code class="language-ruby text-sm"># soli-lint-disable smell/dangerous-server-builtin
+exists = Trusted.is_dir(path)
+data   = Trusted.read(path)
+# soli-lint-enable smell/dangerous-server-builtin</code></pre>
+        </div>
+
         <ul class="text-gray-300 space-y-2 list-disc pl-6">
-            <li><code>soli-lint-disable-next-line</code> applies to the line immediately below; <code>soli-lint-disable-line</code> applies to the same line.</li>
-            <li>Omit the rule name to suppress every rule on the target line. Pass a comma-separated list to suppress more than one.</li>
-            <li>Prefer naming the exact rule so unrelated warnings on that line still surface.</li>
+            <li>Omit the rule name to suppress every rule (e.g. <code># soli-lint-disable</code>). Pass a comma-separated list to scope to multiple rules.</li>
+            <li>An <code>enable</code> for a specific rule re-enables only that rule, even if the prior <code>disable</code> was a blanket one.</li>
+            <li>A block <code>disable</code> with no matching <code>enable</code> runs to the end of the file.</li>
+            <li>Prefer naming the exact rule so unrelated warnings still surface.</li>
         </ul>
     </section>
 
