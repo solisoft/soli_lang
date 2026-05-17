@@ -278,23 +278,30 @@ fn format_duration(duration: Duration) -> String {
 }
 
 pub fn run_test(
-    path: Option<&str>,
+    paths: &[String],
     jobs: Option<usize>,
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
 ) {
-    let test_path = match path {
-        Some(p) => PathBuf::from(p),
-        None => std::env::current_dir()
+    let test_paths: Vec<PathBuf> = if paths.is_empty() {
+        vec![std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
-            .join("tests"),
+            .join("tests")]
+    } else {
+        paths.iter().map(PathBuf::from).collect()
     };
 
-    if !test_path.exists() {
-        eprintln!("Error: Test path '{}' does not exist", test_path.display());
-        process::exit(1);
+    for p in &test_paths {
+        if !p.exists() {
+            eprintln!("Error: Test path '{}' does not exist", p.display());
+            process::exit(1);
+        }
     }
+
+    // The first target anchors app_dir resolution and the display root; we
+    // assume all targets live within the same Soli project.
+    let test_path = test_paths[0].clone();
 
     std::env::set_var("APP_ENV", "test");
 
@@ -320,11 +327,20 @@ pub fn run_test(
 
     solilang::interpreter::builtins::model::init_db_config();
 
-    let test_files = if test_path.is_file() {
-        vec![test_path.clone()]
-    } else {
-        collect_test_files(&test_path)
-    };
+    let mut test_files: Vec<PathBuf> = Vec::new();
+    for p in &test_paths {
+        if p.is_file() {
+            test_files.push(p.clone());
+        } else {
+            test_files.extend(collect_test_files(p));
+        }
+    }
+    // De-duplicate in case overlapping paths were passed (e.g. `tests/` and
+    // `tests/foo_spec.sl`). Preserve discovery order.
+    {
+        let mut seen = std::collections::HashSet::new();
+        test_files.retain(|p| seen.insert(p.clone()));
+    }
 
     if test_files.is_empty() {
         println!("No test files found.");

@@ -219,22 +219,26 @@ pub fn run_repl() {
     solilang::repl_tui::run_tui_repl().unwrap();
 }
 
-pub fn run_lint(path: Option<&str>) {
-    let lint_path = match path {
-        Some(p) => std::path::PathBuf::from(p),
-        None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-    };
-
-    if !lint_path.exists() {
-        eprintln!("Error: Path '{}' does not exist", lint_path.display());
-        process::exit(1);
-    }
-
-    let files: Vec<std::path::PathBuf> = if lint_path.is_file() {
-        vec![lint_path.clone()]
+pub fn run_lint(paths: &[String]) {
+    let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        vec![cwd]
     } else {
-        test_runner::collect_test_files(&lint_path)
+        paths.iter().map(std::path::PathBuf::from).collect()
     };
+
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for t in &targets {
+        if !t.exists() {
+            eprintln!("Error: Path '{}' does not exist", t.display());
+            process::exit(1);
+        }
+        if t.is_file() {
+            files.push(t.clone());
+        } else {
+            files.extend(test_runner::collect_test_files(t));
+        }
+    }
 
     if files.is_empty() {
         println!("No .sl files found.");
@@ -333,13 +337,13 @@ pub fn run_deploy(folder: Option<&str>) {
 }
 
 pub fn run_test(
-    path: Option<&str>,
+    paths: &[String],
     jobs: Option<usize>,
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
 ) {
-    test_runner::run_test(path, jobs, coverage_formats, coverage_min, no_coverage);
+    test_runner::run_test(paths, jobs, coverage_formats, coverage_min, no_coverage);
 }
 
 pub fn run_init() {

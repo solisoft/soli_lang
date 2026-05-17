@@ -24,7 +24,7 @@ pub fn run() {
             workers,
             daemonize,
         } => commands::run_serve(folder, *port, *dev_mode, *workers, *daemonize),
-        Command::Lint { path } => commands::run_lint(path.as_deref()),
+        Command::Lint { paths } => commands::run_lint(paths),
         Command::Deploy { folder } => commands::run_deploy(folder.as_deref()),
         Command::Init => commands::run_init(),
         Command::Add {
@@ -47,18 +47,12 @@ pub fn run() {
         }
         Command::Publish { registry } => commands::run_publish(registry.as_deref()),
         Command::Test {
-            path,
+            paths,
             jobs,
             coverage_formats,
             coverage_min,
             no_coverage,
-        } => commands::run_test(
-            path.as_deref(),
-            *jobs,
-            coverage_formats,
-            *coverage_min,
-            *no_coverage,
-        ),
+        } => commands::run_test(paths, *jobs, coverage_formats, *coverage_min, *no_coverage),
         Command::Engine { action } => commands::run_engine(action),
     }
 }

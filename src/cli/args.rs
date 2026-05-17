@@ -28,7 +28,7 @@ pub enum Command {
         daemonize: bool,
     },
     Test {
-        path: Option<String>,
+        paths: Vec<String>,
         /// `None` = user didn't pass `--jobs`; the runner picks a default
         /// once it knows whether the app needs a test server (apps with
         /// `app/controllers/` pay a per-worker subprocess-spawn cost that
@@ -46,7 +46,7 @@ pub enum Command {
         folder: String,
     },
     Lint {
-        path: Option<String>,
+        paths: Vec<String>,
     },
     Init,
     Add {
@@ -116,8 +116,8 @@ pub fn print_usage() {
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
-    eprintln!("       soli test [path] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
-    eprintln!("       soli lint [path]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
+    eprintln!("       soli lint [paths...]");
     eprintln!("       soli deploy [--folder <path>]");
     eprintln!("       soli db:migrate <up|down|status> [folder]");
     eprintln!("       soli db:migrate generate <name> [folder]");
@@ -139,8 +139,8 @@ pub fn print_usage() {
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
-    eprintln!("  test [path]          Run tests (default: tests/ directory)");
-    eprintln!("  lint [path]          Lint .sl files for style issues and code smells");
+    eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
+    eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
@@ -570,10 +570,10 @@ pub fn parse_args() -> Options {
             "--vm" => options.use_vm = true,
             "lint" => {
                 i += 1;
-                let mut path: Option<String> = None;
+                let mut paths: Vec<String> = Vec::new();
                 while i < args.len() {
-                    if !args[i].starts_with('-') && path.is_none() {
-                        path = Some(args[i].clone());
+                    if !args[i].starts_with('-') {
+                        paths.push(args[i].clone());
                     } else {
                         eprintln!("Unknown option for lint: {}", args[i]);
                         print_usage();
@@ -581,7 +581,7 @@ pub fn parse_args() -> Options {
                     }
                     i += 1;
                 }
-                options.command = Command::Lint { path };
+                options.command = Command::Lint { paths };
                 return options;
             }
             "deploy" => {
@@ -659,7 +659,7 @@ pub fn parse_args() -> Options {
             }
             "test" => {
                 i += 1;
-                let mut path: Option<String> = None;
+                let mut paths: Vec<String> = Vec::new();
                 let mut jobs: Option<usize> = None;
                 let mut coverage_formats: Vec<String> = vec!["console".to_string()];
                 let mut coverage_min: Option<f64> = None;
@@ -749,17 +749,13 @@ pub fn parse_args() -> Options {
                                 process::exit(64);
                             }
                         }
-                    } else if path.is_none() {
-                        path = Some(args[i].clone());
                     } else {
-                        eprintln!("Only one test path can be specified");
-                        print_usage();
-                        process::exit(64);
+                        paths.push(args[i].clone());
                     }
                     i += 1;
                 }
                 options.command = Command::Test {
-                    path,
+                    paths,
                     jobs,
                     coverage_formats: if no_coverage {
                         vec![]
