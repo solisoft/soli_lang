@@ -171,10 +171,6 @@ fn development_tools_linting(req)
     render_docs("docs/development-tools/linting", "Linting", "development_tools", "linting")
 end
 
-fn development_tools_wasm_deploy(req)
-    render_docs("docs/development-tools/wasm-deploy", "WASM / Edge Deployment", "development_tools", "wasm_deploy")
-end
-
 # ============================================================================
 # Language Reference
 # ============================================================================
