@@ -93,6 +93,7 @@ pub enum Command {
         folder: String,
         output: Option<String>,
         standalone: bool,
+        target: Option<String>,
     },
 }
 
@@ -134,7 +135,7 @@ pub fn print_usage() {
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli lsp");
-    eprintln!("  soli build <folder> [-o <file>] [--standalone]");
+    eprintln!("  soli build <folder> [-o <file>] [--standalone] [--target wasm]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
@@ -158,6 +159,7 @@ pub fn print_usage() {
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
     eprintln!("                       --standalone   Build standalone binary (experimental)");
+    eprintln!("                       --target TRG   Cross-compile target (wasm, wasm32-unknown-unknown)");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
@@ -835,6 +837,7 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut output = None;
                 let mut standalone = false;
+                let mut target = None;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--output" | "-o" => {
@@ -849,6 +852,15 @@ pub fn parse_args() -> Options {
                         "--standalone" => {
                             standalone = true;
                         }
+                        "--target" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--target requires a value (e.g. wasm32-unknown-unknown)");
+                                print_usage();
+                                process::exit(64);
+                            }
+                            target = Some(args[i].clone());
+                        }
                         _ => {
                             eprintln!("Unknown option for build: {}", args[i]);
                             print_usage();
@@ -861,6 +873,7 @@ pub fn parse_args() -> Options {
                     folder,
                     output,
                     standalone,
+                    target,
                 };
                 return options;
             }

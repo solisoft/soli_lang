@@ -28,6 +28,7 @@ pub mod file;
 pub mod hash;
 pub mod html;
 pub mod http_class;
+#[cfg(feature = "cli")]
 pub mod http_log;
 pub mod i18n;
 pub mod image;

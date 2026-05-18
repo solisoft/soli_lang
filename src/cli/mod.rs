@@ -64,6 +64,7 @@ pub fn run() {
             folder,
             output,
             standalone,
-        } => commands::run_build(folder, output.as_deref(), *standalone),
+            target,
+        } => commands::run_build(folder, output.as_deref(), *standalone, target.as_deref()),
     }
 }

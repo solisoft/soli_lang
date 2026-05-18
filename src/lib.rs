@@ -7,55 +7,100 @@
 //! Solilang uses a tree-walking interpreter for executing programs.
 
 pub mod ast;
-pub mod bundle;
-pub mod compiled_cache;
-pub mod coverage;
-pub mod embedding;
 pub mod error;
 pub mod fmt;
 pub mod inflect;
-pub mod interpreter;
 pub mod lexer;
 pub mod lint;
-pub mod live;
-pub mod lsp;
-pub mod migration;
-pub mod module;
 pub mod parser;
 pub mod regex_cache;
 pub mod repl_common;
 pub mod repl_highlight;
-pub mod repl_simple;
-pub mod repl_tui;
-pub mod scaffold;
-pub mod serve;
-pub mod solidb_http;
 pub mod span;
-pub mod template;
 pub mod types;
+#[cfg(feature = "cli")]
 pub mod virtual_fs;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod vm;
+
+// The interpreter module is platform-dependent (builtins use file I/O, HTTP, DB, etc.).
+// Not available for WASM targets.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod interpreter;
+
+#[cfg(feature = "cli")]
+pub mod bundle;
+#[cfg(feature = "cli")]
+pub mod compiled_cache;
+#[cfg(feature = "cli")]
+pub mod coverage;
+#[cfg(feature = "cli")]
+pub mod embedding;
+#[cfg(feature = "cli")]
+pub mod live;
+#[cfg(feature = "cli")]
+pub mod lsp;
+#[cfg(feature = "cli")]
+pub mod migration;
+#[cfg(feature = "cli")]
+pub mod module;
+#[cfg(feature = "cli")]
+pub mod repl_simple;
+#[cfg(feature = "cli")]
+pub mod repl_tui;
+#[cfg(feature = "cli")]
+pub mod scaffold;
+#[cfg(feature = "cli")]
+pub mod serve;
+#[cfg(feature = "cli")]
+pub mod solidb_http;
+#[cfg(feature = "cli")]
+pub mod template;
 
 use ast::expr::Argument;
 use error::SolilangError;
-use interpreter::Value;
 
 /// Run a Solilang program from source code.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run(source: &str) -> Result<(), SolilangError> {
     run_with_options(source, true)
 }
+#[cfg(target_arch = "wasm32")]
+pub fn run(_source: &str) -> Result<(), SolilangError> {
+    Err(SolilangError::Runtime(error::RuntimeError::General {
+        message: "Execution not supported in WASM mode".to_string(),
+        span: span::Span::new(0, 0, 1, 1),
+    }))
+}
 
 /// Run a Solilang program with optional type checking.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_with_type_check(source: &str, type_check: bool) -> Result<(), SolilangError> {
     run_with_options(source, type_check)
 }
+#[cfg(target_arch = "wasm32")]
+pub fn run_with_type_check(_source: &str, _type_check: bool) -> Result<(), SolilangError> {
+    Err(SolilangError::Runtime(error::RuntimeError::General {
+        message: "Execution not supported in WASM mode".to_string(),
+        span: span::Span::new(0, 0, 1, 1),
+    }))
+}
 
 /// Run a Solilang program with full control over execution options.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_with_options(source: &str, type_check: bool) -> Result<(), SolilangError> {
     run_with_path(source, None, type_check)
 }
+#[cfg(target_arch = "wasm32")]
+pub fn run_with_options(_source: &str, _type_check: bool) -> Result<(), SolilangError> {
+    Err(SolilangError::Runtime(error::RuntimeError::General {
+        message: "Execution not supported in WASM mode".to_string(),
+        span: span::Span::new(0, 0, 1, 1),
+    }))
+}
 
 /// Run a Solilang program from a file path with module resolution.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_file(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
@@ -64,8 +109,16 @@ pub fn run_file(path: &std::path::Path, type_check: bool) -> Result<(), Solilang
 
     run_with_path(&source, Some(path), type_check)
 }
+#[cfg(target_arch = "wasm32")]
+pub fn run_file(_path: &std::path::Path, _type_check: bool) -> Result<(), SolilangError> {
+    Err(SolilangError::Runtime(error::RuntimeError::General {
+        message: "Execution not supported in WASM mode".to_string(),
+        span: span::Span::new(0, 0, 1, 1),
+    }))
+}
 
 /// Run a Solilang program with optional source path for module resolution.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_with_path(
     source: &str,
     source_path: Option<&std::path::Path>,
@@ -78,6 +131,7 @@ pub fn run_with_path(
     let mut program = parser::Parser::new(tokens).parse()?;
 
     // Module resolution (if we have imports and a source path)
+    #[cfg(feature = "cli")]
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
         let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
         let mut resolver = module::ModuleResolver::new(base_dir);
@@ -105,6 +159,7 @@ pub fn run_with_path(
 }
 
 /// Run a Solilang program through the bytecode VM (faster execution).
+#[cfg(feature = "cli")]
 pub fn run_file_vm(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
@@ -115,6 +170,7 @@ pub fn run_file_vm(path: &std::path::Path, type_check: bool) -> Result<(), Solil
 }
 
 /// Run a Solilang program through the bytecode VM.
+#[cfg(feature = "cli")]
 pub fn run_vm(
     source: &str,
     source_path: Option<&std::path::Path>,
@@ -189,6 +245,7 @@ pub fn run_vm(
 /// Returns `(assertion_count, result)`. The assertion count reflects assertions that
 /// succeeded during this file's test run, even if some tests failed afterwards — so
 /// the caller can report meaningful totals regardless of pass/fail status.
+#[cfg(feature = "cli")]
 pub fn run_with_path_and_coverage(
     source: &str,
     source_path: Option<&std::path::Path>,
@@ -213,6 +270,7 @@ pub fn run_with_path_and_coverage(
     (assertion_count, result)
 }
 
+#[cfg(feature = "cli")]
 fn run_with_path_and_coverage_inner(
     source: &str,
     source_path: Option<&std::path::Path>,
@@ -230,6 +288,7 @@ fn run_with_path_and_coverage_inner(
         let tokens = lexer::Scanner::new(preamble_source).scan_tokens()?;
         let mut program = parser::Parser::new(tokens).parse()?;
 
+        #[cfg(feature = "cli")]
         if has_imports(&program) {
             let base_dir = preamble_path
                 .parent()
@@ -257,16 +316,22 @@ fn run_with_path_and_coverage_inner(
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let mut program = parser::Parser::new(tokens).parse()?;
 
+    #[cfg(feature = "cli")]
     let has_imports = source_path.is_some() && has_imports(&program);
+    #[cfg(not(feature = "cli"))]
+    let has_imports = false;
     if let Some(path) = source_path.filter(|_| has_imports) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
-        let mut resolver = module::ModuleResolver::new(base_dir);
-        program = resolver
-            .resolve(program, path)
-            .map_err(|e| error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            })?;
+        #[cfg(feature = "cli")]
+        {
+            let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+            let mut resolver = module::ModuleResolver::new(base_dir);
+            program = resolver
+                .resolve(program, path)
+                .map_err(|e| error::RuntimeError::General {
+                    message: format!("Module resolution error: {}", e),
+                    span: span::Span::new(0, 0, 1, 1),
+                })?;
+        }
     }
 
     if type_check {
@@ -304,6 +369,7 @@ fn run_with_path_and_coverage_inner(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_test_definitions(
     program: &ast::Program,
 ) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
@@ -325,6 +391,7 @@ fn extract_test_definitions(
     suites
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_suite_from_call(
     _name: &str,
     arguments: &[Argument],
@@ -377,6 +444,7 @@ fn extract_suite_from_call(
 /// Pull the first argument out of a `before_each`/`after_each`/`before_all`/
 /// `after_all` call, accepting either a positional lambda
 /// (`before_each(fn() { ... })`) or a trailing block (`before_each do ... end`).
+#[cfg(not(target_arch = "wasm32"))]
 fn first_callback_expr(arguments: &[Argument]) -> Option<&ast::Expr> {
     match arguments.first()? {
         Argument::Positional(expr) => Some(expr),
@@ -385,6 +453,7 @@ fn first_callback_expr(arguments: &[Argument]) -> Option<&ast::Expr> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_tests_from_block(
     statements: &[ast::Stmt],
     suite: &mut interpreter::builtins::test_dsl::TestSuite,
@@ -424,6 +493,7 @@ fn extract_tests_from_block(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_test_from_call(
     arguments: &[Argument],
     span: span::Span,
@@ -472,12 +542,13 @@ fn extract_test_from_call(
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn create_function_value(
     params: Vec<ast::stmt::Parameter>,
     return_type: Option<ast::types::TypeAnnotation>,
     body: Vec<ast::Stmt>,
     span: span::Span,
-) -> Value {
+) -> interpreter::Value {
     use interpreter::value::Function;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -494,20 +565,22 @@ fn create_function_value(
         span,
     };
     let closure = Rc::new(RefCell::new(env));
-    Value::Function(Rc::new(Function::from_decl(&decl, closure, None)))
+    interpreter::Value::Function(Rc::new(Function::from_decl(&decl, closure, None)))
 }
 
-fn ast_expr_to_value(expr: &ast::Expr) -> Value {
+#[cfg(not(target_arch = "wasm32"))]
+fn ast_expr_to_value(expr: &ast::Expr) -> interpreter::Value {
     match &expr.kind {
         ast::ExprKind::Lambda {
             params,
             return_type,
             body,
         } => create_function_value(params.clone(), return_type.clone(), body.clone(), expr.span),
-        _ => Value::Null,
+        _ => interpreter::Value::Null,
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn execute_test_suites(
     interpreter: &mut interpreter::Interpreter,
     suites: &[interpreter::builtins::test_dsl::TestSuite],
@@ -565,6 +638,7 @@ fn execute_test_suites(
 
 /// Rebind a test function's closure to use the interpreter's environment,
 /// so that top-level definitions (def, let) are accessible inside tests.
+#[cfg(not(target_arch = "wasm32"))]
 fn rebind_closure(
     value: &interpreter::value::Value,
     env: &std::rc::Rc<std::cell::RefCell<interpreter::environment::Environment>>,
