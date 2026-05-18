@@ -173,24 +173,41 @@ Phase 2: Triggering blue-green deploy on all servers...
 
     <h2 class="text-2xl font-bold text-white mb-6">Bundle Deployment</h2>
     <p class="text-gray-400 mb-6">
-        For simpler, dependency-free deployment, bundle your application into a single <code class="text-indigo-400">.soli</code> file. No source files or configuration needed on the server — only the <code>soli</code> binary and the bundle.
+        For simpler, dependency-free deployment, bundle your application into a single <code class="text-indigo-400">.soli</code> file. No source files needed on the server — only the <code>soli</code> binary and the bundle.
     </p>
 
     <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Build locally, deploy anywhere"><code class="language-bash text-sm"># Build the bundle on your CI machine
+        <pre data-filename="Build locally, deploy anywhere"><code class="language-bash text-sm"># Build the bundle
 soli build my_app
 
-# Deploy just the .soli file to any server
+# Deploy just the .soli file
 scp my_app.soli deploy@server:/opt/my_app/
 
-# Run from the bundle (extracts to /tmp automatically)
+# Run from the bundle
 ssh deploy@server "soli serve /opt/my_app/my_app.soli"</code></pre>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Bundle mode in deploy.toml</h3>
+    <p class="text-gray-400 mb-4">
+        The <code>soli deploy</code> command supports <code>mode = "bundle"</code> to automatically SCP the bundle to all servers:
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="deploy.toml"><code class="language-toml text-sm">mode = "bundle"
+bundle_source = "./my_app.soli"
+
+[[servers]]
+name = "prod-1"
+username = "deploy"
+ip = "192.168.1.100"
+folder = "/opt/myapp"
+proxy_url = "https://proxy.example.com"</code></pre>
     </div>
 
     <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6 mb-12">
         <h3 class="text-lg font-semibold text-amber-300 mb-2">How it works</h3>
         <p class="text-gray-400 text-sm">
-            <code>soli build</code> collects all <code>.sl</code>, <code>.slv</code>, <code>.yml</code>, <code>.css</code>, <code>.js</code> files into a single <code>.soli</code> bundle. When you run <code>soli serve app.soli</code>, the bundle is extracted to <code>/tmp/soli_PID</code> and the server boots normally. The server process cleans up on shutdown.
+            <code>soli build</code> collects all <code>.sl</code>, <code>.slv</code>, <code>.yml</code>, <code>.css</code>, <code>.js</code> files into a single <code>.soli</code> bundle. When you run <code>soli serve app.soli</code>, the bundle is extracted to <code>/tmp/soli_PID</code> and the server boots normally. On the proxy side, set <code>start_script = "soli serve /opt/myapp/my_app.soli --port $PORT --workers $WORKERS"</code> in the app's <code>app.infos</code>. Migrations should be run locally before bundling — auto-migration is not supported in bundle mode.
         </p>
     </div>
 

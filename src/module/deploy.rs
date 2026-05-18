@@ -1,5 +1,5 @@
 use ssh2::Session;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 pub enum DeployMode {
     Git,
     Local,
+    Bundle,
 }
 
 #[derive(Clone)]
@@ -25,6 +26,7 @@ pub struct DeployConfig {
     pub git_branch: String,
     pub git_folder: String,
     pub local_excludes: Vec<String>,
+    pub bundle_source: Option<String>,
     pub servers: Vec<ServerConfig>,
 }
 
@@ -72,6 +74,7 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
     let mut git_branch = "main".to_string();
     let mut git_folder = "/".to_string();
     let mut local_excludes: Vec<String> = Vec::new();
+    let mut bundle_source: Option<String> = None;
     let mut servers: Vec<ServerConfig> = Vec::new();
     let mut warned_about_api_key = false;
 
@@ -129,13 +132,17 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
                         mode = match value {
                             "git" => DeployMode::Git,
                             "local" => DeployMode::Local,
+                            "bundle" => DeployMode::Bundle,
                             other => {
                                 return Err(format!(
-                                    "invalid mode `{}` in deploy.toml (expected \"git\" or \"local\")",
+                                    "invalid mode `{}` in deploy.toml (expected \"git\", \"local\", or \"bundle\")",
                                     other
                                 ));
                             }
                         };
+                    }
+                    "bundle_source" => {
+                        bundle_source = Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
                     }
                     "git_url" => {
                         git_url = Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
@@ -159,6 +166,10 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
         return Err("git_url is required in deploy.toml when mode is \"git\"".to_string());
     }
 
+    if mode == DeployMode::Bundle && bundle_source.is_none() {
+        return Err("bundle_source is required in deploy.toml when mode is \"bundle\"".to_string());
+    }
+
     Ok(DeployConfig {
         mode,
         source_path: PathBuf::new(),
@@ -166,6 +177,7 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
         git_branch,
         git_folder,
         local_excludes,
+        bundle_source,
         servers,
     })
 }
@@ -192,6 +204,20 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
                 let git_folder = config.git_folder.clone();
                 handles.push(tokio::spawn(async move {
                     sync_code_git(&server, &git_url, &git_branch, &git_folder).await
+                }));
+            }
+            DeployMode::Bundle => {
+                let bundle_local = config.bundle_source.clone().unwrap();
+                let bundle_path = if bundle_local.starts_with('/') {
+                    Path::new(&bundle_local).to_path_buf()
+                } else {
+                    config.source_path.join(&bundle_local)
+                };
+                if !bundle_path.exists() {
+                    return Err(format!("Bundle not found at '{}'", bundle_path.display()));
+                }
+                handles.push(tokio::spawn(async move {
+                    sync_code_bundle(&server, &bundle_path).await
                 }));
             }
             DeployMode::Local => {
@@ -268,6 +294,53 @@ async fn sync_code_git(
 
     println!("[{}] Code synced ✓", server.name);
 
+    Ok(())
+}
+
+async fn sync_code_bundle(
+    server: &ServerConfig,
+    bundle_path: &Path,
+) -> Result<(), String> {
+    let bundle_file = bundle_path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("app.soli");
+    let remote_path = format!("{}/{}", server.folder.trim_end_matches('/'), bundle_file);
+
+    println!(
+        "[{}] Copying bundle {} to {}@{}:{}...",
+        server.name,
+        bundle_path.display(),
+        server.username,
+        server.ip,
+        remote_path
+    );
+
+    ensure_remote_folder(server).await?;
+
+    // Read bundle and scp it via SSH channel
+    let bundle_data = std::fs::read(bundle_path)
+        .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path.display(), e))?;
+
+    let session = ssh_connect(server).await?;
+    let size: u64 = bundle_data.len().try_into()
+        .map_err(|_| "Bundle too large for SCP".to_string())?;
+    let mut channel = session
+        .scp_send(
+            std::path::Path::new(&remote_path),
+            0o644,
+            size,
+            None,
+        )
+        .map_err(|e| format!("Failed to start SCP to {}: {}", remote_path, e))?;
+
+    channel
+        .write_all(&bundle_data)
+        .map_err(|e| format!("Failed to write bundle via SCP: {}", e))?;
+
+    channel.send_eof().ok();
+    channel.wait_close().ok();
+
+    println!("[{}] Bundle copied ✓", server.name);
     Ok(())
 }
 
@@ -371,6 +444,9 @@ async fn run_migrations(
             } else {
                 format!("{}/{}", server.folder, git_folder.trim_end_matches('/'))
             }
+        }
+        DeployMode::Bundle => {
+            return Err("Migrations are not supported in bundle mode. Run `soli db:migrate up` locally before building the bundle.".to_string());
         }
     };
 

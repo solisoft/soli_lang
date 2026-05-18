@@ -1,4 +1,4 @@
-# Deployment mode: "git" (default) or "local" (rsync from this machine)
+# Deployment mode: "git" (default), "local" (rsync), or "bundle" (single .soli file)
 mode = "git"
 
 git_url = "https://github.com/your-org/your-project.git"
@@ -27,3 +27,12 @@ username = "deploy"
 ip = "192.168.1.101"
 folder = "/var/www/myapp"
 proxy_url = "https://proxy.example.com"
+
+# --- Bundle mode example ---
+# Deploy a pre-built .soli bundle instead of syncing source code.
+# The bundle is SCP'd to each server's folder. On the proxy side,
+# set start_script = "soli serve /var/www/myapp/my_app.soli --port $PORT --workers $WORKERS"
+# in the app's app.infos.
+#
+# mode = "bundle"
+# bundle_source = "./my_app.soli"
