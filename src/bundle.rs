@@ -15,7 +15,11 @@ impl BundleBuilder {
     pub fn build(source_dir: &Path) -> Result<Vec<u8>, String> {
         let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
         let source_dir = source_dir.canonicalize().map_err(|e| {
-            format!("Failed to resolve source directory '{}': {}", source_dir.display(), e)
+            format!(
+                "Failed to resolve source directory '{}': {}",
+                source_dir.display(),
+                e
+            )
         })?;
 
         Self::collect_entries(&source_dir, &source_dir, &mut entries)?;
@@ -38,8 +42,13 @@ impl BundleBuilder {
         current_dir: &Path,
         entries: &mut HashMap<String, Vec<u8>>,
     ) -> Result<(), String> {
-        let read_dir = std::fs::read_dir(current_dir)
-            .map_err(|e| format!("Failed to read directory '{}': {}", current_dir.display(), e))?;
+        let read_dir = std::fs::read_dir(current_dir).map_err(|e| {
+            format!(
+                "Failed to read directory '{}': {}",
+                current_dir.display(),
+                e
+            )
+        })?;
 
         for entry in read_dir {
             let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -162,7 +171,10 @@ impl<'a> BundleReader<'a> {
             offset += content_len;
         }
 
-        Ok(BundleReader { _data: data, entries })
+        Ok(BundleReader {
+            _data: data,
+            entries,
+        })
     }
 
     pub fn entries(&self) -> &[(String, &'a [u8])] {
@@ -181,7 +193,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let app_controllers = dir.path().join("app/controllers");
         fs::create_dir_all(&app_controllers).unwrap();
-        fs::write(app_controllers.join("home_controller.sl"), b"class HomeController {}").unwrap();
+        fs::write(
+            app_controllers.join("home_controller.sl"),
+            b"class HomeController {}",
+        )
+        .unwrap();
 
         let config = dir.path().join("config");
         fs::create_dir_all(&config).unwrap();
@@ -194,7 +210,8 @@ mod tests {
         assert!(vfs.exists("app/controllers/home_controller.sl"));
         assert!(vfs.exists("config/routes.sl"));
         assert_eq!(
-            vfs.read_to_string("app/controllers/home_controller.sl").unwrap(),
+            vfs.read_to_string("app/controllers/home_controller.sl")
+                .unwrap(),
             "class HomeController {}"
         );
     }

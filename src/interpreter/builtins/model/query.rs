@@ -786,20 +786,28 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
 /// Extract a float vector from a Soli Value (expects Array of floats).
 fn value_to_float_vec(val: &Value) -> Vec<f64> {
     match val {
-        Value::Array(arr) => {
-            arr.borrow().iter().filter_map(|v| match v {
+        Value::Array(arr) => arr
+            .borrow()
+            .iter()
+            .filter_map(|v| match v {
                 Value::Int(n) => Some(*n as f64),
                 Value::Float(f) => Some(*f),
                 _ => None,
-            }).collect()
-        }
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }
 
 /// Execute a similarity search: fetch docs, compute cosine similarity, return top-k.
-fn execute_similar_query(qb: &QueryBuilder, collection: &str, query_text: &str, field: &str, top_k: usize) -> Value {
-    use crate::embedding::{generate_embedding, cosine_similarity};
+fn execute_similar_query(
+    qb: &QueryBuilder,
+    collection: &str,
+    query_text: &str,
+    field: &str,
+    top_k: usize,
+) -> Value {
+    use crate::embedding::{cosine_similarity, generate_embedding};
 
     // Try to generate an embedding for the query text
     let query_vec = match generate_embedding(query_text) {
@@ -830,16 +838,25 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, query_text: &str, 
             let mut scored: Vec<(f64, Value)> = Vec::new();
             for item in arr.borrow().iter() {
                 let doc_vec = match item {
-                    Value::Instance(inst) => {
-                        inst.borrow().get(field).map(|v| value_to_float_vec(&v)).unwrap_or_default()
-                    }
+                    Value::Instance(inst) => inst
+                        .borrow()
+                        .get(field)
+                        .map(|v| value_to_float_vec(&v))
+                        .unwrap_or_default(),
                     Value::Hash(hash) => {
                         let h = hash.borrow();
                         // Try string key first, then HashKey
-                        let field_val = h.iter().find_map(|(k, v)| {
-                            let k_str = format!("{}", k);
-                            if k_str == field { Some(v.clone()) } else { None }
-                        }).unwrap_or(Value::Null);
+                        let field_val = h
+                            .iter()
+                            .find_map(|(k, v)| {
+                                let k_str = format!("{}", k);
+                                if k_str == field {
+                                    Some(v.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(Value::Null);
                         value_to_float_vec(&field_val)
                     }
                     _ => Vec::new(),
@@ -856,18 +873,22 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, query_text: &str, 
 
             // Take top-k and attach _similarity_score
             let k = top_k.min(scored.len());
-            let result: Vec<Value> = scored[..k].iter().map(|(score, item)| {
-                match item {
+            let result: Vec<Value> = scored[..k]
+                .iter()
+                .map(|(score, item)| match item {
                     Value::Instance(inst) => {
                         let mut fields = inst.borrow().fields.clone();
                         fields.insert("_similarity_score".to_string(), Value::Float(*score));
                         Value::Instance(std::rc::Rc::new(std::cell::RefCell::new(
-                            crate::interpreter::value::Instance { class: inst.borrow().class.clone(), fields }
+                            crate::interpreter::value::Instance {
+                                class: inst.borrow().class.clone(),
+                                fields,
+                            },
                         )))
                     }
                     other => other.clone(),
-                }
-            }).collect();
+                })
+                .collect();
 
             Value::Array(std::rc::Rc::new(std::cell::RefCell::new(result)))
         }

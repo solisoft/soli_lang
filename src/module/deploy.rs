@@ -142,7 +142,8 @@ fn parse_deploy_toml(content: &str) -> Result<DeployConfig, String> {
                         };
                     }
                     "bundle_source" => {
-                        bundle_source = Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
+                        bundle_source =
+                            Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
                     }
                     "git_url" => {
                         git_url = Some(raw_value.trim_matches('"').trim_matches('\'').to_string());
@@ -297,11 +298,9 @@ async fn sync_code_git(
     Ok(())
 }
 
-async fn sync_code_bundle(
-    server: &ServerConfig,
-    bundle_path: &Path,
-) -> Result<(), String> {
-    let bundle_file = bundle_path.file_name()
+async fn sync_code_bundle(server: &ServerConfig, bundle_path: &Path) -> Result<(), String> {
+    let bundle_file = bundle_path
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("app.soli");
     let remote_path = format!("{}/{}", server.folder.trim_end_matches('/'), bundle_file);
@@ -322,15 +321,12 @@ async fn sync_code_bundle(
         .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path.display(), e))?;
 
     let session = ssh_connect(server).await?;
-    let size: u64 = bundle_data.len().try_into()
+    let size: u64 = bundle_data
+        .len()
+        .try_into()
         .map_err(|_| "Bundle too large for SCP".to_string())?;
     let mut channel = session
-        .scp_send(
-            std::path::Path::new(&remote_path),
-            0o644,
-            size,
-            None,
-        )
+        .scp_send(std::path::Path::new(&remote_path), 0o644, size, None)
         .map_err(|e| format!("Failed to start SCP to {}: {}", remote_path, e))?;
 
     channel

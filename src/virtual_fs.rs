@@ -5,9 +5,8 @@ pub trait VirtualFileSystem: Send + Sync {
     fn read(&self, path: &str) -> Result<Vec<u8>, String>;
     fn exists(&self, path: &str) -> bool;
     fn read_to_string(&self, path: &str) -> Result<String, String> {
-        self.read(path).and_then(|data| {
-            String::from_utf8(data).map_err(|e| format!("UTF-8 error: {}", e))
-        })
+        self.read(path)
+            .and_then(|data| String::from_utf8(data).map_err(|e| format!("UTF-8 error: {}", e)))
     }
     fn walk_dir(&self, dir: &str) -> Result<Vec<String>, String>;
     fn is_dir(&self, path: &str) -> bool;
@@ -64,9 +63,10 @@ impl VirtualFileSystem for DiskFS {
         } else {
             format!("{}/", self.root)
         };
-        for entry in walkdir::WalkDir::new(path).into_iter().filter_entry(|e| {
-            !e.file_name().to_string_lossy().starts_with('.')
-        }) {
+        for entry in walkdir::WalkDir::new(path)
+            .into_iter()
+            .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        {
             let entry = entry.map_err(|e| format!("Walk error: {}", e))?;
             if entry.file_type().is_file() {
                 let full_path = entry.path().to_string_lossy().to_string();
@@ -107,7 +107,9 @@ impl BundleFS {
         pos += 4;
 
         let entry_count = u32::from_le_bytes(
-            data[pos..pos + 4].try_into().map_err(|_| "Invalid entry count")?,
+            data[pos..pos + 4]
+                .try_into()
+                .map_err(|_| "Invalid entry count")?,
         );
         pos += 4;
 
@@ -117,9 +119,7 @@ impl BundleFS {
             if pos + 4 > data.len() {
                 return Err("Truncated bundle: path length".to_string());
             }
-            let path_len = u32::from_le_bytes(
-                data[pos..pos + 4].try_into().unwrap(),
-            ) as usize;
+            let path_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
             pos += 4;
 
             if pos + path_len > data.len() {
@@ -133,9 +133,7 @@ impl BundleFS {
             if pos + 8 > data.len() {
                 return Err("Truncated bundle: content length".to_string());
             }
-            let content_len = u64::from_le_bytes(
-                data[pos..pos + 8].try_into().unwrap(),
-            ) as usize;
+            let content_len = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap()) as usize;
             pos += 8;
 
             if pos + content_len > data.len() {
@@ -226,9 +224,15 @@ mod tests {
     fn test_bundle_round_trip() {
         // Create a bundle manually
         let mut entries = HashMap::new();
-        entries.insert("app/controllers/home_controller.sl".to_string(), b"class HomeController {}".to_vec());
+        entries.insert(
+            "app/controllers/home_controller.sl".to_string(),
+            b"class HomeController {}".to_vec(),
+        );
         entries.insert("app/models/user.sl".to_string(), b"let x = 1;".to_vec());
-        entries.insert("config/routes.sl".to_string(), b"get('/') { \"hello\" }".to_vec());
+        entries.insert(
+            "config/routes.sl".to_string(),
+            b"get('/') { \"hello\" }".to_vec(),
+        );
 
         // Serialize
         let mut buf = Vec::new();

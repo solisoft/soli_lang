@@ -34,11 +34,17 @@ pub fn generate_embedding(text: &str) -> Option<Vec<f64>> {
         .filter_map(|v| v.as_f64())
         .collect::<Vec<f64>>();
 
-    if embedding.is_empty() { None } else { Some(embedding) }
+    if embedding.is_empty() {
+        None
+    } else {
+        Some(embedding)
+    }
 }
 
 #[cfg(not(feature = "embedding"))]
-pub fn generate_embedding(_text: &str) -> Option<Vec<f64>> { None }
+pub fn generate_embedding(_text: &str) -> Option<Vec<f64>> {
+    None
+}
 
 /// Compute cosine similarity between two vectors.
 pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
@@ -48,7 +54,11 @@ pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let norm_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 { 0.0 } else { dot / (norm_a * norm_b) }
+    if norm_a == 0.0 || norm_b == 0.0 {
+        0.0
+    } else {
+        dot / (norm_a * norm_b)
+    }
 }
 
 /// Score a document against a query embedding by comparing the field value.

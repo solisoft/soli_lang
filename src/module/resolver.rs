@@ -185,8 +185,7 @@ impl ModuleResolver {
 
         // Read and parse the module through VFS (or disk fallback)
         let path_str = module_path.to_string_lossy().to_string();
-        let content = crate::serve::vfs_read_to_string(&path_str)
-            .map_err(std::io::Error::other)?;
+        let content = crate::serve::vfs_read_to_string(&path_str).map_err(std::io::Error::other)?;
         let tokens = Scanner::new(&content).scan_tokens().map_err(|e| {
             ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
         })?;

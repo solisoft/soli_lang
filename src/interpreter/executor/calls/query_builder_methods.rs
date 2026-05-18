@@ -797,12 +797,17 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if arguments.len() < 1 || arguments.len() > 3 {
+        if arguments.is_empty() || arguments.len() > 3 {
             return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
         }
         let query_text = match &arguments[0] {
             Value::String(s) => s.clone(),
-            _ => return Err(RuntimeError::type_error("similar() expects string query text", span)),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "similar() expects string query text",
+                    span,
+                ))
+            }
         };
         let field = match arguments.get(1) {
             Some(Value::String(s)) => s.clone(),

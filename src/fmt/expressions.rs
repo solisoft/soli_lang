@@ -5,7 +5,14 @@ use crate::ast::expr::{
     UnaryOp,
 };
 
-use super::printer::Printer;
+use super::printer::{Printer, MAX_LINE_LENGTH};
+
+/// Return the source text for a span (used for width estimation).
+fn span_source(source: &str, span: crate::span::Span) -> &str {
+    let start = span.start.min(source.len());
+    let end = span.end.min(source.len());
+    &source[start..end]
+}
 
 impl Printer<'_> {
     pub(super) fn print_expr(&mut self, expr: &Expr) {
@@ -262,6 +269,7 @@ impl Printer<'_> {
                     // function declaration (which needs a name) and fail.
                     // Fall through to the multi-line form, which keeps the
                     // `return` keyword and prints via `print_block_body`.
+                    // Also skip inline when it would exceed MAX_LINE_LENGTH.
                     let inner_is_lambda = match &body[0].kind {
                         crate::ast::stmt::StmtKind::Expression(e)
                         | crate::ast::stmt::StmtKind::Return(Some(e)) => {
@@ -271,16 +279,25 @@ impl Printer<'_> {
                     };
                     if !inner_is_lambda {
                         if let crate::ast::stmt::StmtKind::Expression(e) = &body[0].kind {
-                            self.write(" ");
-                            self.print_expr(e);
-                            self.write(" }");
-                            return;
+                            // Estimate if inline would push past the limit
+                            let body_span = span_source(self.source, e.span);
+                            let est = self.current_column() + 4 + body_span.len(); // " { " + body + " }"
+                            if est <= MAX_LINE_LENGTH {
+                                self.write(" ");
+                                self.print_expr(e);
+                                self.write(" }");
+                                return;
+                            }
                         }
                         if let crate::ast::stmt::StmtKind::Return(Some(e)) = &body[0].kind {
-                            self.write(" ");
-                            self.print_expr(e);
-                            self.write(" }");
-                            return;
+                            let body_span = span_source(self.source, e.span);
+                            let est = self.current_column() + 11 + body_span.len(); // " { return " + body + " }"
+                            if est <= MAX_LINE_LENGTH {
+                                self.write(" ");
+                                self.print_expr(e);
+                                self.write(" }");
+                                return;
+                            }
                         }
                     }
                 }
@@ -342,66 +359,98 @@ impl Printer<'_> {
     }
 
     fn print_arg_list(&mut self, args: &[Argument]) {
-        self.write("(");
-        for (i, a) in args.iter().enumerate() {
-            if i > 0 {
-                self.write(", ");
-            }
-            match a {
-                Argument::Positional(e) => self.print_expr(e),
-                Argument::Named(na) => {
-                    self.write(&na.name);
-                    self.write(": ");
-                    self.print_expr(&na.value);
-                }
-                Argument::Block(e) => {
-                    // Soli's `&` block-arg only accepts `&{ body }`,
-                    // `&(params) body`, `&:method`, or `&identifier` — NOT
-                    // `&fn(...)`. Re-emit a Lambda block as `&{ |params| body }`
-                    // (the trailing-brace-block form), and fall back to a
-                    // bare `&expr` for variable references or other shapes.
-                    self.write("&");
-                    match &e.kind {
-                        ExprKind::Lambda { params, body, .. } => {
-                            self.write("{");
-                            if !params.is_empty() {
-                                self.write(" |");
-                                for (i, p) in params.iter().enumerate() {
-                                    if i > 0 {
-                                        self.write(", ");
-                                    }
-                                    if p.is_block_param {
-                                        self.write("&");
-                                    }
-                                    self.write(&p.name);
-                                }
-                                self.write("|");
-                            }
-                            if body.is_empty() {
-                                self.write(" }");
-                            } else if body.len() == 1 {
-                                // Single-statement body — keep it on one line
-                                // when it's an expression: `&{ |x| x * 2 }`.
-                                self.write(" ");
-                                if let crate::ast::stmt::StmtKind::Expression(expr) = &body[0].kind
-                                {
-                                    self.print_expr(expr);
-                                } else {
-                                    self.print_stmt(&body[0]);
-                                }
-                                self.write(" }");
-                            } else {
-                                self.newline();
-                                self.print_block_body(body);
-                                self.write("}");
-                            }
-                        }
-                        _ => self.print_expr(e),
+        let arg_count = args.len();
+        // Quick check: if the list has a lambda argument and the estimated
+        // inline width exceeds MAX_LINE_LENGTH, break across multiple lines.
+        let has_lambda = args.iter().any(|a| {
+            matches!(a, Argument::Positional(e)
+            if matches!(e.kind, ExprKind::Lambda { .. }))
+        });
+        let exceeds = || {
+            let args_w: usize = args.iter().map(|a| {
+                let span = match a {
+                    Argument::Positional(e) => e.span,
+                    Argument::Named(na) => na.value.span,
+                    Argument::Block(e) => e.span,
+                };
+                let s = span_source(self.source, span);
+                (s.len().min(40)).max(4) // clamp between 4 and 40
+            }).sum::<usize>()
+                + 2 // "()"
+                + (arg_count.saturating_sub(1)) * 2; // ", "
+            self.current_column() + args_w > MAX_LINE_LENGTH
+        };
+
+        let multi_line = has_lambda && exceeds();
+
+        if multi_line {
+            self.write("(");
+            self.newline();
+            self.with_indent(|p| {
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        p.write(",");
+                        p.newline();
                     }
+                    p.print_arg(a);
                 }
+            });
+            self.newline();
+            self.write(")");
+        } else {
+            self.write("(");
+            for (i, a) in args.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.print_arg(a);
+            }
+            self.write(")");
+        }
+    }
+
+    fn print_arg(&mut self, a: &Argument) {
+        match a {
+            Argument::Positional(e) => self.print_expr(e),
+            Argument::Named(na) => {
+                self.write(&na.name);
+                self.write(": ");
+                self.print_expr(&na.value);
+            }
+            Argument::Block(e) => {
+                self.write("&");
+                self.print_block_arg_expr(e);
             }
         }
-        self.write(")");
+    }
+
+    fn print_block_arg_expr(&mut self, e: &Expr) {
+        match &e.kind {
+            ExprKind::Lambda { params, body, .. } => {
+                self.write("{");
+                if !params.is_empty() {
+                    self.write(" |");
+                    for (i, p) in params.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        if p.is_block_param {
+                            self.write("&");
+                        }
+                        self.write(&p.name);
+                    }
+                    self.write("|");
+                }
+                if body.is_empty() {
+                    self.write(" }");
+                } else {
+                    self.newline();
+                    self.print_block_body(body);
+                    self.write("}");
+                }
+            }
+            _ => self.print_expr(e),
+        }
     }
 
     fn print_match_arm(&mut self, arm: &MatchArm) {

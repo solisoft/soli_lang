@@ -4,6 +4,9 @@
 //! spaces — we multiply by 2 on emit). It tracks whether we're at the start of
 //! a line so callers can emit `write("foo")` without worrying about the
 //! leading indent — `write` inserts it automatically the first time per line.
+//!
+//! Column tracking enables line-length-aware formatting: the printer tracks
+//! the current column position so expression printers can break long lines.
 
 use crate::ast::stmt::{Program, Stmt};
 
@@ -11,11 +14,19 @@ use super::comments::{Comment, CommentKind};
 
 const INDENT_WIDTH: usize = 2;
 
+/// Maximum line length the formatter will produce. Lines exceeding this
+/// trigger `style/line-length` in `soli lint`, so the formatter must stay
+/// under it. Based on the lint rule default of 120.
+pub const MAX_LINE_LENGTH: usize = 120;
+
 pub struct Printer<'a> {
     pub(super) source: &'a str,
     out: String,
     indent: usize,
     at_line_start: bool,
+    /// Current column position (0-indexed). Reset to `indent * INDENT_WIDTH`
+    /// after `newline()`, updated on every `write()`.
+    column: usize,
     /// Next comment to emit (index into `comments`).
     comment_cursor: usize,
     comments: Vec<Comment>,
@@ -31,10 +42,15 @@ impl<'a> Printer<'a> {
             out: String::with_capacity(source.len()),
             indent: 0,
             at_line_start: true,
+            column: 0,
             comment_cursor: 0,
             comments,
             last_emitted_line: 0,
         }
+    }
+
+    pub fn current_column(&self) -> usize {
+        self.column
     }
 
     pub fn finish(mut self) -> String {
@@ -52,12 +68,32 @@ impl<'a> Printer<'a> {
 
     pub(super) fn write(&mut self, s: &str) {
         if self.at_line_start {
-            for _ in 0..self.indent * INDENT_WIDTH {
+            let indent_spaces = self.indent * INDENT_WIDTH;
+            for _ in 0..indent_spaces {
                 self.out.push(' ');
             }
             self.at_line_start = false;
+            self.column = indent_spaces;
         }
         self.out.push_str(s);
+        // Update column: find the last newline in s, count from there
+        if let Some(pos) = s.rfind('\n') {
+            self.column = s.len() - pos - 1;
+        } else {
+            self.column += s.len();
+        }
+    }
+
+    /// Estimate the display width of a string as it would appear on the
+    /// current line. Useful for checking whether appending `s` would exceed
+    /// MAX_LINE_LENGTH.
+    pub(super) fn would_exceed_max_width(&self, s: &str) -> bool {
+        let new_col = if let Some(pos) = s.rfind('\n') {
+            s.len() - pos - 1
+        } else {
+            self.column + s.len()
+        };
+        new_col > MAX_LINE_LENGTH
     }
 
     pub(super) fn newline(&mut self) {
@@ -67,6 +103,7 @@ impl<'a> Printer<'a> {
         }
         self.out.push('\n');
         self.at_line_start = true;
+        self.column = self.indent * INDENT_WIDTH;
     }
 
     pub(super) fn blank_line(&mut self) {

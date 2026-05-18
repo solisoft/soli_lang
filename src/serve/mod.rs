@@ -305,7 +305,6 @@ pub fn serve_folder_with_options(
 }
 
 // Environment loading functions are now in env_loader module
-use env_loader::load_env_files;
 
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
@@ -3693,7 +3692,9 @@ fn call_handler(
         .borrow_mut()
         .define_or_update("req", request_hash.clone());
     if let Some(vm_ref) = vm.as_deref_mut() {
-        vm_ref.globals.insert("req".to_string(), request_hash.clone());
+        vm_ref
+            .globals
+            .insert("req".to_string(), request_hash.clone());
     }
 
     // Check if this is an OOP controller action (contains #)
@@ -4032,17 +4033,18 @@ fn call_oop_controller_action(
             // return a response hash (no explicit render/redirect call).
             // e.g. PostsController#show renders "posts/show" automatically.
             if !is_response_hash(&result) {
-                let (controller_key, _) = handler_name
-                    .split_once('#')
-                    .unwrap_or((handler_name, ""));
+                let (controller_key, _) =
+                    handler_name.split_once('#').unwrap_or((handler_name, ""));
                 let default_template = format!("{}/{}", controller_key, action_name);
-                if let Some(auto_result) = try_render_template(
-                    interpreter,
-                    &controller_instance,
-                    &default_template,
-                ) {
+                if let Some(auto_result) =
+                    try_render_template(interpreter, &controller_instance, &default_template)
+                {
                     let (status, resp_headers, body) = extract_response(auto_result);
-                    return Some(ResponseData { status, headers: resp_headers, body });
+                    return Some(ResponseData {
+                        status,
+                        headers: resp_headers,
+                        body,
+                    });
                 }
             }
             let (status, resp_headers, body) = extract_response(result);
@@ -4254,11 +4256,8 @@ fn call_class_method(
         } else {
             vec![request_hash.clone()]
         };
-        let result = interpreter.call_value(
-            Value::Function(bound_method),
-            action_args,
-            method_span,
-        );
+        let result =
+            interpreter.call_value(Value::Function(bound_method), action_args, method_span);
 
         // Capture environment BEFORE popping frame so we preserve local variables for debugging
         let result = match result {
@@ -4521,7 +4520,9 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
 /// Check if a value is a response hash (has a "status" field).
 fn is_response_hash(value: &Value) -> bool {
     if let Value::Hash(hash) = value {
-        hash.borrow().iter().any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"))
+        hash.borrow()
+            .iter()
+            .any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"))
     } else {
         false
     }
@@ -4540,11 +4541,7 @@ fn try_render_template(
     let mut data_pairs: crate::interpreter::value::HashPairs = HashPairs::default();
 
     // Add params (req["all"]) as available data
-    if let Some(params_val) = interpreter
-        .global_env()
-        .borrow()
-        .get("params")
-    {
+    if let Some(params_val) = interpreter.global_env().borrow().get("params") {
         data_pairs.insert(HashKey::String("params".to_string()), params_val.clone());
     }
 
@@ -4578,10 +4575,7 @@ fn try_render_template(
 
     // Build response hash
     let mut response_pairs: HashPairs = HashPairs::default();
-    response_pairs.insert(
-        HashKey::String("status".to_string()),
-        Value::Int(200),
-    );
+    response_pairs.insert(HashKey::String("status".to_string()), Value::Int(200));
     response_pairs.insert(
         HashKey::String("headers".to_string()),
         Value::Hash(Rc::new(RefCell::new({
@@ -4593,10 +4587,7 @@ fn try_render_template(
             h
         }))),
     );
-    response_pairs.insert(
-        HashKey::String("body".to_string()),
-        Value::String(body),
-    );
+    response_pairs.insert(HashKey::String("body".to_string()), Value::String(body));
 
     Some(Value::Hash(Rc::new(RefCell::new(response_pairs))))
 }

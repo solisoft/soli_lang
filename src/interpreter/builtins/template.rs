@@ -143,8 +143,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
 
     let entries = std::fs::read_dir(helpers_dir)
         .map_err(|e| format!("Failed to read helpers directory: {}", e))?;
-    for entry in entries
-    {
+    for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 

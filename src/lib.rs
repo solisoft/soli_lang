@@ -10,6 +10,7 @@ pub mod ast;
 pub mod bundle;
 pub mod compiled_cache;
 pub mod coverage;
+pub mod embedding;
 pub mod error;
 pub mod fmt;
 pub mod inflect;
@@ -34,7 +35,6 @@ pub mod template;
 pub mod types;
 pub mod virtual_fs;
 pub mod vm;
-pub mod embedding;
 
 use ast::expr::Argument;
 use error::SolilangError;

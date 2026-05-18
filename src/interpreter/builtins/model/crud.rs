@@ -796,12 +796,7 @@ pub fn exec_update_if_match(
 ) -> Result<serde_json::Value, String> {
     let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let headers = [("If-Match", expected_rev.to_string())];
-    exec_document_request_with_headers(
-        reqwest::Method::PUT,
-        url,
-        Some(document),
-        &headers,
-    )
+    exec_document_request_with_headers(reqwest::Method::PUT, url, Some(document), &headers)
 }
 
 /// True if `err` is the rev-mismatch surface of `exec_update_if_match`.

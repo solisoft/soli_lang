@@ -144,7 +144,12 @@ pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemon
     }
 }
 
-fn serve_from_bundle(bundle_path: &str, port: u16, dev_mode: bool, workers: usize) -> Result<(), String> {
+fn serve_from_bundle(
+    bundle_path: &str,
+    port: u16,
+    dev_mode: bool,
+    workers: usize,
+) -> Result<(), String> {
     let bundle_data = std::fs::read(bundle_path)
         .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path, e))?;
 
@@ -153,8 +158,7 @@ fn serve_from_bundle(bundle_path: &str, port: u16, dev_mode: bool, workers: usiz
     // Extract to a temp directory
     let tmp_dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp_dir);
-    std::fs::create_dir_all(&tmp_dir)
-        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
     for (path, content) in bundle.entries() {
         let full_path = tmp_dir.join(path);
