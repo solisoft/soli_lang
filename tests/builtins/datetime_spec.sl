@@ -238,3 +238,39 @@ describe("DateTime Error Handling", fn() {
         assert_eq(earlier.hour(), 10);
     });
 });
+
+describe("DateTime Comparison", fn() {
+    test("ordering operators compare by instant", fn() {
+        let earlier = DateTime.from_unix(1000);
+        let later = DateTime.from_unix(2000);
+        assert(earlier < later);
+        assert(later > earlier);
+        assert(earlier <= later);
+        assert(later >= earlier);
+    });
+
+    test("equality compares by instant, not identity", fn() {
+        let a = DateTime.from_unix(1700000000);
+        let b = DateTime.from_unix(1700000000);
+        assert(a == b);
+        assert(!(a != b));
+    });
+
+    test("inequality across different instants", fn() {
+        let a = DateTime.from_unix(1700000000);
+        let b = DateTime.from_unix(1700000001);
+        assert(a != b);
+        assert(!(a == b));
+        assert(a < b);
+        assert(a <= b);
+    });
+
+    test("self-comparison reflexive", fn() {
+        let dt = DateTime.from_unix(1234567890);
+        assert(dt == dt);
+        assert(dt <= dt);
+        assert(dt >= dt);
+        assert(!(dt < dt));
+        assert(!(dt > dt));
+    });
+});

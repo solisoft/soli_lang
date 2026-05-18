@@ -2462,10 +2462,15 @@ impl Vm {
             (Value::Int(a), Value::Float(b)) => Ok((*a as f64) < *b),
             (Value::Float(a), Value::Int(b)) => Ok(*a < (*b as f64)),
             (Value::String(a), Value::String(b)) => Ok(a < b),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
+            _ => {
+                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
+                    return Ok(ts_a < ts_b);
+                }
+                Err(RuntimeError::type_error(
+                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
+                    span,
+                ))
+            }
         }
     }
 
@@ -2481,10 +2486,15 @@ impl Vm {
             (Value::Int(a), Value::Float(b)) => Ok((*a as f64) <= *b),
             (Value::Float(a), Value::Int(b)) => Ok(*a <= (*b as f64)),
             (Value::String(a), Value::String(b)) => Ok(a <= b),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
+            _ => {
+                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
+                    return Ok(ts_a <= ts_b);
+                }
+                Err(RuntimeError::type_error(
+                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
+                    span,
+                ))
+            }
         }
     }
 

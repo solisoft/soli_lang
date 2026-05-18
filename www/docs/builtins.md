@@ -2001,6 +2001,23 @@ Adds years to the date. Use negative values to subtract.
 
 **Returns:** DateTime - A new DateTime instance
 
+### Comparison
+
+Two `DateTime` instances can be compared with the standard operators (`<`,
+`<=`, `>`, `>=`, `==`, `!=`). Comparison is by absolute instant — equality
+holds when both refer to the same moment, regardless of which `DateTime`
+object you're holding.
+
+```soli
+let a = DateTime.from_unix(1700000000)
+let b = DateTime.from_unix(1700000000)
+let later = a.add_hours(1)
+
+a == b       # true — same instant, different instances
+a < later    # true
+later >= a   # true
+```
+
 ### Complete Example
 
 ```soli

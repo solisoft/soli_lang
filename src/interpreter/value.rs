@@ -368,6 +368,22 @@ impl std::fmt::Debug for HttpFutureKind {
 }
 
 impl Value {
+    /// If this value is a `DateTime` instance, return the nanosecond
+    /// timestamp stored in its private `_ts` field. Used by equality and
+    /// ordering so two distinct `DateTime` instances pointing at the same
+    /// moment compare equal and order correctly.
+    pub fn datetime_ts(&self) -> Option<i64> {
+        if let Value::Instance(inst) = self {
+            let inst = inst.borrow();
+            if inst.class.name == "DateTime" {
+                if let Some(Value::Int(ts)) = inst.fields.get("_ts") {
+                    return Some(*ts);
+                }
+            }
+        }
+        None
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             Value::Int(_) => "int".to_string(),
@@ -681,7 +697,15 @@ impl PartialEq for Value {
                 // Check that all key-value pairs in a exist in b with same values
                 a_ref.iter().all(|(k, v_a)| b_ref.get(k) == Some(v_a))
             }
-            (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
+            (Value::Instance(a), Value::Instance(b)) => {
+                // Two DateTime instances are equal when they point at the
+                // same moment (compare by internal `_ts` nanosecond field).
+                // All other instances fall back to pointer identity.
+                if let (Some(ts_a), Some(ts_b)) = (self.datetime_ts(), other.datetime_ts()) {
+                    return ts_a == ts_b;
+                }
+                Rc::ptr_eq(a, b)
+            }
             (Value::Method(a), Value::Method(b)) => {
                 *a.receiver == *b.receiver && a.method_name == b.method_name
             }

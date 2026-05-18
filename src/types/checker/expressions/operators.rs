@@ -102,8 +102,11 @@ impl TypeChecker {
             }
             BinaryOp::Equal | BinaryOp::NotEqual => Ok(Type::Bool),
             BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
+                let both_datetime = matches!((&left_type, &right_type),
+                    (Type::Class(a), Type::Class(b)) if a.name == "DateTime" && b.name == "DateTime");
                 if (left_type.is_numeric() && right_type.is_numeric())
                     || (matches!(left_type, Type::String) && matches!(right_type, Type::String))
+                    || both_datetime
                     || matches!(left_type, Type::Any | Type::Unknown)
                     || matches!(right_type, Type::Any | Type::Unknown)
                 {

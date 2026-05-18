@@ -437,14 +437,20 @@ impl Interpreter {
                     },
                 ))
             }
-            _ => Err(RuntimeError::type_error(
-                format!(
-                    "cannot compare {} and {}",
-                    left.type_name(),
-                    right.type_name()
-                ),
-                span,
-            )),
+            _ => {
+                // DateTime ordering: compare the internal nanosecond timestamp.
+                if let (Some(ts_a), Some(ts_b)) = (left.datetime_ts(), right.datetime_ts()) {
+                    return Ok(Value::Bool(cmp(ts_a as f64, ts_b as f64)));
+                }
+                Err(RuntimeError::type_error(
+                    format!(
+                        "cannot compare {} and {}",
+                        left.type_name(),
+                        right.type_name()
+                    ),
+                    span,
+                ))
+            }
         }
     }
 
