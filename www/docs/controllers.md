@@ -9,14 +9,21 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 ```soli
 # app/controllers/users_controller.sl
 class UsersController < Controller
-  fn index
-    @title = "Users"
-    @users = User.all
+  def index
+    @user = this._current_user
+    @posts = Post.all
+    render("posts/index")
   end
 
-  fn show
+  def show
+    # @post is set by before_action
+    render("posts/show")
+  end
+
+  def show
     @user = User.find(params["id"])
     @title = "User Details"
+    render("users/show")
   end
 end
 ```

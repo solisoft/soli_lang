@@ -4050,6 +4050,23 @@ fn call_oop_controller_action(
 
     let response = match action_result {
         Ok(result) => {
+            // Auto-render the default view template when the action doesn't
+            // return a response hash (no explicit render/redirect call).
+            // e.g. PostsController#show renders "posts/show" automatically.
+            if !is_response_hash(&result) {
+                let (controller_key, _) = handler_name
+                    .split_once('#')
+                    .unwrap_or((handler_name, ""));
+                let default_template = format!("{}/{}", controller_key, action_name);
+                if let Some(auto_result) = try_render_template(
+                    interpreter,
+                    &controller_instance,
+                    &default_template,
+                ) {
+                    let (status, resp_headers, body) = extract_response(auto_result);
+                    return Some(ResponseData { status, headers: resp_headers, body });
+                }
+            }
             let (status, resp_headers, body) = extract_response(result);
             ResponseData {
                 status,
@@ -4197,7 +4214,9 @@ fn call_class_method(
         // Try VM execution in production mode
         if let Some(vm) = vm {
             let handler_key = format!("{}#{}", class.name, method_name);
-            if !vm.failed_handlers.contains(&handler_key) {
+            // Only use VM for methods that take a (req) parameter. Zero-arg
+            // methods get req via the global and fall back to the interpreter.
+            if !vm.failed_handlers.contains(&handler_key) && !method.params.is_empty() {
                 match vm.call_method_bound(
                     &method,
                     instance.clone(),
@@ -4250,9 +4269,16 @@ fn call_class_method(
             })
         };
 
+        // Only pass the request hash if the action expects a parameter (e.g. `def index(req)`).
+        // Zero-arg actions get `req` implicitly via the global, so don't pass it as an argument.
+        let action_args: Vec<Value> = if method.params.is_empty() {
+            vec![]
+        } else {
+            vec![request_hash.clone()]
+        };
         let result = interpreter.call_value(
             Value::Function(bound_method),
-            vec![request_hash.clone()],
+            action_args,
             method_span,
         );
 
@@ -4512,6 +4538,89 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         });
     }
     None
+}
+
+/// Check if a value is a response hash (has a "status" field).
+fn is_response_hash(value: &Value) -> bool {
+    if let Value::Hash(hash) = value {
+        hash.borrow().iter().any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"))
+    } else {
+        false
+    }
+}
+
+/// Auto-render the default template for an action when no explicit render/redirect was called.
+/// Returns None if the template cannot be rendered (falls through to raw value serialization).
+fn try_render_template(
+    interpreter: &mut Interpreter,
+    controller_instance: &Value,
+    template_name: &str,
+) -> Option<Value> {
+    use crate::interpreter::builtins::template::get_template_cache;
+
+    // Build data hash from controller instance fields and params
+    let mut data_pairs: crate::interpreter::value::HashPairs = HashPairs::default();
+
+    // Add params (req["all"]) as available data
+    if let Some(params_val) = interpreter
+        .global_env()
+        .borrow()
+        .get("params")
+    {
+        data_pairs.insert(HashKey::String("params".to_string()), params_val.clone());
+    }
+
+    // Add all controller instance fields (@ variables) to data
+    if let Value::Instance(inst) = controller_instance {
+        for (k, v) in inst.borrow().fields.iter() {
+            if !k.starts_with('_') {
+                data_pairs.insert(HashKey::String(k.clone()), v.clone());
+            }
+        }
+    }
+
+    let data = Value::Hash(Rc::new(RefCell::new(data_pairs)));
+
+    // Get template cache and render
+    let cache = match get_template_cache() {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    // Inject req context, controller vars, helpers (same as render() builtin)
+    crate::interpreter::builtins::template::inject_request_context(&data);
+    crate::interpreter::builtins::template::inject_controller_instance_vars(&data);
+    crate::interpreter::builtins::template::inject_template_helpers(&data);
+
+    // Render template — returns full HTML string
+    let body = match cache.render(template_name, &data, None) {
+        Ok(html) => html,
+        Err(_) => return None,
+    };
+
+    // Build response hash
+    let mut response_pairs: HashPairs = HashPairs::default();
+    response_pairs.insert(
+        HashKey::String("status".to_string()),
+        Value::Int(200),
+    );
+    response_pairs.insert(
+        HashKey::String("headers".to_string()),
+        Value::Hash(Rc::new(RefCell::new({
+            let mut h: HashPairs = HashPairs::default();
+            h.insert(
+                HashKey::String("Content-Type".to_string()),
+                Value::String("text/html; charset=utf-8".to_string()),
+            );
+            h
+        }))),
+    );
+    response_pairs.insert(
+        HashKey::String("body".to_string()),
+        Value::String(body),
+    );
+
+    Some(Value::Hash(Rc::new(RefCell::new(response_pairs))))
 }
 
 /// Extract response from a value returned by after action.

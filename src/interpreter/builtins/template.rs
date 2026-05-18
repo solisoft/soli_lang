@@ -405,7 +405,7 @@ pub fn inject_template_helpers(data: &Value) {
 }
 
 /// Inject req and params from current request context into data hash.
-fn inject_request_context(data: &Value) {
+pub fn inject_request_context(data: &Value) {
     if let Value::Hash(hash) = data {
         if let Some(req) = get_current_request() {
             let mut h = hash.borrow_mut();
@@ -470,7 +470,7 @@ fn get_current_controller_registered_layout() -> Option<Value> {
 /// Mirrors Rails' `@ivar → view local` behavior, scoped to the action currently running.
 /// Skips framework-injected fields already supplied by `inject_request_context` and
 /// never clobbers keys the action passed explicitly to `render(...)`.
-fn inject_controller_instance_vars(data: &Value) {
+pub fn inject_controller_instance_vars(data: &Value) {
     let Value::Hash(hash) = data else { return };
     let Some(ctrl) = crate::interpreter::builtins::controller::registry::get_current_controller()
     else {
