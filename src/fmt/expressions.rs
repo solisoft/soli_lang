@@ -14,6 +14,16 @@ fn span_source(source: &str, span: crate::span::Span) -> &str {
     &source[start..end]
 }
 
+/// Check whether a logical operator (&&/||) chain would exceed MAX_LINE_LENGTH.
+fn should_logical_break(p: &Printer, left: &Expr, right: &Expr, op: &str) -> bool {
+    let _col = p.current_column();
+    let left_src = span_source(p.source, left.span).len().min(120);
+    let right_src = span_source(p.source, right.span).len().min(80);
+    // Add 4 safety margin to account for underestimates (e.g., quoted strings
+    // re-printed with different escaping than the source span suggests).
+    p.current_column() + left_src + op.len() + right_src + 4 > MAX_LINE_LENGTH
+}
+
 impl Printer<'_> {
     pub(super) fn print_expr(&mut self, expr: &Expr) {
         match &expr.kind {
@@ -248,14 +258,28 @@ impl Printer<'_> {
                 self.write("--");
             }
             ExprKind::LogicalAnd { left, right } => {
-                self.print_expr(left);
-                self.write(" && ");
-                self.print_expr(right);
+                if should_logical_break(self, left, right, " && ") {
+                    self.print_expr(left);
+                    self.newline();
+                    self.write("&& ");
+                    self.print_expr(right);
+                } else {
+                    self.print_expr(left);
+                    self.write(" && ");
+                    self.print_expr(right);
+                }
             }
             ExprKind::LogicalOr { left, right } => {
-                self.print_expr(left);
-                self.write(" || ");
-                self.print_expr(right);
+                if should_logical_break(self, left, right, " || ") {
+                    self.print_expr(left);
+                    self.newline();
+                    self.write("|| ");
+                    self.print_expr(right);
+                } else {
+                    self.print_expr(left);
+                    self.write(" || ");
+                    self.print_expr(right);
+                }
             }
             ExprKind::NullishCoalescing { left, right } => {
                 self.print_expr(left);
@@ -488,7 +512,7 @@ impl Printer<'_> {
 
         // For + concatenation: estimate total width from source spans and
         // break across lines if it would exceed the limit.
-        if op_str == "+" {
+        if op_str == "+" || op_str == "||" || op_str == "&&" {
             let left_src = span_source(self.source, left.span).len();
             let right_src = span_source(self.source, right.span).len();
             let total = self.current_column() + left_src + 3 + right_src.min(80);

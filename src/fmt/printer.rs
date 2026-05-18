@@ -84,18 +84,6 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Estimate the display width of a string as it would appear on the
-    /// current line. Useful for checking whether appending `s` would exceed
-    /// MAX_LINE_LENGTH.
-    pub(super) fn would_exceed_max_width(&self, s: &str) -> bool {
-        let new_col = if let Some(pos) = s.rfind('\n') {
-            s.len() - pos - 1
-        } else {
-            self.column + s.len()
-        };
-        new_col > MAX_LINE_LENGTH
-    }
-
     pub(super) fn newline(&mut self) {
         // Strip any trailing spaces from the line we just finished.
         while self.out.ends_with(' ') {
