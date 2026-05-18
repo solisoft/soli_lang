@@ -1,7 +1,6 @@
 //! Module resolution for import statements.
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast::{ImportDecl, ImportSpecifier, Program, Stmt, StmtKind};
@@ -184,8 +183,10 @@ impl ModuleResolver {
             return Ok(cached.clone());
         }
 
-        // Read and parse the module
-        let content = fs::read_to_string(&module_path)?;
+        // Read and parse the module through VFS (or disk fallback)
+        let path_str = module_path.to_string_lossy().to_string();
+        let content = crate::serve::vfs_read_to_string(&path_str)
+            .map_err(std::io::Error::other)?;
         let tokens = Scanner::new(&content).scan_tokens().map_err(|e| {
             ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
         })?;
@@ -356,25 +357,29 @@ impl ModuleResolver {
         let normalized = normalize_path(path);
 
         // Try exact path
-        if normalized.exists() && normalized.is_file() {
+        let normalized_str = normalized.to_string_lossy().to_string();
+        if crate::serve::vfs_exists(&normalized_str) && normalized.is_file() {
             return self.canonicalize(&normalized);
         }
 
         // Try with .sl extension
         let with_ext = normalized.with_extension("sl");
-        if with_ext.exists() && with_ext.is_file() {
+        let with_ext_str = with_ext.to_string_lossy().to_string();
+        if crate::serve::vfs_exists(&with_ext_str) && with_ext.is_file() {
             return self.canonicalize(&with_ext);
         }
 
         // Try as directory with index.sl
         let index = normalized.join("index.sl");
-        if index.exists() && index.is_file() {
+        let index_str = index.to_string_lossy().to_string();
+        if crate::serve::vfs_exists(&index_str) && index.is_file() {
             return self.canonicalize(&index);
         }
 
         // Try as directory with mod.sl
         let mod_file = normalized.join("mod.sl");
-        if mod_file.exists() && mod_file.is_file() {
+        let mod_file_str = mod_file.to_string_lossy().to_string();
+        if crate::serve::vfs_exists(&mod_file_str) && mod_file.is_file() {
             return self.canonicalize(&mod_file);
         }
 

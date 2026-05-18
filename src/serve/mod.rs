@@ -59,6 +59,66 @@ use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::virtual_fs::VirtualFileSystem;
+
+// Global Virtual File System — set during server boot. When set, all
+// file reads go through this VFS. When not set, the helper functions
+// fall back to std::fs on disk.
+static GLOBAL_VFS: OnceLock<Box<dyn VirtualFileSystem>> = OnceLock::new();
+
+/// Initialize the global VFS (called before server boot).
+pub fn init_global_vfs(vfs: impl VirtualFileSystem + 'static) {
+    let _ = GLOBAL_VFS.set(Box::new(vfs));
+}
+
+/// Read a file to string, falling back to std::fs if no VFS is set.
+pub fn vfs_read_to_string(path: &str) -> Result<String, String> {
+    if let Some(vfs) = GLOBAL_VFS.get() {
+        vfs.read_to_string(path)
+    } else {
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path, e))
+    }
+}
+
+/// Check if a path exists, falling back to std::fs if no VFS is set.
+pub fn vfs_exists(path: &str) -> bool {
+    if let Some(vfs) = GLOBAL_VFS.get() {
+        vfs.exists(path)
+    } else {
+        std::path::Path::new(path).exists()
+    }
+}
+
+/// Walk a directory, falling back to walkdir if no VFS is set.
+pub fn vfs_walk_dir(dir: &str) -> Result<Vec<String>, String> {
+    if let Some(vfs) = GLOBAL_VFS.get() {
+        vfs.walk_dir(dir)
+    } else {
+        let mut files = Vec::new();
+        for entry in walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        {
+            let entry = entry.map_err(|e| format!("Walk error: {}", e))?;
+            if entry.file_type().is_file() {
+                let full_path = entry.path().to_string_lossy().to_string();
+                files.push(full_path);
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+}
+
+/// Check if a path is a directory, falling back to std::fs if no VFS is set.
+pub fn vfs_is_dir(path: &str) -> bool {
+    if let Some(vfs) = GLOBAL_VFS.get() {
+        vfs.is_dir(path)
+    } else {
+        std::path::Path::new(path).is_dir()
+    }
+}
+
 /// Env-gated boot tracing. Set `SOLI_TRACE_BOOT=1` to print
 /// `[boot+Xms] <phase>` to stderr at each major startup step. The first
 /// `boot_trace` call captures the baseline; subsequent calls show ms
@@ -293,6 +353,14 @@ pub fn serve_folder_with_options_and_workers(
         .unwrap_or_else(|_| folder.to_path_buf());
     let folder = folder_owned.as_path();
 
+    // Initialize the global VFS if not already set (e.g. from a .solib bundle).
+    // This allows all subsystems (template engine, module resolver, etc.) to
+    // read files through the VFS rather than directly from disk.
+    if GLOBAL_VFS.get().is_none() {
+        let folder_str = folder.to_string_lossy().to_string();
+        let _ = GLOBAL_VFS.set(Box::new(crate::virtual_fs::DiskFS::new(&folder_str)));
+    }
+
     // Load .env file before anything else
     load_env_files(folder);
     boot_trace("env loaded");
@@ -307,11 +375,16 @@ pub fn serve_folder_with_options_and_workers(
         eprintln!("PANIC: {}", msg);
     }));
 
-    // Validate folder structure
+    // Validate folder structure (use VFS if available, otherwise disk)
     let app_dir = folder.join("app");
     let controllers_dir = app_dir.join("controllers");
+    let controllers_ok = if GLOBAL_VFS.get().is_some() {
+        vfs_is_dir("app/controllers") || vfs_is_dir("app")
+    } else {
+        controllers_dir.exists()
+    };
 
-    if !controllers_dir.exists() {
+    if !controllers_ok {
         return Err(RuntimeError::General {
             message: format!(
                 "Invalid MVC structure: {} does not exist. Expected app/controllers/ directory.",

@@ -7,6 +7,7 @@
 //! Solilang uses a tree-walking interpreter for executing programs.
 
 pub mod ast;
+pub mod bundle;
 pub mod compiled_cache;
 pub mod coverage;
 pub mod error;
@@ -31,6 +32,7 @@ pub mod solidb_http;
 pub mod span;
 pub mod template;
 pub mod types;
+pub mod virtual_fs;
 pub mod vm;
 
 use ast::expr::Argument;

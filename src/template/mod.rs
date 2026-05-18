@@ -15,12 +15,12 @@ pub mod renderer;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 use crate::interpreter::value::Value;
+use crate::serve::{vfs_exists, vfs_read_to_string};
 use parser::parse_template;
 use renderer::{render_nodes_with_path, render_with_interpreter};
 use std::rc::Rc;
@@ -405,7 +405,8 @@ impl TemplateCache {
             } else {
                 dir.join(format!("{}{}", name, ext))
             };
-            if path.exists() {
+            let path_str = path.to_string_lossy().to_string();
+            if vfs_exists(&path_str) {
                 return Ok(path);
             }
         }
@@ -426,10 +427,11 @@ impl TemplateCache {
         }
 
         // Cache miss - load and parse template
-        let source = fs::read_to_string(path)
+        let path_str = path.to_string_lossy().to_string();
+        let source = vfs_read_to_string(&path_str)
             .map_err(|e| format!("Failed to read template '{}': {}", path.display(), e))?;
 
-        let modified = fs::metadata(path)
+        let modified = std::fs::metadata(path)
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
@@ -476,10 +478,13 @@ impl TemplateCache {
             return false;
         };
         for (path, cached) in cache.iter() {
-            if let Ok(metadata) = fs::metadata(path) {
-                if let Ok(modified) = metadata.modified() {
-                    if modified != cached.modified {
-                        return true;
+            let path_str = path.to_string_lossy().to_string();
+            if vfs_exists(&path_str) {
+                if let Ok(metadata) = std::fs::metadata(path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if modified != cached.modified {
+                            return true;
+                        }
                     }
                 }
             }

@@ -60,5 +60,10 @@ pub fn run() {
         } => commands::run_test(paths, *jobs, coverage_formats, *coverage_min, *no_coverage),
         Command::Engine { action } => commands::run_engine(action),
         Command::Lsp => commands::run_lsp(),
+        Command::Build {
+            folder,
+            output,
+            standalone,
+        } => commands::run_build(folder, output.as_deref(), *standalone),
     }
 }

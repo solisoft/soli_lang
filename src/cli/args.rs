@@ -89,6 +89,11 @@ pub enum Command {
     /// Start the Soli LSP server on stdio. Used by editor plugins
     /// (Nova, VS Code, etc.) — not typically run interactively.
     Lsp,
+    Build {
+        folder: String,
+        output: Option<String>,
+        standalone: bool,
+    },
 }
 
 pub enum EngineAction {
@@ -129,9 +134,10 @@ pub fn print_usage() {
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli lsp");
-    eprintln!("       soli deploy [--folder <path>]");
-    eprintln!("       soli db:migrate <up|down|status> [folder]");
-    eprintln!("       soli db:migrate generate <name> [folder]");
+    eprintln!("  soli build <folder> [--output <file>] [--standalone]");
+    eprintln!("  soli deploy [--folder <path>]");
+    eprintln!("  soli db:migrate <up|down|status> [folder]");
+    eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -808,6 +814,46 @@ pub fn parse_args() -> Options {
                     },
                     coverage_min: if no_coverage { None } else { coverage_min },
                     no_coverage,
+                };
+                return options;
+            }
+            "build" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("build command requires a folder argument");
+                    print_usage();
+                    process::exit(64);
+                }
+                let folder = args[i].clone();
+                i += 1;
+                let mut output = None;
+                let mut standalone = false;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--output" | "-o" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("--output requires a path");
+                                print_usage();
+                                process::exit(64);
+                            }
+                            output = Some(args[i].clone());
+                        }
+                        "--standalone" => {
+                            standalone = true;
+                        }
+                        _ => {
+                            eprintln!("Unknown option for build: {}", args[i]);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::Build {
+                    folder,
+                    output,
+                    standalone,
                 };
                 return options;
             }

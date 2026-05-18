@@ -126,7 +126,8 @@ pub fn inject_helpers_into_env(env: &mut Environment) {
 /// Load view helpers from a directory (app/helpers/*.sl).
 /// Parses each file and extracts function definitions without executing in interpreter.
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
-    if !helpers_dir.exists() {
+    let helpers_dir_str = helpers_dir.to_string_lossy().to_string();
+    if !crate::serve::vfs_exists(&helpers_dir_str) {
         return Ok(0);
     }
 
@@ -140,14 +141,16 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     let helper_env = Rc::new(RefCell::new(Environment::new()));
     crate::interpreter::builtins::register_builtins(&mut helper_env.borrow_mut(), false);
 
-    for entry in std::fs::read_dir(helpers_dir)
-        .map_err(|e| format!("Failed to read helpers directory: {}", e))?
+    let entries = std::fs::read_dir(helpers_dir)
+        .map_err(|e| format!("Failed to read helpers directory: {}", e))?;
+    for entry in entries
     {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
         if path.extension().is_some_and(|ext| ext == "sl") {
-            let source = std::fs::read_to_string(&path)
+            let path_str = path.to_string_lossy().to_string();
+            let source = crate::serve::vfs_read_to_string(&path_str)
                 .map_err(|e| format!("Failed to read helper file '{}': {}", path.display(), e))?;
 
             // Lex

@@ -15,6 +15,61 @@ use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
+pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
+    let source_dir = Path::new(folder);
+
+    if !source_dir.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    if !source_dir.is_dir() {
+        eprintln!("Error: '{}' is not a directory", folder);
+        process::exit(1);
+    }
+
+    if standalone {
+        eprintln!("Standalone binary output not yet implemented");
+        process::exit(1);
+    }
+
+    println!("Building bundle from {}...", source_dir.display());
+
+    let bundle_data = match solilang::bundle::BundleBuilder::build(source_dir) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Error building bundle: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let output_path = match output {
+        Some(path) => Path::new(path).to_path_buf(),
+        None => {
+            let folder_name = source_dir
+                .file_name()
+                .map(|n| format!("{}.solib", n.to_string_lossy()))
+                .unwrap_or_else(|| "app.solib".to_string());
+            source_dir.with_file_name(folder_name)
+        }
+    };
+
+    match std::fs::write(&output_path, &bundle_data) {
+        Ok(_) => {
+            let size_kb = bundle_data.len() as f64 / 1024.0;
+            println!(
+                "  \x1b[32m\x1b[1m✓\x1b[0m Bundle written to {} ({:.1} KB)",
+                output_path.display(),
+                size_kb
+            );
+        }
+        Err(e) => {
+            eprintln!("Error writing bundle: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize: bool) {
     let path = Path::new(folder);
 
@@ -24,6 +79,15 @@ pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemon
     }
 
     if !path.is_dir() {
+        // Check if it's a .solib bundle file
+        if folder.ends_with(".solib") && path.is_file() {
+            // It's a bundle file - serve from the bundle
+            if let Err(e) = serve_from_bundle(folder, port, dev_mode, workers) {
+                eprintln!("Error: {}", e);
+                process::exit(70);
+            }
+            return;
+        }
         eprintln!("Error: '{}' is not a directory", folder);
         process::exit(1);
     }
@@ -73,6 +137,40 @@ pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemon
         eprintln!("Error: {}", e);
         process::exit(70);
     }
+}
+
+fn serve_from_bundle(bundle_path: &str, port: u16, dev_mode: bool, workers: usize) -> Result<(), String> {
+    let bundle_data = std::fs::read(bundle_path)
+        .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path, e))?;
+
+    let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
+
+    // Extract to a temp directory
+    let tmp_dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+
+    for (path, content) in bundle.entries() {
+        let full_path = tmp_dir.join(path);
+        if let Some(parent) = full_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create dir '{}': {}", parent.display(), e))?;
+        }
+        std::fs::write(&full_path, content)
+            .map_err(|e| format!("Failed to write '{}': {}", full_path.display(), e))?;
+    }
+
+    println!("Extracted bundle to {}", tmp_dir.display());
+
+    // Serve from the extracted temp directory
+    let folder_path = tmp_dir.to_string_lossy().to_string();
+    // Create a regular DiskFS pointing at the temp dir
+    let vfs = solilang::virtual_fs::DiskFS::new(&folder_path);
+    solilang::serve::init_global_vfs(vfs);
+
+    solilang::serve::serve_folder_with_options(&tmp_dir, port, dev_mode, workers)
+        .map_err(|e| e.to_string())
 }
 
 pub fn run_new(name: &str, template: Option<&str>) {
