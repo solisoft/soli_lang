@@ -353,29 +353,7 @@ pub fn serve_folder_with_options_and_workers(
         .unwrap_or_else(|_| folder.to_path_buf());
     let folder = folder_owned.as_path();
 
-    // Initialize the global VFS if not already set (e.g. from a .soli bundle).
-    // This allows all subsystems (template engine, module resolver, etc.) to
-    // read files through the VFS rather than directly from disk.
-    if GLOBAL_VFS.get().is_none() {
-        let folder_str = folder.to_string_lossy().to_string();
-        let _ = GLOBAL_VFS.set(Box::new(crate::virtual_fs::DiskFS::new(&folder_str)));
-    }
-
-    // Load .env file before anything else
-    load_env_files(folder);
-    boot_trace("env loaded");
-
-    // Initialize DB config cache (must be after .env is loaded)
-    crate::interpreter::builtins::model::init_db_config();
-    boot_trace("db config init");
-
-    // Set up panic hook to catch worker panics
-    std::panic::set_hook(Box::new(|panic_info| {
-        let msg = panic_info.to_string();
-        eprintln!("PANIC: {}", msg);
-    }));
-
-    // Validate folder structure (use VFS if available, otherwise disk)
+    // Validate folder structure
     let app_dir = folder.join("app");
     let controllers_dir = app_dir.join("controllers");
     let controllers_ok = if GLOBAL_VFS.get().is_some() {
