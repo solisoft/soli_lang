@@ -1491,6 +1491,10 @@ video {
   top: 4rem;
 }
 
+.top-5 {
+  top: 1.25rem;
+}
+
 .top-\[-10\%\] {
   top: -10%;
 }

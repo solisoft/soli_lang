@@ -90,6 +90,10 @@ post.comments.delete_all      # via has_many relation</code></pre>
                     <td class="py-3 px-4 text-gray-400">Bulk hard-delete every row matching the accumulated <code>.where</code>/<code>.join</code> clauses in a single AQL <code>REMOVE</code>. Ignores <code>.order</code>/<code>.limit</code>/<code>.offset</code>/<code>.select</code>/<code>.group_by</code> (they don't compose with <code>REMOVE</code>). Hard delete — bypasses soft-delete mode. Returns <code>null</code>.</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.similar(query, field?, top_k?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Vector similarity search. Ranks results by semantic relevance (chain with <code>.all</code> to execute). Requires <code>SOLI_EMBEDDING_API_KEY</code> env var.</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.pluck(field, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Set pluck mode for specified fields (chain with <code>.all</code> to execute)</td>
                 </tr>

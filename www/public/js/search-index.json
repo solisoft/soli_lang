@@ -8031,6 +8031,50 @@
         "divide",
         "modulo"
       ]
+    },
+    {
+      "title": ".similar()",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#similar-simple",
+      "signature": "query.similar(query_text, field?, top_k?)",
+      "description": "Vector similarity search. Ranks results by semantic relevance using cosine similarity against an embedding field",
+      "keywords": [
+        "vector",
+        "similar",
+        "semantic",
+        "embedding",
+        "rag",
+        "ai",
+        "search"
+      ]
+    },
+    {
+      "title": ".similar()",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#similar-simple",
+      "signature": "query.similar(query_text, field?, top_k?)",
+      "description": "Chainable QueryBuilder method for vector similarity search",
+      "keywords": [
+        "query",
+        "similar",
+        "vector",
+        "embedding"
+      ]
+    },
+    {
+      "title": "similar_text",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/database/finders#similar-simple",
+      "signature": "similar_text(text)",
+      "description": "Generate an embedding vector for similarity search (requires SOLI_EMBEDDING_API_KEY)",
+      "keywords": [
+        "embedding",
+        "vector",
+        "ai"
+      ]
     }
   ]
 }
