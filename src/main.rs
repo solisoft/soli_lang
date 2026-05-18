@@ -1,7 +1,5 @@
 //! Soli CLI: Execute files or run the REPL.
 
-#![cfg(feature = "cli")]
-
 mod cli;
 
 use mimalloc::MiMalloc;

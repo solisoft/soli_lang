@@ -15,7 +15,7 @@ use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
-pub fn run_build(folder: &str, output: Option<&str>, standalone: bool, target: Option<&str>) {
+pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
     // Resolve "." to current directory so file_name() works properly
     let source_dir = if folder == "." {
         std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
@@ -36,19 +36,6 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool, target: O
     if standalone {
         eprintln!("Standalone binary output not yet implemented");
         process::exit(1);
-    }
-
-    if let Some(t) = target {
-        match t {
-            "wasm32-unknown-unknown" | "wasm" => {
-                eprintln!("WASM target not yet implemented");
-                process::exit(1);
-            }
-            _ => {
-                eprintln!("Unknown target '{}'. Supported: wasm, wasm32-unknown-unknown", t);
-                process::exit(1);
-            }
-        }
     }
 
     println!("Building bundle from {}...", source_dir.display());
