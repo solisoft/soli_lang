@@ -41,8 +41,7 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool, target: O
     if let Some(t) = target {
         match t {
             "wasm32-unknown-unknown" | "wasm" => {
-                eprintln!("WASM target not yet implemented");
-                process::exit(1);
+                return run_build_wasm(&source_dir, output);
             }
             _ => {
                 eprintln!("Unknown target '{}'. Supported: wasm, wasm32-unknown-unknown", t);
@@ -507,6 +506,218 @@ pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
     if check && changed > 0 {
         process::exit(1);
     }
+}
+
+/// Build a Soli application as a WASM Cloudflare Worker.
+/// Creates a deployable project with wrangler.toml and the compiled .wasm binary.
+fn run_build_wasm(source_dir: &Path, output: Option<&str>) {
+    let app_name = source_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "app".to_string());
+
+    let out_dir = match output {
+        Some(p) => Path::new(p).to_path_buf(),
+        None => Path::new(&format!("{}_worker", app_name)).to_path_buf(),
+    };
+
+    // Step 1: Find the wasm-worker template
+    let template_dir = find_template_dir();
+
+    // Step 2: Create output directory from template
+    if out_dir.exists() {
+        eprintln!("Error: Output directory '{}' already exists", out_dir.display());
+        process::exit(1);
+    }
+    copy_template(&template_dir.join("wasm-worker"), &out_dir);
+
+    // Step 3: Copy source files into the worker project and generate bundle module
+    let soli_src_dir = out_dir.join("soli_app");
+    fs::create_dir_all(&soli_src_dir).unwrap_or_else(|e| {
+        eprintln!("Error creating soli_app directory: {}", e);
+        process::exit(1);
+    });
+    copy_source_files(source_dir, &soli_src_dir);
+    let bundle_content = generate_bundle_rs(&soli_src_dir);
+    let bundle_rs_path = out_dir.join("src").join("bundle.rs");
+    fs::write(&bundle_rs_path, &bundle_content).unwrap_or_else(|e| {
+        eprintln!("Error writing bundle.rs: {}", e);
+        process::exit(1);
+    });
+
+    // Step 4: Update Cargo.toml dependency path to point to the soli installation
+    let cargo_toml_path = out_dir.join("Cargo.toml");
+    let cargo_content = fs::read_to_string(&cargo_toml_path).unwrap_or_else(|e| {
+        eprintln!("Error reading Cargo.toml: {}", e);
+        process::exit(1);
+    });
+    let soli_path = find_soli_install_path();
+    let cargo_content = cargo_content.replace("__SOLI_PATH__", &soli_path);
+    fs::write(&cargo_toml_path, &cargo_content).unwrap_or_else(|e| {
+        eprintln!("Error writing Cargo.toml: {}", e);
+        process::exit(1);
+    });
+
+    // Step 5: Generate wrangler.toml
+    let wrangler_content = format!(
+        r#"name = "{}"
+main = "pkg/soli_wasm_worker.wasm"
+compatibility_date = "2025-01-01"
+
+[site]
+bucket = "./public"
+"#,
+        app_name
+    );
+    fs::write(out_dir.join("wrangler.toml"), &wrangler_content).unwrap_or_else(|e| {
+        eprintln!("Error writing wrangler.toml: {}", e);
+        process::exit(1);
+    });
+
+    println!(
+        "  \x1b[32m\x1b[1m✓\x1b[0m WASM worker project created at {}",
+        out_dir.display()
+    );
+    println!();
+    println!("  To build, run:");
+    println!("    cd {} && cargo build --target wasm32-unknown-unknown --release", out_dir.display());
+    println!();
+    println!("  To deploy to Cloudflare Workers:");
+    println!("    cd {} && npx wrangler deploy", out_dir.display());
+}
+
+/// Find the template directory (relative to the binary or absolute).
+fn find_template_dir() -> std::path::PathBuf {
+    // Try relative to the binary's location
+    if let Ok(exe) = env::current_exe() {
+        // Look for template/ relative to the binary (installed case)
+        let p = exe.parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("template"))
+            .filter(|p| p.join("wasm-worker").exists());
+        if let Some(p) = p {
+            return p;
+        }
+    }
+    // Fallback: look in the repository source tree (development case)
+    let dev_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("template");
+    if dev_path.join("wasm-worker").exists() {
+        return dev_path;
+    }
+    eprintln!("Error: Could not find wasm-worker template directory");
+    process::exit(1);
+}
+
+/// Copy a template directory recursively.
+fn copy_template(src: &Path, dst: &Path) {
+    fn copy_recursively(src: &Path, dst: &Path) -> std::io::Result<()> {
+        if src.is_dir() {
+            fs::create_dir_all(dst)?;
+            for entry in fs::read_dir(src)? {
+                let entry = entry?;
+                let entry_type = entry.file_type()?;
+                let src_path = entry.path();
+                let dst_path = dst.join(entry.file_name());
+                if entry_type.is_dir() {
+                    copy_recursively(&src_path, &dst_path)?;
+                } else {
+                    fs::copy(&src_path, &dst_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    copy_recursively(src, dst).unwrap_or_else(|e| {
+        eprintln!("Error copying template: {}", e);
+        process::exit(1);
+    });
+}
+
+/// Copy Soli source files from the user's project into the worker project.
+fn copy_source_files(src: &Path, dst: &Path) {
+    fn collect_files(src: &Path, dst: &Path) {
+        if let Ok(entries) = fs::read_dir(src) {
+            fs::create_dir_all(dst).ok();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name();
+                let dst_path = dst.join(&name);
+                if path.is_dir() {
+                    collect_files(&path, &dst_path);
+                } else if path.extension().map_or(false, |e| {
+                    matches!(e.to_str(), Some("sl" | "slv" | "erb" | "toml" | "json" | "yml" | "yaml" | "css" | "js" | "md"))
+                }) {
+                    fs::copy(&path, &dst_path).ok();
+                }
+            }
+        }
+    }
+    collect_files(src, dst);
+}
+
+/// Generate src/bundle.rs that embeds Soli source files via include_str!.
+fn generate_bundle_rs(soli_app_dir: &Path) -> String {
+    let mut lines = Vec::new();
+    lines.push("// Auto-generated by `soli build --target wasm`. Do not edit.".to_string());
+    lines.push("use std::collections::HashMap;".to_string());
+    lines.push(String::new());
+    lines.push("pub fn get_sources() -> HashMap<&'static str, &'static str> {".to_string());
+    lines.push("    let mut m = HashMap::new();".to_string());
+
+    fn collect_files(dir: &Path, prefix: &str, lines: &mut Vec<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                let rel_path = if prefix.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}/{}", prefix, name)
+                };
+                if path.is_dir() {
+                    collect_files(&path, &rel_path, lines);
+                } else if path.extension().map_or(false, |e| {
+                    matches!(e.to_str(), Some("sl" | "slv" | "erb" | "toml" | "json" | "yml" | "yaml" | "css" | "js" | "md"))
+                }) {
+                    // Path relative to src/bundle.rs — soli_app/ is at the project root
+                    let include_path = format!("../soli_app/{}", rel_path);
+                    lines.push(format!(
+                        "    m.insert(\"{}\", include_str!(r\"{}\"));",
+                        rel_path, include_path
+                    ));
+                }
+            }
+        }
+    }
+    collect_files(soli_app_dir, "", &mut lines);
+
+    lines.push("    m".to_string());
+    lines.push("}".to_string());
+    lines.join("\n")
+}
+
+/// Find the local solilang install path for the template dependency.
+fn find_soli_install_path() -> String {
+    // When running from the repo, use CARGO_MANIFEST_DIR
+    let repo_path = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if repo_path.join("Cargo.toml").exists() {
+        return repo_path.to_string_lossy().to_string();
+    }
+    // Fallback: try the installed binary's location
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            // Check for ../../ (cargo install puts binary in ~/.cargo/bin, project in ~/.cargo/bin/../)
+            let candidate = dir.join("..").join("..").join("lib").join("solilang");
+            if candidate.join("Cargo.toml").exists() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+    eprintln!("Error: Could not find solilang crate path for WASM build");
+    eprintln!("  Set SOLI_SRC_PATH environment variable to the solilang source directory.");
+    process::exit(1);
 }
 
 /// Print a minimal unified-style diff so `soli fmt --check` shows what
