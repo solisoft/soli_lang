@@ -7,10 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-worker = { version = "0.4", features = ["http", "console_error_panic_hook"] }
+worker = { version = "0.4", features = ["http"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-solilang = { path = "__SOLI_PATH__", features = ["wasm"] }
+solilang = { path = "__SOLI_PATH__", default-features = false, features = ["wasm"] }
 
 [profile.release]
 opt-level = "s"
@@ -21,3 +21,4 @@ panic = "abort"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
+uuid = { version = "1", features = ["js", "serde"] }

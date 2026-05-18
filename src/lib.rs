@@ -24,7 +24,7 @@ pub mod virtual_fs;
 pub mod vm;
 
 // The interpreter module is platform-dependent (builtins use file I/O, HTTP, DB, etc.).
-// Not available for WASM targets.
+// Not available for WASM targets in this version.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod interpreter;
 
@@ -57,6 +57,7 @@ pub mod solidb_http;
 #[cfg(feature = "cli")]
 pub mod template;
 
+#[cfg(not(target_arch = "wasm32"))]
 use ast::expr::Argument;
 use error::SolilangError;
 
@@ -667,6 +668,7 @@ fn rebind_closure(
 }
 
 /// Check if a program has any import statements.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn has_imports(program: &ast::Program) -> bool {
     program
         .statements
