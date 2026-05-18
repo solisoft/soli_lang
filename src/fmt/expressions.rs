@@ -21,7 +21,7 @@ fn should_logical_break(p: &Printer, left: &Expr, right: &Expr, op: &str) -> boo
     let right_src = span_source(p.source, right.span).len().min(80);
     // Add 4 safety margin to account for underestimates (e.g., quoted strings
     // re-printed with different escaping than the source span suggests).
-    p.current_column() + left_src + op.len() + right_src + 4 > MAX_LINE_LENGTH
+    p.current_column() + left_src + op.len() + right_src + 8 > MAX_LINE_LENGTH
 }
 
 impl Printer<'_> {
@@ -128,12 +128,10 @@ impl Printer<'_> {
             }
             ExprKind::Call { callee, arguments } => {
                 self.print_expr(callee);
-                // Class-body bare DSL macros (`soft_delete`) and command-style
-                // calls (`puts "hi"`) are parsed into a Call AST without parens
-                // in the source. The parser rejects parens around those forms,
-                // so we must preserve "no parens" when the source had none.
-                if arguments.is_empty() && !source_has_parens_after(self.source, callee.span.end) {
-                    // bare call with no args and no source parens — skip "()"
+                // Strip empty () from zero-arg calls: .all, .keys, .length etc.
+                // Parser accepts both forms; the formatter normalizes to no-parens.
+                if arguments.is_empty() {
+                    // bare call with no args — skip "()"
                 } else {
                     self.print_arg_list(arguments);
                 }
@@ -553,7 +551,7 @@ impl Printer<'_> {
             let right_src = span_source(self.source, right.span).len();
             let total = self.current_column() + left_src + 3 + right_src.min(80);
 
-            if total > MAX_LINE_LENGTH {
+            if total + 4 > MAX_LINE_LENGTH {
                 // Recursive multi-line: print left inline (which may itself
                 // trigger this check at inner levels), then break right.
                 self.print_expr(left);
@@ -675,18 +673,4 @@ fn binary_op_str(op: BinaryOp) -> String {
 
 fn compound_op_str(op: CompoundOp) -> String {
     op.to_string()
-}
-
-/// Inspect source bytes starting at `at` (the position right after a call's
-/// callee). Returns true if the first non-whitespace byte is `(` — i.e., the
-/// source spelled the call with parens. Used to preserve paren-less DSL forms
-/// like `class TestSoft < Model\n  soft_delete\nend` that the parser rejects
-/// when surrounded by parens.
-fn source_has_parens_after(source: &str, at: usize) -> bool {
-    let bytes = source.as_bytes();
-    let mut i = at.min(bytes.len());
-    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
-        i += 1;
-    }
-    bytes.get(i) == Some(&b'(')
 }

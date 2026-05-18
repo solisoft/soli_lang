@@ -2,6 +2,8 @@
 
 use crate::ast::expr::{Expr, ExprKind};
 
+use super::printer::MAX_LINE_LENGTH;
+
 #[derive(Clone, Copy)]
 pub(super) enum PostfixIfKind {
     If,
@@ -442,28 +444,48 @@ impl Printer<'_> {
     }
 
     pub(super) fn print_param_list(&mut self, params: &[Parameter]) {
-        self.write("(");
-        for (i, p) in params.iter().enumerate() {
-            if i > 0 {
-                self.write(", ");
+        // Estimate inline width and break to multi-line if it would exceed.
+        let est: usize = params.iter().map(|p| p.name.len() + 2).sum::<usize>() + 2;
+        if params.len() > 3 && self.current_column() + est > MAX_LINE_LENGTH {
+            self.write("(");
+            self.newline();
+            self.with_indent(|p| {
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        p.write(",");
+                        p.newline();
+                    }
+                    p.write_param(param);
+                }
+            });
+            self.newline();
+            self.write(")");
+        } else {
+            self.write("(");
+            for (i, p) in params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.write_param(p);
             }
-            if p.is_block_param {
-                self.write("&");
-            }
-            self.write(&p.name);
-            // Type annotation: `name: Type`. The annotation is mandatory in
-            // the AST but `Any` / inferred should be elided in the output.
-            let ty_str = format_type(&p.type_annotation);
-            if !ty_str.is_empty() && ty_str != "Any" {
-                self.write(": ");
-                self.write(&ty_str);
-            }
-            if let Some(def) = &p.default_value {
-                self.write(" = ");
-                self.print_expr(def);
-            }
+            self.write(")");
         }
-        self.write(")");
+    }
+
+    fn write_param(&mut self, p: &Parameter) {
+        if p.is_block_param {
+            self.write("&");
+        }
+        self.write(&p.name);
+        let ty_str = format_type(&p.type_annotation);
+        if !ty_str.is_empty() && ty_str != "Any" {
+            self.write(": ");
+            self.write(&ty_str);
+        }
+        if let Some(def) = &p.default_value {
+            self.write(" = ");
+            self.print_expr(def);
+        }
     }
 
     fn print_class_decl(&mut self, decl: &ClassDecl) {
