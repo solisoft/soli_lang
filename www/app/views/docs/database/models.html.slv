@@ -209,12 +209,12 @@ user.delete()</code></pre>
                     <td class="py-3 px-4 text-gray-400">Refresh instance from database.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.increment(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Atomically increment a numeric field by 1 (or specified amount).</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.increment(field, n?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Atomically add <code>n</code> (default 1) to a numeric field. Uses an <code>If-Match</code> CAS loop on <code>_rev</code> with bounded retry — concurrent increments cannot lose updates.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.decrement(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Atomically decrement a numeric field by 1 (or specified amount).</td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">instance.decrement(field, n?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Atomically subtract <code>n</code> (default 1) from a numeric field. Same CAS-on-<code>_rev</code> retry as <code>increment</code>.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">instance.touch()</code></td>
@@ -249,6 +249,26 @@ user.save()
 user.delete()</code></pre>
         </div>
     </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Atomic <code>increment</code> / <code>decrement</code></h3>
+    <p class="text-gray-400 mb-4">
+        <code>increment</code> and <code>decrement</code> are <strong>not</strong> plain read-modify-writes on the in-memory instance &mdash; each call drives an optimistic compare-and-swap loop against SoliDB:
+    </p>
+
+    <ol class="list-decimal list-inside text-gray-400 mb-4 space-y-1">
+        <li>Re-fetch the document to read the current field value and its <code>_rev</code>.</li>
+        <li>Compute <code>current + delta</code> (or <code>current - delta</code>).</li>
+        <li>PUT the new value with an <code>If-Match: &lt;rev&gt;</code> header.</li>
+        <li>If another writer modified the document in between, the DB returns <code>409 Conflict</code> and the loop retries (up to 10 attempts) by re-fetching.</li>
+    </ol>
+
+    <p class="text-gray-400 mb-4">
+        On success the in-memory instance's field <em>and</em> <code>_rev</code> are refreshed, so any follow-up call observes the same state the DB now holds. Concurrent increments cannot lose updates: every successful PUT was the unique continuation of the rev it read.
+    </p>
+
+    <p class="text-gray-400 mb-6">
+        Under extreme contention all 10 retries can fail; the call returns an error like <code>"increment failed: Atomic update of users.view_count failed after 10 attempts (too much contention)"</code> instead of silently dropping the update. Callers can retry, queue the work, or back off as they prefer.
+    </p>
 
     <h3 class="text-lg font-semibold text-white mb-3">Bulk attribute updates</h3>
     <p class="text-gray-400 mb-4">

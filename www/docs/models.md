@@ -811,9 +811,9 @@ user = User.find("user_id");
 user.name = "New Name";
 user.update();
 
-# Atomic increment/decrement
+# Atomic increment/decrement (CAS via `_rev` with bounded retry)
 user.increment("view_count");      # +1
-user.increment("view_count", 5);  # +5
+user.increment("view_count", 5);   # +5
 user.decrement("stock");           # -1
 
 # Update timestamp only
@@ -822,6 +822,27 @@ user.touch();  # Updates _updated_at
 # Refresh from database
 user.reload();
 ```
+
+### How `increment` / `decrement` stay atomic under concurrency
+
+`increment` and `decrement` are **not** plain read-modify-writes on the in-memory
+instance — each call drives an optimistic compare-and-swap loop against SoliDB:
+
+1. Re-fetch the document to read the current field value and its `_rev`.
+2. Compute `current + delta` (or `current - delta`).
+3. PUT the new value with an `If-Match: <rev>` header.
+4. If another writer modified the document in between, the DB returns
+   `409 Conflict` and the loop retries (up to 10 attempts) by re-fetching.
+
+On success the in-memory instance's field **and** `_rev` are refreshed, so any
+follow-up call observes the same state the DB now holds. Concurrent
+increments cannot lose updates: every successful PUT was the unique
+continuation of the rev it read.
+
+If the document is being hit by many writers at once, `increment` may return
+an error like `"increment failed: Atomic update of users.view_count failed
+after 10 attempts (too much contention)"` instead of silently dropping the
+update. Callers can retry, queue the work, or back off as they prefer.
 
 ### Bulk attribute updates: `.save(hash)` and `.update(hash)`
 

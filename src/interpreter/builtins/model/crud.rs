@@ -678,7 +678,20 @@ fn exec_document_request(
     url: String,
     body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
+    exec_document_request_with_headers(method, url, body, &[])
+}
+
+/// Same as `exec_document_request` but allows passing extra request headers
+/// (used for `If-Match` on conditional PUTs).
+fn exec_document_request_with_headers(
+    method: reqwest::Method,
+    url: String,
+    body: Option<serde_json::Value>,
+    extra_headers: &[(&'static str, String)],
+) -> Result<serde_json::Value, String> {
     let client = get_http_client().clone();
+    let extra: Vec<(&'static str, String)> =
+        extra_headers.iter().map(|(k, v)| (*k, v.clone())).collect();
 
     run_db_future(async move {
         let mut request = apply_db_auth(client.request(method, &url));
@@ -686,6 +699,9 @@ fn exec_document_request(
             request = request
                 .header("Content-Type", "application/json")
                 .body(b.to_string());
+        }
+        for (k, v) in &extra {
+            request = request.header(*k, v.as_str());
         }
 
         let resp = request
@@ -767,6 +783,81 @@ pub fn exec_update(
         }
     }
     result
+}
+
+/// Conditional PUT with an `If-Match: <expected_rev>` header. SoliDB returns
+/// HTTP 409 with a "has been modified" message when the revision no longer
+/// matches; callers use that to drive a CAS retry loop.
+pub fn exec_update_if_match(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+    expected_rev: &str,
+) -> Result<serde_json::Value, String> {
+    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
+    let headers = [("If-Match", expected_rev.to_string())];
+    exec_document_request_with_headers(
+        reqwest::Method::PUT,
+        url,
+        Some(document),
+        &headers,
+    )
+}
+
+/// True if `err` is the rev-mismatch surface of `exec_update_if_match`.
+pub fn is_rev_mismatch_error(err: &str) -> bool {
+    err.contains("HTTP 409") && err.contains("has been modified")
+}
+
+/// Atomically apply `delta` to a numeric `field` on document `key` in
+/// `collection`, using a fetch + If-Match CAS retry loop. Returns the new
+/// integer value and the resulting `_rev` so the caller can refresh the
+/// in-memory instance.
+pub fn cas_field_delta(
+    collection: &str,
+    key: &str,
+    field: &str,
+    delta: i64,
+) -> Result<(i64, String), String> {
+    const MAX_ATTEMPTS: usize = 10;
+
+    for _ in 0..MAX_ATTEMPTS {
+        let current_doc = exec_get(collection, key)?;
+        let rev = current_doc
+            .get("_rev")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("Document '{}/{}' has no _rev field", collection, key))?
+            .to_string();
+        let current_value = current_doc
+            .get(field)
+            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
+            .unwrap_or(0);
+        let new_value = current_value + delta;
+
+        let mut body = serde_json::Map::new();
+        body.insert(
+            field.to_string(),
+            serde_json::Value::Number(serde_json::Number::from(new_value)),
+        );
+
+        match exec_update_if_match(collection, key, serde_json::Value::Object(body), &rev) {
+            Ok(resp) => {
+                let new_rev = resp
+                    .get("_rev")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&rev)
+                    .to_string();
+                return Ok((new_value, new_rev));
+            }
+            Err(e) if is_rev_mismatch_error(&e) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err(format!(
+        "Atomic update of {}.{} failed after {} attempts (too much contention)",
+        collection, field, MAX_ATTEMPTS
+    ))
 }
 
 /// Execute a delete with automatic collection creation.

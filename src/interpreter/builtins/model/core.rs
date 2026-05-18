@@ -2934,105 +2934,21 @@ impl Model {
             })),
         );
 
-        // instance.increment(field, amount?) - Increment a numeric field
+        // instance.increment(field, amount?) - Atomically bump a numeric field.
+        // Uses a fetch + If-Match CAS retry loop so concurrent increments cannot
+        // lose updates (see crud::cas_field_delta).
         native_methods.insert(
             "increment".to_string(),
             Rc::new(NativeFunction::new("Model#increment", None, |args| {
-                let instance = match &args[0] {
-                    Value::Instance(inst) => inst.clone(),
-                    _ => return Err("Expected instance".to_string()),
-                };
-                let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    _ => return Err("increment() expects a string field name".to_string()),
-                };
-                let amount = match args.get(2) {
-                    Some(Value::Int(n)) => *n,
-                    Some(Value::Float(n)) => *n as i64,
-                    None => 1,
-                    _ => return Err("increment() amount must be a number".to_string()),
-                };
-
-                let inst_ref = instance.borrow();
-                let collection = class_name_to_collection(&inst_ref.class.name);
-                let key = inst_ref
-                    .get("_key")
-                    .ok_or_else(|| "Instance has no _key field".to_string())?;
-                let key_str = match key {
-                    Value::String(s) => s,
-                    _ => return Err("_key is not a string".to_string()),
-                };
-                let current = match inst_ref.get(&field) {
-                    Some(Value::Int(n)) => n,
-                    Some(Value::Float(n)) => n as i64,
-                    _ => 0,
-                };
-                drop(inst_ref);
-
-                let new_value = current + amount;
-                let mut map = serde_json::Map::new();
-                map.insert(
-                    field.clone(),
-                    serde_json::Value::Number(serde_json::Number::from(new_value)),
-                );
-                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
-                    Ok(_) => {
-                        instance.borrow_mut().set(field, Value::Int(new_value));
-                        Ok(Value::Instance(instance))
-                    }
-                    Err(e) => Err(format!("increment failed: {}", e)),
-                }
+                apply_field_delta(&args, /*sign=*/ 1, "increment")
             })),
         );
 
-        // instance.decrement(field, amount?) - Decrement a numeric field
+        // instance.decrement(field, amount?) - Atomically subtract from a numeric field.
         native_methods.insert(
             "decrement".to_string(),
             Rc::new(NativeFunction::new("Model#decrement", None, |args| {
-                let instance = match &args[0] {
-                    Value::Instance(inst) => inst.clone(),
-                    _ => return Err("Expected instance".to_string()),
-                };
-                let field = match args.get(1) {
-                    Some(Value::String(s)) => s.clone(),
-                    _ => return Err("decrement() expects a string field name".to_string()),
-                };
-                let amount = match args.get(2) {
-                    Some(Value::Int(n)) => *n,
-                    Some(Value::Float(n)) => *n as i64,
-                    None => 1,
-                    _ => return Err("decrement() amount must be a number".to_string()),
-                };
-
-                let inst_ref = instance.borrow();
-                let collection = class_name_to_collection(&inst_ref.class.name);
-                let key = inst_ref
-                    .get("_key")
-                    .ok_or_else(|| "Instance has no _key field".to_string())?;
-                let key_str = match key {
-                    Value::String(s) => s,
-                    _ => return Err("_key is not a string".to_string()),
-                };
-                let current = match inst_ref.get(&field) {
-                    Some(Value::Int(n)) => n,
-                    Some(Value::Float(n)) => n as i64,
-                    _ => 0,
-                };
-                drop(inst_ref);
-
-                let new_value = current - amount;
-                let mut map = serde_json::Map::new();
-                map.insert(
-                    field.clone(),
-                    serde_json::Value::Number(serde_json::Number::from(new_value)),
-                );
-                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
-                    Ok(_) => {
-                        instance.borrow_mut().set(field, Value::Int(new_value));
-                        Ok(Value::Instance(instance))
-                    }
-                    Err(e) => Err(format!("decrement failed: {}", e)),
-                }
+                apply_field_delta(&args, /*sign=*/ -1, "decrement")
             })),
         );
 
@@ -3137,6 +3053,49 @@ impl Model {
             ..Default::default()
         };
         env.define("Model".to_string(), Value::Class(Rc::new(model_class)));
+    }
+}
+
+/// Shared body for `Model#increment` / `Model#decrement`. Resolves the
+/// instance + field + amount from `args`, then drives a fetch + If-Match
+/// CAS retry loop via `crud::cas_field_delta`. On success, refreshes the
+/// in-memory instance's field value and `_rev` so subsequent reads observe
+/// the same state the DB now holds.
+fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, String> {
+    let instance = match &args[0] {
+        Value::Instance(inst) => inst.clone(),
+        _ => return Err("Expected instance".to_string()),
+    };
+    let field = match args.get(1) {
+        Some(Value::String(s)) => s.clone(),
+        _ => return Err(format!("{}() expects a string field name", op_name)),
+    };
+    let amount = match args.get(2) {
+        Some(Value::Int(n)) => *n,
+        Some(Value::Float(n)) => *n as i64,
+        None => 1,
+        _ => return Err(format!("{}() amount must be a number", op_name)),
+    };
+
+    let inst_ref = instance.borrow();
+    let collection = class_name_to_collection(&inst_ref.class.name);
+    let key_str = match inst_ref.get("_key") {
+        Some(Value::String(s)) => s,
+        Some(_) => return Err("_key is not a string".to_string()),
+        None => return Err("Instance has no _key field".to_string()),
+    };
+    drop(inst_ref);
+
+    let delta = sign * amount;
+    match super::crud::cas_field_delta(&collection, &key_str, &field, delta) {
+        Ok((new_value, new_rev)) => {
+            let mut inst_mut = instance.borrow_mut();
+            inst_mut.set(field, Value::Int(new_value));
+            inst_mut.set("_rev".to_string(), Value::String(new_rev));
+            drop(inst_mut);
+            Ok(Value::Instance(instance))
+        }
+        Err(e) => Err(format!("{} failed: {}", op_name, e)),
     }
 }
 

@@ -3708,6 +3708,16 @@ fn call_handler(
         vm_ref.globals.insert("params".to_string(), params_value);
     }
 
+    // Expose the full request hash as a global `req` so actions can omit the
+    // `(req)` parameter when they don't need to destructure the request.
+    interpreter
+        .global_env()
+        .borrow_mut()
+        .define_or_update("req", request_hash.clone());
+    if let Some(vm_ref) = vm.as_deref_mut() {
+        vm_ref.globals.insert("req".to_string(), request_hash.clone());
+    }
+
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
         let oop_result = call_oop_controller_action(
