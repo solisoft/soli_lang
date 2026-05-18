@@ -214,14 +214,30 @@ q = User.where("role = @r", { "r": "admin" }).exists.to_query
                 Atomic Field Updates
             </h3>
             <p class="text-gray-400 mb-4">
-                Atomically increment or decrement a numeric field in the database. The default step is 1.
+                Atomically add or subtract from a numeric field in the database. The default step is 1.
             </p>
             <pre><code class="language-soli text-sm">user = User.find("user_id")
 
-# Atomic increment/decrement
+# Atomic increment/decrement (CAS via `_rev` with bounded retry)
 user.increment("view_count")       # +1
 user.increment("view_count", 5)    # +5
 user.decrement("stock")            # -1</code></pre>
+
+            <p class="text-gray-400 mt-4 mb-2">
+                Each call drives an optimistic compare-and-swap loop against SoliDB rather than a plain read-modify-write on the in-memory instance:
+            </p>
+            <ol class="list-decimal list-inside text-gray-400 mb-4 space-y-1">
+                <li>Re-fetch the document to read the current field value and its <code>_rev</code>.</li>
+                <li>Compute <code>current ± delta</code>.</li>
+                <li>PUT the new value with an <code>If-Match: &lt;rev&gt;</code> header.</li>
+                <li>If another writer raced in between, the DB returns <code>409 Conflict</code> and the loop retries (up to 10 attempts).</li>
+            </ol>
+            <p class="text-gray-400 mb-2">
+                On success the in-memory instance's field <em>and</em> <code>_rev</code> are refreshed. Concurrent increments cannot lose updates &mdash; every successful PUT was the unique continuation of the rev it read.
+            </p>
+            <p class="text-gray-400">
+                Under extreme contention all 10 retries can fail; the call returns an error like <code>"increment failed: Atomic update of users.view_count failed after 10 attempts (too much contention)"</code> instead of silently dropping the update. See <a href="/docs/database/models" class="text-indigo-400 hover:text-indigo-300">Models</a> for the same details from the model-API surface.
+            </p>
         </div>
 
         <div>

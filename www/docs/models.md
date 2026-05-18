@@ -37,7 +37,7 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 ```soli
 # app/controllers/users_controller.sl — no import needed
 class UsersController < Controller
-  fn index(req)
+  fn index
     render("users/index", { "users": User.all })
   end
 end
@@ -255,7 +255,7 @@ Filtering applies to every mass-assign path: `Model.create(hash)`, `Model.update
 For controller-side filtering (when you'd rather hand-pick keys at the boundary), the existing `hash.slice(["a", "b"])` returns a new hash with only the listed keys — handy when you need different whitelists per action:
 
 ```soli
-fn update(req)
+fn update
   let user = User.find(req["params"]["id"]);
   let safe = req["json"].slice(["name", "bio"]);
   user.update(safe);
@@ -430,7 +430,7 @@ end
 
 ```soli
 # POST /contacts/:id/documents (HTML form → redirect+flash)
-def attach_document(req)
+def attach_document
   contact = Contact.find(params.id)
   file = find_uploaded_file(req, "document")
   if file.nil?
@@ -444,7 +444,7 @@ def attach_document(req)
 end
 
 # POST /contacts/:id/document/:blob_id/delete
-def detach_document(req)
+def detach_document
   contact = Contact.find(params.id)
   if contact.detach_document(params.blob_id)
     flash("success", "Document removed.")
@@ -460,7 +460,7 @@ For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `upl
 **Cleanup on destroy** — `before_delete` callbacks aren't yet dispatched by `Model.delete(id)`; call `detach_all_uploads(record)` explicitly until that lands. The helper walks every `uploader(...)` field on the class.
 
 ```soli
-def destroy(req)
+def destroy
   contact = Contact.find(params.id)
   detach_all_uploads(contact) unless contact.nil?
   Contact.delete(params.id)
@@ -1156,19 +1156,19 @@ end
 
 # Usage in controller
 class UsersController < Controller
-  fn index(req)
+  fn index
     # Eager load posts and profiles to avoid N+1 queries
     users = User.includes("posts", "profile").all;
     render("users/index", { "users": users })
   end
 
-  fn show(req)
+  fn show
     id = req["params"]["id"];
     user = User.includes("posts").find(id);
     render("users/show", { "user": user })
   end
 
-  fn active(req)
+  fn active
     # Find active users who have at least one post
     users = User.join("posts")
       .where("active = @a", { "a": true })
@@ -1178,7 +1178,7 @@ class UsersController < Controller
     render("users/active", { "users": users })
   end
 
-  fn create(req)
+  fn create
     user = User.create({
       "name": req["params"]["name"],
       "email": req["params"]["email"],
@@ -1317,7 +1317,7 @@ In production (without `--dev`), `dev_queries()` always returns an empty array �
 ### Example: Controller
 
 ```soli
-fn index(req)
+fn index
   users = User.where("doc.active == true").all;
   posts = Post.includes("author").all;
 

@@ -45,7 +45,7 @@ For `multiple: true` uploaders, you also get `:blob_id`-suffixed variants for sh
 The contacts edit form posts multipart to `/contacts/:id`. The controller's `update` action handles the photo without touching multipart parsing, base64, or SoliDB:
 
 ```soli
-def update(req)
+def update
   @contact = Contact.find(params.id)
   if @contact.update(this._permit(params))
     return @contact.detach_photo() if params["remove_photo"] == "1"

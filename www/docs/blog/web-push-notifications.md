@@ -82,7 +82,7 @@ The browser needs the public key in raw byte form to call `pushManager.subscribe
 ```soli
 # app/controllers/push_controller.sl
 
-fn vapid_public_key(req)
+fn vapid_public_key
   {"status": 200, "json": {"public_key": getenv("VAPID_PUBLIC_KEY")}}
 end
 ```
@@ -145,7 +145,7 @@ end
 
 ```soli
 # app/controllers/push_controller.sl
-fn subscribe(req)
+fn subscribe
   let json = req["json"]
 
   PushSubscription.create({
@@ -168,7 +168,7 @@ This is the line that replaces `web-push`. Look up the subscription, hand it to 
 ```soli
 # app/controllers/notifications_controller.sl
 
-fn notify(req)
+fn notify
   let sub = PushSubscription.find(req["json"]["sub_id"])
 
   let result = vapid_send(

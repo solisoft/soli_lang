@@ -351,7 +351,7 @@ end</code></pre>
         </p>
 
         <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < Controller
-  def show(req)
+  def show
     @post = Post.find(req.params["id"])
     @comments = Comment.where({"post_id": @post.id}).all
     render("posts/show")    # view sees `post` and `comments`

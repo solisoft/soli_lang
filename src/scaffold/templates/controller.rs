@@ -17,8 +17,8 @@ class {controller_name} < Controller
   }}
 
   # GET /{resource}
-  def index(req)
-    {model_var}s = {model_name}.all()
+  def index
+    {model_var}s = {model_name}.all
     render("{resource}/index", {{
       "{model_var}s": {model_var}s,
       "title": "{controller_name}"
@@ -26,7 +26,7 @@ class {controller_name} < Controller
   end
 
   # GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
-  def show(req)
+  def show
     {model_var} = {model_name}.find(params["id"])
     render("{resource}/show", {{
       "{model_var}": {model_var},
@@ -35,15 +35,15 @@ class {controller_name} < Controller
   end
 
   # GET /{resource}/new
-  def new(req)
+  def new
+    {model_var} = {model_name}.new()
     render("{resource}/new", {{
-      "{model_var}": {{}},
-      "title": "New {model_name}"
+      "{model_var}": {model_var}
     }})
   end
 
-  # GET /{resource}/:id/edit — Model.find raises on miss, framework maps to 404.
-  def edit(req)
+  # GET /{resource}/:id/edit
+  def edit
     {model_var} = {model_name}.find(params["id"])
     render("{resource}/edit", {{
       "{model_var}": {model_var},
@@ -52,7 +52,7 @@ class {controller_name} < Controller
   end
 
   # POST /{resource}
-  def create(req)
+  def create
     permitted = this._permit_params(params)
     {model_var} = {model_name}.create(permitted)
     if {model_var}._errors
@@ -65,7 +65,7 @@ class {controller_name} < Controller
   end
 
   # PATCH/PUT /{resource}/:id
-  def update(req)
+  def update
     id = params["id"]
     permitted = this._permit_params(params)
     {model_name}.update(id, permitted)
@@ -73,7 +73,7 @@ class {controller_name} < Controller
   end
 
   # DELETE /{resource}/:id
-  def delete(req)
+  def delete
     id = params["id"]
     {model_name}.delete(id)
     return redirect("/{resource}")

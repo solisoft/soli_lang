@@ -7,7 +7,7 @@ SoliLang provides built-in JWT (JSON Web Token) functions for stateless authenti
 Use `jwt_sign()` to create tokens for authenticated users:
 
 ```soli
-fn login(req)
+fn login
   data = req["json"];
   username = data["username"];
   password = data["password"];
@@ -40,7 +40,7 @@ end
 Use `jwt_verify()` to validate tokens and extract claims:
 
 ```soli
-fn authenticate_middleware(req)
+fn authenticate_middleware
   auth_header = req["headers"]["Authorization"];
 
   if (auth_header == null || !Regex.matches("^Bearer ", auth_header))
@@ -65,7 +65,7 @@ end
 `jwt_decode_unsafe()` reads token claims **without** verification. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `jwt_verify` response. **Never trust these claims for authentication** — use `jwt_verify(token, secret)` for that.
 
 ```soli
-fn get_token_info(req)
+fn get_token_info
   token = req["headers"]["Authorization"];
   token = Regex.replace("^Bearer ", token, "");
 

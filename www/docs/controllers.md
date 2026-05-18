@@ -1,6 +1,6 @@
 # Controllers
 
-Controllers handle HTTP requests and return responses. SoliLang supports OOP-style controllers with class inheritance, before/after action hooks, and request context injection.
+Controllers handle HTTP requests and return responses. SoliLang supports OOP-style controllers with class inheritance, before/after action hooks, and automatic request context injection.
 
 ## Creating a Controller
 
@@ -9,14 +9,14 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 ```soli
 # app/controllers/users_controller.sl
 class UsersController < Controller
-  fn index(req)
+  fn index
     render("users/index", {
       "title": "Users",
       "users": []
     })
   end
 
-  fn show(req)
+  fn show
     user_id = req.params["id"];
     render("users/show", {
       "title": "User Details",
@@ -26,19 +26,21 @@ class UsersController < Controller
 end
 ```
 
+> **`req` is implicit.** The request hash is automatically available as a global `req` variable — you don't need to declare it as a parameter. When you do need to destructure the request (e.g. `req.params`), just reference it directly. The explicit `def index` form still works for backward compatibility.
+
 > **No imports needed for models.** Files under `app/models/` are auto-loaded by `soli serve` and the REPL, so classes like `User`, `Post`, etc. are available inside controller actions without `import`. (If you run a controller file standalone via `soli run`, add the imports back.) The linter warns about redundant imports via `style/redundant-model-import`.
 
 ## OOP Controller Architecture
 
 ### Class-Based Controllers
 
-Controllers are classes that extend the base `Controller` class:
+Controllers are classes that extend the base `Controller` class. Actions take no explicit parameters — `req` is available automatically:
 
 ```soli
 class PostsController < Controller
   # Actions go here
-  fn index(req) end
-  fn show(req) end
+  fn index end
+  fn show end
 end
 ```
 
@@ -70,19 +72,13 @@ Each public function in a controller is an action:
 
 ```soli
 class PostsController < Controller
-  fn index(req) end
-  fn show(req) end
-  fn new(req) end
-  fn create(req) end
-  fn edit(req) end
-  fn update(req) end
-  fn delete(req) end
-
-  # Private helper methods (not exposed as actions)
-  fn _validate_post(req) -> Bool
-    req.params["title"] != null
-  end
-end
+  fn index end
+  fn show end
+  fn new end
+  fn create end
+  fn edit end
+  fn update end
+  fn delete end
 ```
 
 **Note:** Methods starting with `_` are private and not exposed as routes.
@@ -114,7 +110,7 @@ class ApplicationController < Controller
   }
 
   # Shared helper method available to all subclasses
-  fn _current_user(req)
+  fn _current_user
     req["current_user"]
   end
 end
@@ -140,7 +136,7 @@ class PostsController < ApplicationController
     }
   }
 
-  fn index(req)
+  fn index
     # Can use inherited _current_user helper
     user = this._current_user(req);
     posts = Post.all;
@@ -150,7 +146,7 @@ class PostsController < ApplicationController
     })
   end
 
-  fn show(req)
+  fn show
     # req["post"] is set by before_action
     render("posts/show", { "post": req["post"] })
   end
@@ -180,7 +176,7 @@ end
 
 # app/controllers/admin_users_controller.sl
 class AdminUsersController < AdminController
-  fn index(req)
+  fn index
     # Inherits: ApplicationController's auth + AdminController's admin check
     render("admin/users/index", { "users": User.all })
   end
@@ -265,7 +261,7 @@ this.after_action(:create, :update) = fn(req, response) {
 Access request data through the `req` parameter:
 
 ```soli
-fn create(req)
+fn create
   # Path parameters
   id = req.params["id"];
 
@@ -306,7 +302,7 @@ The request object is automatically injected into your controller:
 
 ```soli
 class PostsController < Controller
-  fn show(req)
+  fn show
     # Access params directly
     id = req.params["id"];
 
@@ -323,7 +319,7 @@ end
 ### Render a Template
 
 ```soli
-fn index(req)
+fn index
   render("home/index", {
     "title": "Welcome",
     "message": "Hello!"
@@ -337,7 +333,7 @@ Any field set on the controller instance during an action — via either `this.f
 
 ```soli
 class PostsController < Controller
-  fn show(req)
+  fn show
     @post = Post.find(req.params["id"]);
     @comments = Comment.where({"post_id": @post.id}).all;
     render("posts/show")    # view sees `post` and `comments` with no data hash
@@ -397,12 +393,12 @@ class PostsController < Controller
     this.layout = "posts";  # Uses layouts/posts.html.slv
   }
 
-  fn show(req)
+  fn show
     render("posts/show", { "post": req["post"] })
   end
 
   # Skip layout for specific action
-  fn json_only(req)
+  fn json_only
     render_json({ "data": "value" }, layout: false)
   end
 end
@@ -411,14 +407,14 @@ end
 ### Redirect
 
 ```soli
-fn create(req)
+fn create
   # Process form data...
 
   # Redirect to another page
   redirect("/users")
 end
 
-fn update(req)
+fn update
   # After update, redirect to show page
   user_id = req.params["id"];
   redirect("/users/" + user_id)
@@ -430,7 +426,7 @@ end
 For trusted external destinations, use `redirect_external()` explicitly:
 
 ```soli
-fn oauth_start(req)
+fn oauth_start
   redirect_external("https://github.com/login/oauth/authorize")
 end
 ```
@@ -438,7 +434,7 @@ end
 To send the user back where they came from, pass the `:back` symbol. Soli reads the `Referer` header and only honors it when scheme + host match the current request — external referers (or a missing/malformed header) fall back to `/`.
 
 ```soli
-fn destroy(req)
+fn destroy
   Comment.find(req.params["id"]).delete()
   redirect(:back)
 end
@@ -447,7 +443,7 @@ end
 ### JSON Response
 
 ```soli
-fn api_users(req)
+fn api_users
   render_json({
     "users": [
       {"id": 1, "name": "Alice"},
@@ -478,7 +474,7 @@ For a reusable model-side shape, define an `as_json` method on the Model subclas
 ### Plain Text
 
 ```soli
-fn ping(req)
+fn ping
   render_text("pong")
 end
 ```
@@ -488,7 +484,7 @@ end
 For actions that need to serve multiple formats (HTML, JSON, CSV, PDF, XLSX, partial HTMX, XHR-only JSON, …), use `respond_to`. It picks the right branch based on the request and falls back to `406 Not Acceptable` when no registered format matches.
 
 ```soli
-def show(req) {
+def show
   post = Post.find(req["params"]["id"]);
   respond_to(req, fn(format) {
     format.html(fn()  render("posts/show", {"post": post}));
@@ -527,7 +523,7 @@ respond_to(req, {
 ### Error Response
 
 ```soli
-fn show(req)
+fn show
   id = req.params["id"];
   if id == "" {
     return halt(400, "Missing ID");
@@ -555,7 +551,7 @@ class PostsController < Controller
     }
   }
 
-  fn show(req)
+  fn show
     # Access the post set by before_action
     post = req["post"];
 
@@ -563,7 +559,7 @@ class PostsController < Controller
   end
 
   # Access request parameters
-  fn _get_id(req) -> String
+  fn _get_id -> String
     req.params["id"]
   end
 end
@@ -574,7 +570,7 @@ end
 Validate and sanitize input:
 
 ```soli
-fn create(req)
+fn create
   params = req.form;
   clean_params = {
     "name": params["name"] ?? "",

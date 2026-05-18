@@ -106,7 +106,7 @@ Here's a complete controller action tying it all together:
 ```soli
 # app/controllers/users_controller.sl
 
-fn create(req)
+fn create
   schema = {
     "username": V.string().required()
       .min_length(3)

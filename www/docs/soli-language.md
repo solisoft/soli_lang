@@ -1815,7 +1815,7 @@ In MVC controllers, fields set on the controller (via `@foo = ...` or `this.foo 
 
 ```soli
 class PostsController < Controller
-  fn show(req)
+  fn show
     @post = Post.find(req.params["id"]);
     @related = Post.where({"category_id": @post.category_id}).limit(5);
     render("posts/show")    # no data hash — view sees `post` and `related`

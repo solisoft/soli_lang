@@ -4358,7 +4358,7 @@ let buf = images[1].to_buffer()
 
 **Thumbnail generation in a controller:**
 ```soli
-def upload(req)
+def upload
   file = req.files["avatar"]
   # `file["data"]` is a base64-encoded string. Image.from_buffer expects
   # base64, so pass it through directly. Use `file["size"]` for the raw

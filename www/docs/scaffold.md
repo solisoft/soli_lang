@@ -83,17 +83,17 @@ Standard CRUD actions:
 
 ```soli
 class UsersController < Controller
-    def index(req)
+    def index
         users = Users.all
         render("users/index", { "users": users })
     end
 
-    def show(req)
+    def show
         user = Users.find(params["id"])
         render("users/show", { "user": user })
     end
 
-    def create(req)
+    def create
         permitted = this._permit_params(params)
         user = Users.create(permitted)
         if user._errors
@@ -102,14 +102,14 @@ class UsersController < Controller
         return redirect("/users")
     end
 
-    def update(req)
+    def update
         id = params["id"]
         permitted = this._permit_params(params)
         Users.update(id, permitted)
         return redirect("/users")
     end
 
-    def delete(req)
+    def delete
         id = params["id"]
         Users.delete(id)
         return redirect("/users")

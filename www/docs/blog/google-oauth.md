@@ -30,7 +30,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```soli
 # app/controllers/auth_controller.sl
 
-def google_login(req)
+def google_login
   client_id = getenv("GOOGLE_CLIENT_ID")
   redirect_uri = getenv("GOOGLE_REDIRECT_URI")
   scope = "openid email profile"
@@ -50,7 +50,7 @@ def google_login(req)
   }
 end
 
-def google_callback(req)
+def google_callback
   code = req["query_params"]["code"]
   
   if code == null
@@ -181,7 +181,7 @@ def generate_state()
   hex_encode(random_bytes)
 end
 
-def google_login(req)
+def google_login
   state = generate_state()
   req["session"]["oauth_state"] = state
   
@@ -195,7 +195,7 @@ def google_login(req)
   {"status": 302, "headers": {"Location": auth_url}}
 end
 
-def google_callback(req)
+def google_callback
   received_state = req["query_params"]["state"]
   stored_state = req["session"]["oauth_state"]
   

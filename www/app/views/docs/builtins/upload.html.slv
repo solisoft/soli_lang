@@ -201,7 +201,7 @@ let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jp
 set_solidb_address("http://localhost:8529")
 
 # Upload controller
-def upload_avatar(req)
+def upload_avatar
     let collection = "avatars"
 
     let result = upload_to_solidb(req, collection, "avatar")
@@ -229,7 +229,7 @@ def upload_avatar(req)
 end
 
 # Get file controller
-def get_file(req)
+def get_file
     let blob_id = req["params"]["id"]
     let db = Solidb("localhost:8529", "myapp")
 
@@ -267,7 +267,7 @@ end
 uploads("users", "avatar")  # auto-mounts GET/POST/DELETE /users/:id/avatar
 
 # app/controllers/users_controller.sl — upload from a regular edit form
-def update(req)
+def update
     @user = User.find(params.id)
     if @user.update(this._permit(params))
         file = find_uploaded_file(req, "avatar")

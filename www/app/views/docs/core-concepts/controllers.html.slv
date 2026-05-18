@@ -6,6 +6,7 @@
         <p class="text-xl text-gray-300 leading-8">
             Controllers are the heart of your application. They handle HTTP requests, process data, and determine the response.
             Soli supports both modern class-based controllers and simple function-based handlers.
+            The request hash is automatically available as <code>req</code> — no parameter declaration needed.
         </p>
     </div>
 
@@ -19,7 +20,7 @@
     this.layout = "layouts/posts";
   }
 
-  def index(req)
+  def index
     posts = Post.all
     render("posts/index", {
       "title": "All Posts",
@@ -27,7 +28,7 @@
     })
   end
 
-  def show(req)
+  def show
     id = req.params["id"]
     post = Post.find(id)
     if post == null
@@ -134,11 +135,11 @@ class PostsController < BaseController
     }
   }
 
-  def index(req)
+  def index
     render("posts/index", { "posts": Post.all })
   end
 
-  def show(req)
+  def show
     render("posts/show", { "post": req["post"] })
   end
 end</code></pre>
@@ -204,7 +205,7 @@ resources("/admin/merchants", "admin/merchants")</code></pre>
     </p>
 
     <pre data-filename="app/controllers/simple_controller.sl"><code class="language-soli text-sm"># GET /health
-def health(req)
+def health
   {
     "status": 200,
     "headers": {"Content-Type": "application/json"},
@@ -346,7 +347,7 @@ halt(403, "Forbidden")</code></pre>
                 <p class="text-gray-400 text-sm mb-3">
                     Rails-style content negotiation. Picks the right branch based on URL extension, <code>?format=</code>, HTMX/XHR headers, or the <code>Accept</code> header (with q-values). Falls back to <code>406 Not Acceptable</code> if nothing matches and no <code>any</code> branch is registered.
                 </p>
-                <pre data-filename="DSL form"><code class="language-soli text-sm">def show(req)
+                <pre data-filename="DSL form"><code class="language-soli text-sm">def show
   post = Post.find(req["params"]["id"])
   respond_to(req, fn(format) {
     format.html(fn()  render("posts/show", { "post": post }))

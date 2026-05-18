@@ -80,7 +80,7 @@ post("/contact", "home#contact");
 Create controllers in `app/controllers/`:
 
 ```soli
-fn index(req)
+fn index
   return render("home/index", {
     "title": "Welcome"
   })

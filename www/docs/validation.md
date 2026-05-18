@@ -194,14 +194,14 @@ result = validate({
 ```soli
 # app/controllers/users_controller.sl
 
-fn new(req)
+fn new
   {
     "status": 200,
     "body": render("users/new.html", {})
   }
 end
 
-fn create(req)
+fn create
   schema = {
     "username": V.string().required()
       .min_length(3)

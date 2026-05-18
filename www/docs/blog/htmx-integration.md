@@ -83,19 +83,19 @@ Let's build a simple todo list with HTMx:
 ```soli
 # app/controllers/todos_controller.sl
 
-fn index(req)
+fn index
   todos = Todo.all
   render("todos/index", {"todos": todos})
 end
 
-fn create(req)
+fn create
   params = req["all"]
   todo = Todo.create({"title": params["title"], "done": false})
   
   render("todos/_todo", {"todo": todo})
 end
 
-fn toggle(req)
+fn toggle
   id = req["all"]["id"]
   todo = Todo.find(id)
   todo["done"] = !todo["done"]

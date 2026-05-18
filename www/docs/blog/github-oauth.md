@@ -40,7 +40,7 @@ Load these with `getenv()` — never hardcode secrets.
 ```soli
 # app/controllers/auth_controller.sl
 
-def github_login(req)
+def github_login
   state = Crypto.random_hex(32)
   req["session"]["oauth_state"] = state
 
@@ -53,7 +53,7 @@ def github_login(req)
   {"status": 302, "headers": {"Location": auth_url}}
 end
 
-def github_callback(req)
+def github_callback
   params = req["query_params"]
 
   # Verify state to prevent CSRF
@@ -210,7 +210,7 @@ Once users can log in, you need to protect routes that require authentication:
 ```soli
 # app/middleware/require_login.sl
 
-def call(req)
+def call
   if req["session"]["user_id"] == null
     return {"status": 302, "headers": {"Location": "/auth/github"}}
   end
@@ -231,7 +231,7 @@ end
 ```soli
 # app/controllers/auth_controller.sl
 
-def logout(req)
+def logout
   session_destroy()
   {"status": 302, "headers": {"Location": "/"}}
 end
@@ -247,7 +247,7 @@ get "/logout", "auth#logout"
 If your app also has an API, you can issue a JWT after OAuth login instead of (or in addition to) a session:
 
 ```soli
-def github_callback_api(req)
+def github_callback_api
   # ... same OAuth flow as above ...
 
   user = find_or_create_github_user(github_user)

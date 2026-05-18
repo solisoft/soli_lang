@@ -259,7 +259,7 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-2">Short-TTL fragment caching</h3>
             <p class="text-gray-400 mb-3">Cache rendered fragments or aggregated views for a few seconds to absorb traffic spikes without going stale.</p>
-            <pre data-filename="app/controllers/dashboard_controller.sl"><code class="language-soli text-sm">fn index(req) {
+            <pre data-filename="app/controllers/dashboard_controller.sl"><code class="language-soli text-sm">fn index {
   stats = Cache.fetch("dashboard:stats", 30) do
     compute_dashboard_stats()
   end

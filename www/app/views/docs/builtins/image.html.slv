@@ -573,7 +573,7 @@ let buf = images[1].to_buffer()</code></pre>
         <section class="mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Thumbnail generation in a controller</h3>
-                <pre><code class="language-soli text-sm">fn upload(req)
+                <pre><code class="language-soli text-sm">fn upload
   file = req.files["avatar"]
   # `file["data"]` is a base64-encoded string. Image.from_buffer expects
   # base64, so pass it through directly. Use `file["size"]` for the raw

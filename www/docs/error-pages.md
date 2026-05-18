@@ -165,7 +165,7 @@ If your application already uses Tailwind CSS, you can use Tailwind classes:</``
 You can also handle errors explicitly in your controllers by returning appropriate responses:
 
 ```soli
-fn show(req)
+fn show
   id = req["params"]["id"]
   user = database.get_user(id)
   

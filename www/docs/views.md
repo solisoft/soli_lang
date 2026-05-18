@@ -227,7 +227,7 @@ On the actual click, the browser sends `If-None-Match: "<etag>"`. If the rendere
 **Override per response** when the defaults don't fit. Set your own `Cache-Control` (and optionally `ETag`) in the response headers and the framework defaults step aside:
 
 ```soli
-fn downloads(req)
+fn downloads
   # One-shot download — never reuse; always re-fetch.
   return {
     "status": 200,
@@ -720,7 +720,7 @@ Wrap views in a common layout:
 Use layout with render:
 
 ```soli
-fn index(req)
+fn index
   render("home/index", {
     "title": "Welcome"
   }, "layouts/application")
@@ -798,7 +798,7 @@ and returns `null`.
 Controllers pass data to views:
 
 ```soli
-fn show(req)
+fn show
   render("posts/show", {
     "title": "My Post",
     "post": post,

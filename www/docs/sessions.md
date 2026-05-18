@@ -11,7 +11,7 @@ Sessions are automatically available in your controllers. The session cookie is 
 ### Reading Session Data
 
 ```soli
-fn profile(req)
+fn profile
   # Check if user is logged in
   if session_get("authenticated") != true
     return {"status": 401, "body": "Please log in"};
@@ -30,7 +30,7 @@ end
 ### Writing Session Data
 
 ```soli
-fn login(req)
+fn login
   data = req["json"];
   username = data["username"];
 
@@ -57,7 +57,7 @@ end
 ### Deleting Session Data
 
 ```soli
-fn remove_item(req)
+fn remove_item
   removed = session_delete("temporary_data");
   print("Removed:", removed);
   {"status": 200}
@@ -71,7 +71,7 @@ end
 Always regenerate the session ID after successful authentication to prevent session fixation:
 
 ```soli
-fn login(req)
+fn login
   data = req["json"];
 
   if verify_credentials(data["username"], data["password"])
@@ -92,7 +92,7 @@ end
 ### Destroy Session on Logout
 
 ```soli
-fn logout(req)
+fn logout
   session_destroy();
 
   {
@@ -108,7 +108,7 @@ Create a reusable authentication middleware:
 
 ```soli
 # app/middleware/auth.sl
-fn require_auth(req)
+fn require_auth
   if !session_has("authenticated") || session_get("authenticated") != true
     return {
       "status": 401,

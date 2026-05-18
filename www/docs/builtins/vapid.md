@@ -189,7 +189,7 @@ soli run bin/vapid_keys.sl >> .env
 
 ```soli
 # app/controllers/notifications_controller.sl
-fn notify(req)
+fn notify
   let subscription = PushSubscription.find(req["json"]["sub_id"])
   let result = vapid_send(
     {
