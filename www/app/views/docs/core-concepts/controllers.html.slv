@@ -7,6 +7,8 @@
             Controllers are the heart of your application. They handle HTTP requests, process data, and determine the response.
             Soli supports both modern class-based controllers and simple function-based handlers.
             The request hash is automatically available as <code>req</code> — no parameter declaration needed.
+            When no explicit <code>render</code> is called, the matching view template is auto-rendered
+            with all <code>@</code> instance variables exposed as view locals.
         </p>
     </div>
 
