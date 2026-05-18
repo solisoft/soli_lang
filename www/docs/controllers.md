@@ -129,7 +129,7 @@ class PostsController < ApplicationController
 
     # Run before_action only for specific actions
     this.before_action(:show, :edit, :update, :delete) = fn(req) {
-      @post = Post.find(req.params["id"])    # raises 404 if not found
+      @post = Post.find(params["id"])    # raises 404 if not found
       req
     }
   }
@@ -200,7 +200,7 @@ class PostsController < Controller
 
     # Run only for specific actions
     this.before_action(:show, :edit, :delete) = fn(req) {
-      @post = Post.find(req.params["id"])    # raises 404 if not found
+      @post = Post.find(params["id"])    # raises 404 if not found
       req
     }
   }
@@ -251,7 +251,7 @@ Access request data through the `req` parameter:
 ```soli
 fn create
   # Path parameters
-  id = req.params["id"];
+  id = params["id"];
 
   # Query string parameters
   page = req.query["page"];
@@ -292,7 +292,7 @@ The request object is automatically injected into your controller:
 class PostsController < Controller
   fn show
     # Access params directly
-    id = req.params["id"];
+    id = params["id"];
 
     # Or access via this (after injection)
     post = this.get_controller_field(req, "post");
@@ -322,7 +322,7 @@ Any field set on the controller instance during an action — via either `this.f
 ```soli
 class PostsController < Controller
   fn show
-    @post = Post.find(req.params["id"]);
+    @post = Post.find(params["id"]);
     @comments = Comment.where({"post_id": @post.id}).all;
     render("posts/show")    # view sees `post` and `comments` with no data hash
   end
@@ -404,7 +404,7 @@ end
 
 fn update
   # After update, redirect to show page
-  user_id = req.params["id"];
+  user_id = params["id"];
   redirect("/users/" + user_id)
 end
 ```
@@ -423,7 +423,7 @@ To send the user back where they came from, pass the `:back` symbol. Soli reads 
 
 ```soli
 fn destroy
-  Comment.find(req.params["id"]).delete()
+  Comment.find(params["id"]).delete()
   redirect(:back)
 end
 ```
@@ -512,7 +512,7 @@ respond_to(req, {
 
 ```soli
 fn show
-  id = req.params["id"];
+  id = params["id"];
   if id == "" {
     return halt(400, "Missing ID");
   }
@@ -534,7 +534,7 @@ class PostsController < Controller
     this.layout = "posts";
     this.before_action = fn(req) {
       # Store data on request for later use
-      req["post"] = Post.find(req.params["id"]);
+      req["post"] = Post.find(params["id"]);
       req
     }
   }
@@ -548,7 +548,7 @@ class PostsController < Controller
 
   # Access request parameters
   fn _get_id -> String
-    req.params["id"]
+    params["id"]
   end
 end
 ```

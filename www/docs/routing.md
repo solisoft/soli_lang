@@ -37,7 +37,7 @@ Access parameters in your controller:
 
 ```soli
 fn show
-  user_id = req.params["id"];
+  user_id = params["id"];
   # ...
 end
 ```

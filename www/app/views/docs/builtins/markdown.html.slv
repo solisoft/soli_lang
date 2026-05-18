@@ -140,7 +140,7 @@ html = Markdown.to_html(md)
                 <h3 class="text-lg font-semibold text-white mb-3">Rendering Content from a Database</h3>
                 <pre data-filename="Example"><code class="language-soli text-sm"># In a controller action
 def show
-  post = Post.find(req.params["id"])
+  post = Post.find(params["id"])
   html_body = Markdown.to_safe_html(post.body)
 
   render("posts/show", { post: post, html_body: html_body })
@@ -227,7 +227,7 @@ We build **great** software.
 
 Tags: &lt;% for tag in tags %&gt;**&lt;%= tag %&gt;** &lt;% end %&gt;</code></pre>
                 <pre data-filename="Controller"><code class="language-soli text-sm">def show
-  post = Post.find(req.params["id"])
+  post = Post.find(params["id"])
   render("posts/show", {
     title: post.title,
     published_at: post.published_at,

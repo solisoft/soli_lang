@@ -344,9 +344,9 @@ println("seeded " + str(len(db.list("users"))) + " users")</code></pre>
             <p class="text-gray-400 mb-3">Always pass user input through <code class="text-emerald-400">bindvars</code> &mdash; never interpolate it into the SDBQL string.</p>
             <pre data-filename="Safe"><code class="language-soli text-sm">db.query(
   "FOR u IN users FILTER u.email == @email LIMIT 1 RETURN u",
-  { "email": req.params["email"] }
+  { "email": params["email"] }
 )</code></pre>
-            <pre data-filename="Unsafe — do not do this" class="mt-3"><code class="language-soli text-sm">db.query("FOR u IN users FILTER u.email == '" + req.params["email"] + "' RETURN u")</code></pre>
+            <pre data-filename="Unsafe — do not do this" class="mt-3"><code class="language-soli text-sm">db.query("FOR u IN users FILTER u.email == '" + params["email"] + "' RETURN u")</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">

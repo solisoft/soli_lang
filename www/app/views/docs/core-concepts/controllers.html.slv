@@ -28,7 +28,7 @@
   end
 
   def show
-    @post = Post.find(req.params["id"])    # raises 404 if not found
+    @post = Post.find(params["id"])    # raises 404 if not found
   end
 end</code></pre>
 
@@ -65,7 +65,7 @@ end</code></pre>
 
     # Run before SPECIFIC actions only
     this.before_action(:show, :edit) = fn(req) {
-      @post = Post.find(req.params["id"])    # raises 404 if not found
+      @post = Post.find(params["id"])    # raises 404 if not found
       req
     }
 
@@ -116,7 +116,7 @@ class PostsController < BaseController
   static {
     # Add controller-specific hook (runs after parent's before_action)
     this.before_action(:show, :edit) = fn(req) {
-      @post = Post.find(req.params["id"])    # raises 404 if not found
+      @post = Post.find(params["id"])    # raises 404 if not found
       req
     }
   }
