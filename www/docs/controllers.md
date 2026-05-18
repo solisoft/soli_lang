@@ -10,18 +10,13 @@ Create a file in `app/controllers/` with a `_controller.sl` suffix:
 # app/controllers/users_controller.sl
 class UsersController < Controller
   fn index
-    render("users/index", {
-      "title": "Users",
-      "users": []
-    })
+    @title = "Users"
+    @users = User.all
   end
 
   fn show
-    user_id = req.params["id"];
-    render("users/show", {
-      "title": "User Details",
-      "user_id": user_id
-    })
+    @user = User.find(params["id"])
+    @title = "User Details"
   end
 end
 ```
@@ -127,28 +122,18 @@ class PostsController < ApplicationController
 
     # Run before_action only for specific actions
     this.before_action(:show, :edit, :update, :delete) = fn(req) {
-      post = Post.find(req.params["id"]);
-      if post == null {
-        return halt(404, "Post not found");
-      }
-      req["post"] = post;
+      @post = Post.find(req.params["id"])    # raises 404 if not found
       req
     }
   }
 
   fn index
-    # Can use inherited _current_user helper
-    user = this._current_user(req);
-    posts = Post.all;
-    render("posts/index", {
-      "posts": posts,
-      "user": user
-    })
+    @user = this._current_user
+    @posts = Post.all
   end
 
   fn show
-    # req["post"] is set by before_action
-    render("posts/show", { "post": req["post"] })
+    # @post is set by before_action — template renders posts/show
   end
 end
 ```
@@ -208,11 +193,7 @@ class PostsController < Controller
 
     # Run only for specific actions
     this.before_action(:show, :edit, :delete) = fn(req) {
-      post = Post.find(req.params["id"]);
-      if post == null {
-        return halt(404, "Post not found");
-      }
-      req["post"] = post;
+      @post = Post.find(req.params["id"])    # raises 404 if not found
       req
     }
   }
@@ -394,7 +375,7 @@ class PostsController < Controller
   }
 
   fn show
-    render("posts/show", { "post": req["post"] })
+    # @post is available from before_action
   end
 
   # Skip layout for specific action

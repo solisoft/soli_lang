@@ -21,24 +21,12 @@
   }
 
   def index
-    posts = Post.all
-    render("posts/index", {
-      "title": "All Posts",
-      "posts": posts
-    })
+    @title = "All Posts"
+    @posts = Post.all
   end
 
   def show
-    id = req.params["id"]
-    post = Post.find(id)
-    if post == null
-      return halt(404, "Post not found")
-    end
-
-    render("posts/show", {
-      "title": post["title"],
-      "post": post
-    })
+    @post = Post.find(req.params["id"])    # raises 404 if not found
   end
 end</code></pre>
 
@@ -75,9 +63,7 @@ end</code></pre>
 
     # Run before SPECIFIC actions only
     this.before_action(:show, :edit) = fn(req) {
-      post = Post.find(req.params["id"]);
-      return halt(404, "Not Found") if post == null;
-      req["post"] = post;
+      @post = Post.find(req.params["id"])    # raises 404 if not found
       req
     }
 
@@ -128,19 +114,17 @@ class PostsController < BaseController
   static {
     # Add controller-specific hook (runs after parent's before_action)
     this.before_action(:show, :edit) = fn(req) {
-      post = Post.find(req.params["id"]);
-      return halt(404, "Not Found") if post == null;
-      req["post"] = post;
+      @post = Post.find(req.params["id"])    # raises 404 if not found
       req
     }
   }
 
   def index
-    render("posts/index", { "posts": Post.all })
+    @posts = Post.all
   end
 
   def show
-    render("posts/show", { "post": req["post"] })
+    # @post is set by before_action — template renders posts/show
   end
 end</code></pre>
 
