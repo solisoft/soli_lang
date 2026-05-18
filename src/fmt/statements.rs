@@ -174,7 +174,10 @@ impl Printer<'_> {
                 if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start) {
                     self.print_postfix_if(condition, then_branch, kw);
                 } else if let Some(inner) = self.guard_clause_to_rewrite(
-                    stmt, condition, then_branch, else_branch.is_some(),
+                    stmt,
+                    condition,
+                    then_branch,
+                    else_branch.is_some(),
                 ) {
                     // Block form `if cond ... end` with a single guard-style
                     // body collapses to idiomatic postfix `expr if cond`.
@@ -254,7 +257,8 @@ impl Printer<'_> {
             }
         }
         self.flush_trailing_comments_on(stmt.span.line);
-        self.record_emitted_line(stmt.span.line);
+        let end_line = super::printer::source_end_line(self.source, stmt.span);
+        self.record_emitted_line(end_line);
     }
 
     /// Decide whether a block-form `if cond ... end` should be rewritten as
@@ -291,31 +295,27 @@ impl Printer<'_> {
         if self.has_comments_in_lines(start_line, end_line + 1) {
             return None;
         }
-        // The inner stmt must fit on a single source line. Multi-line
-        // postfix (e.g. `return {\n  ...\n} if cond`) parses fine, but
-        // `detect_postfix_if_kind` only scans within the first line and
-        // would misclassify the output as block form on the next pass —
-        // flipping back and forth and breaking idempotency.
-        let inner_end_line = super::printer::source_end_line(self.source, inner.span);
-        if inner_end_line != inner.span.line {
-            return None;
-        }
-        let cond_end_line = super::printer::source_end_line(self.source, condition.span);
-        if cond_end_line != condition.span.line {
-            return None;
-        }
-        // Even when the source is single-line, the printer's own break
-        // heuristics may multi-line a hash/array value (e.g. a 2-pair
-        // hash whose value is a `+` concat is forced multi-line). Don't
-        // rewrite then — the postfix would degrade to multi-line output.
+        // The printer's break heuristics may multi-line a hash/array value
+        // (e.g. a 2-pair hash whose value is a `+` concat is forced
+        // multi-line). Don't rewrite then — the postfix would degrade to
+        // multi-line output. This check is layout-independent so it gives
+        // the same answer regardless of whether the source currently has
+        // the inner expression collapsed or expanded; using raw source-line
+        // counts here would break idempotency (the first pass collapses
+        // the inner via hash-inlining, then the second pass would flip
+        // to postfix).
         if expr_in_stmt_likely_breaks(inner) {
             return None;
         }
         if expr_likely_breaks(condition) {
             return None;
         }
-        let cond_w = condition.span.end.saturating_sub(condition.span.start);
-        let inner_w = inner.span.end.saturating_sub(inner.span.start);
+        // Layout-independent width: the inner stmt's span may contain
+        // newlines+continuation indent in pass-1 source but be collapsed
+        // to one line in pass-2 source. Raw byte width disagrees between
+        // passes and breaks idempotency.
+        let cond_w = super::expressions::span_inline_width(self.source, condition.span);
+        let inner_w = super::expressions::span_inline_width(self.source, inner.span);
         let total = self.current_column() + inner_w + 4 /* " if " */ + cond_w;
         if total > MAX_LINE_LENGTH {
             return None;
@@ -371,8 +371,19 @@ impl Printer<'_> {
     }
 
     fn print_if(&mut self, condition: &Expr, then_branch: &Stmt, else_branch: Option<&Stmt>) {
+        // If the body's first statement starts with a token the parser would
+        // continue the condition expression with (`-`, `+`, `[`, `(`, `.`),
+        // wrap the condition in parens. Otherwise `if x < 0\n  -x\n end`
+        // reparses as `if (x < 0 - x) end`.
+        let needs_paren_guard = body_first_stmt_is_continuation_hazard(then_branch);
         self.write("if ");
+        if needs_paren_guard {
+            self.write("(");
+        }
         self.print_expr(condition);
+        if needs_paren_guard {
+            self.write(")");
+        }
         self.newline();
         self.print_block_or_stmt(then_branch);
         match else_branch {
@@ -388,8 +399,15 @@ impl Printer<'_> {
                     else_branch: e2,
                 } = &else_stmt.kind
                 {
+                    let needs_paren = body_first_stmt_is_continuation_hazard(t2);
                     self.write("elsif ");
+                    if needs_paren {
+                        self.write("(");
+                    }
                     self.print_expr(c2);
+                    if needs_paren {
+                        self.write(")");
+                    }
                     self.newline();
                     self.print_block_or_stmt(t2);
                     self.print_if_tail(e2.as_deref());
@@ -417,8 +435,15 @@ impl Printer<'_> {
                     else_branch: e2,
                 } = &else_stmt.kind
                 {
+                    let needs_paren = body_first_stmt_is_continuation_hazard(t2);
                     self.write("elsif ");
+                    if needs_paren {
+                        self.write("(");
+                    }
                     self.print_expr(c2);
+                    if needs_paren {
+                        self.write(")");
+                    }
                     self.newline();
                     self.print_block_or_stmt(t2);
                     self.print_if_tail(e2.as_deref());
@@ -772,7 +797,7 @@ fn format_type(ty: &crate::ast::types::TypeAnnotation) -> String {
 /// Used by `guard_clause_to_rewrite` to avoid producing a multi-line postfix
 /// `expr if cond` — which parses fine but breaks `detect_postfix_if_kind`'s
 /// single-line lookahead on subsequent fmt passes.
-fn expr_likely_breaks(e: &Expr) -> bool {
+pub(super) fn expr_likely_breaks(e: &Expr) -> bool {
     match &e.kind {
         // Matches `print_expr`'s Hash branch: a Hash with 2+ pairs may be
         // emitted multi-line — either unconditionally (> 2 pairs) or once
@@ -783,15 +808,15 @@ fn expr_likely_breaks(e: &Expr) -> bool {
             if pairs.len() > 1 {
                 return true;
             }
-            pairs.iter().any(|(k, v)| expr_likely_breaks(k) || expr_likely_breaks(v))
+            pairs
+                .iter()
+                .any(|(k, v)| expr_likely_breaks(k) || expr_likely_breaks(v))
         }
         // The Array branch forces multi-line when > 3 elements, or with 3+
         // elements once we're past column 20. Like the Hash case, we can't
         // predict the post-rewrite column from here, so conservatively
         // flag any 3+ element array as likely to break.
-        ExprKind::Array(elements) => {
-            elements.len() > 2 || elements.iter().any(expr_likely_breaks)
-        }
+        ExprKind::Array(elements) => elements.len() > 2 || elements.iter().any(expr_likely_breaks),
         ExprKind::Block(_) | ExprKind::Lambda { .. } => true,
         ExprKind::Binary { left, right, .. } | ExprKind::Pipeline { left, right } => {
             expr_likely_breaks(left) || expr_likely_breaks(right)
@@ -806,13 +831,23 @@ fn expr_likely_breaks(e: &Expr) -> bool {
         | ExprKind::Grouping(operand)
         | ExprKind::Spread(operand)
         | ExprKind::Throw(operand)
-        | ExprKind::Member { object: operand, .. }
-        | ExprKind::SafeMember { object: operand, .. }
-        | ExprKind::QualifiedName { qualifier: operand, .. } => expr_likely_breaks(operand),
+        | ExprKind::Member {
+            object: operand, ..
+        }
+        | ExprKind::SafeMember {
+            object: operand, ..
+        }
+        | ExprKind::QualifiedName {
+            qualifier: operand, ..
+        } => expr_likely_breaks(operand),
         ExprKind::Index { object, index } => {
             expr_likely_breaks(object) || expr_likely_breaks(index)
         }
-        ExprKind::Call { callee, arguments } | ExprKind::New { class_expr: callee, arguments } => {
+        ExprKind::Call { callee, arguments }
+        | ExprKind::New {
+            class_expr: callee,
+            arguments,
+        } => {
             expr_likely_breaks(callee)
                 || arguments.iter().any(|a| match a {
                     Argument::Positional(x) => expr_likely_breaks(x),
@@ -843,6 +878,52 @@ fn expr_in_stmt_likely_breaks(s: &Stmt) -> bool {
 /// Used to decide whether `fn name` may safely drop its empty parens —
 /// when the body opens with a parenthesized expression, the parser would
 /// otherwise consume it as the parameter list.
+/// True when the body of an `if`/`elsif`'s then-branch begins with a token
+/// the parser would continue the condition expression with — namely `-`
+/// (Unary Negate, parses as binary minus across the newline), `[` (Array,
+/// parses as index), `(` (Grouping, parses as call), or `.` (Member, parses
+/// as method call). When true the printer wraps the condition in parens so
+/// the body doesn't merge into the condition.
+fn body_first_stmt_is_continuation_hazard(stmt: &Stmt) -> bool {
+    let first = match &stmt.kind {
+        StmtKind::Block(stmts) => match stmts.first() {
+            Some(s) => s,
+            None => return false,
+        },
+        _ => stmt,
+    };
+    match &first.kind {
+        StmtKind::Expression(e) => expr_starts_with_continuation_hazard(e),
+        _ => false,
+    }
+}
+
+fn expr_starts_with_continuation_hazard(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Unary {
+            operator: crate::ast::expr::UnaryOp::Negate,
+            ..
+        } => true,
+        ExprKind::Array(_) | ExprKind::Grouping(_) => true,
+        ExprKind::Binary { left, .. }
+        | ExprKind::LogicalAnd { left, .. }
+        | ExprKind::LogicalOr { left, .. }
+        | ExprKind::Pipeline { left, .. } => expr_starts_with_continuation_hazard(left),
+        ExprKind::Call { callee: inner, .. }
+        | ExprKind::Member { object: inner, .. }
+        | ExprKind::SafeMember { object: inner, .. }
+        | ExprKind::Index { object: inner, .. }
+        | ExprKind::QualifiedName {
+            qualifier: inner, ..
+        } => expr_starts_with_continuation_hazard(inner),
+        ExprKind::Assign { target, .. } | ExprKind::CompoundAssign { target, .. } => {
+            expr_starts_with_continuation_hazard(target)
+        }
+        ExprKind::Rescue { expr, .. } => expr_starts_with_continuation_hazard(expr),
+        _ => false,
+    }
+}
+
 fn body_starts_with_paren(body: &[Stmt]) -> bool {
     fn expr_starts_with_paren(e: &Expr) -> bool {
         match &e.kind {
@@ -854,7 +935,9 @@ fn body_starts_with_paren(body: &[Stmt]) -> bool {
             | ExprKind::Member { object: inner, .. }
             | ExprKind::SafeMember { object: inner, .. }
             | ExprKind::Index { object: inner, .. }
-            | ExprKind::QualifiedName { qualifier: inner, .. } => expr_starts_with_paren(inner),
+            | ExprKind::QualifiedName {
+                qualifier: inner, ..
+            } => expr_starts_with_paren(inner),
             ExprKind::Assign { target, .. } | ExprKind::CompoundAssign { target, .. } => {
                 expr_starts_with_paren(target)
             }

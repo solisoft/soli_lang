@@ -24,6 +24,87 @@ fn span_source(source: &str, span: crate::span::Span) -> &str {
 /// widths for the same AST node depending on whether the source currently
 /// has it on one line or wrapped — and the formatter flips between layouts
 /// on successive passes.
+/// Layout- and formatter-rewrite-invariant inline width estimate for an
+/// expression. Mirrors what the printer would emit if the expression were
+/// rendered on a single line, stripping the tokens the printer would strip
+/// (e.g. `return ` keyword inside a lambda body that gets inlined, trailing
+/// `;`). Required for idempotency: source-based widths flip between passes
+/// because the formatter strips those tokens on pass 1, so pass 2 sees a
+/// narrower source and the break heuristic disagrees with pass 1.
+pub(super) fn ast_inline_width(source: &str, e: &Expr) -> usize {
+    match &e.kind {
+        ExprKind::Lambda { params, body, .. } => {
+            // `fn(p1, p2) { body }` or `fn(p1, p2) {  }` for empty body.
+            let params_w: usize = params.iter().map(|p| p.name.len()).sum::<usize>()
+                + params.len().saturating_sub(1) * 2;
+            let envelope = 3 + params_w + 4; // `fn(` + params + `) { ` + ` }` overlap-counted
+            if body.is_empty() {
+                return 3 + params_w + 3; // `fn(...) {}` (with space-less close)
+            }
+            // Sum body statements' widths, with separator. For our purposes
+            // the lambda inline check only fires on body.len() == 1, but
+            // handle the multi-stmt case conservatively by overestimating.
+            let body_w: usize = body
+                .iter()
+                .map(|s| stmt_inline_width(source, s))
+                .sum::<usize>()
+                + body.len().saturating_sub(1) * 2; // statement separators
+            envelope + body_w
+        }
+        ExprKind::Call { callee, arguments } => {
+            let mut w = ast_inline_width(source, callee) + 2; // `()`
+            for (i, a) in arguments.iter().enumerate() {
+                if i > 0 {
+                    w += 2;
+                }
+                w += match a {
+                    Argument::Positional(x) => ast_inline_width(source, x),
+                    Argument::Named(na) => na.name.len() + 2 + ast_inline_width(source, &na.value),
+                    Argument::Block(x) => 1 + ast_inline_width(source, x), // `&` prefix
+                };
+            }
+            w
+        }
+        ExprKind::Member { object, name } => ast_inline_width(source, object) + 1 + name.len(),
+        ExprKind::SafeMember { object, name } => ast_inline_width(source, object) + 2 + name.len(),
+        ExprKind::Index { object, index } => {
+            ast_inline_width(source, object) + 2 + ast_inline_width(source, index)
+        }
+        // For everything else, fall back to the source-based estimate.
+        _ => span_inline_width(source, e.span),
+    }
+}
+
+fn stmt_inline_width(source: &str, s: &crate::ast::Stmt) -> usize {
+    use crate::ast::stmt::StmtKind;
+    match &s.kind {
+        // `return X` strips to just `X` when inlined as a lambda body.
+        StmtKind::Return(Some(e)) => ast_inline_width(source, e),
+        StmtKind::Return(None) => 6, // `return`
+        StmtKind::Expression(e) => ast_inline_width(source, e),
+        _ => span_inline_width(source, s.span),
+    }
+}
+
+/// Estimated width an arg contributes to the call's opening line when its
+/// own emission spans multiple lines (e.g. `f(g, fn() {\n  ...\n})` — the
+/// lambda only adds `fn() {` to the call's first line). Used by the
+/// arg-list break heuristic so a multi-line lambda doesn't push the call
+/// over MAX_LINE_LENGTH and force the args to break too.
+fn arg_opening_width(e: &Expr) -> usize {
+    match &e.kind {
+        ExprKind::Lambda { params, .. } => {
+            // `fn(` + params + `) {`
+            let params_w: usize = params.iter().map(|p| p.name.len()).sum::<usize>()
+                + params.len().saturating_sub(1) * 2;
+            3 + params_w + 3
+        }
+        ExprKind::Hash(_) => 1,
+        ExprKind::Array(_) => 1,
+        _ => 6,
+    }
+}
+
 pub(super) fn span_inline_width(source: &str, span: crate::span::Span) -> usize {
     let s = span_source(source, span);
     let mut count = 0usize;
@@ -430,7 +511,10 @@ impl Printer<'_> {
                         }
                         _ => false,
                     };
-                    if !inner_is_lambda {
+                    let block_end_line = super::printer::source_end_line(self.source, expr.span);
+                    let has_inside_comment =
+                        self.has_comments_in_lines(expr.span.line, block_end_line + 1);
+                    if !inner_is_lambda && !has_inside_comment {
                         // Width estimate must be source-layout independent (use
                         // `span_inline_width`, not raw `.len()` on the source
                         // span — the latter includes newlines+continuation
@@ -443,7 +527,7 @@ impl Printer<'_> {
                         // mid-args and we get an ugly `fn() { f(\n  a,\n  b\n) }`
                         // hybrid that the next pass keeps reformatting.
                         if let crate::ast::stmt::StmtKind::Expression(e) = &body[0].kind {
-                            let body_w = span_inline_width(self.source, e.span);
+                            let body_w = ast_inline_width(self.source, e);
                             let est = self.current_column() + 9 + body_w;
                             if est <= MAX_LINE_LENGTH {
                                 self.write(" ");
@@ -455,7 +539,7 @@ impl Printer<'_> {
                         if let crate::ast::stmt::StmtKind::Return(Some(e)) = &body[0].kind {
                             // `return` is stripped on inline emission, so the
                             // envelope size matches the Expression case.
-                            let body_w = span_inline_width(self.source, e.span);
+                            let body_w = ast_inline_width(self.source, e);
                             let est = self.current_column() + 9 + body_w;
                             if est <= MAX_LINE_LENGTH {
                                 self.write(" ");
@@ -564,28 +648,33 @@ impl Printer<'_> {
                     return true;
                 }
             }
-            // Per-arg width capped at 60 to keep multi-line aggregates
-            // (lambdas with statement-blocks, big arrays/hashes) from
-            // dominating the inline estimate — their flattened width
-            // misrepresents the actual emitted width (which will be
-            // multi-line anyway, so contributes only the opening token to
-            // the current line). The previous `+8` safety on top of the
-            // cap was over-pessimistic and caused lines that genuinely
-            // fit in 120 chars to be wrapped, which the next fmt pass
-            // would then re-collapse — fmt oscillating between forms.
+            // For args that are themselves multi-line-prone (lambdas with
+            // statement-blocks, 2+ pair hashes, 3+ element arrays), only
+            // count their opening token — the body multi-lines on its own
+            // and contributes only the opening to the current line.
+            // Source-derived widths must collapse to the *same* value
+            // regardless of whether the source currently has the arg
+            // expanded or compact; otherwise fmt oscillates between
+            // wrapping and inlining the call. We use `span_inline_width`
+            // (layout-independent) and treat multi-line-prone args as
+            // fixed-size openings (~6 chars for `fn() {`, 1 for `[`/`{`).
             let args_w: usize = args.iter().map(|a| {
-                let span = match a {
-                    Argument::Positional(e) => e.span,
-                    Argument::Named(na) => na.value.span,
-                    Argument::Block(e) => e.span,
+                let expr = match a {
+                    Argument::Positional(e) => e,
+                    Argument::Named(na) => &na.value,
+                    Argument::Block(e) => e,
                 };
-                span_inline_width(self.source, span).min(60)
+                if super::statements::expr_likely_breaks(expr) {
+                    arg_opening_width(expr)
+                } else {
+                    span_inline_width(self.source, expr.span).min(60)
+                }
             }).sum::<usize>()
                 + 2 // "()"
                 + (arg_count.saturating_sub(1)) * 2; // ", "
-            // +2 slack absorbs minor byte/char drift (multi-byte chars
-            // push emission past the char-count estimate by a couple bytes)
-            // and any trailing `;`/` }` the caller appends.
+                                                     // +2 slack absorbs minor byte/char drift (multi-byte chars
+                                                     // push emission past the char-count estimate by a couple bytes)
+                                                     // and any trailing `;`/` }` the caller appends.
             self.current_column() + args_w + 2 > MAX_LINE_LENGTH
         })();
 

@@ -281,10 +281,62 @@ impl Parser {
         self.expect(&TokenKind::Throw)?;
 
         let value = self.expression()?;
-        self.match_token(&TokenKind::Semicolon);
-        let span = start_span.merge(&self.previous_span());
+        let throw_end_line = self.previous_span().line;
+        let throw_stmt = Stmt::new(
+            StmtKind::Throw(value),
+            start_span.merge(&self.previous_span()),
+            None,
+        );
 
-        Ok(Stmt::new(StmtKind::Throw(value), span, None))
+        if self.check(&TokenKind::If) && self.peek().span.line == throw_end_line {
+            self.advance();
+            let has_paren = self.match_token(&TokenKind::LeftParen);
+            let cond = self.expression()?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
+            self.match_token(&TokenKind::Semicolon);
+            let span = start_span.merge(&self.previous_span());
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: cond,
+                    then_branch: Box::new(throw_stmt),
+                    else_branch: None,
+                },
+                span,
+                None,
+            ));
+        }
+
+        if self.check(&TokenKind::Unless) && self.peek().span.line == throw_end_line {
+            self.advance();
+            let has_paren = self.match_token(&TokenKind::LeftParen);
+            let cond = self.expression()?;
+            if has_paren {
+                self.expect(&TokenKind::RightParen)?;
+            }
+            self.match_token(&TokenKind::Semicolon);
+            let condition_expr = Expr::new(
+                ExprKind::Unary {
+                    operator: crate::ast::expr::UnaryOp::Not,
+                    operand: Box::new(cond),
+                },
+                start_span.merge(&self.previous_span()),
+            );
+            let span = start_span.merge(&self.previous_span());
+            return Ok(Stmt::new(
+                StmtKind::If {
+                    condition: condition_expr,
+                    then_branch: Box::new(throw_stmt),
+                    else_branch: None,
+                },
+                span,
+                None,
+            ));
+        }
+
+        self.match_token(&TokenKind::Semicolon);
+        Ok(throw_stmt)
     }
 
     fn try_statement(&mut self) -> ParseResult<Stmt> {

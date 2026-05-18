@@ -864,31 +864,39 @@ fn register_solidb_class(env: &mut Environment) {
                     "create_vector_index" => {
                         let collection = match &args[1] {
                             Value::String(s) => s.clone(),
-                            other => return Err(format!(
-                                "create_vector_index() expects string collection, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "create_vector_index() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let name = match &args[2] {
                             Value::String(s) => s.clone(),
-                            other => return Err(format!(
-                                "create_vector_index() expects string index name, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "create_vector_index() expects string index name, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let field = match &args[3] {
                             Value::String(s) => s.clone(),
-                            other => return Err(format!(
-                                "create_vector_index() expects string field, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "create_vector_index() expects string field, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let dimension = match &args[4] {
                             Value::Int(n) => *n as usize,
-                            other => return Err(format!(
-                                "create_vector_index() expects int dimension, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "create_vector_index() expects int dimension, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let (metric, quantization) = if args.len() > 5 {
                             match &args[5] {
@@ -922,7 +930,11 @@ fn register_solidb_class(env: &mut Environment) {
                             }
                             client
                                 .create_vector_index(
-                                    &collection, &name, &field, dimension, &metric,
+                                    &collection,
+                                    &name,
+                                    &field,
+                                    dimension,
+                                    &metric,
                                     quantization.as_deref(),
                                 )
                                 .map_err(|e| format!("Create vector index failed: {}", e))?;
@@ -968,17 +980,21 @@ fn register_solidb_class(env: &mut Environment) {
                     "drop_vector_index" => {
                         let collection = match &args[1] {
                             Value::String(s) => s.clone(),
-                            other => return Err(format!(
-                                "drop_vector_index() expects string collection, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "drop_vector_index() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let name = match &args[2] {
                             Value::String(s) => s.clone(),
-                            other => return Err(format!(
-                                "drop_vector_index() expects string index name, got {}",
-                                other.type_name()
-                            )),
+                            other => {
+                                return Err(format!(
+                                    "drop_vector_index() expects string index name, got {}",
+                                    other.type_name()
+                                ))
+                            }
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
@@ -994,7 +1010,10 @@ fn register_solidb_class(env: &mut Environment) {
                             client
                                 .drop_vector_index(&collection, &name)
                                 .map_err(|e| format!("Drop vector index failed: {}", e))?;
-                            Ok(format!("Dropped vector index: {} from {}", name, collection))
+                            Ok(format!(
+                                "Dropped vector index: {} from {}",
+                                name, collection
+                            ))
                         })
                     }
                     "list_indexes" => {

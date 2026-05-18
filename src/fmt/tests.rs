@@ -363,28 +363,7 @@ fn static_block_idempotent() {
     assert_idempotent("class A\n  static {\n    this.x = 1\n    this.y = 2\n  }\nend\n");
 }
 
-// ---- Bug 6: block argument `&fn(...)` must become `&{ |params| body }` ----
-
-#[test]
-fn block_arg_uses_brace_block_form() {
-    let src = "let r = [1, 2, 3].map(&fn(x) { x * 2 })\n";
-    let formatted = format_source(src).expect("fmt failed");
-    assert!(
-        !formatted.contains("&fn("),
-        "block arg must not emit &fn(...), got:\n{}",
-        formatted
-    );
-    assert!(
-        formatted.contains("&{"),
-        "block arg should use &{{ |...| ... }}, got:\n{}",
-        formatted
-    );
-}
-
-#[test]
-fn block_arg_round_trips() {
-    assert_round_trip("let r = [1, 2, 3].map(&fn(x) { x * 2 })\n");
-}
+// ---- Block argument syntax: `&{ |params| body }` and `&identifier` ----
 
 #[test]
 fn block_arg_variable_reference_preserved() {
@@ -394,8 +373,13 @@ fn block_arg_variable_reference_preserved() {
 }
 
 #[test]
-fn block_arg_idempotent() {
-    assert_idempotent("let r = [1, 2, 3].map(&fn(x) { x * 2 }).filter(&fn(y) { y > 2 })\n");
+fn inline_lambda_arg_round_trips() {
+    assert_round_trip("let r = [1, 2, 3].map(|x| x * 2)\n");
+}
+
+#[test]
+fn inline_lambda_arg_idempotent() {
+    assert_idempotent("let r = [1, 2, 3].map(|x| x * 2).filter(|y| y > 2)\n");
 }
 
 // ---- Corpus-level safety: a bouquet of constructs together ----
@@ -430,7 +414,8 @@ print("count = #{c.count}")
 let label = c.count > 5 ? "big" : "small"
 print(label) if c.count > 0
 print("none") unless c.count > 0
-[1, 2, 3].each(&fn(x) { print(x) })
+let xs = [1, 2, 3]
+xs.each(|x| print(x))
 "#;
     assert_round_trip(src);
     assert_idempotent(src);

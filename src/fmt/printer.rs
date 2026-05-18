@@ -290,9 +290,10 @@ impl<'a> Printer<'a> {
         let mut prev_source_end: usize = 0;
         for (idx, stmt) in program.statements.iter().enumerate() {
             self.flush_comments_before(stmt.span.line);
-            if idx > 0 && stmt.span.line > prev_source_end + 1 && !comment_fills_gap(
-                self.last_emitted_line, prev_source_end, stmt.span.line,
-            ) {
+            if idx > 0
+                && stmt.span.line > prev_source_end + 1
+                && !comment_fills_gap(self.last_emitted_line, prev_source_end, stmt.span.line)
+            {
                 self.blank_line();
             }
             self.print_stmt(stmt);
@@ -340,9 +341,10 @@ impl<'a> Printer<'a> {
             let mut prev_source_end: usize = 0;
             for (idx, stmt) in stmts.iter().enumerate() {
                 p.flush_comments_before(stmt.span.line);
-                if idx > 0 && stmt.span.line > prev_source_end + 1 && !comment_fills_gap(
-                    p.last_emitted_line, prev_source_end, stmt.span.line,
-                ) {
+                if idx > 0
+                    && stmt.span.line > prev_source_end + 1
+                    && !comment_fills_gap(p.last_emitted_line, prev_source_end, stmt.span.line)
+                {
                     p.blank_line();
                 }
                 p.print_stmt(stmt);
