@@ -37,6 +37,7 @@ impl Interpreter {
             "delete_all" => self.qb_delete_all(qb, arguments, span),
             "exists" => self.qb_exists(qb, arguments, span),
             "pluck" => self.qb_pluck(qb, arguments, span),
+            "similar" => self.qb_similar(qb, arguments, span),
             "sum" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Sum),
             "avg" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Avg),
             "min" => self.qb_aggregate(qb, arguments, span, AggregationFunc::Min),
@@ -788,5 +789,36 @@ impl Interpreter {
                 query, bind_vars
             )))
         }
+    }
+
+    fn qb_similar(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() < 1 || arguments.len() > 3 {
+            return Err(RuntimeError::wrong_arity(3, arguments.len(), span));
+        }
+        let query_text = match &arguments[0] {
+            Value::String(s) => s.clone(),
+            _ => return Err(RuntimeError::type_error("similar() expects string query text", span)),
+        };
+        let field = match arguments.get(1) {
+            Some(Value::String(s)) => s.clone(),
+            _ => "embedding".to_string(),
+        };
+        let top_k = match arguments.get(2) {
+            Some(Value::Int(n)) if *n > 0 => *n as usize,
+            _ => 10,
+        };
+
+        let mut new_qb = qb.borrow().clone();
+        new_qb.set_similar(query_text, field, top_k);
+        // Similar search results always need a limit (top_k)
+        if new_qb.limit_val.is_none() || new_qb.limit_val.unwrap() > top_k {
+            new_qb.limit_val = Some(top_k);
+        }
+        Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 }

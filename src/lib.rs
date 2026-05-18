@@ -34,6 +34,7 @@ pub mod template;
 pub mod types;
 pub mod virtual_fs;
 pub mod vm;
+pub mod embedding;
 
 use ast::expr::Argument;
 use error::SolilangError;

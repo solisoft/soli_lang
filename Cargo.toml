@@ -14,9 +14,10 @@ name = "soli"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["embedding"]
 # Coverage is now always enabled at runtime via --coverage flag
-full = []
+full = ["embedding"]
+embedding = []
 
 [dependencies]
 thiserror = "1.0"

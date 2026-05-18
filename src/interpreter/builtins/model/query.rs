@@ -80,6 +80,8 @@ pub struct QueryBuilder {
     pub exists_mode: bool,
     /// Group-by mode: (group_field, func, agg_field) — set by .group_by
     pub group_by_info: Option<(String, AggregationFunc, String)>,
+    /// Vector similarity search: (query_text, field, top_k) — set by .similar()
+    pub similar_query: Option<(String, String, usize)>,
 }
 
 impl QueryBuilder {
@@ -105,6 +107,7 @@ impl QueryBuilder {
             aggregation: None,
             exists_mode: false,
             group_by_info: None,
+            similar_query: None,
         }
     }
 
@@ -131,7 +134,12 @@ impl QueryBuilder {
             aggregation: None,
             exists_mode: false,
             group_by_info: None,
+            similar_query: None,
         }
+    }
+
+    pub fn set_similar(&mut self, query: String, field: String, top_k: usize) {
+        self.similar_query = Some((query, field, top_k));
     }
 
     pub fn set_pluck(&mut self, fields: Vec<String>) {
@@ -754,6 +762,12 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+
+    // Handle similarity search
+    if let Some((ref query_text, ref field, ref top_k)) = qb.similar_query {
+        return execute_similar_query(qb, &collection, query_text, field, *top_k);
+    }
+
     let (query, bind_vars) = qb.build_query();
 
     if let Some(ref class) = qb.class {
@@ -766,6 +780,98 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
         exec_auto_collection(query, &collection)
     } else {
         exec_auto_collection_with_binds(query, bind_vars, &collection)
+    }
+}
+
+/// Extract a float vector from a Soli Value (expects Array of floats).
+fn value_to_float_vec(val: &Value) -> Vec<f64> {
+    match val {
+        Value::Array(arr) => {
+            arr.borrow().iter().filter_map(|v| match v {
+                Value::Int(n) => Some(*n as f64),
+                Value::Float(f) => Some(*f),
+                _ => None,
+            }).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Execute a similarity search: fetch docs, compute cosine similarity, return top-k.
+fn execute_similar_query(qb: &QueryBuilder, collection: &str, query_text: &str, field: &str, top_k: usize) -> Value {
+    use crate::embedding::{generate_embedding, cosine_similarity};
+
+    // Try to generate an embedding for the query text
+    let query_vec = match generate_embedding(query_text) {
+        Some(v) => v,
+        None => return Value::Array(std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))),
+    };
+
+    // Build a query to fetch matching docs (without similarity sorting)
+    let mut fetch_qb = qb.clone();
+    fetch_qb.similar_query = None;
+    fetch_qb.limit_val = None;
+    let (query, bind_vars) = fetch_qb.build_query();
+
+    let results = if let Some(ref class) = qb.class {
+        if bind_vars.is_empty() {
+            exec_auto_collection_as_instances(query, collection, class)
+        } else {
+            exec_auto_collection_as_instances_with_binds(query, bind_vars, collection, class)
+        }
+    } else if bind_vars.is_empty() {
+        exec_auto_collection(query, collection)
+    } else {
+        exec_auto_collection_with_binds(query, bind_vars, collection)
+    };
+
+    match results {
+        Value::Array(arr) => {
+            let mut scored: Vec<(f64, Value)> = Vec::new();
+            for item in arr.borrow().iter() {
+                let doc_vec = match item {
+                    Value::Instance(inst) => {
+                        inst.borrow().get(field).map(|v| value_to_float_vec(&v)).unwrap_or_default()
+                    }
+                    Value::Hash(hash) => {
+                        let h = hash.borrow();
+                        // Try string key first, then HashKey
+                        let field_val = h.iter().find_map(|(k, v)| {
+                            let k_str = format!("{}", k);
+                            if k_str == field { Some(v.clone()) } else { None }
+                        }).unwrap_or(Value::Null);
+                        value_to_float_vec(&field_val)
+                    }
+                    _ => Vec::new(),
+                };
+
+                if !doc_vec.is_empty() && doc_vec.len() == query_vec.len() {
+                    let score = cosine_similarity(&query_vec, &doc_vec);
+                    scored.push((score, item.clone()));
+                }
+            }
+
+            // Sort by score descending
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            // Take top-k and attach _similarity_score
+            let k = top_k.min(scored.len());
+            let result: Vec<Value> = scored[..k].iter().map(|(score, item)| {
+                match item {
+                    Value::Instance(inst) => {
+                        let mut fields = inst.borrow().fields.clone();
+                        fields.insert("_similarity_score".to_string(), Value::Float(*score));
+                        Value::Instance(std::rc::Rc::new(std::cell::RefCell::new(
+                            crate::interpreter::value::Instance { class: inst.borrow().class.clone(), fields }
+                        )))
+                    }
+                    other => other.clone(),
+                }
+            }).collect();
+
+            Value::Array(std::rc::Rc::new(std::cell::RefCell::new(result)))
+        }
+        _ => Value::Array(std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))),
     }
 }
 
