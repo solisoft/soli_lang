@@ -3476,6 +3476,10 @@ video {
   letter-spacing: 0.05em;
 }
 
+.text-amber-100\/80 {
+  color: rgb(254 243 199 / 0.8);
+}
+
 .text-amber-200 {
   --tw-text-opacity: 1;
   color: rgb(253 230 138 / var(--tw-text-opacity, 1));

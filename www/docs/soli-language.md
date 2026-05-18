@@ -361,12 +361,18 @@ print(s.find("World"));    # 7 (index of first occurrence)
 print(s.contains("Hello"));  # true
 print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
+print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)
 
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
 camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify();    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
+
+# String successor
+next_id = "a".succ;    # "b" (increments with carry, wraps z->aa, 9->10)
+next_id = "9".succ;    # "10"
+next_id = "z".next;    # "aa" (.next is alias for .succ)
 
 # String interpolation
 name = "World";
@@ -1561,6 +1567,13 @@ print(high_scores);  # {Alice: 90, Charlie: 95}
 scores.each(fn(k, v) print(k + ": " + str(v)));
 ```
 
+**Additional iteration methods:**
+
+- `.each_key(fn)` — iterate over keys only
+- `.each_value(fn)` — iterate over values only
+- `.keep_if(fn)` / `.delete_if(fn)` — filter variants of select/reject
+- `.all?(fn)` / `.any?(fn)` — predicate tests on all/any entries
+
 **Important: map return value**
 
 Hash `.map()` expects your function to return exactly `[key, value]` with 2 elements:
@@ -1589,6 +1602,19 @@ h = {"a": 1, "b": 2};
 doubled = h.values() |> map(fn(v) v * 10);
 print(doubled);  # [10, 20]
 ```
+
+**Lookup and conversion methods:**
+
+- `.shift()` — remove and return first [key, value] pair (mutates)
+- `.flatten()` — convert to array of [key, value] sub-arrays
+- `.values_at(*keys)` — array of values for given keys (null for missing)
+- `.fetch_values(*keys)` — array of values (raises if any missing)
+- `.key(value)` — inverse lookup: first key for a given value
+- `.has_value?(value)` / `.value?(value)` — check if value exists
+- `.assoc(key)` — returns [key, value] pair or null
+- `.rassoc(value)` — returns [key, value] for matching value or null
+- `.to_h()` — returns self (identity for hashes)
+- `.update(other)` — alias for merge
 
 #### Hash Functions
 

@@ -68,6 +68,12 @@ impl Interpreter {
                 };
                 Ok(Value::Bool(class_name == "hash" || class_name == "object"))
             }
+            "each_key" => self.hash_each_key(entries, arguments, span),
+            "each_value" => self.hash_each_value(entries, arguments, span),
+            "keep_if" => self.hash_keep_if(entries, arguments, span),
+            "delete_if" => self.hash_delete_if(entries, arguments, span),
+            "all?" => self.hash_all(entries, arguments, span),
+            "any?" => self.hash_any(entries, arguments, span),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
                 property: method_name.to_string(),
@@ -801,5 +807,279 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(Value::Bool(entries.is_empty()))
+    }
+
+    fn hash_each_key(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "each_key expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        for (key, _value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+            let param_name = func
+                .params
+                .first()
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "it".to_string());
+            call_env.define(param_name, key.to_value());
+
+            match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash each_key", span));
+                }
+            }
+        }
+
+        let result: HashPairs = entries.iter().cloned().collect();
+        Ok(Value::Hash(Rc::new(RefCell::new(result))))
+    }
+
+    fn hash_each_value(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "each_value expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        for (_key, value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+            let param_name = func
+                .params
+                .first()
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "it".to_string());
+            call_env.define(param_name, value.clone());
+
+            match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash each_value", span));
+                }
+            }
+        }
+
+        let result: HashPairs = entries.iter().cloned().collect();
+        Ok(Value::Hash(Rc::new(RefCell::new(result))))
+    }
+
+    fn hash_keep_if(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "keep_if expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        let mut result: HashPairs = HashPairs::default();
+        for (key, value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+
+            let key_value = key.to_value();
+            if func.params.len() >= 2 {
+                call_env.define(func.params[0].name.clone(), key_value.clone());
+                call_env.define(func.params[1].name.clone(), value.clone());
+            } else if func.params.len() == 1 {
+                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
+                call_env.define(func.params[0].name.clone(), pair);
+            }
+
+            let result_value = match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(v) => v,
+                ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash keep_if", span));
+                }
+            };
+
+            if result_value.is_truthy() {
+                result.insert(key.clone(), value.clone());
+            }
+        }
+
+        Ok(Value::Hash(Rc::new(RefCell::new(result))))
+    }
+
+    fn hash_delete_if(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "delete_if expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        let mut result: HashPairs = HashPairs::default();
+        for (key, value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+
+            let key_value = key.to_value();
+            if func.params.len() >= 2 {
+                call_env.define(func.params[0].name.clone(), key_value.clone());
+                call_env.define(func.params[1].name.clone(), value.clone());
+            } else if func.params.len() == 1 {
+                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
+                call_env.define(func.params[0].name.clone(), pair);
+            }
+
+            let result_value = match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(v) => v,
+                ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash delete_if", span));
+                }
+            };
+
+            if !result_value.is_truthy() {
+                result.insert(key.clone(), value.clone());
+            }
+        }
+
+        Ok(Value::Hash(Rc::new(RefCell::new(result))))
+    }
+
+    fn hash_all(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "all? expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        for (key, value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+
+            let key_value = key.to_value();
+            if func.params.len() >= 2 {
+                call_env.define(func.params[0].name.clone(), key_value.clone());
+                call_env.define(func.params[1].name.clone(), value.clone());
+            } else if func.params.len() == 1 {
+                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
+                call_env.define(func.params[0].name.clone(), pair);
+            }
+
+            let result_value = match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(v) => v,
+                ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash all?", span));
+                }
+            };
+
+            if !result_value.is_truthy() {
+                return Ok(Value::Bool(false));
+            }
+        }
+
+        Ok(Value::Bool(true))
+    }
+
+    fn hash_any(
+        &mut self,
+        entries: &[(HashKey, Value)],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "any? expects a function argument",
+                    span,
+                ))
+            }
+        };
+
+        for (key, value) in entries {
+            let mut call_env = Environment::with_enclosing(func.closure.clone());
+
+            let key_value = key.to_value();
+            if func.params.len() >= 2 {
+                call_env.define(func.params[0].name.clone(), key_value.clone());
+                call_env.define(func.params[1].name.clone(), value.clone());
+            } else if func.params.len() == 1 {
+                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
+                call_env.define(func.params[0].name.clone(), pair);
+            }
+
+            let result_value = match self.execute_block(&func.body, call_env)? {
+                ControlFlow::Return(v) => v,
+                ControlFlow::Normal(v) => v,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Throw(_) => {
+                    return Err(RuntimeError::new("Exception in hash any?", span));
+                }
+            };
+
+            if result_value.is_truthy() {
+                return Ok(Value::Bool(true));
+            }
+        }
+
+        Ok(Value::Bool(false))
     }
 }

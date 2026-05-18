@@ -1674,12 +1674,12 @@ impl Interpreter {
             | "uniq" | "compact" | "compact_blank" | "flatten" | "first" | "last" | "empty?"
             | "includes?" | "contains" | "sample" | "shuffle" | "take" | "drop" | "slice"
             | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get" | "to_string"
-            | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" => {
-                Ok(Value::Method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" | "delete"
+            | "delete_at" | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?"
+            | "one?" | "values_at" | "count" => Ok(Value::Method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
@@ -1723,12 +1723,13 @@ impl Interpreter {
             "length" | "len" | "size" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
             | "transform_values" | "transform_keys" | "select" | "reject" | "slice" | "except"
             | "compact" | "dig" | "to_string" | "to_json" | "keys" | "values" | "has_key"
-            | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" => {
-                Ok(Value::Method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" | "shift"
+            | "flatten" | "values_at" | "key" | "has_value?" | "value?" | "to_h" | "keep_if"
+            | "delete_if" | "update" | "all?" | "any?" | "assoc" | "rassoc" | "fetch_values"
+            | "each_key" | "each_value" => Ok(Value::Method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => {
                 // Try to access as a hash key (dot notation for hash access)
                 // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
@@ -1850,6 +1851,7 @@ impl Interpreter {
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
             | "truncate" | "parse_json" | "to_sym" | "slugify" | "camelize"
+            | "casecmp" | "casecmp?" | "prepend" | "chop" | "ascii_only?" | "succ" | "next"
             // Universal method with args
             | "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
@@ -1908,9 +1910,12 @@ impl Interpreter {
                 }
                 Ok(Value::Null)
             }
+            // Zero-arg sugar (auto-invoked)
+            "succ" | "next" => Ok(Value::Int(n + 1)),
+            "pred" => Ok(Value::Int(n - 1)),
             // Methods with args (return ValueMethod)
             "times" | "upto" | "downto" | "pow" | "gcd" | "lcm" | "between?" | "clamp"
-            | "is_a?" => Ok(Value::Method(ValueMethod {
+            | "is_a?" | "divmod" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(Value::Int(n)),
                 method_name: name.to_string(),
             })),
@@ -1960,7 +1965,7 @@ impl Interpreter {
             // Methods that support both 0-arg (auto-invoked) and with-arg forms,
             // or methods that always require args — all go through ValueMethod.
             // `round` with 0 args is auto-invoked via is_zero_arg_builtin_method.
-            "round" | "between?" | "clamp" | "is_a?" => Ok(Value::Method(ValueMethod {
+            "round" | "between?" | "clamp" | "is_a?" | "divmod" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(Value::Float(n)),
                 method_name: name.to_string(),
             })),

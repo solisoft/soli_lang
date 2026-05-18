@@ -200,6 +200,143 @@ impl Vm {
                 };
                 Ok(Value::Bool(class_name == "hash" || class_name == "object"))
             }
+            "shift" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                let mut hash_ref = hash.borrow_mut();
+                if hash_ref.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let (key, value) =
+                    hash_ref
+                        .swap_remove_index(0)
+                        .ok_or_else(|| RuntimeError::General {
+                            message: "unexpected error in hash shift".to_string(),
+                            span,
+                        })?;
+                Ok(Value::Array(Rc::new(RefCell::new(vec![
+                    key.to_value(),
+                    value,
+                ]))))
+            }
+            "flatten" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                let pairs: Vec<Value> = hash
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| {
+                        Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
+                    })
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(pairs))))
+            }
+            "values_at" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let h = hash.borrow();
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    let v = hash_get_value(&h, arg).cloned().unwrap_or(Value::Null);
+                    values.push(v);
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            }
+            "key" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let needle = &args[0];
+                for (k, v) in hash.borrow().iter() {
+                    if v == needle {
+                        return Ok(k.to_value());
+                    }
+                }
+                Ok(Value::Null)
+            }
+            "has_value?" | "value?" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let needle = &args[0];
+                let found = hash.borrow().values().any(|v| v == needle);
+                Ok(Value::Bool(found))
+            }
+            "to_h" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                let new_hash = hash.borrow().clone();
+                Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
+            }
+            "update" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                match &args[0] {
+                    Value::Hash(other) => {
+                        let mut new_hash = hash.borrow().clone();
+                        for (k, v) in other.borrow().iter() {
+                            new_hash.insert(k.clone(), v.clone());
+                        }
+                        Ok(Value::Hash(Rc::new(RefCell::new(new_hash))))
+                    }
+                    _ => Err(RuntimeError::type_error(
+                        "update expects a hash argument",
+                        span,
+                    )),
+                }
+            }
+            "assoc" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let value = hash_get_value(&hash.borrow(), &args[0]).cloned();
+                match value {
+                    Some(v) => Ok(Value::Array(Rc::new(RefCell::new(vec![
+                        args[0].clone(),
+                        v,
+                    ])))),
+                    None => Ok(Value::Null),
+                }
+            }
+            "rassoc" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let needle = &args[0];
+                for (k, v) in hash.borrow().iter() {
+                    if v == needle {
+                        return Ok(Value::Array(Rc::new(RefCell::new(vec![
+                            k.to_value(),
+                            v.clone(),
+                        ]))));
+                    }
+                }
+                Ok(Value::Null)
+            }
+            "fetch_values" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let h = hash.borrow();
+                let mut values = Vec::with_capacity(args.len());
+                for arg in args {
+                    match hash_get_value(&h, arg) {
+                        Some(v) => values.push(v.clone()),
+                        None => {
+                            return Err(RuntimeError::type_error(
+                                format!("key not found: {:?}", arg),
+                                span,
+                            ))
+                        }
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(values))))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
                 property: name.to_string(),

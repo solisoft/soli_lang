@@ -160,4 +160,173 @@ describe("Hash Operations", fn() {
         h.clear;
         assert_eq(h.length, 0);
     });
+
+    test("hash shift returns first pair", fn() {
+        let h = {"a": 1, "b": 2};
+        let pair = h.shift();
+        assert_eq(pair[0], "a");
+        assert_eq(pair[1], 1);
+    });
+
+    test("hash shift removes first pair", fn() {
+        let h = {"a": 1, "b": 2};
+        h.shift();
+        assert_eq(h.len(), 1);
+    });
+
+    test("hash shift on empty hash", fn() {
+        let h = {};
+        assert_eq(h.shift(), null);
+    });
+
+    test("hash flatten", fn() {
+        let h = {"a": 1, "b": 2};
+        let flat = h.flatten();
+        assert_eq(flat.len(), 2);
+        assert_eq(flat[0][0], "a");
+        assert_eq(flat[0][1], 1);
+        assert_eq(flat[1][0], "b");
+        assert_eq(flat[1][1], 2);
+    });
+
+    test("hash values_at", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        let vals = h.values_at("a", "c");
+        assert_eq(vals[0], 1);
+        assert_eq(vals[1], 3);
+    });
+
+    test("hash values_at with missing key returns null", fn() {
+        let h = {"a": 1};
+        let vals = h.values_at("a", "missing");
+        assert_eq(vals[0], 1);
+        assert_eq(vals[1], null);
+    });
+
+    test("hash key inverse lookup", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        assert_eq(h.key(2), "b");
+    });
+
+    test("hash key returns null if value not found", fn() {
+        let h = {"a": 1};
+        assert_eq(h.key(99), null);
+    });
+
+    test("hash has_value? returns true", fn() {
+        let h = {"a": 1, "b": 2};
+        assert(h.has_value?(2));
+    });
+
+    test("hash has_value? returns false", fn() {
+        let h = {"a": 1};
+        assert(!h.has_value?(99));
+    });
+
+    test("hash value? alias", fn() {
+        let h = {"a": 1};
+        assert(h.value?(1));
+        assert(!h.value?(99));
+    });
+
+    test("hash to_h returns self", fn() {
+        let h = {"a": 1, "b": 2};
+        let h2 = h.to_h();
+        assert_eq(h2["a"], 1);
+        assert_eq(h2["b"], 2);
+    });
+
+    test("hash each_key iterates keys", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        let keys = [];
+        h.each_key(|k| keys.push(k));
+        assert_eq(keys.len(), 3);
+        assert(keys.contains("a"));
+        assert(keys.contains("b"));
+        assert(keys.contains("c"));
+    });
+
+    test("hash each_value iterates values", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        let vals = [];
+        h.each_value(|v| vals.push(v));
+        assert_eq(vals.len(), 3);
+        assert(vals.contains(1));
+        assert(vals.contains(2));
+        assert(vals.contains(3));
+    });
+
+    test("hash keep_if keeps matching entries", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        let kept = h.keep_if(|k, v| v >= 2);
+        assert(kept.has_key("b"));
+        assert(kept.has_key("c"));
+        assert(!kept.has_key("a"));
+    });
+
+    test("hash delete_if removes matching entries", fn() {
+        let h = {"a": 1, "b": 2, "c": 3};
+        let kept = h.delete_if(|k, v| v >= 2);
+        assert(kept.has_key("a"));
+        assert(!kept.has_key("b"));
+        assert(!kept.has_key("c"));
+    });
+
+    test("hash update alias for merge", fn() {
+        let h = {"a": 1};
+        let updated = h.update({"b": 2});
+        assert_eq(updated["a"], 1);
+        assert_eq(updated["b"], 2);
+    });
+
+    test("hash all? returns true when all match", fn() {
+        let h = {"a": 2, "b": 4};
+        assert(h.all?(|k, v| v % 2 == 0));
+    });
+
+    test("hash all? returns false when any fails", fn() {
+        let h = {"a": 2, "b": 3};
+        assert(!h.all?(|k, v| v % 2 == 0));
+    });
+
+    test("hash any? returns true when any matches", fn() {
+        let h = {"a": 1, "b": 2};
+        assert(h.any?(|k, v| v == 2));
+    });
+
+    test("hash any? returns false when none match", fn() {
+        let h = {"a": 1, "b": 3};
+        assert(!h.any?(|k, v| v == 2));
+    });
+
+    test("hash assoc returns pair", fn() {
+        let h = {"a": 1, "b": 2};
+        let pair = h.assoc("b");
+        assert_eq(pair[0], "b");
+        assert_eq(pair[1], 2);
+    });
+
+    test("hash assoc returns null for missing key", fn() {
+        let h = {"a": 1};
+        assert_eq(h.assoc("missing"), null);
+    });
+
+    test("hash rassoc returns pair by value", fn() {
+        let h = {"a": 1, "b": 2};
+        let pair = h.rassoc(2);
+        assert_eq(pair[0], "b");
+        assert_eq(pair[1], 2);
+    });
+
+    test("hash rassoc returns null for missing value", fn() {
+        let h = {"a": 1};
+        assert_eq(h.rassoc(99), null);
+    });
+
+    test("hash fetch_values returns values", fn() {
+        let h = {"a": 1, "b": 2};
+        let vals = h.fetch_values("a", "b");
+        assert_eq(vals[0], 1);
+        assert_eq(vals[1], 2);
+    });
 });

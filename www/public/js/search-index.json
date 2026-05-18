@@ -5087,6 +5087,259 @@
       ]
     },
     {
+      "title": ".shift()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-shift",
+      "signature": "hash.shift()",
+      "description": "Remove and return the first key-value pair as [key, value]",
+      "keywords": [
+        "hash",
+        "shift",
+        "remove",
+        "first",
+        "pair"
+      ]
+    },
+    {
+      "title": ".flatten()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-flatten",
+      "signature": "hash.flatten()",
+      "description": "Convert hash to array of [key, value] sub-arrays",
+      "keywords": [
+        "hash",
+        "flatten",
+        "array",
+        "convert",
+        "entries"
+      ]
+    },
+    {
+      "title": ".values_at()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-values-at",
+      "signature": "hash.values_at(*keys)",
+      "description": "Returns array of values for given keys (null for missing)",
+      "keywords": [
+        "hash",
+        "values_at",
+        "values",
+        "select",
+        "keys"
+      ]
+    },
+    {
+      "title": ".key()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-key",
+      "signature": "hash.key(value)",
+      "description": "Returns first key for a given value (inverse lookup)",
+      "keywords": [
+        "hash",
+        "key",
+        "inverse",
+        "lookup",
+        "find"
+      ]
+    },
+    {
+      "title": ".has_value?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-has-value",
+      "signature": "hash.has_value?(value)",
+      "description": "Check if the hash contains a given value",
+      "keywords": [
+        "hash",
+        "has_value",
+        "contains",
+        "value",
+        "check"
+      ]
+    },
+    {
+      "title": ".value?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-has-value",
+      "signature": "hash.value?(value)",
+      "description": "Check if the hash contains a given value (alias for has_value?)",
+      "keywords": [
+        "hash",
+        "value?",
+        "contains",
+        "value",
+        "check"
+      ]
+    },
+    {
+      "title": ".to_h()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-to-h",
+      "signature": "hash.to_h()",
+      "description": "Returns self (identity for hashes)",
+      "keywords": [
+        "hash",
+        "to_h",
+        "convert",
+        "identity"
+      ]
+    },
+    {
+      "title": ".each_key()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-each-key",
+      "signature": "hash.each_key(fn)",
+      "description": "Iterate over keys only",
+      "keywords": [
+        "hash",
+        "each_key",
+        "iterate",
+        "keys",
+        "block"
+      ]
+    },
+    {
+      "title": ".each_value()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-each-value",
+      "signature": "hash.each_value(fn)",
+      "description": "Iterate over values only",
+      "keywords": [
+        "hash",
+        "each_value",
+        "iterate",
+        "values",
+        "block"
+      ]
+    },
+    {
+      "title": ".keep_if()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-keep-if",
+      "signature": "hash.keep_if(fn)",
+      "description": "Keep entries where block returns truthy (like select)",
+      "keywords": [
+        "hash",
+        "keep_if",
+        "filter",
+        "select",
+        "block"
+      ]
+    },
+    {
+      "title": ".delete_if()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-keep-if",
+      "signature": "hash.delete_if(fn)",
+      "description": "Remove entries where block returns truthy (like reject)",
+      "keywords": [
+        "hash",
+        "delete_if",
+        "reject",
+        "filter",
+        "block"
+      ]
+    },
+    {
+      "title": ".update()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-update",
+      "signature": "hash.update(other)",
+      "description": "Alias for merge \u2014 merges another hash",
+      "keywords": [
+        "hash",
+        "update",
+        "merge",
+        "combine"
+      ]
+    },
+    {
+      "title": ".all?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-all-any",
+      "signature": "hash.all?(fn)",
+      "description": "Returns true if block returns truthy for ALL entries",
+      "keywords": [
+        "hash",
+        "all?",
+        "predicate",
+        "block",
+        "check"
+      ]
+    },
+    {
+      "title": ".any?()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-all-any",
+      "signature": "hash.any?(fn)",
+      "description": "Returns true if block returns truthy for ANY entry",
+      "keywords": [
+        "hash",
+        "any?",
+        "predicate",
+        "block",
+        "check"
+      ]
+    },
+    {
+      "title": ".assoc()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-assoc",
+      "signature": "hash.assoc(key)",
+      "description": "Returns [key, value] pair or null if key not found",
+      "keywords": [
+        "hash",
+        "assoc",
+        "pair",
+        "lookup",
+        "find"
+      ]
+    },
+    {
+      "title": ".rassoc()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-assoc",
+      "signature": "hash.rassoc(value)",
+      "description": "Returns [key, value] pair for matching value or null",
+      "keywords": [
+        "hash",
+        "rassoc",
+        "pair",
+        "value",
+        "lookup"
+      ]
+    },
+    {
+      "title": ".fetch_values()",
+      "type": "method",
+      "category": "Hash",
+      "path": "/docs/language/hashes#method-fetch-values",
+      "signature": "hash.fetch_values(*keys)",
+      "description": "Returns array of values for given keys (raises if any missing)",
+      "keywords": [
+        "hash",
+        "fetch_values",
+        "fetch",
+        "values",
+        "keys"
+      ]
+    },
+    {
       "title": ".class",
       "type": "method",
       "category": "Array",
@@ -6481,6 +6734,1302 @@
         "presence",
         "user",
         "channel"
+      ]
+    },
+    {
+      "title": "Math.floor",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-floor",
+      "signature": "Math.floor(n)",
+      "description": "Rounds a number down to the nearest integer",
+      "keywords": [
+        "math",
+        "round",
+        "floor",
+        "integer"
+      ]
+    },
+    {
+      "title": "Math.ceil",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-ceil",
+      "signature": "Math.ceil(n)",
+      "description": "Rounds a number up to the nearest integer",
+      "keywords": [
+        "math",
+        "round",
+        "ceil",
+        "integer"
+      ]
+    },
+    {
+      "title": "Math.round",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-round",
+      "signature": "Math.round(n)",
+      "description": "Rounds a number to the nearest integer",
+      "keywords": [
+        "math",
+        "round",
+        "integer"
+      ]
+    },
+    {
+      "title": "Math.random",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-random",
+      "signature": "Math.random()",
+      "description": "Returns a random float between 0 and 1",
+      "keywords": [
+        "math",
+        "random",
+        "number"
+      ]
+    },
+    {
+      "title": "Math.log",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-log",
+      "signature": "Math.log(n)",
+      "description": "Returns the natural logarithm of a number",
+      "keywords": [
+        "math",
+        "log",
+        "logarithm",
+        "ln"
+      ]
+    },
+    {
+      "title": "Math.log10",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-log10",
+      "signature": "Math.log10(n)",
+      "description": "Returns the base-10 logarithm of a number",
+      "keywords": [
+        "math",
+        "log10",
+        "logarithm"
+      ]
+    },
+    {
+      "title": "Math.sin",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-sin",
+      "signature": "Math.sin(n)",
+      "description": "Returns the sine of an angle in radians",
+      "keywords": [
+        "math",
+        "sin",
+        "sine",
+        "trigonometry"
+      ]
+    },
+    {
+      "title": "Math.cos",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-cos",
+      "signature": "Math.cos(n)",
+      "description": "Returns the cosine of an angle in radians",
+      "keywords": [
+        "math",
+        "cos",
+        "cosine",
+        "trigonometry"
+      ]
+    },
+    {
+      "title": "Math.tan",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-tan",
+      "signature": "Math.tan(n)",
+      "description": "Returns the tangent of an angle in radians",
+      "keywords": [
+        "math",
+        "tan",
+        "tangent",
+        "trigonometry"
+      ]
+    },
+    {
+      "title": "Math.exp",
+      "type": "method",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-exp",
+      "signature": "Math.exp(n)",
+      "description": "Returns e raised to the power of n",
+      "keywords": [
+        "math",
+        "exp",
+        "exponential",
+        "e"
+      ]
+    },
+    {
+      "title": "Math.pi",
+      "type": "constant",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-pi",
+      "signature": "Math.pi",
+      "description": "The mathematical constant pi (3.14159...)",
+      "keywords": [
+        "math",
+        "pi",
+        "constant"
+      ]
+    },
+    {
+      "title": "Math.e",
+      "type": "constant",
+      "category": "Math",
+      "path": "/docs/builtins/core#def-math-e",
+      "signature": "Math.e",
+      "description": "The mathematical constant e (2.71828...)",
+      "keywords": [
+        "math",
+        "e",
+        "constant"
+      ]
+    },
+    {
+      "title": "html_escape",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-html-escape",
+      "signature": "html_escape(string)",
+      "description": "Escapes HTML special characters in a string",
+      "keywords": [
+        "html",
+        "escape",
+        "xss",
+        "security"
+      ]
+    },
+    {
+      "title": "html_unescape",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-html-unescape",
+      "signature": "html_unescape(string)",
+      "description": "Unescapes HTML entities back to characters",
+      "keywords": [
+        "html",
+        "unescape",
+        "entities"
+      ]
+    },
+    {
+      "title": "sanitize_html",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-sanitize-html",
+      "signature": "sanitize_html(string)",
+      "description": "Removes dangerous HTML tags and attributes, keeping safe content",
+      "keywords": [
+        "html",
+        "sanitize",
+        "xss",
+        "security"
+      ]
+    },
+    {
+      "title": "strip_html",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-strip-html",
+      "signature": "strip_html(string)",
+      "description": "Strips all HTML tags from a string, returning only text",
+      "keywords": [
+        "html",
+        "strip",
+        "tags",
+        "text"
+      ]
+    },
+    {
+      "title": "Markdown.to_html",
+      "type": "method",
+      "category": "Markdown",
+      "path": "/docs/builtins/core#def-markdown-to-html",
+      "signature": "Markdown.to_html(markdown)",
+      "description": "Converts Markdown source text to HTML",
+      "keywords": [
+        "markdown",
+        "html",
+        "render"
+      ]
+    },
+    {
+      "title": "Markdown.to_safe_html",
+      "type": "method",
+      "category": "Markdown",
+      "path": "/docs/builtins/core#def-markdown-to-safe-html",
+      "signature": "Markdown.to_safe_html(markdown)",
+      "description": "Converts Markdown to HTML, escaping raw HTML and neutralizing unsafe URLs",
+      "keywords": [
+        "markdown",
+        "html",
+        "safe",
+        "security"
+      ]
+    },
+    {
+      "title": "hash",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-hash",
+      "signature": "hash()",
+      "description": "Creates an empty hash",
+      "keywords": [
+        "hash",
+        "create",
+        "empty",
+        "map"
+      ]
+    },
+    {
+      "title": "File",
+      "type": "class",
+      "category": "File",
+      "path": "/docs/builtins/core#def-file",
+      "signature": "File",
+      "description": "File I/O class for reading and writing files",
+      "keywords": [
+        "file",
+        "io",
+        "read",
+        "write"
+      ]
+    },
+    {
+      "title": "Image",
+      "type": "class",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "Image",
+      "description": "Image processing class for loading, transforming, and saving images",
+      "keywords": [
+        "image",
+        "processing",
+        "resize",
+        "crop"
+      ]
+    },
+    {
+      "title": "Image.open",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "Image.open(path)",
+      "description": "Load an image from a file path",
+      "keywords": [
+        "image",
+        "load",
+        "open"
+      ]
+    },
+    {
+      "title": "Image.from_blob",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "Image.from_blob(data)",
+      "description": "Load an image from binary data",
+      "keywords": [
+        "image",
+        "blob",
+        "load"
+      ]
+    },
+    {
+      "title": ".resize()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.resize(width, height)",
+      "description": "Resize an image to exact dimensions",
+      "keywords": [
+        "image",
+        "resize"
+      ]
+    },
+    {
+      "title": ".resize_to_fill()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.resize_to_fill(width, height)",
+      "description": "Resize and crop to fill exact dimensions",
+      "keywords": [
+        "image",
+        "resize",
+        "fill",
+        "crop"
+      ]
+    },
+    {
+      "title": ".resize_to_fit()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.resize_to_fit(width, height)",
+      "description": "Resize to fit within dimensions while maintaining aspect ratio",
+      "keywords": [
+        "image",
+        "resize",
+        "fit"
+      ]
+    },
+    {
+      "title": ".resize_to_limit()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.resize_to_limit(width, height)",
+      "description": "Resize only if larger than given dimensions",
+      "keywords": [
+        "image",
+        "resize",
+        "limit"
+      ]
+    },
+    {
+      "title": ".crop()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.crop(x, y, width, height)",
+      "description": "Crop a region of the image",
+      "keywords": [
+        "image",
+        "crop"
+      ]
+    },
+    {
+      "title": ".rotate()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.rotate(degrees)",
+      "description": "Rotate an image by degrees",
+      "keywords": [
+        "image",
+        "rotate"
+      ]
+    },
+    {
+      "title": ".blur()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.blur(radius)",
+      "description": "Apply Gaussian blur to an image",
+      "keywords": [
+        "image",
+        "blur"
+      ]
+    },
+    {
+      "title": ".greyscale()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.greyscale()",
+      "description": "Convert image to greyscale",
+      "keywords": [
+        "image",
+        "greyscale",
+        "grayscale"
+      ]
+    },
+    {
+      "title": ".save()",
+      "type": "method",
+      "category": "Image",
+      "path": "/docs/builtins/image",
+      "signature": "image.save(path)",
+      "description": "Save image to a file",
+      "keywords": [
+        "image",
+        "save",
+        "export"
+      ]
+    },
+    {
+      "title": "Upload",
+      "type": "class",
+      "category": "Upload",
+      "path": "/docs/builtins/upload",
+      "signature": "Upload",
+      "description": "File upload handling class",
+      "keywords": [
+        "upload",
+        "file",
+        "multipart"
+      ]
+    },
+    {
+      "title": "parse_multipart",
+      "type": "function",
+      "category": "Upload",
+      "path": "/docs/builtins/upload",
+      "signature": "parse_multipart(req)",
+      "description": "Parse multipart form data from a request",
+      "keywords": [
+        "upload",
+        "multipart",
+        "parse"
+      ]
+    },
+    {
+      "title": "S3.list_buckets",
+      "type": "method",
+      "category": "S3",
+      "path": "/docs/builtins/s3",
+      "signature": "S3.list_buckets()",
+      "description": "List all S3-compatible buckets",
+      "keywords": [
+        "s3",
+        "bucket",
+        "list"
+      ]
+    },
+    {
+      "title": "S3.create_bucket",
+      "type": "method",
+      "category": "S3",
+      "path": "/docs/builtins/s3",
+      "signature": "S3.create_bucket(name)",
+      "description": "Create a new bucket",
+      "keywords": [
+        "s3",
+        "bucket",
+        "create"
+      ]
+    },
+    {
+      "title": "S3.put_object",
+      "type": "method",
+      "category": "S3",
+      "path": "/docs/builtins/s3",
+      "signature": "S3.put_object(bucket, key, body)",
+      "description": "Upload an object to a bucket",
+      "keywords": [
+        "s3",
+        "object",
+        "upload",
+        "put"
+      ]
+    },
+    {
+      "title": "S3.get_object",
+      "type": "method",
+      "category": "S3",
+      "path": "/docs/builtins/s3",
+      "signature": "S3.get_object(bucket, key)",
+      "description": "Get an object from a bucket",
+      "keywords": [
+        "s3",
+        "object",
+        "get",
+        "download"
+      ]
+    },
+    {
+      "title": "S3.delete_object",
+      "type": "method",
+      "category": "S3",
+      "path": "/docs/builtins/s3",
+      "signature": "S3.delete_object(bucket, key)",
+      "description": "Delete an object from a bucket",
+      "keywords": [
+        "s3",
+        "object",
+        "delete"
+      ]
+    },
+    {
+      "title": "KV",
+      "type": "class",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV",
+      "description": "Key-Value store client for SoliKV/Redis",
+      "keywords": [
+        "kv",
+        "key",
+        "value",
+        "redis"
+      ]
+    },
+    {
+      "title": "KV.get",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.get(key)",
+      "description": "Get a value by key",
+      "keywords": [
+        "kv",
+        "get"
+      ]
+    },
+    {
+      "title": "KV.set",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.set(key, value, ttl?)",
+      "description": "Set a key-value pair with optional TTL",
+      "keywords": [
+        "kv",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.delete",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.delete(key)",
+      "description": "Delete a key",
+      "keywords": [
+        "kv",
+        "delete"
+      ]
+    },
+    {
+      "title": "Spreadsheet.csv",
+      "type": "method",
+      "category": "Spreadsheet",
+      "path": "/docs/builtins/spreadsheet",
+      "signature": "Spreadsheet.csv(data)",
+      "description": "Convert array of arrays to CSV string",
+      "keywords": [
+        "spreadsheet",
+        "csv",
+        "export"
+      ]
+    },
+    {
+      "title": "Spreadsheet.excel",
+      "type": "method",
+      "category": "Spreadsheet",
+      "path": "/docs/builtins/spreadsheet",
+      "signature": "Spreadsheet.excel(data)",
+      "description": "Create Excel XML spreadsheet from data",
+      "keywords": [
+        "spreadsheet",
+        "excel",
+        "export"
+      ]
+    },
+    {
+      "title": "System.run",
+      "type": "method",
+      "category": "System",
+      "path": "/docs/builtins/system",
+      "signature": "System.run(command)",
+      "description": "Run a system command asynchronously (non-blocking)",
+      "keywords": [
+        "system",
+        "command",
+        "run",
+        "process"
+      ]
+    },
+    {
+      "title": "System.run_sync",
+      "type": "method",
+      "category": "System",
+      "path": "/docs/builtins/system",
+      "signature": "System.run_sync(command)",
+      "description": "Run a system command synchronously and return output",
+      "keywords": [
+        "system",
+        "command",
+        "run",
+        "sync"
+      ]
+    },
+    {
+      "title": "Regex.matches",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-matches",
+      "signature": "Regex.matches(pattern, string)",
+      "description": "Check if a string matches a regex pattern",
+      "keywords": [
+        "regex",
+        "match",
+        "pattern"
+      ]
+    },
+    {
+      "title": "Regex.find",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-find",
+      "signature": "Regex.find(pattern, string)",
+      "description": "Find first match of a regex pattern",
+      "keywords": [
+        "regex",
+        "find",
+        "pattern"
+      ]
+    },
+    {
+      "title": "Regex.replace",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-replace",
+      "signature": "Regex.replace(pattern, string, replacement)",
+      "description": "Replace first match of a regex pattern",
+      "keywords": [
+        "regex",
+        "replace",
+        "pattern"
+      ]
+    },
+    {
+      "title": "Regex.replace_all",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-replace-all",
+      "signature": "Regex.replace_all(pattern, string, replacement)",
+      "description": "Replace all matches of a regex pattern",
+      "keywords": [
+        "regex",
+        "replace",
+        "pattern"
+      ]
+    },
+    {
+      "title": "Regex.split",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-split",
+      "signature": "Regex.split(pattern, string)",
+      "description": "Split a string by regex pattern",
+      "keywords": [
+        "regex",
+        "split",
+        "pattern"
+      ]
+    },
+    {
+      "title": "Regex.escape",
+      "type": "method",
+      "category": "Regex",
+      "path": "/docs/builtins/core#def-regex-escape",
+      "signature": "Regex.escape(string)",
+      "description": "Escape special regex characters in a string",
+      "keywords": [
+        "regex",
+        "escape"
+      ]
+    },
+    {
+      "title": "RateLimit",
+      "type": "class",
+      "category": "Rate Limit",
+      "path": "/docs/builtins/rate-limit",
+      "signature": "RateLimit",
+      "description": "Request rate limiting for API endpoints",
+      "keywords": [
+        "rate",
+        "limit",
+        "throttle"
+      ]
+    },
+    {
+      "title": "set_csp",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "set_csp(policy, report_only?)",
+      "description": "Set Content-Security-Policy header",
+      "keywords": [
+        "security",
+        "csp",
+        "headers"
+      ]
+    },
+    {
+      "title": "set_hsts",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "set_hsts(max_age, include_subdomains?, preload?)",
+      "description": "Set Strict-Transport-Security header",
+      "keywords": [
+        "security",
+        "hsts",
+        "headers"
+      ]
+    },
+    {
+      "title": "prevent_clickjacking",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "prevent_clickjacking()",
+      "description": "Set X-Frame-Options: DENY",
+      "keywords": [
+        "security",
+        "clickjacking",
+        "x-frame-options"
+      ]
+    },
+    {
+      "title": "secure_headers",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "secure_headers()",
+      "description": "Apply standard security headers preset",
+      "keywords": [
+        "security",
+        "headers",
+        "preset"
+      ]
+    },
+    {
+      "title": "secure_headers_strict",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "secure_headers_strict()",
+      "description": "Apply strict security headers preset",
+      "keywords": [
+        "security",
+        "headers",
+        "strict"
+      ]
+    },
+    {
+      "title": "get_security_headers",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/builtins/security-headers",
+      "signature": "get_security_headers()",
+      "description": "Get the current security headers configuration as a hash",
+      "keywords": [
+        "security",
+        "headers",
+        "get"
+      ]
+    },
+    {
+      "title": "enable_trust_proxy",
+      "type": "function",
+      "category": "Hardening",
+      "path": "/docs/builtins/hardening",
+      "signature": "enable_trust_proxy()",
+      "description": "Enable trust proxy to honor X-Forwarded headers",
+      "keywords": [
+        "security",
+        "proxy",
+        "trust",
+        "x-forwarded"
+      ]
+    },
+    {
+      "title": "disable_trust_proxy",
+      "type": "function",
+      "category": "Hardening",
+      "path": "/docs/builtins/hardening",
+      "signature": "disable_trust_proxy()",
+      "description": "Disable trust proxy (default)",
+      "keywords": [
+        "security",
+        "proxy",
+        "trust"
+      ]
+    },
+    {
+      "title": "trust_proxy_enabled",
+      "type": "function",
+      "category": "Hardening",
+      "path": "/docs/builtins/hardening",
+      "signature": "trust_proxy_enabled()",
+      "description": "Check if trust proxy is enabled",
+      "keywords": [
+        "security",
+        "proxy",
+        "trust"
+      ]
+    },
+    {
+      "title": "set_max_body_size",
+      "type": "function",
+      "category": "Hardening",
+      "path": "/docs/builtins/hardening",
+      "signature": "set_max_body_size(bytes)",
+      "description": "Set maximum request body size in bytes",
+      "keywords": [
+        "security",
+        "body",
+        "limit",
+        "dos"
+      ]
+    },
+    {
+      "title": "max_body_size",
+      "type": "function",
+      "category": "Hardening",
+      "path": "/docs/builtins/hardening",
+      "signature": "max_body_size()",
+      "description": "Get current maximum request body size",
+      "keywords": [
+        "security",
+        "body",
+        "limit"
+      ]
+    },
+    {
+      "title": "Job",
+      "type": "class",
+      "category": "Jobs",
+      "path": "/docs/builtins/jobs",
+      "signature": "Job",
+      "description": "Background job processing class",
+      "keywords": [
+        "job",
+        "background",
+        "queue",
+        "worker"
+      ]
+    },
+    {
+      "title": "Cron",
+      "type": "class",
+      "category": "Jobs",
+      "path": "/docs/builtins/jobs",
+      "signature": "Cron",
+      "description": "Cron job scheduling class",
+      "keywords": [
+        "cron",
+        "schedule",
+        "job"
+      ]
+    },
+    {
+      "title": "session_get",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_get(key)",
+      "description": "Get a value from the session",
+      "keywords": [
+        "session",
+        "get"
+      ]
+    },
+    {
+      "title": "session_set",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_set(key, value)",
+      "description": "Set a value in the session",
+      "keywords": [
+        "session",
+        "set"
+      ]
+    },
+    {
+      "title": "session_delete",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_delete(key)",
+      "description": "Delete a key from the session",
+      "keywords": [
+        "session",
+        "delete"
+      ]
+    },
+    {
+      "title": "session_destroy",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_destroy()",
+      "description": "Destroy the entire session",
+      "keywords": [
+        "session",
+        "destroy"
+      ]
+    },
+    {
+      "title": "session_regenerate",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_regenerate()",
+      "description": "Regenerate the session ID (security after login)",
+      "keywords": [
+        "session",
+        "regenerate",
+        "security"
+      ]
+    },
+    {
+      "title": "session_has",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_has(key)",
+      "description": "Check if a key exists in the session",
+      "keywords": [
+        "session",
+        "has",
+        "exists"
+      ]
+    },
+    {
+      "title": "session_id",
+      "type": "function",
+      "category": "Session",
+      "path": "/docs/builtins/session",
+      "signature": "session_id()",
+      "description": "Get the current session ID",
+      "keywords": [
+        "session",
+        "id"
+      ]
+    },
+    {
+      "title": "halt",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/builtins/core#def-halt",
+      "signature": "halt(status, message)",
+      "description": "Short-circuit a request with a status code and message",
+      "keywords": [
+        "controller",
+        "halt",
+        "response"
+      ]
+    },
+    {
+      "title": ".casecmp()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-casecmp",
+      "signature": "string.casecmp(other)",
+      "description": "Case-insensitive comparison. Returns -1, 0, or 1",
+      "keywords": [
+        "string",
+        "compare",
+        "casecmp",
+        "case-insensitive"
+      ]
+    },
+    {
+      "title": ".casecmp?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-casecmp",
+      "signature": "string.casecmp?(other)",
+      "description": "Case-insensitive equality check. Returns Bool",
+      "keywords": [
+        "string",
+        "compare",
+        "casecmp?",
+        "case-insensitive",
+        "equal"
+      ]
+    },
+    {
+      "title": ".prepend()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-prepend",
+      "signature": "string.prepend(other)",
+      "description": "Returns a new string with other prepended to the front",
+      "keywords": [
+        "string",
+        "prepend",
+        "concatenate"
+      ]
+    },
+    {
+      "title": ".chop",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-chop",
+      "signature": "string.chop",
+      "description": "Returns a new string with the last character removed",
+      "keywords": [
+        "string",
+        "chop",
+        "remove",
+        "last"
+      ]
+    },
+    {
+      "title": ".ascii_only?()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-ascii-only",
+      "signature": "string.ascii_only?",
+      "description": "Returns true if the string contains only ASCII characters",
+      "keywords": [
+        "string",
+        "ascii",
+        "encoding",
+        "check"
+      ]
+    },
+    {
+      "title": ".succ",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-succ",
+      "signature": "string.succ",
+      "description": "Returns the successor of the string. Increments the last alphanumeric character with carry",
+      "keywords": [
+        "string",
+        "succ",
+        "next",
+        "increment"
+      ]
+    },
+    {
+      "title": ".next",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#method-succ",
+      "signature": "string.next",
+      "description": "Alias for .succ - returns the successor of the string",
+      "keywords": [
+        "string",
+        "next",
+        "succ",
+        "increment"
+      ]
+    },
+    {
+      "title": ".delete_at()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-delete",
+      "signature": "array.delete_at(index)",
+      "description": "Removes the item at the given index. Returns the array or null if out of bounds",
+      "keywords": [
+        "array",
+        "delete_at",
+        "remove"
+      ]
+    },
+    {
+      "title": ".shift",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-shift-unshift",
+      "signature": "array.shift",
+      "description": "Removes and returns the first element. Returns null if empty",
+      "keywords": [
+        "array",
+        "shift",
+        "remove",
+        "first"
+      ]
+    },
+    {
+      "title": ".unshift()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-shift-unshift",
+      "signature": "array.unshift(value)",
+      "description": "Prepends elements to the front of the array",
+      "keywords": [
+        "array",
+        "unshift",
+        "prepend"
+      ]
+    },
+    {
+      "title": ".none?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-reject",
+      "signature": "array.none?(fn)",
+      "description": "Returns true if no elements match the predicate",
+      "keywords": [
+        "array",
+        "none",
+        "any",
+        "all"
+      ]
+    },
+    {
+      "title": ".one?()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-reject",
+      "signature": "array.one?(fn)",
+      "description": "Returns true if exactly one element matches the predicate",
+      "keywords": [
+        "array",
+        "one",
+        "exactly",
+        "match"
+      ]
+    },
+    {
+      "title": ".values_at()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-values-at",
+      "signature": "array.values_at(index, ...)",
+      "description": "Returns an array containing values at the given indices",
+      "keywords": [
+        "array",
+        "values_at",
+        "select",
+        "indices"
+      ]
+    },
+    {
+      "title": ".delete()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-delete",
+      "signature": "array.delete(value)",
+      "description": "Removes all items equal to value, returns array or null if not found",
+      "keywords": [
+        "array",
+        "delete",
+        "remove"
+      ]
+    },
+    {
+      "title": ".insert()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-insert",
+      "signature": "array.insert(index, value, ...)",
+      "description": "Inserts values at the given index",
+      "keywords": [
+        "array",
+        "insert"
+      ]
+    },
+    {
+      "title": ".rotate()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-rotate",
+      "signature": "array.rotate(count?)",
+      "description": "Rotates the array by count positions (default 1)",
+      "keywords": [
+        "array",
+        "rotate"
+      ]
+    },
+    {
+      "title": ".reject()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-reject",
+      "signature": "array.reject(fn)",
+      "description": "Inverse of filter \u2014 keeps elements where block returns false",
+      "keywords": [
+        "array",
+        "reject",
+        "filter"
+      ]
+    },
+    {
+      "title": ".count()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#array-count",
+      "signature": "array.count(value_or_fn?)",
+      "description": "Count elements matching a value or predicate; with no arg returns length",
+      "keywords": [
+        "array",
+        "count"
+      ]
+    },
+    {
+      "title": ".succ",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-succ",
+      "signature": "int.succ",
+      "description": "Returns the integer incremented by 1 (i + 1)",
+      "keywords": [
+        "int",
+        "succ",
+        "next",
+        "increment"
+      ]
+    },
+    {
+      "title": ".next",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-succ",
+      "signature": "int.next",
+      "description": "Alias for .succ \u2014 returns i + 1",
+      "keywords": [
+        "int",
+        "next",
+        "succ",
+        "increment"
+      ]
+    },
+    {
+      "title": ".pred",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-pred",
+      "signature": "int.pred",
+      "description": "Returns the integer decremented by 1 (i - 1)",
+      "keywords": [
+        "int",
+        "pred",
+        "decrement"
+      ]
+    },
+    {
+      "title": ".divmod()",
+      "type": "method",
+      "category": "Int",
+      "path": "/docs/language/integers#method-divmod",
+      "signature": "int.divmod(other)",
+      "description": "Returns [quotient, modulus] with Ruby-style floor division",
+      "keywords": [
+        "int",
+        "divmod",
+        "divide",
+        "modulo"
+      ]
+    },
+    {
+      "title": ".divmod()",
+      "type": "method",
+      "category": "Float",
+      "path": "/docs/language/floats#method-divmod",
+      "signature": "float.divmod(other)",
+      "description": "Returns [floored quotient, remainder] from division",
+      "keywords": [
+        "float",
+        "divmod",
+        "divide",
+        "modulo"
       ]
     }
   ]

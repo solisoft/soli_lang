@@ -368,3 +368,91 @@ describe("String.truncate", fn() {
         assert_eq("hello world".truncate(8, "~"), "hello w~");
     });
 });
+
+describe("String.casecmp", fn() {
+    test("casecmp returns 0 for equal strings", fn() {
+        assert_eq("hello".casecmp("HELLO"), 0);
+        assert_eq("Hello".casecmp("hello"), 0);
+        assert_eq("hello".casecmp("hello"), 0);
+    });
+    test("casecmp returns -1 when less than", fn() {
+        assert_eq("apple".casecmp("BANANA"), -1);
+    });
+    test("casecmp returns 1 when greater than", fn() {
+        assert_eq("banana".casecmp("APPLE"), 1);
+    });
+});
+
+describe("String.casecmp?", fn() {
+    test("casecmp? returns true for equal strings ignoring case", fn() {
+        assert("hello".casecmp?("HELLO"));
+        assert("Hello".casecmp?("hello"));
+        assert("hello".casecmp?("hello"));
+    });
+    test("casecmp? returns false for different strings", fn() {
+        assert_not("hello".casecmp?("world"));
+        assert_not("hello".casecmp?("hell"));
+    });
+});
+
+describe("String.prepend", fn() {
+    test("prepends string to front", fn() {
+        assert_eq("world".prepend("hello "), "hello world");
+        assert_eq("bar".prepend("foo"), "foobar");
+    });
+    test("prepend does not mutate original", fn() {
+        let s = "world";
+        s.prepend("hello ");
+        assert_eq(s, "world");
+    });
+});
+
+describe("String.chop", fn() {
+    test("removes last character", fn() {
+        assert_eq("hello".chop, "hell");
+        assert_eq("world!".chop, "world");
+    });
+    test("chop on single char returns empty", fn() {
+        assert_eq("a".chop, "");
+    });
+    test("chop on empty string returns empty", fn() {
+        assert_eq("".chop, "");
+    });
+    test("chop removes trailing newline", fn() {
+        assert_eq("hello\n".chop, "hello");
+    });
+});
+
+describe("String.ascii_only?", fn() {
+    test("returns true for ASCII strings", fn() {
+        assert("hello".ascii_only?);
+        assert("".ascii_only?);
+    });
+    test("returns false for non-ASCII strings", fn() {
+        assert_not("café".ascii_only?);
+        assert_not("你好".ascii_only?);
+    });
+});
+
+describe("String.succ / String.next", fn() {
+    test("increments letters", fn() {
+        assert_eq("a".succ, "b");
+        assert_eq("z".succ, "aa");
+        assert_eq("A".succ, "B");
+        assert_eq("Z".succ, "AA");
+    });
+    test("increments digits", fn() {
+        assert_eq("0".succ, "1");
+        assert_eq("9".succ, "10");
+        assert_eq("99".succ, "100");
+    });
+    test("increments alphanumeric runs", fn() {
+        assert_eq("aa".succ, "ab");
+        assert_eq("zz".succ, "aaa");
+        assert_eq("a9".succ, "b0");
+    });
+    test("next is alias for succ", fn() {
+        assert_eq("a".next, "b");
+        assert_eq("9".next, "10");
+    });
+});

@@ -237,3 +237,102 @@ describe("Array Methods", fn() {
         assert_eq(result[2], 3);
     });
 });
+
+describe("Array - Ruby-compat methods", fn() {
+    test("size is alias for length", fn() {
+        assert_eq([1, 2, 3].size, 3);
+        assert_eq([].size, 0);
+    });
+
+    test("delete removes matching elements", fn() {
+        assert_eq([1, 2, 3, 2].delete(2), [1, 3]);
+    });
+
+    test("delete returns null if not found", fn() {
+        assert_null([1, 2].delete(99));
+    });
+
+    test("delete_at removes at index", fn() {
+        assert_eq([1, 2, 3].delete_at(1), [1, 3]);
+    });
+
+    test("delete_at with negative index", fn() {
+        assert_eq([1, 2, 3].delete_at(-1), [1, 2]);
+    });
+
+    test("delete_at returns null if out of bounds", fn() {
+        assert_null([1].delete_at(5));
+    });
+
+    test("shift removes first element", fn() {
+        assert_eq([1, 2, 3].shift, [2, 3]);
+    });
+
+    test("shift on empty returns null", fn() {
+        assert_null([].shift);
+    });
+
+    test("unshift prepends elements", fn() {
+        assert_eq([1, 2].unshift(0), [0, 1, 2]);
+    });
+
+    test("insert at index", fn() {
+        assert_eq([1, 3].insert(1, 2), [1, 2, 3]);
+    });
+
+    test("insert multiple values", fn() {
+        assert_eq([1, 4].insert(1, 2, 3), [1, 2, 3, 4]);
+    });
+
+    test("rotate with default count", fn() {
+        assert_eq([1, 2, 3].rotate, [2, 3, 1]);
+    });
+
+    test("rotate with explicit count", fn() {
+        assert_eq([1, 2, 3].rotate(2), [3, 1, 2]);
+    });
+
+    test("rotate with negative count", fn() {
+        assert_eq([1, 2, 3].rotate(-1), [3, 1, 2]);
+    });
+
+    test("reject is opposite of filter", fn() {
+        assert_eq([1, 2, 3, 4].reject(fn(x) x % 2 == 0), [1, 3]);
+    });
+
+    test("none? returns true when no matches", fn() {
+        assert([1, 2].none?(fn(x) x > 10));
+    });
+
+    test("none? returns false when any match", fn() {
+        assert_not([1, 2].none?(fn(x) x == 2));
+    });
+
+    test("one? returns true when exactly one match", fn() {
+        assert([1, 2, 3].one?(fn(x) x == 2));
+    });
+
+    test("one? returns false when multiple match", fn() {
+        assert_not([1, 2, 2].one?(fn(x) x == 2));
+    });
+
+    test("values_at returns selected indices", fn() {
+        assert_eq([10, 20, 30, 40].values_at(0, 2), [10, 30]);
+    });
+
+    test("values_at with negative indices", fn() {
+        assert_eq([10, 20, 30].values_at(0, -1), [10, 30]);
+    });
+
+    test("count with no args returns length", fn() {
+        assert_eq([1, 2, 3].count, 3);
+    });
+
+    test("count with value", fn() {
+        assert_eq([1, 2, 2, 3].count(2), 2);
+    });
+
+    test("count with block", fn() {
+        assert_eq([1, 2, 3, 4].count(fn(x) x % 2 == 0), 2);
+    });
+});

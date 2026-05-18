@@ -918,6 +918,111 @@ arr.length  # 0</code></pre>
                 </div>
             </section>
 
+            <section id="array-delete" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-delete" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.delete(value)</code> / <code class="text-lg font-mono text-indigo-400">.delete_at(index)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">delete</code> removes all elements equal to value — returns the mutated array or <code class="text-purple-400">null</code> if not found. <code class="text-indigo-300">delete_at</code> removes the element at the given index (supports negative indices).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3, 2].delete(2)   # [1, 3]
+[1, 2].delete(99)          # null
+[1, 2, 3].delete_at(1)     # [1, 3]
+[1, 2, 3].delete_at(-1)    # [1, 2]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-shift-unshift" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-shift-unshift" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.shift</code> / <code class="text-lg font-mono text-indigo-400">.unshift(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">shift</code> removes the first element. <code class="text-indigo-300">unshift</code> prepends elements to the front. Both return a new array (strings are immutable).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].shift       # [2, 3]
+[].shift               # null
+[1, 2].unshift(0)      # [0, 1, 2]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-insert" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-insert" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.insert(index, value, ...)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Inserts values at the given index. Supports negative indices. Multiple values can be inserted at once.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 3].insert(1, 2)       # [1, 2, 3]
+[1, 4].insert(1, 2, 3)     # [1, 2, 3, 4]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-rotate" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-rotate" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.rotate(count?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Rotates the array by <code class="text-indigo-300">count</code> positions (default 1). Positive moves elements from left to right; negative goes the other way.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].rotate       # [2, 3, 1]
+[1, 2, 3].rotate(2)     # [3, 1, 2]
+[1, 2, 3].rotate(-1)    # [3, 1, 2]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-reject" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-reject" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.reject(def)</code> / <code class="text-lg font-mono text-indigo-400">.none?(def)</code> / <code class="text-lg font-mono text-indigo-400">.one?(def)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">reject</code> is the inverse of <code class="text-indigo-300">filter</code> — keeps items where the block returns false. <code class="text-indigo-300">none?</code> returns true if no items match. <code class="text-indigo-300">one?</code> returns true if exactly one matches.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3, 4].reject(fn(x) x % 2 == 0)   # [1, 3]
+[1, 2].none?(fn(x) x > 10)                # true
+[1, 2, 3].one?(fn(x) x == 2)              # true
+[1, 2, 2].one?(fn(x) x == 2)              # false</code></pre>
+                </div>
+            </section>
+
+            <section id="array-values-at" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-values-at" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.values_at(index, ...)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns an array containing values at the specified indices. Supports negative indices and arrays of indices.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[10, 20, 30, 40].values_at(0, 2)    # [10, 30]
+[10, 20, 30].values_at(0, -1)        # [10, 30]</code></pre>
+                </div>
+            </section>
+
+            <section id="array-count" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#array-count" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.count(value?)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">With no argument returns the length. With an argument counts occurrences. With a function counts elements where the block returns truthy.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].count        # 3
+[1, 2, 2, 3].count(2)   # 2
+[1, 2, 3, 4].count(fn(x) x % 2 == 0)   # 2</code></pre>
+                </div>
+            </section>
+
             <section id="array-introspection" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#array-introspection" class="group flex items-center gap-2 mb-3">

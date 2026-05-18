@@ -557,6 +557,262 @@ impl Vm {
                 };
                 Ok(Value::Bool(class_name == "array" || class_name == "object"))
             }
+            "delete" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let val = &args[0];
+                let b = arr.borrow();
+                if b.contains(val) {
+                    let new_arr: Vec<Value> = b.iter().filter(|v| *v != val).cloned().collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            "delete_at" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let b = arr.borrow();
+                let idx = match &args[0] {
+                    Value::Int(i) => {
+                        if *i >= 0 {
+                            *i as usize
+                        } else {
+                            b.len().saturating_sub((-*i) as usize)
+                        }
+                    }
+                    _ => return Err(RuntimeError::type_error("delete_at expects integer", span)),
+                };
+                if idx < b.len() {
+                    let mut new_arr = b.clone();
+                    new_arr.remove(idx);
+                    Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+                } else {
+                    Ok(Value::Null)
+                }
+            }
+            "shift" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                let b = arr.borrow();
+                if b.is_empty() {
+                    Ok(Value::Null)
+                } else {
+                    let mut new_arr = b.clone();
+                    new_arr.remove(0);
+                    Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+                }
+            }
+            "unshift" => {
+                if args.is_empty() {
+                    return Ok(Value::Array(Rc::new(RefCell::new(arr.borrow().clone()))));
+                }
+                let mut new_arr = args.to_vec();
+                new_arr.extend(arr.borrow().iter().cloned());
+                Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+            }
+            "insert" => {
+                if args.len() < 2 {
+                    return Err(RuntimeError::wrong_arity(2, args.len(), span));
+                }
+                let b = arr.borrow();
+                let idx = match &args[0] {
+                    Value::Int(i) => {
+                        if *i >= 0 {
+                            *i as usize
+                        } else {
+                            b.len().saturating_sub((-*i) as usize)
+                        }
+                    }
+                    _ => return Err(RuntimeError::type_error("insert expects integer", span)),
+                };
+                let mut new_arr = b.clone();
+                let vals = &args[1..];
+                let insert_at = idx.min(new_arr.len());
+                let mut tail = new_arr.split_off(insert_at);
+                new_arr.extend(vals.iter().cloned());
+                new_arr.append(&mut tail);
+                Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+            }
+            "rotate" => {
+                if args.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let b = arr.borrow();
+                let count = match args.first() {
+                    Some(Value::Int(n)) => *n,
+                    None => 1,
+                    _ => return Err(RuntimeError::type_error("rotate expects integer", span)),
+                };
+                if b.is_empty() {
+                    return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+                }
+                let len = b.len() as i64;
+                let normalized = ((count % len) + len) % len;
+                let split_at = normalized as usize;
+                let rotated: Vec<Value> = b[split_at..]
+                    .iter()
+                    .chain(b[..split_at].iter())
+                    .cloned()
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(rotated))))
+            }
+            "reject" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let len = arr.borrow().len();
+                let mut result = Vec::new();
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        let v = self.invoke_in_batch_one(&batch, &cb, item.clone(), span)?;
+                        if !v.is_truthy() {
+                            result.push(item);
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "none?" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let len = arr.borrow().len();
+                let batch = self.enter_callable_batch();
+                let outcome: Result<Value, RuntimeError> = (|| {
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        let v = self.invoke_in_batch_one(&batch, &cb, item, span)?;
+                        if v.is_truthy() {
+                            return Ok(Value::Bool(false));
+                        }
+                    }
+                    Ok(Value::Bool(true))
+                })();
+                self.exit_callable_batch(batch);
+                outcome
+            }
+            "one?" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let len = arr.borrow().len();
+                let batch = self.enter_callable_batch();
+                let outcome: Result<Value, RuntimeError> = (|| {
+                    let mut found = false;
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        let v = self.invoke_in_batch_one(&batch, &cb, item, span)?;
+                        if v.is_truthy() {
+                            if found {
+                                return Ok(Value::Bool(false));
+                            }
+                            found = true;
+                        }
+                    }
+                    Ok(Value::Bool(found))
+                })();
+                self.exit_callable_batch(batch);
+                outcome
+            }
+            "values_at" => {
+                let b = arr.borrow();
+                let mut result = Vec::new();
+                for arg in args {
+                    match arg {
+                        Value::Int(i) => {
+                            let idx = if *i >= 0 {
+                                *i as usize
+                            } else {
+                                b.len().saturating_sub((-*i) as usize)
+                            };
+                            result.push(if idx < b.len() {
+                                b[idx].clone()
+                            } else {
+                                Value::Null
+                            });
+                        }
+                        Value::Array(indices) => {
+                            for i in indices.borrow().iter() {
+                                if let Value::Int(n) = i {
+                                    let idx = if *n >= 0 {
+                                        *n as usize
+                                    } else {
+                                        b.len().saturating_sub((-*n) as usize)
+                                    };
+                                    result.push(if idx < b.len() {
+                                        b[idx].clone()
+                                    } else {
+                                        Value::Null
+                                    });
+                                }
+                            }
+                        }
+                        _ => result.push(Value::Null),
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "count" => {
+                if args.is_empty() {
+                    return Ok(Value::Int(arr.borrow().len() as i64));
+                }
+                if args.len() == 1 {
+                    if let Value::Function(_) = &args[0] {
+                        let cb = args[0].clone();
+                        let len = arr.borrow().len();
+                        let mut count = 0i64;
+                        let batch = self.enter_callable_batch();
+                        let outcome: Result<(), RuntimeError> = (|| {
+                            for i in 0..len {
+                                let b = arr.borrow();
+                                if i >= b.len() {
+                                    break;
+                                }
+                                let item = b[i].clone();
+                                drop(b);
+                                let v = self.invoke_in_batch_one(&batch, &cb, item, span)?;
+                                if v.is_truthy() {
+                                    count += 1;
+                                }
+                            }
+                            Ok(())
+                        })();
+                        self.exit_callable_batch(batch);
+                        outcome?;
+                        return Ok(Value::Int(count));
+                    }
+                    let c = arr.borrow().iter().filter(|v| *v == &args[0]).count() as i64;
+                    return Ok(Value::Int(c));
+                }
+                Err(RuntimeError::wrong_arity(1, args.len(), span))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),

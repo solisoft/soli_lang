@@ -38,6 +38,31 @@ pub const INT_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "divmod",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "next",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "pred",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "succ",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "divmod",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "clamp",
         zero_arg: false,
         ret: "int",
@@ -85,6 +110,16 @@ pub const INT_METHODS: &[MethodDef] = &[
     MethodDef {
         name: "nil?",
         zero_arg: true,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "none?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "one?",
+        zero_arg: false,
         ret: "bool",
     },
     MethodDef {
@@ -596,6 +631,21 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "casecmp",
+        zero_arg: false,
+        ret: "int",
+    },
+    MethodDef {
+        name: "casecmp?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "chop",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "center",
         zero_arg: false,
         ret: "string",
@@ -654,6 +704,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         name: "downcase",
         zero_arg: true,
         ret: "string",
+    },
+    MethodDef {
+        name: "ascii_only?",
+        zero_arg: true,
+        ret: "bool",
     },
     MethodDef {
         name: "empty?",
@@ -779,6 +834,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         name: "present?",
         zero_arg: true,
         ret: "bool",
+    },
+    MethodDef {
+        name: "prepend",
+        zero_arg: false,
+        ret: "string",
     },
     MethodDef {
         name: "replace",
@@ -916,6 +976,16 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "succ",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
+        name: "next",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "truncate",
         zero_arg: false,
         ret: "string",
@@ -957,6 +1027,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "insert",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "order",
         zero_arg: false,
         ret: "array",
@@ -984,6 +1059,21 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     MethodDef {
         name: "compact_blank",
         zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "count",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "delete",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "delete_at",
+        zero_arg: false,
         ret: "array",
     },
     MethodDef {
@@ -1122,7 +1212,17 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "reject",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "reverse",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "rotate",
         zero_arg: true,
         ret: "array",
     },
@@ -1130,6 +1230,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         name: "sample",
         zero_arg: true,
         ret: "",
+    },
+    MethodDef {
+        name: "shift",
+        zero_arg: true,
+        ret: "array",
     },
     MethodDef {
         name: "shuffle",
@@ -1152,6 +1257,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "int",
     },
     MethodDef {
+        name: "unshift",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "take",
         zero_arg: false,
         ret: "array",
@@ -1172,6 +1282,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "values_at",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "zip",
         zero_arg: false,
         ret: "array",
@@ -1179,6 +1294,21 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
 ];
 
 pub const HASH_METHODS: &[MethodDef] = &[
+    MethodDef {
+        name: "all?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "any?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "assoc",
+        zero_arg: false,
+        ret: "array",
+    },
     MethodDef {
         name: "blank?",
         zero_arg: true,
@@ -1205,6 +1335,11 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "delete_if",
+        zero_arg: false,
+        ret: "hash",
+    },
+    MethodDef {
         name: "dig",
         zero_arg: false,
         ret: "",
@@ -1213,6 +1348,16 @@ pub const HASH_METHODS: &[MethodDef] = &[
         name: "each",
         zero_arg: false,
         ret: "",
+    },
+    MethodDef {
+        name: "each_key",
+        zero_arg: false,
+        ret: "hash",
+    },
+    MethodDef {
+        name: "each_value",
+        zero_arg: false,
+        ret: "hash",
     },
     MethodDef {
         name: "empty?",
@@ -1235,9 +1380,19 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "fetch_values",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "filter",
         zero_arg: false,
         ret: "hash",
+    },
+    MethodDef {
+        name: "flatten",
+        zero_arg: true,
+        ret: "array",
     },
     MethodDef {
         name: "get",
@@ -1246,6 +1401,11 @@ pub const HASH_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "has_key",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
+        name: "has_value?",
         zero_arg: false,
         ret: "bool",
     },
@@ -1263,6 +1423,16 @@ pub const HASH_METHODS: &[MethodDef] = &[
         name: "is_a?",
         zero_arg: false,
         ret: "bool",
+    },
+    MethodDef {
+        name: "keep_if",
+        zero_arg: false,
+        ret: "hash",
+    },
+    MethodDef {
+        name: "key",
+        zero_arg: false,
+        ret: "",
     },
     MethodDef {
         name: "keys",
@@ -1300,6 +1470,11 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "bool",
     },
     MethodDef {
+        name: "rassoc",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "reject",
         zero_arg: false,
         ret: "hash",
@@ -1315,8 +1490,18 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "",
     },
     MethodDef {
+        name: "shift",
+        zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
         name: "slice",
         zero_arg: false,
+        ret: "hash",
+    },
+    MethodDef {
+        name: "to_h",
+        zero_arg: true,
         ret: "hash",
     },
     MethodDef {
@@ -1340,8 +1525,23 @@ pub const HASH_METHODS: &[MethodDef] = &[
         ret: "hash",
     },
     MethodDef {
+        name: "update",
+        zero_arg: false,
+        ret: "hash",
+    },
+    MethodDef {
+        name: "value?",
+        zero_arg: false,
+        ret: "bool",
+    },
+    MethodDef {
         name: "values",
         zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "values_at",
+        zero_arg: false,
         ret: "array",
     },
 ];

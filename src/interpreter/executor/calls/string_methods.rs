@@ -371,6 +371,65 @@ impl Interpreter {
                     class_name == "string" || class_name == "object",
                 ))
             }
+            "casecmp" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let other = match &arguments[0] {
+                    Value::String(o) => o,
+                    _ => return Err(RuntimeError::type_error("casecmp expects a string", span)),
+                };
+                use std::cmp::Ordering;
+                Ok(Value::Int(
+                    match s.to_lowercase().cmp(&other.to_lowercase()) {
+                        Ordering::Less => -1,
+                        Ordering::Equal => 0,
+                        Ordering::Greater => 1,
+                    },
+                ))
+            }
+            "casecmp?" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let other = match &arguments[0] {
+                    Value::String(o) => o,
+                    _ => return Err(RuntimeError::type_error("casecmp? expects a string", span)),
+                };
+                Ok(Value::Bool(s.to_lowercase() == other.to_lowercase()))
+            }
+            "prepend" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let other = match &arguments[0] {
+                    Value::String(o) => o,
+                    _ => return Err(RuntimeError::type_error("prepend expects a string", span)),
+                };
+                let mut result = other.clone();
+                result.push_str(s);
+                Ok(Value::String(result))
+            }
+            "chop" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                let mut chars: Vec<char> = s.chars().collect();
+                chars.pop();
+                Ok(Value::String(chars.into_iter().collect()))
+            }
+            "ascii_only?" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Bool(s.is_ascii()))
+            }
+            "succ" | "next" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::String(string_succ(s)))
+            }
             "chr" => Err(RuntimeError::type_error(
                 "chr is not a string instance method",
                 span,
@@ -1271,9 +1330,85 @@ impl Interpreter {
     }
 }
 
+/// Increment a string like Ruby's `String#succ`.
+/// Finds the last alphanumeric run and increments it with carry.
+fn string_succ(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return s.to_string();
+    }
+
+    let mut end = chars.len();
+    while end > 0 {
+        end -= 1;
+        if chars[end].is_alphanumeric() {
+            break;
+        }
+    }
+    if !chars[end].is_alphanumeric() {
+        return s.to_string();
+    }
+
+    let mut start = end;
+    while start > 0 && chars[start - 1].is_alphanumeric() {
+        start -= 1;
+    }
+
+    let mut result: Vec<char> = chars.clone();
+    let mut carry = true;
+    let mut j = end;
+    loop {
+        if !carry || j < start {
+            break;
+        }
+        let c = result[j];
+        if c.is_ascii_digit() {
+            if c == '9' {
+                result[j] = '0';
+            } else {
+                result[j] = (c as u8 + 1) as char;
+                carry = false;
+            }
+        } else if c.is_ascii_lowercase() {
+            if c == 'z' {
+                result[j] = 'a';
+            } else {
+                result[j] = (c as u8 + 1) as char;
+                carry = false;
+            }
+        } else if c.is_ascii_uppercase() {
+            if c == 'Z' {
+                result[j] = 'A';
+            } else {
+                result[j] = (c as u8 + 1) as char;
+                carry = false;
+            }
+        }
+        if j > start {
+            j -= 1;
+        } else {
+            break;
+        }
+    }
+
+    if carry {
+        let first = chars[start];
+        let new = if first.is_ascii_digit() {
+            '1'
+        } else if first.is_ascii_lowercase() {
+            'a'
+        } else {
+            'A'
+        };
+        result.insert(start, new);
+    }
+
+    result.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{camelize_string, slugify_string};
+    use super::{camelize_string, slugify_string, string_succ};
 
     #[test]
     fn camelize_snake_case_lower() {
@@ -1359,5 +1494,39 @@ mod tests {
     #[test]
     fn slugify_keeps_digits() {
         assert_eq!(slugify_string("Pizza 4 You"), "pizza-4-you");
+    }
+
+    #[test]
+    fn succ_basic_lowercase() {
+        assert_eq!(string_succ("a"), "b");
+        assert_eq!(string_succ("z"), "aa");
+        assert_eq!(string_succ("aa"), "ab");
+        assert_eq!(string_succ("az"), "ba");
+        assert_eq!(string_succ("zz"), "aaa");
+    }
+
+    #[test]
+    fn succ_basic_uppercase() {
+        assert_eq!(string_succ("A"), "B");
+        assert_eq!(string_succ("Z"), "AA");
+        assert_eq!(string_succ("ZZ"), "AAA");
+    }
+
+    #[test]
+    fn succ_basic_digits() {
+        assert_eq!(string_succ("0"), "1");
+        assert_eq!(string_succ("9"), "10");
+        assert_eq!(string_succ("99"), "100");
+    }
+
+    #[test]
+    fn succ_mixed() {
+        assert_eq!(string_succ("a9"), "b0");
+    }
+
+    #[test]
+    fn succ_no_alnum() {
+        assert_eq!(string_succ("!!!"), "!!!");
+        assert_eq!(string_succ(""), "");
     }
 }

@@ -556,22 +556,214 @@ print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Navigate nested hashes safely. Returns null if any key is not found (no error raised).</p>
-<pre data-filename="Example"><code class="language-soli text-sm">data = {
-  user: {
-    profile: {
-      name: "Alice",
-      address: {city: "NYC"}
-    }
-  }
-}
+                </div>
+            </section>
 
-# Safe navigation with dig
-print(data.dig("user", "profile", "name"));           # "Alice"
-print(data.dig("user", "profile", "address", "city")); # "NYC"
-print(data.dig("user", "nonexistent", "key"));        # null (safe, no error)
+            <section id="method-shift" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-shift" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.shift()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Remove and return the first key-value pair as [key, value] array. Returns null if empty. Mutates the original hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
+pair = h.shift()
+# pair = ["a", 1], h = {"b": 2}
 
-# Compare to direct access which would error:
-# data["user"]["nonexistent"]["key"]  # Error!</code></pre>
+empty = {}
+empty.shift()  # null</code></pre>
+                </div>
+            </section>
+
+            <section id="method-flatten" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-flatten" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.flatten()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Convert hash to array of [key, value] sub-arrays. Equivalent to .to_array().</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
+flat = h.flatten()
+# [["a", 1], ["b", 2]]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-values-at" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-values-at" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.values_at(*keys)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns array of values for given keys. Returns null for missing keys.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2, "c": 3}
+h.values_at("a", "c")  # [1, 3]
+h.values_at("a", "z")  # [1, null]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-key" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-key" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.key(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the first key for a given value (inverse lookup). Returns null if not found.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2, "c": 3}
+h.key(2)   # "b"
+h.key(99)  # null</code></pre>
+                </div>
+            </section>
+
+            <section id="method-has-value" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-has-value" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.has_value?(value)</code> / <code class="text-lg font-mono text-indigo-400">.value?(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Check if the hash contains a given value. Returns Bool.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
+h.has_value?(2)   # true
+h.has_value?(99)  # false
+h.value?(2)       # true (alias)</code></pre>
+                </div>
+            </section>
+
+            <section id="method-to-h" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-h" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.to_h()</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns self (identity for hashes).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1}
+h2 = h.to_h()
+# h2 == h (same entries)</code></pre>
+                </div>
+            </section>
+
+            <section id="method-each-key" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-each-key" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.each_key(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Iterate over keys only. Returns the hash for chaining.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2, "c": 3}
+keys = []
+h.each_key(|k| keys.push(k))
+# keys = ["a", "b", "c"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-each-value" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-each-value" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.each_value(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Iterate over values only. Returns the hash for chaining.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2, "c": 3}
+vals = []
+h.each_value(|v| vals.push(v))
+# vals = [1, 2, 3]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-keep-if" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-keep-if" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.keep_if(fn)</code> / <code class="text-lg font-mono text-indigo-400">.delete_if(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code>.keep_if()</code> keeps entries where block returns truthy (like select). <code>.delete_if()</code> removes entries where block returns truthy (like reject). Both return a new hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2, "c": 3}
+
+kept = h.keep_if(|k, v| v >= 2)
+# {"b": 2, "c": 3}
+
+removed = h.delete_if(|k, v| v >= 2)
+# {"a": 1}</code></pre>
+                </div>
+            </section>
+
+            <section id="method-update" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-update" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.update(other)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Alias for <code>.merge()</code>. Merges entries from another hash into a new hash.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h1 = {"a": 1}
+h2 = h1.update({"b": 2})
+# h2 = {"a": 1, "b": 2}</code></pre>
+                </div>
+            </section>
+
+            <section id="method-all-any" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-all-any" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.all?(fn)</code> / <code class="text-lg font-mono text-indigo-400">.any?(fn)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Test all or any entries with a predicate. Block receives (key, value). Returns Bool.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 2, "b": 4, "c": 6}
+h.all?(|k, v| v % 2 == 0)  # true (all even)
+h.any?(|k, v| v == 4)       # true (4 exists)
+h.any?(|k, v| v > 10)       # false</code></pre>
+                </div>
+            </section>
+
+            <section id="method-assoc" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-assoc" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.assoc(key)</code> / <code class="text-lg font-mono text-indigo-400">.rassoc(value)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code>.assoc(key)</code> returns [key, value] pair or null if key not found. <code>.rassoc(value)</code> returns [key, value] for matching value or null.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
+h.assoc("b")    # ["b", 2]
+h.assoc("z")    # null
+h.rassoc(1)     # ["a", 1]
+h.rassoc(99)    # null</code></pre>
+                </div>
+            </section>
+
+            <section id="method-fetch-values" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-fetch-values" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.fetch_values(*keys)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns array of values for given keys. Raises an error if any key is missing (unlike values_at which returns null).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
+h.fetch_values("a", "b")  # [1, 2]
+# h.fetch_values("a", "z")  # Error: key not found</code></pre>
                 </div>
             </section>
         </div>

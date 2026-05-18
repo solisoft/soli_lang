@@ -1,5 +1,8 @@
 //! Float method call implementations.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::error::RuntimeError;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::Value;
@@ -19,6 +22,29 @@ impl Interpreter {
             "between?" => self.float_between(n, arguments, span),
             "clamp" => self.float_clamp(n, arguments, span),
             "is_a?" => self.float_is_a(arguments, span),
+            "divmod" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let divisor = match &arguments[0] {
+                    Value::Int(d) if *d != 0 => *d as f64,
+                    Value::Float(d) if *d != 0.0 => *d,
+                    Value::Int(_) | Value::Float(_) => {
+                        return Err(RuntimeError::type_error("divmod: division by zero", span))
+                    }
+                    other => {
+                        return Err(RuntimeError::type_error(
+                            format!("divmod expects numeric, got {}", other.type_name()),
+                            span,
+                        ))
+                    }
+                };
+                let quotient = (n / divisor).floor();
+                Ok(Value::Array(Rc::new(RefCell::new(vec![
+                    Value::Float(quotient),
+                    Value::Float(n - quotient * divisor),
+                ]))))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "float".to_string(),
                 property: method_name.to_string(),

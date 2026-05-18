@@ -20,7 +20,7 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         match method_name {
-            "set" | "delete" | "clear" => match method_name {
+            "set" | "delete" | "clear" | "shift" => match method_name {
                 "set" => {
                     if arguments.len() != 2 {
                         return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
@@ -75,6 +75,26 @@ impl Interpreter {
                     }
                     hash.borrow_mut().clear();
                     Ok(Value::Null)
+                }
+                "shift" => {
+                    if !arguments.is_empty() {
+                        return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                    }
+                    let mut hash_ref = hash.borrow_mut();
+                    if hash_ref.is_empty() {
+                        return Ok(Value::Null);
+                    }
+                    let (key, value) =
+                        hash_ref
+                            .swap_remove_index(0)
+                            .ok_or_else(|| RuntimeError::General {
+                                message: "unexpected error in hash shift".to_string(),
+                                span,
+                            })?;
+                    Ok(Value::Array(Rc::new(RefCell::new(vec![
+                        key.to_value(),
+                        value,
+                    ]))))
                 }
                 _ => unreachable!(),
             },
@@ -601,6 +621,126 @@ impl Interpreter {
                 result.push('}');
                 Some(Ok(Value::String(result)))
             }
+            "flatten" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let pairs: Vec<Value> = entries
+                    .iter()
+                    .map(|(k, v)| {
+                        Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()])))
+                    })
+                    .collect();
+                Some(Ok(Value::Array(Rc::new(RefCell::new(pairs)))))
+            }
+            "values_at" => {
+                if arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let mut values = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    let v = hash_get_value(entries, arg).cloned().unwrap_or(Value::Null);
+                    values.push(v);
+                }
+                Some(Ok(Value::Array(Rc::new(RefCell::new(values)))))
+            }
+            "key" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let needle = &arguments[0];
+                for (k, v) in entries.iter() {
+                    if v == needle {
+                        return Some(Ok(k.to_value()));
+                    }
+                }
+                Some(Ok(Value::Null))
+            }
+            "has_value?" | "value?" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let needle = &arguments[0];
+                let found = entries.values().any(|v| v == needle);
+                Some(Ok(Value::Bool(found)))
+            }
+            "to_h" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                let mut new_hash = HashPairs::with_capacity_and_hasher(
+                    entries.len(),
+                    ahash::RandomState::default(),
+                );
+                for (k, v) in entries.iter() {
+                    new_hash.insert(k.clone(), v.clone());
+                }
+                Some(Ok(Value::Hash(Rc::new(RefCell::new(new_hash)))))
+            }
+            "update" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                match &arguments[0] {
+                    Value::Hash(other) => {
+                        let mut merged = entries.clone();
+                        for (k, v) in other.borrow().iter() {
+                            merged.insert(k.clone(), v.clone());
+                        }
+                        Some(Ok(Value::Hash(Rc::new(RefCell::new(merged)))))
+                    }
+                    _ => Some(Err(RuntimeError::type_error(
+                        "update expects a hash argument",
+                        span,
+                    ))),
+                }
+            }
+            "assoc" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let value = hash_get_value(entries, &arguments[0]).cloned();
+                match value {
+                    Some(v) => Some(Ok(Value::Array(Rc::new(RefCell::new(vec![
+                        arguments[0].clone(),
+                        v,
+                    ]))))),
+                    None => Some(Ok(Value::Null)),
+                }
+            }
+            "rassoc" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let needle = &arguments[0];
+                for (k, v) in entries.iter() {
+                    if v == needle {
+                        return Some(Ok(Value::Array(Rc::new(RefCell::new(vec![
+                            k.to_value(),
+                            v.clone(),
+                        ])))));
+                    }
+                }
+                Some(Ok(Value::Null))
+            }
+            "fetch_values" => {
+                if arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let mut values = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    match hash_get_value(entries, arg) {
+                        Some(v) => values.push(v.clone()),
+                        None => {
+                            return Some(Err(RuntimeError::type_error(
+                                format!("key not found: {:?}", arg),
+                                span,
+                            )));
+                        }
+                    }
+                }
+                Some(Ok(Value::Array(Rc::new(RefCell::new(values)))))
+            }
             _ => None,
         }
     }
@@ -656,8 +796,19 @@ impl Interpreter {
             "push" => self.array_push(items, arguments, span),
             "pop" => self.array_pop(items, arguments, span),
             "clear" => self.array_clear(items, arguments, span),
+            "delete" => self.array_delete(items, arguments, span),
+            "delete_at" => self.array_delete_at(items, arguments, span),
+            "shift" => self.array_shift(items, arguments, span),
+            "unshift" => self.array_unshift(items, arguments, span),
+            "insert" => self.array_insert(items, arguments, span),
+            "rotate" => self.array_rotate(items, arguments, span),
+            "reject" => self.array_reject(items, arguments, span),
+            "none?" => self.array_none(items, arguments, span),
+            "one?" => self.array_one(items, arguments, span),
+            "values_at" => self.array_values_at(items, arguments, span),
+            "count" => self.array_count(items, arguments, span),
             "get" => self.array_get(items, arguments, span),
-            "length" | "len" => self.array_length(items, arguments, span),
+            "length" | "len" | "size" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
                 Ok(json) => Ok(Value::String(json)),
@@ -1843,6 +1994,357 @@ impl Interpreter {
         };
         let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
         Ok(Value::String(parts.join(&delim)))
+    }
+
+    fn array_delete(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let val = &arguments[0];
+        if items.contains(val) {
+            let new_arr: Vec<Value> = items.iter().filter(|v| *v != val).cloned().collect();
+            Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+        } else {
+            Ok(Value::Null)
+        }
+    }
+
+    fn array_delete_at(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let idx = match &arguments[0] {
+            Value::Int(i) => {
+                if *i >= 0 {
+                    *i as usize
+                } else {
+                    items.len().saturating_sub((-*i) as usize)
+                }
+            }
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "delete_at expects an integer index",
+                    span,
+                ))
+            }
+        };
+        if idx < items.len() {
+            let _removed = items[idx].clone();
+            let mut new_arr = items.to_vec();
+            new_arr.remove(idx);
+            Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+        } else {
+            Ok(Value::Null)
+        }
+    }
+
+    fn array_shift(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if !arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+        }
+        if items.is_empty() {
+            return Ok(Value::Null);
+        }
+        let mut new_arr = items.to_vec();
+        new_arr.remove(0);
+        Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+    }
+
+    fn array_unshift(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        _span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))));
+        }
+        let mut new_arr = arguments.clone();
+        new_arr.extend(items.iter().cloned());
+        Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+    }
+
+    fn array_insert(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() < 2 {
+            return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
+        }
+        let idx = match &arguments[0] {
+            Value::Int(i) => {
+                if *i >= 0 {
+                    *i as usize
+                } else {
+                    items.len().saturating_sub((-*i) as usize)
+                }
+            }
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "insert expects an integer index",
+                    span,
+                ))
+            }
+        };
+        let mut new_arr = items.to_vec();
+        let vals = &arguments[1..];
+        let insert_at = idx.min(new_arr.len());
+        let mut tail = new_arr.split_off(insert_at);
+        new_arr.extend(vals.iter().cloned());
+        new_arr.append(&mut tail);
+        Ok(Value::Array(Rc::new(RefCell::new(new_arr))))
+    }
+
+    fn array_rotate(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() > 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let count = match arguments.first() {
+            Some(Value::Int(n)) => *n,
+            None => 1,
+            _ => return Err(RuntimeError::type_error("rotate expects an integer", span)),
+        };
+        if items.is_empty() {
+            return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+        }
+        let len = items.len() as i64;
+        let normalized = ((count % len) + len) % len;
+        let split_at = normalized as usize;
+        let rotated: Vec<Value> = items[split_at..]
+            .iter()
+            .chain(items[..split_at].iter())
+            .cloned()
+            .collect();
+        Ok(Value::Array(Rc::new(RefCell::new(rotated))))
+    }
+
+    fn array_reject(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => return Err(RuntimeError::type_error("reject expects a function", span)),
+        };
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
+        let mut result = Vec::new();
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+            let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+                _ => Value::Null,
+            };
+            if !val.is_truthy() {
+                result.push(item.clone());
+            }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_none(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => return Err(RuntimeError::type_error("none? expects a function", span)),
+        };
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+            let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+                _ => Value::Null,
+            };
+            if val.is_truthy() {
+                return Ok(Value::Bool(false));
+            }
+        }
+        Ok(Value::Bool(true))
+    }
+
+    fn array_one(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let func = match &arguments[0] {
+            Value::Function(f) => f.clone(),
+            _ => return Err(RuntimeError::type_error("one? expects a function", span)),
+        };
+        let param_name = func
+            .params
+            .first()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "it".to_string());
+        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env_rc = Rc::new(RefCell::new(call_env));
+        call_env_rc
+            .borrow_mut()
+            .define(param_name.clone(), Value::Null);
+        let mut found = false;
+        for item in items {
+            call_env_rc
+                .borrow_mut()
+                .define_or_update(&param_name, item.clone());
+            let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+                _ => Value::Null,
+            };
+            if val.is_truthy() {
+                if found {
+                    return Ok(Value::Bool(false));
+                }
+                found = true;
+            }
+        }
+        Ok(Value::Bool(found))
+    }
+
+    fn array_values_at(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        _span: Span,
+    ) -> RuntimeResult<Value> {
+        let mut result = Vec::new();
+        for arg in &arguments {
+            match arg {
+                Value::Int(i) => {
+                    let idx = if *i >= 0 {
+                        *i as usize
+                    } else {
+                        items.len().saturating_sub((-*i) as usize)
+                    };
+                    if idx < items.len() {
+                        result.push(items[idx].clone());
+                    } else {
+                        result.push(Value::Null);
+                    }
+                }
+                Value::Array(indices) => {
+                    for i in indices.borrow().iter() {
+                        if let Value::Int(n) = i {
+                            let idx = if *n >= 0 {
+                                *n as usize
+                            } else {
+                                items.len().saturating_sub((-*n) as usize)
+                            };
+                            if idx < items.len() {
+                                result.push(items[idx].clone());
+                            } else {
+                                result.push(Value::Null);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    result.push(Value::Null);
+                }
+            }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_count(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Ok(Value::Int(items.len() as i64));
+        }
+        if arguments.len() == 1 {
+            if let Value::Function(func) = &arguments[0] {
+                let func = func.clone();
+                let param_name = func
+                    .params
+                    .first()
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "it".to_string());
+                let call_env = Environment::with_enclosing(func.closure.clone());
+                let call_env_rc = Rc::new(RefCell::new(call_env));
+                call_env_rc
+                    .borrow_mut()
+                    .define(param_name.clone(), Value::Null);
+                let mut count = 0i64;
+                for item in items {
+                    call_env_rc
+                        .borrow_mut()
+                        .define_or_update(&param_name, item.clone());
+                    let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
+                        ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
+                        _ => Value::Null,
+                    };
+                    if val.is_truthy() {
+                        count += 1;
+                    }
+                }
+                return Ok(Value::Int(count));
+            }
+            let c = items.iter().filter(|v| *v == &arguments[0]).count() as i64;
+            return Ok(Value::Int(c));
+        }
+        Err(RuntimeError::wrong_arity(1, arguments.len(), span))
     }
 
     fn cache_fetch(&mut self, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {

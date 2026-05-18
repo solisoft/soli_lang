@@ -1,5 +1,8 @@
 //! Int method call implementations.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{ControlFlow, Interpreter, RuntimeResult};
@@ -25,6 +28,39 @@ impl Interpreter {
             "between?" => self.int_between(n, arguments, span),
             "clamp" => self.int_clamp(n, arguments, span),
             "is_a?" => self.int_is_a(arguments, span),
+            "succ" | "next" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(n + 1))
+            }
+            "pred" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::Int(n - 1))
+            }
+            "divmod" => {
+                if arguments.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                }
+                let divisor = match &arguments[0] {
+                    Value::Int(d) if *d != 0 => *d,
+                    Value::Int(_) => {
+                        return Err(RuntimeError::type_error("divmod: division by zero", span))
+                    }
+                    other => {
+                        return Err(RuntimeError::type_error(
+                            format!("divmod expects integer, got {}", other.type_name()),
+                            span,
+                        ))
+                    }
+                };
+                Ok(Value::Array(Rc::new(RefCell::new(vec![
+                    Value::Int(n.div_euclid(divisor)),
+                    Value::Int(n.rem_euclid(divisor)),
+                ]))))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "int".to_string(),
                 property: method_name.to_string(),
