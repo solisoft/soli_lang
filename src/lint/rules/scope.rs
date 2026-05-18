@@ -361,7 +361,13 @@ fn check_expr(
             check_expr(inner, defined, program, diagnostics, reported);
         }
         ExprKind::Call { callee, arguments } => {
-            check_expr(callee, defined, program, diagnostics, reported);
+            // The callee of a call is being invoked, not read as a value —
+            // don't flag undefined-local for it. Only check complex callee
+            // expressions (Member, Index) for their base objects.
+            match &callee.kind {
+                ExprKind::Variable(_) => {} // function call — not a variable read
+                _ => check_expr(callee, defined, program, diagnostics, reported),
+            }
             check_args(arguments, defined, program, diagnostics, reported);
         }
         ExprKind::Pipeline { left, right } => {

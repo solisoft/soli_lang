@@ -128,10 +128,12 @@ impl Printer<'_> {
             }
             ExprKind::Call { callee, arguments } => {
                 self.print_expr(callee);
-                // Strip empty () from zero-arg calls: .all, .keys, .length etc.
-                // Parser accepts both forms; the formatter normalizes to no-parens.
-                if arguments.is_empty() {
-                    // bare call with no args — skip "()"
+                // Preserve () for zero-arg calls so the linter can distinguish
+                // function calls (.all(), .keys()) from variable reads (.all).
+                // But don't ADD parens to bare DSL forms like `soft_delete`
+                // that were written without them in the source.
+                if arguments.is_empty() && !source_has_parens_after(self.source, callee.span.end) {
+                    // bare call, no source parens — skip "()"
                 } else {
                     self.print_arg_list(arguments);
                 }
@@ -673,4 +675,18 @@ fn binary_op_str(op: BinaryOp) -> String {
 
 fn compound_op_str(op: CompoundOp) -> String {
     op.to_string()
+}
+
+/// Inspect source bytes starting at `at` (the position right after a call's
+/// callee). Returns true if the first non-whitespace byte is `(` — i.e., the
+/// source spelled the call with parens. Used to preserve paren-less DSL forms
+/// like `class TestSoft < Model\n  soft_delete\nend` that the parser rejects
+/// when surrounded by parens.
+fn source_has_parens_after(source: &str, at: usize) -> bool {
+    let bytes = source.as_bytes();
+    let mut i = at.min(bytes.len());
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    bytes.get(i) == Some(&b'(')
 }
