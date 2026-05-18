@@ -190,6 +190,24 @@ impl Printer<'_> {
             ExprKind::Hash(pairs) => {
                 if pairs.is_empty() {
                     self.write("{}");
+                } else if pairs.len() > 3 || (pairs.len() > 1 && self.current_column() > 50) {
+                    // Multi-line for hashes with more than 3 entries, or
+                    // 2-3 entries when already past the midpoint of the line.
+                    self.write("{");
+                    self.newline();
+                    self.with_indent(|p| {
+                        for (i, (k, v)) in pairs.iter().enumerate() {
+                            if i > 0 {
+                                p.write(",");
+                                p.newline();
+                            }
+                            p.print_expr(k);
+                            p.write(": ");
+                            p.print_expr(v);
+                        }
+                    });
+                    self.newline();
+                    self.write("}");
                 } else {
                     self.write("{");
                     for (i, (k, v)) in pairs.iter().enumerate() {
@@ -360,13 +378,13 @@ impl Printer<'_> {
 
     fn print_arg_list(&mut self, args: &[Argument]) {
         let arg_count = args.len();
-        // Quick check: if the list has a lambda argument and the estimated
-        // inline width exceeds MAX_LINE_LENGTH, break across multiple lines.
-        let has_lambda = args.iter().any(|a| {
-            matches!(a, Argument::Positional(e)
-            if matches!(e.kind, ExprKind::Lambda { .. }))
-        });
-        let exceeds = || {
+        // If the estimated inline width exceeds MAX_LINE_LENGTH, break
+        // arguments across multiple lines so the formatter doesn't produce
+        // lines the linter will flag as style/line-length violations.
+        let multi_line = (|| {
+            if arg_count <= 1 {
+                return false; // Single-arg calls break via their internal formatting
+            }
             let args_w: usize = args.iter().map(|a| {
                 let span = match a {
                     Argument::Positional(e) => e.span,
@@ -374,14 +392,12 @@ impl Printer<'_> {
                     Argument::Block(e) => e.span,
                 };
                 let s = span_source(self.source, span);
-                (s.len().min(40)).max(4) // clamp between 4 and 40
+                s.len().min(60)
             }).sum::<usize>()
                 + 2 // "()"
                 + (arg_count.saturating_sub(1)) * 2; // ", "
             self.current_column() + args_w > MAX_LINE_LENGTH
-        };
-
-        let multi_line = has_lambda && exceeds();
+        })();
 
         if multi_line {
             self.write("(");
