@@ -173,30 +173,66 @@ impl Printer<'_> {
                 self.print_arg_list(arguments);
             }
             ExprKind::Array(elements) => {
-                self.write("[");
-                // Avoid `[[` as the first two characters — Soli's lexer
-                // treats `[[X...` (where X is not a digit/minus/[) as a
-                // Lua-style multiline string. Adding a space before the
-                // nested `[` disambiguates.
-                let first_is_array = elements
-                    .first()
-                    .map(|e| matches!(e.kind, ExprKind::Array(_)))
-                    .unwrap_or(false);
-                if first_is_array {
-                    self.write(" ");
-                }
-                for (i, e) in elements.iter().enumerate() {
-                    if i > 0 {
-                        self.write(", ");
+                // Estimate inline width and break long arrays across lines.
+                let est: usize = elements.iter().map(|e| {
+                    span_source(self.source, e.span).len().min(40)
+                }).sum::<usize>()
+                    + 2 // "[]"
+                    + (elements.len().saturating_sub(1)) * 2; // ", "
+                                                              // Break long arrays across lines if:
+                                                              // - More than 3 elements at any column, or
+                                                              // - 3+ elements when already past 20 chars
+                if (elements.len() > 3 || (elements.len() > 2 && self.current_column() > 20))
+                    && (self.current_column() + est > MAX_LINE_LENGTH || self.current_column() > 20)
+                {
+                    self.write("[");
+                    self.newline();
+                    self.with_indent(|p| {
+                        for (i, e) in elements.iter().enumerate() {
+                            if i > 0 {
+                                p.write(",");
+                                p.newline();
+                            }
+                            p.print_expr(e);
+                        }
+                    });
+                    self.newline();
+                    self.write("]");
+                } else {
+                    self.write("[");
+                    // Avoid `[[` as the first two characters — Soli's lexer
+                    // treats `[[X...` (where X is not a digit/minus/[) as a
+                    // Lua-style multiline string. Adding a space before the
+                    // nested `[` disambiguates.
+                    let first_is_array = elements
+                        .first()
+                        .map(|e| matches!(e.kind, ExprKind::Array(_)))
+                        .unwrap_or(false);
+                    if first_is_array {
+                        self.write(" ");
                     }
-                    self.print_expr(e);
+                    for (i, e) in elements.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.print_expr(e);
+                    }
+                    self.write("]");
                 }
-                self.write("]");
             }
             ExprKind::Hash(pairs) => {
                 if pairs.is_empty() {
                     self.write("{}");
-                } else if pairs.len() > 2 || (pairs.len() > 1 && self.current_column() > 30) {
+                } else if pairs.len() > 2
+                    || (pairs.len() > 1 && pairs.iter().any(|(_, v)| {
+                        // Break 2-pair hashes if a value is a long expression
+                        // (concat, function call, or column past 30)
+                        self.current_column() > 30
+                            || matches!(&v.kind,
+                                ExprKind::Binary { operator, .. } if binary_op_str(*operator) == "+"
+                            )
+                    }))
+                {
                     // Multi-line for hashes with more than 2 entries, or
                     // 2 entries when already past 30 chars.
                     self.write("{");
