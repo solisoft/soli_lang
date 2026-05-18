@@ -3627,6 +3627,10 @@ video {
   color: rgb(224 231 255 / var(--tw-text-opacity, 1));
 }
 
+.text-indigo-100\/80 {
+  color: rgb(224 231 255 / 0.8);
+}
+
 .text-indigo-200\/80 {
   color: rgb(199 210 254 / 0.8);
 }

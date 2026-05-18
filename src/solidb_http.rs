@@ -511,6 +511,37 @@ impl SoliDBClient {
         Ok(response)
     }
 
+    pub fn create_vector_index(
+        &self,
+        collection: &str,
+        name: &str,
+        field: &str,
+        dimension: usize,
+        metric: &str,
+        quantization: Option<&str>,
+    ) -> Result<Value, SoliDBError> {
+        let db = self.get_db()?;
+        let mut payload = serde_json::json!({
+            "name": name,
+            "field": field,
+            "dimension": dimension,
+            "metric": metric,
+        });
+        if let Some(q) = quantization {
+            payload["quantization"] = serde_json::json!(q);
+        }
+        let path = format!("/_api/database/{}/vector/{}", db, collection);
+        let response: Value = self.request(reqwest::Method::POST, &path, Some(&payload))?;
+        Ok(response)
+    }
+
+    pub fn drop_vector_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
+        let db = self.get_db()?;
+        let path = format!("/_api/database/{}/vector/{}/{}", db, collection, name);
+        self.request(reqwest::Method::DELETE, &path, None)?;
+        Ok(())
+    }
+
     pub fn drop_index(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
         let db = self.get_db()?;
         let path = format!("/_api/database/{}/index/{}/{}", db, collection, name);

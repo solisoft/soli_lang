@@ -264,7 +264,9 @@ fn register_solidb_class(env: &mut Environment) {
         ("list_collections", 0),
         ("collection_stats", 1),
         ("create_index", 4),
+        ("create_vector_index", 5),
         ("drop_index", 2),
+        ("drop_vector_index", 2),
         ("list_indexes", 1),
         ("store_blob", 4),
         ("get_blob", 2),
@@ -859,6 +861,74 @@ fn register_solidb_class(env: &mut Environment) {
                             Ok(format!("Created index: {} on {}", name, collection))
                         })
                     }
+                    "create_vector_index" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => return Err(format!(
+                                "create_vector_index() expects string collection, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let name = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => return Err(format!(
+                                "create_vector_index() expects string index name, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let field = match &args[3] {
+                            Value::String(s) => s.clone(),
+                            other => return Err(format!(
+                                "create_vector_index() expects string field, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let dimension = match &args[4] {
+                            Value::Int(n) => *n as usize,
+                            other => return Err(format!(
+                                "create_vector_index() expects int dimension, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let (metric, quantization) = if args.len() > 5 {
+                            match &args[5] {
+                                Value::Hash(hash) => {
+                                    let borrowed = hash.borrow();
+                                    let metric = borrowed.iter()
+                                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "metric"))
+                                        .and_then(|(_, v)| if let Value::String(s) = v { Some(s.clone()) } else { None })
+                                        .unwrap_or_else(|| "cosine".to_string());
+                                    let quantization = borrowed.iter()
+                                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "quantization"))
+                                        .and_then(|(_, v)| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                                    (metric, quantization)
+                                }
+                                Value::String(s) => (s.clone(), None),
+                                _ => ("cosine".to_string(), None),
+                            }
+                        } else {
+                            ("cosine".to_string(), None)
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .create_vector_index(
+                                    &collection, &name, &field, dimension, &metric,
+                                    quantization.as_deref(),
+                                )
+                                .map_err(|e| format!("Create vector index failed: {}", e))?;
+                            Ok(format!("Created vector index: {} on {}", name, collection))
+                        })
+                    }
                     "drop_index" => {
                         let collection = match &args[1] {
                             Value::String(s) => s.clone(),
@@ -893,6 +963,38 @@ fn register_solidb_class(env: &mut Environment) {
                                 .drop_index(&collection, &name)
                                 .map_err(|e| format!("Drop index failed: {}", e))?;
                             Ok(format!("Dropped index: {} from {}", name, collection))
+                        })
+                    }
+                    "drop_vector_index" => {
+                        let collection = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            other => return Err(format!(
+                                "drop_vector_index() expects string collection, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let name = match &args[2] {
+                            Value::String(s) => s.clone(),
+                            other => return Err(format!(
+                                "drop_vector_index() expects string index name, got {}",
+                                other.type_name()
+                            )),
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let mut client = SoliDBClient::connect(&host)
+                                .map_err(|e| format!("Failed to connect: {}", e))?;
+                            client.set_database(&database);
+                            if let (Some(u), Some(p)) =
+                                (auth_username.as_deref(), auth_password.as_deref())
+                            {
+                                client = client.with_basic_auth(u, p);
+                            }
+                            client
+                                .drop_vector_index(&collection, &name)
+                                .map_err(|e| format!("Drop vector index failed: {}", e))?;
+                            Ok(format!("Dropped vector index: {} from {}", name, collection))
                         })
                     }
                     "list_indexes" => {

@@ -800,6 +800,33 @@ exists = User.where("role = @r", { "r": "admin" }).exists;
 # Returns: true or false
 ```
 
+## Vector / Similarity Search
+
+Rank results by semantic relevance using `.similar()`:
+
+```soli
+# Basic semantic search (uses default "embedding" field, top 10)
+results = Post
+    .where("published == true")
+    .similar("how to deploy a web app")
+    .all
+
+# Custom embedding field and result count
+results = Product
+    .where("active == true")
+    .similar("red running shoes", "title_embedding", 5)
+    .all
+
+# Each result gets a _similarity_score
+for product in results
+    print(product.name + " (" + str(product._similarity_score) + ")")
+end
+```
+
+Requires `SOLI_EMBEDDING_API_KEY` environment variable. See [database docs](/docs/database/finders#similar-simple) for configuration.
+
+SolidDB also supports native vector search with HNSW indexes, `VECTOR_SIMILARITY()` in SDBQL, hybrid search, and scalar quantization. Create a vector index on your embedding field for production workloads. See the [SolidDB Vector Search docs](https://solidb.solisoft.net/docs/vector-search) for details.
+
 ## Instance Methods
 
 Methods available on model instances:

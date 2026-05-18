@@ -413,6 +413,15 @@ class MigrationDb {{
     fn list_indexes(collection: String) -> Any {{
         return solidb_list_indexes(_db, collection);
     }}
+
+    // Vector index management
+    fn create_vector_index(collection: String, name: String, field: String, dimension: Int, options: Any = "cosine") -> Any {{
+        return solidb_create_vector_index(_db, collection, name, field, dimension, options);
+    }}
+
+    fn drop_vector_index(collection: String, name: String) -> Any {{
+        return solidb_drop_vector_index(_db, collection, name);
+    }}
 }}
 
 let db = MigrationDb();

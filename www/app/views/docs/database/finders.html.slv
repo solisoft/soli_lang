@@ -281,10 +281,7 @@ user.reload</code></pre>
                 Finds records whose <code>embedding</code> field is closest to the query text.
                 Results include a <code>_similarity_score</code> field.
             </p>
-            <pre><code class="language-soli text-sm"># Semantic search across all posts
-results = Post.similar("how to deploy").all
-
-# With chained filters
+            <pre><code class="language-soli text-sm"># Semantic search with chained filters
 results = Post.where("category == 'docs'").similar("how to deploy").all
 
 # Access the similarity score
@@ -302,7 +299,10 @@ end</code></pre>
                 Specify a different embedding field name and control how many results to return.
             </p>
             <pre><code class="language-soli text-sm"># Custom field and top-5 results
-Product.similar("red shoes", "title_embedding", 5).all
+results = Product
+    .where("active == true")
+    .similar("red shoes", "title_embedding", 5)
+    .all
 
 # With filter and custom parameters
 results = Product
@@ -321,8 +321,30 @@ SOLI_EMBEDDING_URL=https://api.openai.com/v1/embeddings  # Default
 SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
             <p class="text-gray-400 text-sm mt-3">
                 When the API key is not set, <code>.similar()</code> returns an empty result set.
-                Cosine similarity is computed client-side in Rust after fetching matching documents
-                from SolidB.
+                The current implementation computes cosine similarity client-side in Rust after
+                fetching matching documents from SolidB.
+            </p>
+        </div>
+
+        <div class="rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-6">
+            <h4 class="text-lg font-semibold text-indigo-300 mb-2">SolidDB Native Vector Search</h4>
+            <p class="text-gray-400 text-sm mb-3">
+                SolidDB provides native vector search with HNSW indexes, <code>VECTOR_SIMILARITY()</code> in SDBQL,
+                scalar quantization (4x memory reduction), and hybrid search combining vector + fulltext.
+                Create a vector index on your embedding field for production-scale workloads:
+            </p>
+            <pre class="text-sm text-indigo-100/80"><code>curl -X POST http://localhost:6745/_api/database/solidb/vector/products \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "embedding_idx",
+    "field": "embedding",
+    "dimension": 1536,
+    "metric": "cosine"
+  }'</code></pre>
+            <p class="text-gray-400 text-sm mt-3">
+                See the <a href="https://solidb.solisoft.net/docs/vector-search" class="text-indigo-400 underline">SolidDB Vector Search docs</a>
+                and <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-indigo-400 underline">Hybrid Search docs</a>
+                for SDBQL functions, REST API, and production tuning.
             </p>
         </div>
     </div>
