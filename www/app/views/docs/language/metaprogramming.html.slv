@@ -348,7 +348,7 @@ class.all_methods_cache.borrow_mut().take();</code></pre>
             <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
             <pre><code class="language-soli text-sm">class Parent {
   static fn inherited(child) {
-    print("Child class created: " + child.to_string())
+    print("Child class created: " + child.to_string)
   }
 }
 

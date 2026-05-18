@@ -118,7 +118,7 @@ end</code></pre>
                 </a>
                 <p class="text-gray-400 mb-3">List keys matching a glob pattern. Defaults to <code class="text-purple-400">"*"</code>.</p>
                 <p class="text-amber-300 text-sm mb-3"><strong>Gated:</strong> Bulk key enumeration is O(N) and exposes the entire keyspace. Set <code class="text-purple-400">SOLI_KV_ALLOW_ADMIN=1</code> to enable.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">all   = KV.keys()           # all keys
+                <pre data-filename="Example"><code class="language-soli text-sm">all   = KV.keys           # all keys
 users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
             </div>
         </section>
@@ -406,7 +406,7 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-ping" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ping" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.ping()</code>
+                    <code class="text-lg font-mono text-indigo-400">KV.ping</code>
                 </a>
                 <p class="text-gray-400">Check connectivity with the SoliKV server. Returns <code class="text-purple-400">"PONG"</code>.</p>
             </div>
@@ -415,7 +415,7 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-dbsize" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-dbsize" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.dbsize()</code>
+                    <code class="text-lg font-mono text-indigo-400">KV.dbsize</code>
                 </a>
                 <p class="text-gray-400">Total number of keys in the SoliKV database.</p>
             </div>
@@ -424,7 +424,7 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-flushdb" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-flushdb" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.flushdb()</code>
+                    <code class="text-lg font-mono text-indigo-400">KV.flushdb</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">denied by default</span>
                 </a>
                 <p class="text-gray-400">Delete all keys. Gated behind <code class="text-purple-400">SOLI_KV_ALLOW_ADMIN=1</code>.</p>

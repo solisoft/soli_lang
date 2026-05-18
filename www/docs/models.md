@@ -38,7 +38,7 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 # app/controllers/users_controller.sl — no import needed
 class UsersController < Controller
   fn index(req)
-    render("users/index", { "users": User.all() })
+    render("users/index", { "users": User.all })
   end
 end
 ```
@@ -68,23 +68,23 @@ result = User.create({
 user = User.find("user123");
 
 # Find all
-users = User.all();
+users = User.all;
 
 # Find with where clause — Hash form (recommended for user input)
 # Each key is validated as an AQL identifier and values flow through
 # bind parameters, so attacker-controlled values can never reach the
 # query template. Equality semantics: every pair joins with AND.
-admins = User.where({ "role": "admin", "active": true }).all();
-alice  = User.where({ "email": "alice@example.com" }).first();
+admins = User.where({ "role": "admin", "active": true }).all;
+alice  = User.where({ "email": "alice@example.com" }).first;
 
 # Find with where clause — string form (developer-trusted only)
 # Use this when you need operators (>=, IN, etc.) or boolean expressions.
 # The string MUST NOT come from untrusted input — see Security note below.
-adults = User.where("doc.age >= @age", { "age": 18 }).all();
+adults = User.where("doc.age >= @age", { "age": 18 }).all;
 results = User.where("doc.age >= @min_age AND doc.role == @role", {
   "min_age": 21,
   "role": "admin"
-}).all();
+}).all;
 ```
 
 > **Security — `where(...)` filter forms.** The Hash form
@@ -132,7 +132,7 @@ User.delete("user123");
 ### Counting Records
 
 ```soli
-total = User.count();
+total = User.count;
 ```
 
 ## Query Builder Chaining
@@ -146,13 +146,13 @@ results = User
   .order("created_at", "desc")
   .limit(10)
   .offset(20)
-  .all();
+  .all;
 
 # Get first result only
-first = User.where("doc.email == @email", { "email": "alice@example.com" }).first();
+first = User.where("doc.email == @email", { "email": "alice@example.com" }).first;
 
 # Count with conditions
-count = User.where("doc.role == @role", { "role": "admin" }).count();
+count = User.where("doc.role == @role", { "role": "admin" }).count;
 ```
 
 ## Static Methods Reference
@@ -167,12 +167,12 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `Model.find_or_create_by(field, value, data?)` | Find by field, or create if not found |
 | `Model.where(hash)` | Hash filter — safe for user input (keys validated, values bound). Returns QueryBuilder |
 | `Model.where(string, bind_vars)` | SDBQL filter string — **developer-trusted only**, never feed `req[...]` into the string. Returns QueryBuilder |
-| `Model.all()` | Get all documents |
+| `Model.all` | Get all documents |
 | `Model.update(id, data)` | Update a document |
 | `Model.upsert(id, data)` | Insert or update document by ID |
 | `Model.delete(id)` | Delete a document |
-| `Model.delete_all()` | Wipe every document in the collection (primarily for test setup/teardown). Use `Model.where(...).delete_all()` for filtered bulk deletes. |
-| `Model.count()` | Count all documents |
+| `Model.delete_all` | Wipe every document in the collection (primarily for test setup/teardown). Use `Model.where(...).delete_all` for filtered bulk deletes. |
+| `Model.count` | Count all documents |
 | `Model.transaction { }` | Execute block in a database transaction |
 | `Model.transaction("aql")` | Execute AQL in a database transaction |
 | `Model.transaction()` | Get transaction handle for manual control |
@@ -214,11 +214,11 @@ count = User.where("doc.role == @role", { "role": "admin" }).count();
 | `.fields(field, ...)` | Alias for `.select()` |
 | `.join(rel, filter?, binds?)` | Filter by existence of related records |
 | `.pluck(field, ...)` | Return only specified fields (single or array) |
-| `.all()` | Execute query, return all results |
-| `.first()` | Execute query, return first result |
-| `.count()` | Execute query, return count |
-| `.exists()` | Execute query, return boolean (true if records exist) |
-| `.delete_all()` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
+| `.all` | Execute query, return all results |
+| `.first` | Execute query, return first result |
+| `.count` | Execute query, return count |
+| `.exists` | Execute query, return boolean (true if records exist) |
+| `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
 | `.sum(field)` | Execute aggregation, return sum of field |
 | `.avg(field)` | Execute aggregation, return average of field |
 | `.min(field)` | Execute aggregation, return minimum of field |
@@ -339,7 +339,7 @@ class User < Model
   before_update("log_changes")
   after_delete("cleanup_related")
 
-  fn normalize_email()        this.email = this.email.downcase();
+  fn normalize_email()        this.email = this.email.downcase;
   end
 
   fn send_welcome_email()        # Send email logic
@@ -518,10 +518,10 @@ Preload related records to avoid N+1 queries. Uses LET subqueries with MERGE:
 
 ```soli
 # Load users with their posts and profiles in a single query
-users = User.includes("posts", "profile").all()
+users = User.includes("posts", "profile").all
 
 # Combine with where clauses
-active = User.where("active = @a", { "a": true }).includes("posts").first()
+active = User.where("active = @a", { "a": true }).includes("posts").first
 
 # Inspect the generated query
 print(User.includes("posts").to_query)
@@ -531,7 +531,7 @@ print(User.includes("posts").to_query)
 - `has_many` includes return an array of related documents
 - `has_one` and `belongs_to` includes return a single document (via `FIRST()`)
 
-After `.all()`, the preloaded data is cached on each instance: subsequent `instance.<rel>` reads return the cached value without issuing another query. This applies to `has_and_belongs_to_many`, `belongs_to`, `has_one`, and polymorphic relations. (`has_many` accessors still return a chainable `QueryBuilder`, so they are not served from the preload cache — use `.where(...).all()` if you want a materialised array.)
+After `.all`, the preloaded data is cached on each instance: subsequent `instance.<rel>` reads return the cached value without issuing another query. This applies to `has_and_belongs_to_many`, `belongs_to`, `has_one`, and polymorphic relations. (`has_many` accessors still return a chainable `QueryBuilder`, so they are not served from the preload cache — use `.where(...).all` if you want a materialised array.)
 
 ### Join Filtering
 
@@ -539,13 +539,13 @@ Filter records by the existence of related records. Unlike `includes`, `join` do
 
 ```soli
 # Find users who have at least one post
-users_with_posts = User.join("posts").all()
+users_with_posts = User.join("posts").all
 
 # Find users who have published posts
-count = User.join("posts", "published = @p", { "p": true }).count()
+count = User.join("posts", "published = @p", { "p": true }).count
 
 # Chain with other query methods
-recent = User.join("posts").order("created_at", "desc").limit(10).all()
+recent = User.join("posts").order("created_at", "desc").limit(10).all
 ```
 
 This is equivalent to ActiveRecord's `joins` — use `includes` when you need the related data, and `join` when you only need to filter by existence.
@@ -556,7 +556,7 @@ Filter included relations to load only matching related records:
 
 ```soli
 # Only load published posts for each user
-users = User.includes("posts", "published = @p", { "p": true }).all()
+users = User.includes("posts", "published = @p", { "p": true }).all
 
 # Inspect the generated query
 print(User.includes("posts", "published = @p", { "p": true }).to_query)
@@ -570,7 +570,7 @@ Combine a filter with field projection using the `"fields"` key in the bind hash
 users = User.includes("posts", "published = @p", {
   "p": true,
   "fields": ["title", "body"]
-}).all()
+}).all
 # => ... RETURN {title: rel.title, body: rel.body} ...
 ```
 
@@ -580,7 +580,7 @@ Use a hash argument to select specific fields on included relations (without fil
 
 ```soli
 # Only load title and body from posts
-users = User.includes({ "posts": ["title", "body"] }).all()
+users = User.includes({ "posts": ["title", "body"] }).all
 # => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN {title: rel.title, body: rel.body}) ...
 ```
 
@@ -592,7 +592,7 @@ Chain `.includes()` calls to eagerly load multiple relations with different opti
 # Filtered posts + unfiltered profile
 users = User.includes("posts", "published = @p", { "p": true })
   .includes("profile")
-  .all()
+  .all
 ```
 
 ### Counting Relations (includes_count)
@@ -601,7 +601,7 @@ When you only need the *count* of a relation (not the rows), `.includes_count()`
 
 ```soli
 # Each Category gets a `products_count` integer field, in one round-trip
-cats = Category.includes_count("products").all()
+cats = Category.includes_count("products").all
 print(cats[0].products_count)
 # => 3
 
@@ -610,7 +610,7 @@ q = Author.where("active = @a", { "a": true })
   .includes("profile")
   .includes_count("posts")
   .order("name", "asc")
-  .all()
+  .all
 ```
 
 - Only valid for `has_many` and `has_and_belongs_to_many` relations. Calling it on `belongs_to`, `has_one`, or polymorphic relations raises an error at registration time (the count is always 0 or 1, so the API doesn't earn its keep there).
@@ -622,11 +622,11 @@ Use `.select()` (or its alias `.fields()`) to return only specific fields from t
 
 ```soli
 # Only return name and email
-users = User.select("name", "email").all()
+users = User.select("name", "email").all
 # => FOR doc IN users RETURN {name: doc.name, email: doc.email, _key: doc._key}
 
 # .fields() is an alias
-users = User.fields("name", "email").all()
+users = User.fields("name", "email").all
 # => same query
 
 # Combine with other query methods
@@ -634,16 +634,16 @@ users = User.where("active = @a", { "a": true })
   .select("name", "email")
   .order("name")
   .limit(10)
-  .all()
+  .all
 
 # Combine with includes
-users = User.select("name", "email").includes("posts").all()
+users = User.select("name", "email").includes("posts").all
 # => ... RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})
 
 # Full combo: select + filtered includes with field projection
 users = User.select("name")
   .includes("posts", "published = @p", { "p": true, "fields": ["title"] })
-  .all()
+  .all
 ```
 
 ### Has And Belongs To Many
@@ -690,7 +690,7 @@ post.tags << tag                # appends one tag, returns post.tags
 **Eager loading** uses a two-stage subquery through the join table:
 
 ```soli
-posts = Post.includes("tags").all()
+posts = Post.includes("tags").all
 # => ... LET _rel_tags = (FOR jt IN posts_tags FILTER jt.post_id == doc._key
 #                          FOR rel IN tags FILTER rel._key == jt.tag_id RETURN rel) ...
 ```
@@ -698,8 +698,8 @@ posts = Post.includes("tags").all()
 **Existence filtering** with `.join()`:
 
 ```soli
-tagged_posts = Post.join("tags").all()              # posts that have at least one tag
-tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all()
+tagged_posts = Post.join("tags").all              # posts that have at least one tag
+tutorials = Post.join("tags", "name = @n", { "n": "tutorial" }).all
 ```
 
 **Overrides** — supply an options hash to customize the join:
@@ -796,7 +796,7 @@ users = User.pluck("name", "email");
 # Returns: [{ name: "Alice", email: "alice@example.com" }, ...]
 
 # Check if records exist (returns boolean)
-exists = User.where("role = @r", { "r": "admin" }).exists();
+exists = User.where("role = @r", { "r": "admin" }).exists;
 # Returns: true or false
 ```
 
@@ -903,13 +903,13 @@ post.delete();
 post.restore();
 
 # Query without deleted records (default behavior)
-posts = Post.all();
+posts = Post.all;
 
 # Include soft-deleted records
-all = Post.with_deleted.all();
+all = Post.with_deleted.all;
 
 # Query only deleted records
-deleted = Post.only_deleted.all();
+deleted = Post.only_deleted.all;
 ```
 
 ## Relationship Accessors
@@ -999,9 +999,9 @@ User.upsert("user123", { "name": "Updated Name" });
 
 # Batch delete via QueryBuilder — one AQL REMOVE for the whole match.
 # Useful for clearing a relation without an N+1 loop:
-User.where("doc.active == false").delete_all();
-post.comments.delete_all();          # via has_many relation
-Model.delete_all();                  # static — wipe the whole collection
+User.where("doc.active == false").delete_all;
+post.comments.delete_all;          # via has_many relation
+Model.delete_all;                  # static — wipe the whole collection
 ```
 
 ## Transactions
@@ -1080,11 +1080,11 @@ Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
 
 | Method | Generated SDBQL |
 |--------|-----------------|
-| `User.all()` | `FOR doc IN users RETURN doc` |
+| `User.all` | `FOR doc IN users RETURN doc` |
 | `User.where("age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
 | `.order("name", "asc")` | `... SORT doc.name ASC RETURN doc` |
 | `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
-| `User.count()` | `RETURN COLLECTION_COUNT("users")` |
+| `User.count` | `RETURN COLLECTION_COUNT("users")` |
 | `User.includes("posts")` | `FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})` |
 | `User.includes("posts", "published = @p", {"p": true})` | `... FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel ...` |
 | `User.includes({"posts": ["title"]})` | `... RETURN {title: rel.title} ...` |
@@ -1112,7 +1112,7 @@ class User < Model
   before_save("normalize_email")
 
   fn normalize_email()
-    this.email = this.email.downcase();
+    this.email = this.email.downcase;
   end
 
   fn is_adult() -> Bool
@@ -1137,7 +1137,7 @@ end
 class UsersController < Controller
   fn index(req)
     # Eager load posts and profiles to avoid N+1 queries
-    users = User.includes("posts", "profile").all();
+    users = User.includes("posts", "profile").all;
     render("users/index", { "users": users })
   end
 
@@ -1153,7 +1153,7 @@ class UsersController < Controller
       .where("active = @a", { "a": true })
       .order("created_at", "desc")
       .limit(10)
-      .all();
+      .all;
     render("users/active", { "users": users })
   end
 
@@ -1270,8 +1270,8 @@ describe("User model", fn()
     User.create({ "name": "Alice", "age": 25 });
     User.create({ "name": "Bob", "age": 17 });
 
-    # where() returns QueryBuilder - chain .all() to get results
-    adults = User.where("doc.age >= @age", { "age": 18 }).all();
+    # where() returns QueryBuilder - chain .all to get results
+    adults = User.where("doc.age >= @age", { "age": 18 }).all;
     expect(len(adults)).to_equal(1);
   end)
 end)
@@ -1297,8 +1297,8 @@ In production (without `--dev`), `dev_queries()` always returns an empty array �
 
 ```soli
 fn index(req)
-  users = User.where("doc.active == true").all();
-  posts = Post.includes("author").all();
+  users = User.where("doc.active == true").all;
+  posts = Post.includes("author").all;
 
   return render("users/index", {
     "users":   users,
@@ -1333,7 +1333,7 @@ end
 ### Coverage
 
 Logged:
-- All `Model` operations (`Model.all()`, `.where()`, `.find()`, `.create()`, `.update()`, `.destroy()`, `.count()`, eager-loaded `includes`, soft-delete scopes, etc.)
+- All `Model` operations (`Model.all`, `.where()`, `.find()`, `.create()`, `.update()`, `.destroy()`, `.count`, eager-loaded `includes`, soft-delete scopes, etc.)
 - Validation lookups (`uniqueness`)
 - HABTM join-table operations
 

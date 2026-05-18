@@ -218,7 +218,7 @@ cropped.to_file("cropped.jpg")</code></pre>
             </div>
             <div id="def-image-invert" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-invert" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.invert()</code>
+                    <code class="text-base font-mono text-indigo-400">img.invert</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Invert all colors.</p>
@@ -577,7 +577,7 @@ let buf = images[1].to_buffer()</code></pre>
   file = req.files["avatar"]
   # `file["data"]` is a base64-encoded string. Image.from_buffer expects
   # base64, so pass it through directly. Use `file["size"]` for the raw
-  # byte count instead of `file["data"].length()`.
+  # byte count instead of `file["data"].length`.
   img = Image.from_buffer(file["data"])
 
   # Create multiple sizes

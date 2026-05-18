@@ -177,8 +177,8 @@ message = "Value: " + 42;           # "Value: 42" (auto-conversion)</code></pre>
                 <pre data-filename="Example"><code class="language-soli text-sm"># String methods
 text = "  Hello, World!  "
 print(text.trim());           # "Hello, World!"
-print(text.lstrip());         # "Hello, World!  "
-print(text.rstrip());         # "  Hello, World!"
+print(text.lstrip);         # "Hello, World!  "
+print(text.rstrip);         # "  Hello, World!"
 print(text.upper());          # "  HELLO, WORLD!  "
 print(text.lower());          # "  hello, world!  "
 print(text.len());            # 18
@@ -194,10 +194,10 @@ print(s.ends_with("!"));      # true
 # String manipulation
 print(s.replace("World", "Soli"));  # "Hello, Soli!"
 print(s.split(", "));              # ["Hello", "World!"]
-print(s.chomp());                 # "Hello, World!" (removes trailing newline)
+print(s.chomp);                 # "Hello, World!" (removes trailing newline)
 print(s.reverse);               # "!dlroW ,olleH"
-print(s.capitalize());            # "Hello, world!"
-print(s.swapcase());              # "hELLO, wORLD!"
+print(s.capitalize);            # "Hello, world!"
+print(s.swapcase);              # "hELLO, wORLD!"
 
 # String padding
 print("hi".center(10));           # "    hi    "
@@ -212,10 +212,10 @@ print(s.scan("[aeiou]"));         # ["e", "o", "o"]
 print(s.tr("aeiou", "AEIOU"));    # "HEllO, WOrld!"
 
 # Character operations
-print("A".ord());                 # 65
-print("hello".bytes());           # [104, 101, 108, 108, 111]
-print("hello".chars());           # ["h", "e", "l", "l", "o"]
-print("a\nb\nc".lines());         # ["a", "b", "c"]
+print("A".ord);                 # 65
+print("hello".bytes);           # [104, 101, 108, 108, 111]
+print("hello".chars);           # ["h", "e", "l", "l", "o"]
+print("a\nb\nc".lines);         # ["a", "b", "c"]
 
 # Partition and delete
 print("hello-world-test".partition("-"));   # ["hello", "-", "world-test"]
@@ -224,7 +224,7 @@ print("hello".delete_prefix("hel"));        # "lo"
 print("hello".delete_suffix("lo"));         # "hel"
 
 # String encoding
-print("hello".bytesize());        # 5
+print("hello".bytesize);        # 5
 
 # Truncate
 print("hello world".truncate(5)); # "he..."</code></pre>

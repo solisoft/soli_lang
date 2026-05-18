@@ -165,7 +165,7 @@ class User < Model
 end
 
 # These all use the configured database
-users = User.all()
+users = User.all
 user = User.create({ "name": "Alice" })
 found = User.find(user["id"])
 ```

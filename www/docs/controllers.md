@@ -143,7 +143,7 @@ class PostsController < ApplicationController
   fn index(req)
     # Can use inherited _current_user helper
     user = this._current_user(req);
-    posts = Post.all();
+    posts = Post.all;
     render("posts/index", {
       "posts": posts,
       "user": user
@@ -182,7 +182,7 @@ end
 class AdminUsersController < AdminController
   fn index(req)
     # Inherits: ApplicationController's auth + AdminController's admin check
-    render("admin/users/index", { "users": User.all() })
+    render("admin/users/index", { "users": User.all })
   end
 end
 ```

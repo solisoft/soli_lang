@@ -84,7 +84,7 @@ Standard CRUD actions:
 ```soli
 class UsersController < Controller
     def index(req)
-        users = Users.all()
+        users = Users.all
         render("users/index", { "users": users })
     end
 

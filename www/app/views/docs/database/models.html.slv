@@ -48,7 +48,7 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class UsersController < Controller
   fn index(req)
-    render("users/index", { "users": User.all() })
+    render("users/index", { "users": User.all })
   end
 end</code></pre>
         </div>
@@ -378,7 +378,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Delete a document</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete_all()</code></td>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete_all</code></td>
                     <td class="py-3 px-4 text-gray-400">Wipe every document in the collection (primarily for test setup/teardown). For filtered bulk deletes use <code>Model.where(...).delete_all</code>.</td>
                 </tr>
                 <tr>
@@ -649,7 +649,7 @@ end</code></pre>
                 <tr><td class="px-6 py-3 font-mono text-indigo-300">contrast</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Contrast factor (<code>img.contrast(value)</code>).</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-indigo-300">hue</td><td class="px-6 py-3 text-gray-400">Int degrees</td><td class="px-6 py-3 text-gray-400">Hue rotation (<code>img.hue_rotate(degrees)</code>).</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-indigo-300">gray</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Convert to grayscale (<code>img.grayscale()</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-indigo-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert</code>).</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-indigo-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>.</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-indigo-300">q</td><td class="px-6 py-3 text-gray-400">Int 1–100</td><td class="px-6 py-3 text-gray-400">JPEG/WebP quality.</td></tr>
             </tbody>
@@ -822,7 +822,7 @@ class User < Model
   before_save("normalize_email")
 
   def normalize_email
-    this.email = this.email.downcase()
+    this.email = this.email.downcase
   end
 
   def is_adult -> Bool
@@ -897,7 +897,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req)
-  users = User.where("doc.active == true").all()
+  users = User.where("doc.active == true").all
   render("users/index", { "users": users, "queries": dev_queries() })
 end
 

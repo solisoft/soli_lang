@@ -266,10 +266,10 @@ user.reload</code></pre>
                 Results include a <code>_similarity_score</code> field.
             </p>
             <pre><code class="language-soli text-sm"># Semantic search across all posts
-results = Post.similar("how to deploy").all()
+results = Post.similar("how to deploy").all
 
 # With chained filters
-results = Post.where("category == 'docs'").similar("how to deploy").all()
+results = Post.where("category == 'docs'").similar("how to deploy").all
 
 # Access the similarity score
 for (post in results)
@@ -286,13 +286,13 @@ end</code></pre>
                 Specify a different embedding field name and control how many results to return.
             </p>
             <pre><code class="language-soli text-sm"># Custom field and top-5 results
-Product.similar("red shoes", "title_embedding", 5).all()
+Product.similar("red shoes", "title_embedding", 5).all
 
 # With filter and custom parameters
 results = Product
     .where("price <= @max", {"max": 50})
     .similar("comfortable running shoes", "description_vec", 20)
-    .all()</code></pre>
+    .all</code></pre>
         </div>
 
         <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6">

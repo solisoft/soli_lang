@@ -120,7 +120,7 @@ TestHTTP.delete("/users/1");
 ```soli
 describe("UsersController", fn()
   before_each(fn()
-    Factory.clear()
+    Factory.clear
   end)
   
   test("create action", fn()
@@ -155,7 +155,7 @@ describe("User model", fn()
   test("creates user", fn()
     with_transaction(fn()
       user = Factory.create("user", hash("name": "Test"))
-      expect(User.count()).to_equal(1)
+      expect(User.count).to_equal(1)
       expect(user.name).to_equal("Test")
     end)
     # Transaction automatically rolls back
@@ -231,7 +231,7 @@ coverage_exclude("**/migrations/**")
 ```soli
 describe("UsersController", fn()
   before_each(fn()
-    Factory.clear()
+    Factory.clear
     Database.clean_all()
   end)
   

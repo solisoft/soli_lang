@@ -2224,7 +2224,7 @@ duration = Duration.weeks(1)
 println(duration.total_days())  # 7
 ```
 
-#### .to_string()
+#### .to_string
 
 Gets the duration as a formatted string.
 
@@ -2233,7 +2233,7 @@ Gets the duration as a formatted string.
 **Example:**
 ```soli
 duration = Duration.of_seconds(3661)
-println(duration.to_string())  # "3661s"
+println(duration.to_string)  # "3661s"
 ```
 
 #### .humanize(locale?)
@@ -2812,7 +2812,7 @@ Factory.sequence("user_id")  # 1
 Factory.sequence("user_id")  # 2
 ```
 
-### Factory.clear()
+### Factory.clear
 
 Clears all factory definitions and sequences.
 
@@ -3042,7 +3042,7 @@ Checks if a key exists in the cache.
 
 **Returns:** Bool
 
-### Cache.clear()
+### Cache.clear
 
 Removes all cache entries (only keys with the `soli:cache:` prefix).
 
@@ -3054,13 +3054,13 @@ No-op. SoliKV handles TTL expiration automatically.
 
 **Returns:** null
 
-### Cache.keys()
+### Cache.keys
 
 Returns all cache keys (prefix stripped).
 
 **Returns:** Array
 
-### Cache.size()
+### Cache.size
 
 Returns the number of cache entries.
 
@@ -3169,9 +3169,9 @@ Full-featured key-value store backed by SoliKV. Supports strings, counters, list
 
 ### Server
 
-- **KV.ping()** — Check connectivity.
-- **KV.dbsize()** — Total number of keys.
-- **KV.flushdb()** — Delete all keys. **Denied by default** (see [Admin denylist](#admin-denylist)).
+- **KV.ping** — Check connectivity.
+- **KV.dbsize** — Total number of keys.
+- **KV.flushdb** — Delete all keys. **Denied by default** (see [Admin denylist](#admin-denylist)).
 - **KV.cmd(...args)** — Run any raw SoliKV command. The first argument is the command verb, which is filtered through the [admin denylist](#admin-denylist).
 - **KV.configure(host, token?)** — Configure connection.
 
@@ -4146,7 +4146,7 @@ Rotates the image 270 degrees clockwise (90 degrees counter-clockwise).
 
 **Returns:** New Image instance
 
-#### img.invert()
+#### img.invert
 
 Inverts all colors in the image.
 
@@ -4362,7 +4362,7 @@ def upload(req)
   file = req.files["avatar"]
   # `file["data"]` is a base64-encoded string. Image.from_buffer expects
   # base64, so pass it through directly. Use `file["size"]` for the raw
-  # byte count instead of `file["data"].length()`.
+  # byte count instead of `file["data"].length`.
   img = Image.from_buffer(file["data"])
 
   # Create multiple sizes

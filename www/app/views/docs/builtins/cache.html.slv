@@ -29,7 +29,7 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
                 <li>Values are JSON-serialized on <code class="text-amber-400">set</code> and parsed back on <code class="text-amber-400">get</code> — works for any value <code class="text-purple-400">JSON.stringify</code> would handle.</li>
-                <li>Keys are transparently prefixed with <code class="text-amber-400">soli:cache:</code>; <code class="text-amber-400">Cache.keys()</code> returns them with the prefix stripped.</li>
+                <li>Keys are transparently prefixed with <code class="text-amber-400">soli:cache:</code>; <code class="text-amber-400">Cache.keys</code> returns them with the prefix stripped.</li>
                 <li>TTL expiration is enforced by SoliKV — there is no Soli-side reaper. Default TTL is <code class="text-purple-400">3600s</code> (1 hour).</li>
                 <li>Misses return <code class="text-purple-400">null</code>. <code class="text-amber-400">Cache.fetch</code> turns the cache-aside pattern into one expression.</li>
             </ul>
@@ -177,15 +177,15 @@ end</code></pre>
                     </thead>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.keys()</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.keys</code></td>
                             <td class="py-3">All cache keys with the <code class="text-purple-400">soli:cache:</code> prefix stripped. Returns <code class="text-purple-400">Array</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.size()</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.size</code></td>
                             <td class="py-3">Number of cached entries. Returns <code class="text-purple-400">Int</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.clear()</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cache.clear</code></td>
                             <td class="py-3">Remove every key under the cache prefix. Other SoliKV data is untouched.</td>
                         </tr>
                         <tr>

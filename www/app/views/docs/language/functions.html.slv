@@ -194,7 +194,7 @@ print(sum);  # 6
 
 # With collection methods
 names = ["alice", "bob", "charlie"]
-upper = names.map(|name| name.upcase())
+upper = names.map(|name| name.upcase)
 print(upper);  # ["ALICE", "BOB", "CHARLIE"]</code></pre>
             </div>
         </div>

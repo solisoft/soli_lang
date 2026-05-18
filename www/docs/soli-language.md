@@ -367,7 +367,7 @@ print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
 camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
-slug = "Café & Restaurant".slugify();    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
+slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 
 # String successor
 next_id = "a".succ;    # "b" (increments with carry, wraps z->aa, 9->10)
@@ -1599,21 +1599,21 @@ If you only need transformed values (not a new hash):
 h = {"a": 1, "b": 2};
 
 # Get values first, then map to array
-doubled = h.values() |> map(fn(v) v * 10);
+doubled = h.values |> map(fn(v) v * 10);
 print(doubled);  # [10, 20]
 ```
 
 **Lookup and conversion methods:**
 
-- `.shift()` — remove and return first [key, value] pair (mutates)
-- `.flatten()` — convert to array of [key, value] sub-arrays
+- `.shift` — remove and return first [key, value] pair (mutates)
+- `.flatten` — convert to array of [key, value] sub-arrays
 - `.values_at(*keys)` — array of values for given keys (null for missing)
 - `.fetch_values(*keys)` — array of values (raises if any missing)
 - `.key(value)` — inverse lookup: first key for a given value
 - `.has_value?(value)` / `.value?(value)` — check if value exists
 - `.assoc(key)` — returns [key, value] pair or null
 - `.rassoc(value)` — returns [key, value] for matching value or null
-- `.to_h()` — returns self (identity for hashes)
+- `.to_h` — returns self (identity for hashes)
 - `.update(other)` — alias for merge
 
 #### Hash Functions
@@ -2377,7 +2377,7 @@ class Inventory
 
   fn list_all()
     for product in this.products
-      print(product.to_string());
+      print(product.to_string);
     end
   end
 end
@@ -2395,7 +2395,7 @@ print("Total inventory value: $" + str(inventory.get_total_inventory_value()));
 
 laptop = inventory.find_product("P001");
 if laptop != null
-  print("Found: " + laptop.to_string());
+  print("Found: " + laptop.to_string);
 end
 
 inventory.list_all();
@@ -2480,7 +2480,7 @@ end
 
 red = new TrafficLight::RedState();
 print("Red light duration: " + str(red.get_duration()) + "s");  # "Red light duration: 30s"
-print("Next state: " + red.next());  # "Next state: green"
+print("Next state: " + red.next);  # "Next state: green"
 ```
 
 **2. Organization and Encapsulation**
@@ -2731,7 +2731,7 @@ fn handle_json_value(value: Any) -> String {
     true => "true",
     false => "false",
     arr: Array => "[" + join(arr.map(fn(x) handle_json_value(x)), ", ") + "]",
-    h: Hash => "{" + join(h.entries().map(fn(pair) {
+    h: Hash => "{" + join(h.entries.map(fn(pair) {
       k = pair[0];
       v = pair[1];
       "\"" + k + "\": " + handle_json_value(v)
@@ -3353,7 +3353,7 @@ safe = sanitize_html(raw_html);
 ```soli
 # Current local time
 now = DateTime.utc();
-print(now.to_string());  # "2024-01-15 10:30:00"
+print(now.to_string);  # "2024-01-15 10:30:00"
 
 # Parse from ISO 8601 string
 parsed = DateTime.parse("2024-01-15T10:30:00");
@@ -3387,7 +3387,7 @@ print(dt.weekday());    # "monday" (or 0)
 # Conversion
 unix_ts = dt.to_unix();           # 1705315845
 iso_str = dt.to_iso();            # "2024-01-15T10:30:45"
-human = dt.to_string();           # "2024-01-15 10:30:45"
+human = dt.to_string;           # "2024-01-15 10:30:45"
 
 # Formatting
 custom = dt.format("%Y-%m-%d");     # "2024-01-15"
@@ -3440,7 +3440,7 @@ print(between.total_seconds());  # 108000.0
 print(between.total_minutes());  # 1800.0
 print(between.total_hours());    # 30.0
 print(between.total_days());     # 1.25
-print(between.to_string());      # "1 day, 6 hours"
+print(between.to_string);      # "1 day, 6 hours"
 ```
 
 ### Practical DateTime Examples
@@ -3481,7 +3481,7 @@ fn relative_time(dt: DateTime) -> String {
     days = int(seconds / 86400);
     return str(days) + (days == 1 ? " day ago" : " days ago");
   }
-  dt.to_string()
+  dt.to_string
 }
 
 # Check if date is in the past

@@ -67,7 +67,7 @@ db.auth("admin", "secret")</code></pre>
                             <td class="py-3">Attach basic-auth credentials. Subsequent calls send them on every request.</td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-emerald-400">db.ping()</code></td>
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.ping</code></td>
                             <td class="py-3">Returns the server's current timestamp as a <code class="text-purple-400">String</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">

@@ -176,7 +176,7 @@ end</code></pre>
   after_delete("cleanup_related")
 
   def normalize_email
-    this.email = this.email.downcase()
+    this.email = this.email.downcase
   end
 
   def send_welcome_email
@@ -293,7 +293,7 @@ end</code></pre>
   before_delete("cleanup_related")
 
   def normalize_email
-    this.email = this.email.downcase()
+    this.email = this.email.downcase
   end
 
   def send_welcome_email

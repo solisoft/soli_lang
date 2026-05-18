@@ -219,7 +219,7 @@ print(User.includes("posts").to_query)</code></pre>
 
     <div class="my-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-12">
         <p class="text-emerald-300 text-sm">
-            After <code>.all()</code>, the preloaded data is cached on each instance: subsequent <code>instance.&lt;rel&gt;</code> reads return the cached value without issuing another query. This applies to <code>has_and_belongs_to_many</code>, <code>belongs_to</code>, <code>has_one</code>, and polymorphic relations. (<code>has_many</code> accessors still return a chainable <code>QueryBuilder</code>, so they aren't served from the preload cache — use <code>.where(...).all()</code> if you want a materialised array.)
+            After <code>.all</code>, the preloaded data is cached on each instance: subsequent <code>instance.&lt;rel&gt;</code> reads return the cached value without issuing another query. This applies to <code>has_and_belongs_to_many</code>, <code>belongs_to</code>, <code>has_one</code>, and polymorphic relations. (<code>has_many</code> accessors still return a chainable <code>QueryBuilder</code>, so they aren't served from the preload cache — use <code>.where(...).all</code> if you want a materialised array.)
         </p>
     </div>
 

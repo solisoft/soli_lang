@@ -280,8 +280,8 @@ headers    # View HTTP headers</code></pre>
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index(req)
-  users = User.where("doc.active == true").all()
-  posts = Post.includes("author").all()
+  users = User.where("doc.active == true").all
+  posts = Post.includes("author").all
 
   # dev_queries() returns [] in production, populated under --dev
   render("users/index", {

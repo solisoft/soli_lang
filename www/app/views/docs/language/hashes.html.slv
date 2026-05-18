@@ -511,19 +511,19 @@ safe = user.except(["password"])
             <section id="method-invert" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-invert" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.invert()</code>
+                        <code class="text-lg font-mono text-indigo-400">.invert</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Swap keys and values. Returns a new hash.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">scores = {"Alice": 90, "Bob": 85}
-inverted = scores.invert()
+inverted = scores.invert
 print(inverted)  # {90: "Alice", 85: "Bob"}
 
 # Note: if values are not unique, later entries overwrite earlier ones
 dupes = {"a": 1, "b": 1}
-print(dupes.invert())  # {1: "b"}</code></pre>
+print(dupes.invert)  # {1: "b"}</code></pre>
                 </div>
             </section>
 
@@ -542,7 +542,7 @@ print(dupes.invert())  # {1: "b"}</code></pre>
   "email": "alice@example.com",
   "phone": null,
 }
-cleaned = user.compact()
+cleaned = user.compact
 print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
                 </div>
             </section>
@@ -562,32 +562,32 @@ print(cleaned)  # {"name": "Alice", "email": "alice@example.com"}</code></pre>
             <section id="method-shift" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-shift" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.shift()</code>
+                        <code class="text-lg font-mono text-indigo-400">.shift</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Remove and return the first key-value pair as [key, value] array. Returns null if empty. Mutates the original hash.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
-pair = h.shift()
+pair = h.shift
 # pair = ["a", 1], h = {"b": 2}
 
 empty = {}
-empty.shift()  # null</code></pre>
+empty.shift  # null</code></pre>
                 </div>
             </section>
 
             <section id="method-flatten" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-flatten" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.flatten()</code>
+                        <code class="text-lg font-mono text-indigo-400">.flatten</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Convert hash to array of [key, value] sub-arrays. Equivalent to .to_array().</p>
+                    <p class="text-gray-400 mb-3">Convert hash to array of [key, value] sub-arrays. Equivalent to .to_array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1, "b": 2}
-flat = h.flatten()
+flat = h.flatten
 # [["a", 1], ["b", 2]]</code></pre>
                 </div>
             </section>
@@ -641,14 +641,14 @@ h.value?(2)       # true (alias)</code></pre>
             <section id="method-to-h" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-h" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_h()</code>
+                        <code class="text-lg font-mono text-indigo-400">.to_h</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns self (identity for hashes).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">h = {"a": 1}
-h2 = h.to_h()
+h2 = h.to_h
 # h2 == h (same entries)</code></pre>
                 </div>
             </section>
@@ -884,7 +884,7 @@ retries = config.get("retries") ?? 3   # `retries` not set, so 3</code></pre>
                     <p class="text-gray-400 mb-3">Returns a formatted string representation of the hash. Called automatically in REPL.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">h = {name: "Alice", age: 30}
 # In REPL, displays: {name => "Alice", age => 30}
-# Equivalent to: h.to_string()</code></pre>
+# Equivalent to: h.to_string</code></pre>
                 </div>
             </section>
 

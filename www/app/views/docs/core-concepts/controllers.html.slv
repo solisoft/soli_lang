@@ -20,7 +20,7 @@
   }
 
   def index(req)
-    posts = Post.all()
+    posts = Post.all
     render("posts/index", {
       "title": "All Posts",
       "posts": posts
@@ -135,7 +135,7 @@ class PostsController < BaseController
   }
 
   def index(req)
-    render("posts/index", { "posts": Post.all() })
+    render("posts/index", { "posts": Post.all })
   end
 
   def show(req)
