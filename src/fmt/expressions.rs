@@ -467,7 +467,7 @@ impl Printer<'_> {
             }).sum::<usize>()
                 + 2 // "()"
                 + (arg_count.saturating_sub(1)) * 2; // ", "
-            self.current_column() + args_w > MAX_LINE_LENGTH
+            self.current_column() + args_w + 8 > MAX_LINE_LENGTH
         })();
 
         if multi_line {
@@ -553,7 +553,7 @@ impl Printer<'_> {
             let right_src = span_source(self.source, right.span).len();
             let total = self.current_column() + left_src + 3 + right_src.min(80);
 
-            if total + 4 > MAX_LINE_LENGTH {
+            if total + 12 > MAX_LINE_LENGTH {
                 // Recursive multi-line: print left inline (which may itself
                 // trigger this check at inner levels), then break right.
                 self.print_expr(left);
