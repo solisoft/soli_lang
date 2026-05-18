@@ -353,7 +353,7 @@ pub fn serve_folder_with_options_and_workers(
         .unwrap_or_else(|_| folder.to_path_buf());
     let folder = folder_owned.as_path();
 
-    // Initialize the global VFS if not already set (e.g. from a .solib bundle).
+    // Initialize the global VFS if not already set (e.g. from a .soli bundle).
     // This allows all subsystems (template engine, module resolver, etc.) to
     // read files through the VFS rather than directly from disk.
     if GLOBAL_VFS.get().is_none() {

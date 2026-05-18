@@ -16,7 +16,12 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
 pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
-    let source_dir = Path::new(folder);
+    // Resolve "." to current directory so file_name() works properly
+    let source_dir = if folder == "." {
+        std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+    } else {
+        Path::new(folder).to_path_buf()
+    };
 
     if !source_dir.exists() {
         eprintln!("Error: Folder '{}' does not exist", folder);
@@ -35,7 +40,7 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
 
     println!("Building bundle from {}...", source_dir.display());
 
-    let bundle_data = match solilang::bundle::BundleBuilder::build(source_dir) {
+    let bundle_data = match solilang::bundle::BundleBuilder::build(&source_dir) {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Error building bundle: {}", e);
@@ -46,11 +51,11 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
     let output_path = match output {
         Some(path) => Path::new(path).to_path_buf(),
         None => {
-            let folder_name = source_dir
+            let name = source_dir
                 .file_name()
-                .map(|n| format!("{}.solib", n.to_string_lossy()))
-                .unwrap_or_else(|| "app.solib".to_string());
-            source_dir.with_file_name(folder_name)
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "app".to_string());
+            Path::new(&format!("{}.soli", name)).to_path_buf()
         }
     };
 
@@ -79,8 +84,8 @@ pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemon
     }
 
     if !path.is_dir() {
-        // Check if it's a .solib bundle file
-        if folder.ends_with(".solib") && path.is_file() {
+        // Check if it's a .soli bundle file
+        if folder.ends_with(".soli") && path.is_file() {
             // It's a bundle file - serve from the bundle
             if let Err(e) = serve_from_bundle(folder, port, dev_mode, workers) {
                 eprintln!("Error: {}", e);

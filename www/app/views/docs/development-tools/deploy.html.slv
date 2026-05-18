@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Deployment</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy.
+            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy, or bundle your app into a single binary for zero-dependency deployment.
         </p>
     </div>
 
@@ -169,6 +169,29 @@ Phase 2: Triggering blue-green deploy on all servers...
 [prod-2] Deploy started on slot blue ✓
 
 ✓ 2/2 servers deployed successfully</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Bundle Deployment</h2>
+    <p class="text-gray-400 mb-6">
+        For simpler, dependency-free deployment, bundle your application into a single <code class="text-indigo-400">.soli</code> file. No source files or configuration needed on the server — only the <code>soli</code> binary and the bundle.
+    </p>
+
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Build locally, deploy anywhere"><code class="language-bash text-sm"># Build the bundle on your CI machine
+soli build my_app
+
+# Deploy just the .soli file to any server
+scp my_app.soli deploy@server:/opt/my_app/
+
+# Run from the bundle (extracts to /tmp automatically)
+ssh deploy@server "soli serve /opt/my_app/my_app.soli"</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6 mb-12">
+        <h3 class="text-lg font-semibold text-amber-300 mb-2">How it works</h3>
+        <p class="text-gray-400 text-sm">
+            <code>soli build</code> collects all <code>.sl</code>, <code>.slv</code>, <code>.yml</code>, <code>.css</code>, <code>.js</code> files into a single <code>.soli</code> bundle. When you run <code>soli serve app.soli</code>, the bundle is extracted to <code>/tmp/soli_PID</code> and the server boots normally. The server process cleans up on shutdown.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>

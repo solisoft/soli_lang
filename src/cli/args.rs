@@ -134,7 +134,7 @@ pub fn print_usage() {
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli lsp");
-    eprintln!("  soli build <folder> [--output <file>] [--standalone]");
+    eprintln!("  soli build <folder> [-o <file>] [--standalone]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
@@ -155,7 +155,11 @@ pub fn print_usage() {
     );
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
+    eprintln!("  build <folder>       Bundle app into a single .soli file");
+    eprintln!("                       --output, -o <file>  Custom output path");
+    eprintln!("                       --standalone   Build standalone binary (experimental)");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
+    eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
     eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
@@ -194,6 +198,9 @@ pub fn print_usage() {
     eprintln!("  soli update math               Update a specific dependency");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
+    eprintln!("  soli build my_app             Bundle app into my_app.soli");
+    eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
+    eprintln!("  soli serve my_app.soli       Serve app from bundle (no source files needed)");
     eprintln!("  soli serve my_app             Start production server (no hot reload)");
     eprintln!("  soli serve my_app -d          Start as daemon (background process)");
     eprintln!("  soli serve my_app --dev       Start development server (with hot reload)");
