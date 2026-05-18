@@ -101,11 +101,7 @@ impl Printer<'_> {
                 operator,
                 right,
             } => {
-                self.print_expr(left);
-                self.write(" ");
-                self.write(&binary_op_str(*operator));
-                self.write(" ");
-                self.print_expr(right);
+                self.print_binary_op(left, *operator, right);
             }
             ExprKind::Unary { operator, operand } => {
                 let op = match operator {
@@ -190,9 +186,9 @@ impl Printer<'_> {
             ExprKind::Hash(pairs) => {
                 if pairs.is_empty() {
                     self.write("{}");
-                } else if pairs.len() > 3 || (pairs.len() > 1 && self.current_column() > 50) {
-                    // Multi-line for hashes with more than 3 entries, or
-                    // 2-3 entries when already past the midpoint of the line.
+                } else if pairs.len() > 2 || (pairs.len() > 1 && self.current_column() > 30) {
+                    // Multi-line for hashes with more than 2 entries, or
+                    // 2 entries when already past 30 chars.
                     self.write("{");
                     self.newline();
                     self.with_indent(|p| {
@@ -385,6 +381,21 @@ impl Printer<'_> {
             if arg_count <= 1 {
                 return false; // Single-arg calls break via their internal formatting
             }
+            // For 2-arg calls: break if the total would exceed the limit,
+            // or if any argument is a hash with more than 1 pair.
+            if arg_count == 2 {
+                let has_multi_hash = args.iter().any(|a| {
+                    if let Argument::Positional(e) = a {
+                        if let ExprKind::Hash(pairs) = &e.kind {
+                            return pairs.len() > 1;
+                        }
+                    }
+                    false
+                });
+                if has_multi_hash {
+                    return true;
+                }
+            }
             let args_w: usize = args.iter().map(|a| {
                 let span = match a {
                     Argument::Positional(e) => e.span,
@@ -467,6 +478,37 @@ impl Printer<'_> {
             }
             _ => self.print_expr(e),
         }
+    }
+
+    /// Print a binary operation. For string concatenation (`+`), estimate the
+    /// total width before printing and break the chain into continuation lines
+    /// when it would exceed MAX_LINE_LENGTH.
+    fn print_binary_op(&mut self, left: &Expr, operator: BinaryOp, right: &Expr) {
+        let op_str = binary_op_str(operator);
+
+        // For + concatenation: estimate total width from source spans and
+        // break across lines if it would exceed the limit.
+        if op_str == "+" {
+            let left_src = span_source(self.source, left.span).len();
+            let right_src = span_source(self.source, right.span).len();
+            let total = self.current_column() + left_src + 3 + right_src.min(80);
+
+            if total > MAX_LINE_LENGTH {
+                // Recursive multi-line: print left inline (which may itself
+                // trigger this check at inner levels), then break right.
+                self.print_expr(left);
+                self.newline();
+                self.write("+ ");
+                self.print_expr(right);
+                return;
+            }
+        }
+
+        self.print_expr(left);
+        self.write(" ");
+        self.write(&op_str);
+        self.write(" ");
+        self.print_expr(right);
     }
 
     fn print_match_arm(&mut self, arm: &MatchArm) {
