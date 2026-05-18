@@ -404,6 +404,8 @@ pub fn run_lint(paths: &[String]) {
         );
         process::exit(1);
     }
+
+    println!("No issues found.");
 }
 
 pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
@@ -474,6 +476,7 @@ pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
         changed += 1;
         if check {
             println!("would reformat: {}", file.display());
+            print_unified_diff(&source, &formatted);
         } else if let Err(e) = fs::write(file, &formatted) {
             eprintln!("{}: error writing: {}", file.display(), e);
             errors += 1;
@@ -482,11 +485,68 @@ pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
         }
     }
 
+    if changed == 0 && errors == 0 {
+        println!("All files are already formatted.");
+    }
     if errors > 0 {
         process::exit(1);
     }
     if check && changed > 0 {
         process::exit(1);
+    }
+}
+
+/// Print a minimal unified-style diff so `soli fmt --check` shows what
+/// would change (and on which lines), not just which files would change.
+/// Groups runs of consecutive differences into hunks with line numbers.
+fn print_unified_diff(a: &str, b: &str) {
+    let a_lines: Vec<&str> = a.lines().collect();
+    let b_lines: Vec<&str> = b.lines().collect();
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < a_lines.len() || j < b_lines.len() {
+        // Skip matching prefix.
+        while i < a_lines.len() && j < b_lines.len() && a_lines[i] == b_lines[j] {
+            i += 1;
+            j += 1;
+        }
+        if i >= a_lines.len() && j >= b_lines.len() {
+            break;
+        }
+        // Find the next sync point: the shortest pair (di, dj) such that
+        // a[i+di..] starts with b[j+dj..] (or vice versa). Bounded search.
+        let mut di = 0usize;
+        let mut dj = 0usize;
+        let max_look = 200usize;
+        'outer: for d in 1..=max_look {
+            for k in 0..=d {
+                let ai = k;
+                let bj = d - k;
+                if i + ai <= a_lines.len() && j + bj <= b_lines.len() {
+                    let a_after = a_lines.get(i + ai);
+                    let b_after = b_lines.get(j + bj);
+                    if a_after == b_after && a_after.is_some() {
+                        di = ai;
+                        dj = bj;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        if di == 0 && dj == 0 {
+            // No sync within bounds — flush the rest.
+            di = a_lines.len() - i;
+            dj = b_lines.len() - j;
+        }
+        // Print the hunk header (1-indexed line numbers).
+        println!("  @@ -{},{} +{},{} @@", i + 1, di, j + 1, dj);
+        for k in 0..di {
+            println!("  - {}", a_lines[i + k]);
+        }
+        for k in 0..dj {
+            println!("  + {}", b_lines[j + k]);
+        }
+        i += di;
+        j += dj;
     }
 }
 

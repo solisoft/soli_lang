@@ -1,6 +1,6 @@
 //! Statement printer.
 
-use crate::ast::expr::{Expr, ExprKind};
+use crate::ast::expr::{Argument, Expr, ExprKind};
 
 use super::printer::MAX_LINE_LENGTH;
 
@@ -95,6 +95,15 @@ use super::printer::Printer;
 impl Printer<'_> {
     pub(super) fn print_stmt(&mut self, stmt: &Stmt) {
         self.flush_comments_before(stmt.span.line);
+        // A trailing `# soli-lint-disable-line` would be detached from its
+        // target line whenever the formatter alters layout (e.g. breaking a
+        // long expression across lines), silently disabling the suppression.
+        // Rewrite it as `# soli-lint-disable-next-line` placed just above the
+        // statement — same effect, robust against line splits.
+        self.rewrite_trailing_lint_disable(stmt.span.line);
+        // Reset the postfix-rewrite flag; the if-branch below sets it back
+        // to true when we actually rewrite a block-if to postfix form.
+        self.last_stmt_rewrote_to_postfix = false;
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // At statement position, `fn` is a function declaration and
@@ -164,6 +173,13 @@ impl Printer<'_> {
                 // source bytes at the statement's start to recover the form.
                 if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start) {
                     self.print_postfix_if(condition, then_branch, kw);
+                } else if let Some(inner) = self.guard_clause_to_rewrite(
+                    stmt, condition, then_branch, else_branch.is_some(),
+                ) {
+                    // Block form `if cond ... end` with a single guard-style
+                    // body collapses to idiomatic postfix `expr if cond`.
+                    self.print_postfix_if(condition, inner, PostfixIfKind::If);
+                    self.last_stmt_rewrote_to_postfix = true;
                 } else {
                     self.print_if(condition, then_branch, else_branch.as_deref());
                     self.maybe_blank_line_after_guard(then_branch, else_branch.as_deref());
@@ -239,6 +255,72 @@ impl Printer<'_> {
         }
         self.flush_trailing_comments_on(stmt.span.line);
         self.record_emitted_line(stmt.span.line);
+    }
+
+    /// Decide whether a block-form `if cond ... end` should be rewritten as
+    /// the idiomatic postfix `expr if cond`. Returns the inner statement to
+    /// emit on the postfix line, or `None` to keep the block form.
+    ///
+    /// Conditions for rewrite:
+    /// - No `else` / `elsif` branch (postfix has no else form)
+    /// - Body is a single Return / Throw / Expression statement
+    /// - No comments anywhere inside the block (they'd be detached)
+    /// - The resulting postfix line fits within `MAX_LINE_LENGTH`
+    fn guard_clause_to_rewrite<'s>(
+        &self,
+        if_stmt: &Stmt,
+        condition: &Expr,
+        then_branch: &'s Stmt,
+        else_present: bool,
+    ) -> Option<&'s Stmt> {
+        if else_present {
+            return None;
+        }
+        let inner = match &then_branch.kind {
+            StmtKind::Block(stmts) if stmts.len() == 1 => &stmts[0],
+            _ => return None,
+        };
+        if !matches!(
+            inner.kind,
+            StmtKind::Return(_) | StmtKind::Throw(_) | StmtKind::Expression(_)
+        ) {
+            return None;
+        }
+        let start_line = if_stmt.span.line;
+        let end_line = super::printer::source_end_line(self.source, if_stmt.span);
+        if self.has_comments_in_lines(start_line, end_line + 1) {
+            return None;
+        }
+        // The inner stmt must fit on a single source line. Multi-line
+        // postfix (e.g. `return {\n  ...\n} if cond`) parses fine, but
+        // `detect_postfix_if_kind` only scans within the first line and
+        // would misclassify the output as block form on the next pass —
+        // flipping back and forth and breaking idempotency.
+        let inner_end_line = super::printer::source_end_line(self.source, inner.span);
+        if inner_end_line != inner.span.line {
+            return None;
+        }
+        let cond_end_line = super::printer::source_end_line(self.source, condition.span);
+        if cond_end_line != condition.span.line {
+            return None;
+        }
+        // Even when the source is single-line, the printer's own break
+        // heuristics may multi-line a hash/array value (e.g. a 2-pair
+        // hash whose value is a `+` concat is forced multi-line). Don't
+        // rewrite then — the postfix would degrade to multi-line output.
+        if expr_in_stmt_likely_breaks(inner) {
+            return None;
+        }
+        if expr_likely_breaks(condition) {
+            return None;
+        }
+        let cond_w = condition.span.end.saturating_sub(condition.span.start);
+        let inner_w = inner.span.end.saturating_sub(inner.span.start);
+        let total = self.current_column() + inner_w + 4 /* " if " */ + cond_w;
+        if total > MAX_LINE_LENGTH {
+            return None;
+        }
+        Some(inner)
     }
 
     /// Emit `expr if cond` / `expr unless cond`. The condition stored on the
@@ -401,7 +483,10 @@ impl Printer<'_> {
         // Free-standing `fn` may omit empty parens (Soli convention:
         // "Optional parentheses for no-param functions"). Methods keep
         // their parens to match the project's `def name() ... end` style.
-        if !decl.params.is_empty() || is_method {
+        // Also keep empty parens when the body's first statement starts
+        // with `(` — otherwise the parser would consume that `(` as the
+        // parameter list (e.g. `fn f` followed by `(x ?? "") == "y"`).
+        if !decl.params.is_empty() || is_method || body_starts_with_paren(&decl.body) {
             self.print_param_list(&decl.params);
         }
         if let Some(ret) = &decl.return_type {
@@ -508,6 +593,7 @@ impl Printer<'_> {
         self.with_indent(|p| {
             // Fields
             for field in &decl.fields {
+                p.flush_comments_before(field.span.line);
                 p.print_field_decl(field);
             }
             if !decl.fields.is_empty() && (!decl.methods.is_empty() || decl.constructor.is_some()) {
@@ -515,6 +601,7 @@ impl Printer<'_> {
             }
             // Constructor
             if let Some(ctor) = &decl.constructor {
+                p.flush_comments_before(ctor.span.line);
                 p.print_constructor_decl(ctor);
                 if !decl.methods.is_empty() {
                     p.blank_line();
@@ -548,6 +635,11 @@ impl Printer<'_> {
                 if i > 0 {
                     p.blank_line();
                 }
+                // Flush comments that sit ABOVE this method declaration
+                // so they're emitted as leading comments to the method,
+                // not picked up later by `print_stmt` and dropped inside
+                // the body before the first statement.
+                p.flush_comments_before(m.span.line);
                 p.print_method_decl(m);
             }
             // Nested classes
@@ -557,6 +649,7 @@ impl Printer<'_> {
                     if i > 0 {
                         p.blank_line();
                     }
+                    p.flush_comments_before(n.span.line);
                     p.print_class_decl(n);
                 }
             }
@@ -671,4 +764,106 @@ fn is_guard_body(stmt: &Stmt) -> bool {
 
 fn format_type(ty: &crate::ast::types::TypeAnnotation) -> String {
     ty.to_string()
+}
+
+/// Mirror the printer's break heuristics for collection literals. Returns
+/// true when `e` (or some sub-expression of `e`) is one the printer will
+/// emit across multiple lines, regardless of the source's original layout.
+/// Used by `guard_clause_to_rewrite` to avoid producing a multi-line postfix
+/// `expr if cond` — which parses fine but breaks `detect_postfix_if_kind`'s
+/// single-line lookahead on subsequent fmt passes.
+fn expr_likely_breaks(e: &Expr) -> bool {
+    match &e.kind {
+        // Matches `print_expr`'s Hash branch: a Hash with 2+ pairs may be
+        // emitted multi-line — either unconditionally (> 2 pairs) or once
+        // the formatter is past column 30 (the project's tightened
+        // threshold). Since we can't predict the post-rewrite column here,
+        // be conservative and flag any 2+ pair hash as likely to break.
+        ExprKind::Hash(pairs) => {
+            if pairs.len() > 1 {
+                return true;
+            }
+            pairs.iter().any(|(k, v)| expr_likely_breaks(k) || expr_likely_breaks(v))
+        }
+        // The Array branch forces multi-line when > 3 elements, or with 3+
+        // elements once we're past column 20. Like the Hash case, we can't
+        // predict the post-rewrite column from here, so conservatively
+        // flag any 3+ element array as likely to break.
+        ExprKind::Array(elements) => {
+            elements.len() > 2 || elements.iter().any(expr_likely_breaks)
+        }
+        ExprKind::Block(_) | ExprKind::Lambda { .. } => true,
+        ExprKind::Binary { left, right, .. } | ExprKind::Pipeline { left, right } => {
+            expr_likely_breaks(left) || expr_likely_breaks(right)
+        }
+        ExprKind::LogicalAnd { left, right } | ExprKind::LogicalOr { left, right } => {
+            expr_likely_breaks(left) || expr_likely_breaks(right)
+        }
+        ExprKind::Assign { target, value } | ExprKind::CompoundAssign { target, value, .. } => {
+            expr_likely_breaks(target) || expr_likely_breaks(value)
+        }
+        ExprKind::Unary { operand, .. }
+        | ExprKind::Grouping(operand)
+        | ExprKind::Spread(operand)
+        | ExprKind::Throw(operand)
+        | ExprKind::Member { object: operand, .. }
+        | ExprKind::SafeMember { object: operand, .. }
+        | ExprKind::QualifiedName { qualifier: operand, .. } => expr_likely_breaks(operand),
+        ExprKind::Index { object, index } => {
+            expr_likely_breaks(object) || expr_likely_breaks(index)
+        }
+        ExprKind::Call { callee, arguments } | ExprKind::New { class_expr: callee, arguments } => {
+            expr_likely_breaks(callee)
+                || arguments.iter().any(|a| match a {
+                    Argument::Positional(x) => expr_likely_breaks(x),
+                    Argument::Named(na) => expr_likely_breaks(&na.value),
+                    Argument::Block(x) => expr_likely_breaks(x),
+                })
+        }
+        ExprKind::Rescue { expr, fallback } => {
+            expr_likely_breaks(expr) || expr_likely_breaks(fallback)
+        }
+        _ => false,
+    }
+}
+
+/// Same predicate, applied to the expression(s) carried by a guard-clause
+/// inner statement (`return`, `throw`, or a bare expression).
+fn expr_in_stmt_likely_breaks(s: &Stmt) -> bool {
+    match &s.kind {
+        StmtKind::Return(Some(e)) | StmtKind::Throw(e) | StmtKind::Expression(e) => {
+            expr_likely_breaks(e)
+        }
+        StmtKind::Return(None) => false,
+        _ => true,
+    }
+}
+
+/// True when the body's first statement, once printed, starts with `(`.
+/// Used to decide whether `fn name` may safely drop its empty parens —
+/// when the body opens with a parenthesized expression, the parser would
+/// otherwise consume it as the parameter list.
+fn body_starts_with_paren(body: &[Stmt]) -> bool {
+    fn expr_starts_with_paren(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Grouping(_) => true,
+            ExprKind::Binary { left, .. } | ExprKind::Pipeline { left, .. } => {
+                expr_starts_with_paren(left)
+            }
+            ExprKind::Call { callee: inner, .. }
+            | ExprKind::Member { object: inner, .. }
+            | ExprKind::SafeMember { object: inner, .. }
+            | ExprKind::Index { object: inner, .. }
+            | ExprKind::QualifiedName { qualifier: inner, .. } => expr_starts_with_paren(inner),
+            ExprKind::Assign { target, .. } | ExprKind::CompoundAssign { target, .. } => {
+                expr_starts_with_paren(target)
+            }
+            ExprKind::Rescue { expr, .. } => expr_starts_with_paren(expr),
+            _ => false,
+        }
+    }
+    match body.first().map(|s| &s.kind) {
+        Some(StmtKind::Expression(e)) => expr_starts_with_paren(e),
+        _ => false,
+    }
 }

@@ -61,9 +61,12 @@ fn class_with_methods_separated_by_blank_line() {
 }
 
 #[test]
-fn guard_clause_gets_blank_line() {
-    let src = "def f(x)\n  if x\n    return 1\n  end\n  return 2\nend\n";
-    let expected = "fn f(x)\n  if x\n    return 1\n  end\n\n  return 2\nend\n";
+fn single_stmt_block_if_collapses_to_postfix() {
+    // Idiomatic Soli prefers postfix `expr if cond` for guard clauses
+    // (per the language docs). The formatter rewrites block-form `if cond
+    // <single-stmt> end` to postfix when it fits on one line.
+    let src = "fn f(x)\n  if x == 0\n    return 0\n  end\n  return x * 2\nend\n";
+    let expected = "fn f(x)\n  return 0 if x == 0\n  return x * 2\nend\n";
     assert_fmt(src, expected);
 }
 
@@ -151,6 +154,17 @@ fn idempotent_nested_control_flow() {
 #[test]
 fn idempotent_match_expression() {
     let src = "fn label(v)\n  match v {\n    42 => \"answer\",\n    _ => \"other\",\n  }\nend\n";
+    assert_idempotent(src);
+}
+
+#[test]
+fn idempotent_test_with_inline_lambda_assertion() {
+    // Regression: `test("...", fn() { assert_eq(a, b) })` used to oscillate
+    // between forms across fmt passes — the lambda's inline check used raw
+    // source byte length (which depends on whether the source has the body
+    // wrapped or inline) and the call's break heuristic added a +8 safety
+    // margin that triggered false-positive wraps on borderline lines.
+    let src = "describe(\"x\", fn() {\n  describe(\"y\", fn() {\n    test(\"⚙ prefix returns text-slate-500\", fn() {\n      assert_eq(task_log_line_class(\"⚙ some log\"), \"text-slate-500\")\n    })\n\n    test(\"returns empty when no reviews for the task\", fn() { assert_eq(CodeReview.for_task(\"p\", \"s\").length(), 0) })\n  })\n})\n";
     assert_idempotent(src);
 }
 
@@ -292,10 +306,10 @@ fn postfix_unless_strips_synthetic_not() {
 }
 
 #[test]
-fn block_if_still_emits_block_form() {
-    // Source-driven detection should still pick block form when source
-    // begins with the `if` keyword.
-    let src = "if x > 5\n  print(\"big\")\nend\n";
+fn block_if_with_else_stays_block_form() {
+    // Block form is preserved when there's an else branch (postfix has
+    // no else-form), so the formatter must not collapse it to postfix.
+    let src = "if x > 5\n  print(\"big\")\nelse\n  print(\"small\")\nend\n";
     assert_fmt(src, src);
 }
 

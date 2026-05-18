@@ -33,6 +33,12 @@ pub struct Printer<'a> {
     /// Source line of the last node we emitted — used to decide whether to
     /// flush a blank line between top-level statements.
     pub(super) last_emitted_line: usize,
+    /// True when the most recently printed statement was a block-form
+    /// `if cond ... end` collapsed to postfix `expr if cond`. The AST is
+    /// still block-form so `ends_in_expression` returns false, but the
+    /// printed line ends with the condition expression and needs `;`
+    /// disambiguation against a `(`/`[`/`.`-led next statement.
+    pub(super) last_stmt_rewrote_to_postfix: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -46,11 +52,22 @@ impl<'a> Printer<'a> {
             comment_cursor: 0,
             comments,
             last_emitted_line: 0,
+            last_stmt_rewrote_to_postfix: false,
         }
     }
 
     pub fn current_column(&self) -> usize {
         self.column
+    }
+
+    /// True if any source comment falls on a line strictly between `start` and
+    /// `end` (exclusive). Used by guard-clause rewriting to keep a `# note`
+    /// inside an `if cond ... end` from being detached when the block is
+    /// rewritten to a postfix conditional.
+    pub(super) fn has_comments_in_lines(&self, start: usize, end: usize) -> bool {
+        self.comments
+            .iter()
+            .any(|c| c.line > start && c.line < end && !c.text.is_empty())
     }
 
     pub fn finish(mut self) -> String {
@@ -161,12 +178,33 @@ impl<'a> Printer<'a> {
     }
 
     /// Emit comments on the same source line as `line` as trailing comments
-    /// on the current output line (joined with a single space).
+    /// on the current output line (joined with a single space). Comments
+    /// already consumed by `rewrite_trailing_lint_disable` (empty text) are
+    /// skipped without emission.
     pub(super) fn flush_trailing_comments_on(&mut self, line: usize) {
+        // Skip past any already-consumed comments at the cursor.
+        while self.comment_cursor < self.comments.len()
+            && self.comments[self.comment_cursor].line == line
+            && self.comments[self.comment_cursor].text.is_empty()
+        {
+            self.comment_cursor += 1;
+        }
+        // `print_stmt` always emits `newline()` before calling us, so by
+        // default we'd be at line-start with a `\n` at the end of `out`.
+        // Pop that newline so the trailing comment attaches to the
+        // statement's line.
+        let has_trailing = self.comment_cursor < self.comments.len()
+            && self.comments[self.comment_cursor].line == line;
+        let popped = has_trailing && self.at_line_start && self.pop_trailing_newline();
+
         while self.comment_cursor < self.comments.len()
             && self.comments[self.comment_cursor].line == line
         {
             let c = self.comments[self.comment_cursor].clone();
+            if c.text.is_empty() {
+                self.comment_cursor += 1;
+                continue;
+            }
             // Only treat as trailing if we haven't just started a line.
             if !self.at_line_start {
                 self.write("  ");
@@ -177,6 +215,41 @@ impl<'a> Printer<'a> {
                 self.comment_cursor += 1;
             }
         }
+
+        if popped {
+            self.newline();
+        }
+    }
+
+    /// If a trailing comment on `stmt_line` is `# soli-lint-disable-line …`,
+    /// emit it now (above the statement) as `# soli-lint-disable-next-line …`
+    /// and mark the original as consumed so `flush_trailing_comments_on`
+    /// won't re-emit it. The two directive forms have identical semantics in
+    /// `lint::suppress`, but the next-line form survives any line-splitting
+    /// the formatter might apply to the statement.
+    pub(super) fn rewrite_trailing_lint_disable(&mut self, stmt_line: usize) {
+        let mut idx = None;
+        for i in self.comment_cursor..self.comments.len() {
+            let c = &self.comments[i];
+            if c.line > stmt_line {
+                break;
+            }
+            if c.line == stmt_line && c.text.contains("soli-lint-disable-line") {
+                idx = Some(i);
+                break;
+            }
+        }
+        let Some(i) = idx else { return };
+        let new_text = self.comments[i]
+            .text
+            .replace("soli-lint-disable-line", "soli-lint-disable-next-line");
+        // Consume the original (empty text → skipped by flush_*).
+        self.comments[i].text.clear();
+        if !self.at_line_start {
+            self.newline();
+        }
+        self.write(&new_text);
+        self.newline();
     }
 
     fn emit_comment(&mut self, c: &Comment) {
@@ -217,13 +290,18 @@ impl<'a> Printer<'a> {
         let mut prev_source_end: usize = 0;
         for (idx, stmt) in program.statements.iter().enumerate() {
             self.flush_comments_before(stmt.span.line);
-            if idx > 0 && stmt.span.line > prev_source_end + 1 {
+            if idx > 0 && stmt.span.line > prev_source_end + 1 && !comment_fills_gap(
+                self.last_emitted_line, prev_source_end, stmt.span.line,
+            ) {
                 self.blank_line();
             }
             self.print_stmt(stmt);
             // Disambiguate against a following `[`/`(`/`.`-led line.
             if let Some(next) = program.statements.get(idx + 1) {
-                if needs_disambiguating_semicolon(self.source, stmt, next) {
+                if needs_disambiguating_semicolon(self.source, stmt, next)
+                    || (self.last_stmt_rewrote_to_postfix
+                        && starts_with_continuation_char(self.source, next.span.start))
+                {
                     let had_newline = self.pop_trailing_newline();
                     self.write(";");
                     if had_newline {
@@ -262,13 +340,18 @@ impl<'a> Printer<'a> {
             let mut prev_source_end: usize = 0;
             for (idx, stmt) in stmts.iter().enumerate() {
                 p.flush_comments_before(stmt.span.line);
-                if idx > 0 && stmt.span.line > prev_source_end + 1 {
+                if idx > 0 && stmt.span.line > prev_source_end + 1 && !comment_fills_gap(
+                    p.last_emitted_line, prev_source_end, stmt.span.line,
+                ) {
                     p.blank_line();
                 }
                 p.print_stmt(stmt);
                 // Disambiguate against a following continuation-token line.
                 if let Some(next) = stmts.get(idx + 1) {
-                    if needs_disambiguating_semicolon(p.source, stmt, next) {
+                    if needs_disambiguating_semicolon(p.source, stmt, next)
+                        || (p.last_stmt_rewrote_to_postfix
+                            && starts_with_continuation_char(p.source, next.span.start))
+                    {
                         let had_newline = p.pop_trailing_newline();
                         p.write(";");
                         if had_newline {
@@ -286,6 +369,15 @@ impl<'a> Printer<'a> {
             }
         });
     }
+}
+
+/// True when a comment was emitted on the line immediately above the upcoming
+/// statement (i.e. attached as its leading comment). In that case the blank-
+/// line-paragraph-preservation check must NOT insert a blank between the
+/// comment and the statement — that would detach directives like
+/// `# soli-lint-disable-next-line` from their target on subsequent fmt passes.
+fn comment_fills_gap(last_emitted_line: usize, prev_source_end: usize, stmt_line: usize) -> bool {
+    last_emitted_line > prev_source_end && last_emitted_line + 1 >= stmt_line
 }
 
 /// Return the source line number that contains the last byte of `span`.
@@ -330,7 +422,7 @@ fn ends_in_expression(stmt: &Stmt) -> bool {
     }
 }
 
-fn starts_with_continuation_char(source: &str, start: usize) -> bool {
+pub(super) fn starts_with_continuation_char(source: &str, start: usize) -> bool {
     let bytes = source.as_bytes();
     let mut i = start.min(bytes.len());
     while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {

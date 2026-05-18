@@ -14,11 +14,70 @@ fn span_source(source: &str, span: crate::span::Span) -> &str {
     &source[start..end]
 }
 
+/// Layout-independent width estimate for `span`. Approximates the width of
+/// `span`'s source content re-flowed to a single line. Newlines and the
+/// indent that follows each one are stripped, then a single ` ` is inserted
+/// in their place when the surrounding tokens are ones that would have a
+/// space between them inline (matching the printer's actual emission rules:
+/// no space after `(`/`[`/`{`, no space before `)`/`]`/`}`, no space around
+/// `.`). Without this normalization, break-decision heuristics see different
+/// widths for the same AST node depending on whether the source currently
+/// has it on one line or wrapped — and the formatter flips between layouts
+/// on successive passes.
+pub(super) fn span_inline_width(source: &str, span: crate::span::Span) -> usize {
+    let s = span_source(source, span);
+    let mut count = 0usize;
+    let mut at_continuation = false;
+    // `pending_space` holds whether we'd emit a space if the next non-ws
+    // char isn't a "no-space-before" token. This lets us drop spaces that
+    // sit immediately before a closer (`)`, `]`, `}`, `.`) — the printer
+    // doesn't emit those either.
+    let mut pending_space = false;
+    let mut last_non_ws: Option<char> = None;
+    for c in s.chars() {
+        if c == '\n' {
+            at_continuation = true;
+        } else if at_continuation && (c == ' ' || c == '\t') {
+            // Skip indent run on continuation lines.
+        } else if c == ' ' || c == '\t' {
+            // Inline whitespace inside a line: collapse runs to at most a
+            // single space, and only emit it if surrounded by tokens the
+            // printer would also separate (i.e. not after an opener and
+            // not before a closer — checked when we see the next non-ws).
+            let suppress = matches!(last_non_ws, Some('(' | '[' | '{' | '.'));
+            if !suppress {
+                pending_space = true;
+            }
+        } else {
+            if at_continuation {
+                if let Some(prev) = last_non_ws {
+                    let needs_space = !matches!(prev, '(' | '[' | '{' | '.')
+                        && !matches!(c, ')' | ']' | '}' | '.');
+                    if needs_space {
+                        pending_space = true;
+                    }
+                }
+            }
+            if pending_space {
+                let suppress_before = matches!(c, ')' | ']' | '}' | '.');
+                if !suppress_before {
+                    count += 1;
+                }
+                pending_space = false;
+            }
+            at_continuation = false;
+            count += 1;
+            last_non_ws = Some(c);
+        }
+    }
+    count
+}
+
 /// Check whether a logical operator (&&/||) chain would exceed MAX_LINE_LENGTH.
 fn should_logical_break(p: &Printer, left: &Expr, right: &Expr, op: &str) -> bool {
     let _col = p.current_column();
-    let left_src = span_source(p.source, left.span).len().min(120);
-    let right_src = span_source(p.source, right.span).len().min(80);
+    let left_src = span_inline_width(p.source, left.span).min(120);
+    let right_src = span_inline_width(p.source, right.span).min(80);
     // Add 4 safety margin to account for underestimates (e.g., quoted strings
     // re-printed with different escaping than the source span suggests).
     p.current_column() + left_src + op.len() + right_src + 8 > MAX_LINE_LENGTH
@@ -102,7 +161,16 @@ impl Printer<'_> {
                 self.write(":");
                 self.write(name);
             }
-            ExprKind::Null => self.write("null"),
+            ExprKind::Null => {
+                // Preserve the user's choice of `nil` vs `null` (Soli accepts
+                // both as synonyms). Falls back to `null` for synthesized
+                // Null AST nodes that aren't tied to source text.
+                if source_starts_with_nil(self.source, expr.span.start) {
+                    self.write("nil");
+                } else {
+                    self.write("null");
+                }
+            }
             ExprKind::Variable(name) => self.write(name),
             ExprKind::This => self.write("this"),
             ExprKind::Super => self.write("super"),
@@ -144,9 +212,20 @@ impl Printer<'_> {
                 self.print_expr(right);
             }
             ExprKind::Member { object, name } => {
-                self.print_expr(object);
-                self.write(".");
-                self.write(name);
+                // `@title` desugars to `Member { This, "title" }` in the
+                // AST — same node as `this.title`. Preserve whichever form
+                // the user wrote by peeking at the source at the object's
+                // start byte.
+                if matches!(object.kind, ExprKind::This)
+                    && source_starts_with_at(self.source, object.span.start)
+                {
+                    self.write("@");
+                    self.write(name);
+                } else {
+                    self.print_expr(object);
+                    self.write(".");
+                    self.write(name);
+                }
             }
             ExprKind::SafeMember { object, name } => {
                 self.print_expr(object);
@@ -175,7 +254,7 @@ impl Printer<'_> {
             ExprKind::Array(elements) => {
                 // Estimate inline width and break long arrays across lines.
                 let est: usize = elements.iter().map(|e| {
-                    span_source(self.source, e.span).len().min(40)
+                    span_inline_width(self.source, e.span).min(40)
                 }).sum::<usize>()
                     + 2 // "[]"
                     + (elements.len().saturating_sub(1)) * 2; // ", "
@@ -352,10 +431,20 @@ impl Printer<'_> {
                         _ => false,
                     };
                     if !inner_is_lambda {
+                        // Width estimate must be source-layout independent (use
+                        // `span_inline_width`, not raw `.len()` on the source
+                        // span — the latter includes newlines+continuation
+                        // indent and so disagrees with the second-pass span,
+                        // breaking idempotency). The `+9` slack covers the
+                        // emitted `" { " + " }"` envelope (5 chars) plus enough
+                        // headroom to ensure any inner Call body the lambda
+                        // promises to inline can ALSO fit inline at its own
+                        // print_arg_list check — otherwise the call breaks
+                        // mid-args and we get an ugly `fn() { f(\n  a,\n  b\n) }`
+                        // hybrid that the next pass keeps reformatting.
                         if let crate::ast::stmt::StmtKind::Expression(e) = &body[0].kind {
-                            // Estimate if inline would push past the limit
-                            let body_span = span_source(self.source, e.span);
-                            let est = self.current_column() + 4 + body_span.len(); // " { " + body + " }"
+                            let body_w = span_inline_width(self.source, e.span);
+                            let est = self.current_column() + 9 + body_w;
                             if est <= MAX_LINE_LENGTH {
                                 self.write(" ");
                                 self.print_expr(e);
@@ -364,8 +453,10 @@ impl Printer<'_> {
                             }
                         }
                         if let crate::ast::stmt::StmtKind::Return(Some(e)) = &body[0].kind {
-                            let body_span = span_source(self.source, e.span);
-                            let est = self.current_column() + 11 + body_span.len(); // " { return " + body + " }"
+                            // `return` is stripped on inline emission, so the
+                            // envelope size matches the Expression case.
+                            let body_w = span_inline_width(self.source, e.span);
+                            let est = self.current_column() + 9 + body_w;
                             if est <= MAX_LINE_LENGTH {
                                 self.write(" ");
                                 self.print_expr(e);
@@ -425,9 +516,26 @@ impl Printer<'_> {
                 self.print_expr(inner);
             }
             ExprKind::Rescue { expr, fallback } => {
-                self.print_expr(expr);
-                self.write(" rescue ");
-                self.print_expr(fallback);
+                // Estimate full inline width and break before `rescue` when
+                // it would push the line past MAX_LINE_LENGTH. Use
+                // `span_inline_width` so the same expression yields the same
+                // width whether the source currently has it on one line or
+                // wrapped across several — required for fmt idempotency.
+                let expr_w = span_inline_width(self.source, expr.span);
+                let fb_w = span_inline_width(self.source, fallback.span);
+                let total = self.current_column() + expr_w + 8 /* " rescue " */ + fb_w;
+                if total >= MAX_LINE_LENGTH {
+                    self.print_expr(expr);
+                    self.newline();
+                    self.with_indent(|p| {
+                        p.write("rescue ");
+                        p.print_expr(fallback);
+                    });
+                } else {
+                    self.print_expr(expr);
+                    self.write(" rescue ");
+                    self.print_expr(fallback);
+                }
             }
         }
     }
@@ -456,18 +564,29 @@ impl Printer<'_> {
                     return true;
                 }
             }
+            // Per-arg width capped at 60 to keep multi-line aggregates
+            // (lambdas with statement-blocks, big arrays/hashes) from
+            // dominating the inline estimate — their flattened width
+            // misrepresents the actual emitted width (which will be
+            // multi-line anyway, so contributes only the opening token to
+            // the current line). The previous `+8` safety on top of the
+            // cap was over-pessimistic and caused lines that genuinely
+            // fit in 120 chars to be wrapped, which the next fmt pass
+            // would then re-collapse — fmt oscillating between forms.
             let args_w: usize = args.iter().map(|a| {
                 let span = match a {
                     Argument::Positional(e) => e.span,
                     Argument::Named(na) => na.value.span,
                     Argument::Block(e) => e.span,
                 };
-                let s = span_source(self.source, span);
-                s.len().min(60)
+                span_inline_width(self.source, span).min(60)
             }).sum::<usize>()
                 + 2 // "()"
                 + (arg_count.saturating_sub(1)) * 2; // ", "
-            self.current_column() + args_w + 8 > MAX_LINE_LENGTH
+            // +2 slack absorbs minor byte/char drift (multi-byte chars
+            // push emission past the char-count estimate by a couple bytes)
+            // and any trailing `;`/` }` the caller appends.
+            self.current_column() + args_w + 2 > MAX_LINE_LENGTH
         })();
 
         if multi_line {
@@ -546,11 +665,33 @@ impl Printer<'_> {
     fn print_binary_op(&mut self, left: &Expr, operator: BinaryOp, right: &Expr) {
         let op_str = binary_op_str(operator);
 
-        // For + concatenation: estimate total width from source spans and
-        // break across lines if it would exceed the limit.
+        // Stylistic rewrite: collapse `x == null` / `x == nil` to `x.nil?`,
+        // and `x != null` / `x != nil` to `x.present?`. Handles either
+        // ordering of operands. Note: `.present?` differs from `!= null`
+        // for empty strings/arrays (it returns false); this is intentional
+        // per project style.
+        if op_str == "==" || op_str == "!=" {
+            let null_method = if op_str == "==" { ".nil?" } else { ".present?" };
+            if matches!(right.kind, ExprKind::Null) {
+                self.print_expr(left);
+                self.write(null_method);
+                return;
+            }
+            if matches!(left.kind, ExprKind::Null) {
+                self.print_expr(right);
+                self.write(null_method);
+                return;
+            }
+        }
+
+        // For + concatenation: estimate total width and break across lines
+        // if it would exceed the limit. Use `span_inline_width` so the same
+        // expression produces the same width regardless of whether the
+        // source currently has it inline or wrapped — required for fmt
+        // idempotency.
         if op_str == "+" || op_str == "||" || op_str == "&&" {
-            let left_src = span_source(self.source, left.span).len();
-            let right_src = span_source(self.source, right.span).len();
+            let left_src = span_inline_width(self.source, left.span);
+            let right_src = span_inline_width(self.source, right.span);
             let total = self.current_column() + left_src + 3 + right_src.min(80);
 
             if total + 12 > MAX_LINE_LENGTH {
@@ -689,4 +830,26 @@ fn source_has_parens_after(source: &str, at: usize) -> bool {
         i += 1;
     }
     bytes.get(i) == Some(&b'(')
+}
+
+/// True when the source byte at `at` is `@` — used to distinguish the
+/// `@name` instance-var sigil from `this.name` (they share an AST node).
+fn source_starts_with_at(source: &str, at: usize) -> bool {
+    source.as_bytes().get(at) == Some(&b'@')
+}
+
+/// True when the source bytes starting at `at` spell `nil` (Soli accepts
+/// `nil` and `null` interchangeably). Lets the formatter preserve the
+/// user's choice rather than normalizing all null literals to `null`.
+fn source_starts_with_nil(source: &str, at: usize) -> bool {
+    let bytes = source.as_bytes();
+    if bytes.get(at..at + 3) == Some(b"nil") {
+        // Word boundary: next byte (if any) must not be an identifier char.
+        match bytes.get(at + 3).copied() {
+            Some(c) => !(c.is_ascii_alphanumeric() || c == b'_'),
+            None => true,
+        }
+    } else {
+        false
+    }
 }
