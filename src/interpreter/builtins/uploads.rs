@@ -484,7 +484,7 @@ fn upload_blob_to_solidb(
     if let Some(api_key) = get_api_key() {
         client = client.with_api_key(api_key);
     } else if let Some(jwt) = get_jwt_token() {
-        client = client.with_jwt_token(jwt);
+        client = client.with_jwt_token(&jwt);
     } else if let (Ok(user), Ok(pass)) = (
         std::env::var("SOLIDB_USERNAME"),
         std::env::var("SOLIDB_PASSWORD"),

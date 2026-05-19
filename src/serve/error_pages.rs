@@ -172,10 +172,15 @@ pub(super) fn render_error_page(
 
     // SEC-083: redact the body in remote-allowed dev mode (page can be
     // rendered by anyone reaching the host, so login / signup payloads
-    // would leak); preserve it on loopback-only dev so the in-page REPL
-    // can still evaluate snippets that touch `req.body`.
-    let request_data_json =
-        build_redacted_request_data_json(request_data, super::dev_repl_allows_remote());
+    // would leak); preserve it on loopback / LAN dev so the in-page REPL
+    // can still evaluate snippets that touch `req.body`. The
+    // trusted-peer check mirrors the REPL auth: same network shape is
+    // treated as same trust boundary across both endpoints.
+    let peer_trusted = super::is_trusted_dev_peer_str(&request_data.peer_ip);
+    let request_data_json = build_redacted_request_data_json(
+        request_data,
+        super::dev_repl_allows_remote() && !peer_trusted,
+    );
 
     render_dev_error_page(
         &actual_error,
@@ -185,6 +190,7 @@ pub(super) fn render_error_page(
         &request_data_json,
         env_json_for_render,
         &source_files,
+        peer_trusted,
     )
 }
 
@@ -324,6 +330,7 @@ pub(super) fn render_dev_error_page(
     request_data_json: &str,
     breakpoint_env_json: Option<&str>,
     preloaded_sources: &HashMap<String, String>,
+    peer_trusted: bool,
 ) -> String {
     let error_message = escape_html(error);
     let error_type = escape_html(error_type);
@@ -784,7 +791,7 @@ pub(super) fn render_dev_error_page(
         stack_frames = stack_frames.join("\n"),
         request_data_json = escape_for_script_tag(request_data_json),
         breakpoint_env_js = escape_for_script_tag(breakpoint_env_json.unwrap_or("null")),
-        dev_repl_token_js = escape_for_script_tag(&dev_repl_token_for_html()),
+        dev_repl_token_js = escape_for_script_tag(&dev_repl_token_for_html(peer_trusted)),
         preloaded_sources_js = escape_for_script_tag(&preloaded_sources_js),
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
@@ -815,13 +822,19 @@ fn escape_for_script_tag(s: &str) -> String {
 }
 
 /// SEC-051: in remote-allowed dev mode, refuse to embed the REPL token
-/// into the HTML error page. ALLOW_REMOTE pairs full server-side code
-/// execution with an HTML token leak — anyone who can render a
-/// dev-mode error response would otherwise scrape the credential. The
-/// operator must paste their `SOLI_DEV_REPL_SECRET` manually (e.g. via
-/// browser console) to use the in-page REPL when remote is on.
-fn dev_repl_token_for_html() -> String {
-    if super::dev_repl_allows_remote() {
+/// into the HTML error page for *public* peers. ALLOW_REMOTE pairs full
+/// server-side code execution with an HTML token leak — anyone who can
+/// render a dev-mode error response from the internet would otherwise
+/// scrape the credential.
+///
+/// Loopback + RFC 1918 peers are treated as trusted: the page is
+/// already only reachable from someone on the host or LAN, so embedding
+/// the token there matches the existing loopback-only behavior and
+/// keeps the in-page REPL usable when the dev server is hit from a
+/// phone/laptop on the same network. Public peers still get a blanked
+/// token and must paste `SOLI_DEV_REPL_SECRET` manually.
+fn dev_repl_token_for_html(peer_trusted: bool) -> String {
+    if super::dev_repl_allows_remote() && !peer_trusted {
         "\"\"".to_string()
     } else {
         serde_json::to_string(super::dev_repl_auth_token()).unwrap_or_else(|_| "\"\"".to_string())

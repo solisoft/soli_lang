@@ -304,7 +304,7 @@ pub fn serve_folder_with_options(
     serve_folder_with_options_and_workers(folder, port, dev_mode, workers)
 }
 
-// Environment loading functions are now in env_loader module
+use env_loader::load_env_files;
 
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
@@ -351,6 +351,20 @@ pub fn serve_folder_with_options_and_workers(
         .canonicalize()
         .unwrap_or_else(|_| folder.to_path_buf());
     let folder = folder_owned.as_path();
+
+    // Load `.env` (and `.env.{APP_ENV}` if set) before any builtin reads
+    // SOLIDB_* / SOLI_* env vars. Was dropped as collateral damage in
+    // a17f300; without it `init_db_config` + `init_jwt_token` below run
+    // with no credentials, every DB request goes out unauthenticated,
+    // and SolidB 401s.
+    load_env_files(folder);
+    boot_trace("env loaded");
+
+    // Cache SoliDB host/database/api-key/basic-auth derived from the env
+    // we just loaded. Must run before `init_jwt_token` so the JWT login
+    // and the cursor URL see the same `SOLIDB_HOST` parse.
+    crate::interpreter::builtins::model::init_db_config();
+    boot_trace("db config init");
 
     // Validate folder structure
     let app_dir = folder.join("app");
@@ -5375,8 +5389,43 @@ async fn handle_dev_repl(
         .unwrap())
 }
 
+/// A peer is "trusted" for the dev REPL when it's on the host itself
+/// (loopback) or somewhere on a private LAN (RFC 1918). The dev workflow
+/// of running `soli serve --dev` and hitting it from a phone/laptop on
+/// the same Wi-Fi is common enough that we don't want to force users to
+/// flip on `SOLI_DEV_REPL_ALLOW_REMOTE` (which also turns on token
+/// blanking + body redaction) just to get a working REPL on the LAN.
+/// Public/internet peers still require ALLOW_REMOTE + a stable secret.
+pub(super) fn is_trusted_dev_peer(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private(),
+        std::net::IpAddr::V6(v6) => {
+            if v6.is_loopback() {
+                return true;
+            }
+            // IPv4-mapped IPv6 (`::ffff:a.b.c.d`) is the same peer as the
+            // wrapped v4 — apply the v4 rules so a dual-stack listener
+            // doesn't downgrade a LAN client to "untrusted".
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return v4.is_loopback() || v4.is_private();
+            }
+            false
+        }
+    }
+}
+
+/// String-keyed variant so callers that only hold `RequestData::peer_ip`
+/// (which is a pre-stringified IP, no port) don't need to re-parse a
+/// SocketAddr. A malformed string is treated as untrusted.
+pub(super) fn is_trusted_dev_peer_str(peer_ip: &str) -> bool {
+    peer_ip
+        .parse::<std::net::IpAddr>()
+        .map(is_trusted_dev_peer)
+        .unwrap_or(false)
+}
+
 fn is_authorized_dev_repl_request(headers: &hyper::HeaderMap, peer_addr: SocketAddr) -> bool {
-    if !peer_addr.ip().is_loopback() && !dev_repl_allows_remote() {
+    if !is_trusted_dev_peer(peer_addr.ip()) && !dev_repl_allows_remote() {
         return false;
     }
 
@@ -5953,6 +6002,66 @@ mod tests {
         let peer_addr: SocketAddr = "192.0.2.10:5011".parse().unwrap();
 
         assert!(!is_authorized_dev_repl_request(&headers, peer_addr));
+    }
+
+    #[test]
+    fn dev_repl_auth_accepts_rfc1918_peer_without_allow_remote() {
+        // LAN browser hitting the dev server directly (e.g. phone on
+        // the same Wi-Fi) should succeed with just the embedded token —
+        // no need to flip on ALLOW_REMOTE.
+        let _guard = ENV_TEST_LOCK.lock().unwrap();
+        std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert("x-soli-dev-token", dev_repl_auth_token().parse().unwrap());
+
+        for ip in ["192.168.1.30", "10.0.0.5", "172.16.0.1"] {
+            let peer_addr: SocketAddr = format!("{}:5011", ip).parse().unwrap();
+            assert!(
+                is_authorized_dev_repl_request(&headers, peer_addr),
+                "expected {} (RFC 1918) to be accepted without ALLOW_REMOTE",
+                ip
+            );
+        }
+    }
+
+    #[test]
+    fn is_trusted_dev_peer_classifies_known_ranges() {
+        use std::net::IpAddr;
+        let trusted: &[&str] = &[
+            "127.0.0.1",
+            "127.0.0.2",
+            "::1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "172.31.255.255",
+            "192.168.0.1",
+            "192.168.255.255",
+            "::ffff:192.168.1.1",
+        ];
+        let untrusted: &[&str] = &[
+            "8.8.8.8",
+            "192.0.2.10",
+            "172.32.0.1",
+            "2001:4860:4860::8888",
+        ];
+        for ip in trusted {
+            let parsed: IpAddr = ip.parse().unwrap();
+            assert!(is_trusted_dev_peer(parsed), "{} should be trusted", ip);
+            assert!(is_trusted_dev_peer_str(ip), "{} (str) should be trusted", ip);
+        }
+        for ip in untrusted {
+            let parsed: IpAddr = ip.parse().unwrap();
+            assert!(!is_trusted_dev_peer(parsed), "{} should NOT be trusted", ip);
+            assert!(
+                !is_trusted_dev_peer_str(ip),
+                "{} (str) should NOT be trusted",
+                ip
+            );
+        }
+        assert!(
+            !is_trusted_dev_peer_str("not-an-ip"),
+            "malformed peer_ip is untrusted"
+        );
     }
 
     #[test]

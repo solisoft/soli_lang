@@ -376,10 +376,32 @@ impl Interpreter {
                 self.environment = prev_env;
                 Ok(ControlFlow::Normal(Value::Null))
             }
-            _ => Err(RuntimeError::type_error(
-                format!("cannot iterate over {}", iter_value.type_name()),
-                iterable.span,
-            )),
+            _ => {
+                // Include the offending value in the message so the user can
+                // see *which* string (or scalar) snuck into the iterable slot.
+                // Strings get truncated to keep the page readable; longer
+                // ones drop a trailing `…`. Other scalars are short enough
+                // to inline verbatim.
+                let message = match &iter_value {
+                    Value::String(s) => {
+                        const MAX: usize = 120;
+                        let preview: String = if s.chars().count() > MAX {
+                            let mut p: String = s.chars().take(MAX).collect();
+                            p.push('…');
+                            p
+                        } else {
+                            s.clone()
+                        };
+                        format!("cannot iterate over string {:?}", preview)
+                    }
+                    Value::Null => "cannot iterate over null".to_string(),
+                    Value::Int(n) => format!("cannot iterate over int {}", n),
+                    Value::Float(n) => format!("cannot iterate over float {}", n),
+                    Value::Bool(b) => format!("cannot iterate over bool {}", b),
+                    other => format!("cannot iterate over {}", other.type_name()),
+                };
+                Err(RuntimeError::type_error(message, iterable.span))
+            }
         }
     }
 

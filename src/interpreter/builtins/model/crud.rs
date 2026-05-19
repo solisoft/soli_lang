@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::{
-    db_url, get_api_key, get_basic_auth, get_cursor_url, get_database_name, get_jwt_token,
+    db_url, force_refresh_jwt_token, get_api_key, get_basic_auth, get_cursor_url,
+    get_database_name, get_jwt_token,
 };
 #[allow(unused_imports)]
 use super::registry::{clear_model_classes, get_model_class, register_model_class};
@@ -25,6 +26,29 @@ fn apply_db_auth(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     } else {
         builder
     }
+}
+
+/// Send a SolidB request through `apply_db_auth`. On a 401 response we
+/// invalidate the cached JWT (so the next `get_jwt_token()` re-logs in)
+/// and retry the request once. The closure must rebuild the request from
+/// scratch so the retry attaches the freshly-refreshed Authorization
+/// header instead of the dead one.
+///
+/// SolidB JWTs expire after 24h (see `db_config::CachedJwt`). The pre-
+/// emptive refresh in `get_jwt_token()` covers the common case; this
+/// retry covers the corner cases where the token *was* still valid at
+/// request-build time but the request itself comes back unauthorised
+/// (server-side revocation, clock skew between client and DB, etc.).
+async fn send_with_db_auth_retry<F>(make_request: F) -> Result<reqwest::Response, reqwest::Error>
+where
+    F: Fn() -> reqwest::RequestBuilder,
+{
+    let resp = apply_db_auth(make_request()).send().await?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        force_refresh_jwt_token();
+        return apply_db_auth(make_request()).send().await;
+    }
+    Ok(resp)
 }
 
 // Fallback tokio runtime for DB operations outside of a server context
@@ -116,17 +140,15 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
 
     run_db_future(async move {
         let client = get_http_client().clone();
-        let request = apply_db_auth(
+        let body_str = body.to_string();
+        let response = send_with_db_auth_retry(|| {
             client
                 .request(reqwest::Method::POST, &url)
                 .header("Content-Type", "application/json")
-                .body(body.to_string()),
-        );
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+                .body(body_str.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
@@ -174,12 +196,10 @@ pub fn commit_transaction() -> Result<(), String> {
 
     run_db_future(async move {
         let client = get_http_client().clone();
-        let request = apply_db_auth(client.request(reqwest::Method::POST, &url));
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+        let response =
+            send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
+                .await
+                .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
@@ -208,12 +228,10 @@ pub fn rollback_transaction() -> Result<(), String> {
 
     run_db_future(async move {
         let client = get_http_client().clone();
-        let request = apply_db_auth(client.request(reqwest::Method::POST, &url));
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+        let response =
+            send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
+                .await
+                .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
@@ -359,18 +377,16 @@ pub fn exec_async_query_with_binds(
         if let Some(bv) = bind_vars {
             payload["bindVars"] = serde_json::json!(bv);
         }
+        let body_str = payload.to_string();
 
-        let request = apply_db_auth(
+        let resp = send_with_db_auth_retry(|| {
             client
-                .post(url)
+                .post(&url)
                 .header("Content-Type", "application/json")
-                .body(payload.to_string()),
-        );
-
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+                .body(body_str.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -450,17 +466,14 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 
     let client = get_http_client().clone();
     let result = match run_db_future(async move {
-        let request = apply_db_auth(
+        let resp = send_with_db_auth_retry(|| {
             client
-                .post(url)
+                .post(&url)
                 .header("Content-Type", "application/json")
-                .body(body),
-        );
-
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -557,17 +570,14 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
     let client = get_http_client().clone();
 
     run_db_future(async move {
-        let request = apply_db_auth(
+        let resp = send_with_db_auth_retry(|| {
             client
                 .post(&url)
                 .header("Content-Type", "application/json")
-                .body(body),
-        );
-
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -693,21 +703,23 @@ fn exec_document_request_with_headers(
     let extra: Vec<(&'static str, String)> =
         extra_headers.iter().map(|(k, v)| (*k, v.clone())).collect();
 
-    run_db_future(async move {
-        let mut request = apply_db_auth(client.request(method, &url));
-        if let Some(b) = body {
-            request = request
-                .header("Content-Type", "application/json")
-                .body(b.to_string());
-        }
-        for (k, v) in &extra {
-            request = request.header(*k, v.as_str());
-        }
+    let body_str = body.as_ref().map(|b| b.to_string());
 
-        let resp = request
-            .send()
-            .await
-            .map_err(|e| format!("HTTP error: {}", e))?;
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            let mut r = client.request(method.clone(), &url);
+            if let Some(ref bs) = body_str {
+                r = r
+                    .header("Content-Type", "application/json")
+                    .body(bs.clone());
+            }
+            for (k, v) in &extra {
+                r = r.header(*k, v.as_str());
+            }
+            r
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
 
         let status = resp.status();
         if !status.is_success() {

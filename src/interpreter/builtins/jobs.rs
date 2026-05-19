@@ -55,7 +55,7 @@ fn make_client() -> Result<SoliDBClient, String> {
     let mut client =
         SoliDBClient::connect(host).map_err(|e| format!("SolidB connect failed: {}", e))?;
     if let Some(jwt) = get_jwt_token() {
-        client = client.with_jwt_token(jwt);
+        client = client.with_jwt_token(&jwt);
     } else if let Some(key) = get_api_key() {
         client = client.with_api_key(key);
     } else if let Some(basic) = get_basic_auth() {
