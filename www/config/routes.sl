@@ -7,121 +7,122 @@
 # - scope_only middleware must be explicitly scoped using: middleware("name", -> { ... })
 
 # Root path
-get("/", "home#index");
+get("/", "home#index")
 
 # Public routes
-get("/health", "home#health");
-get("/up", "home#up");
+get("/health", "home#health")
+get("/up", "home#up")
 
 # ============================================================================
 # Documentation
 # ============================================================================
 
-get("/docs", "docs#index");
+get("/docs", "docs#index")
 
 # Getting Started
-get("/docs/getting-started/introduction", "docs#getting_started_introduction");
-get("/docs/getting-started/installation", "docs#getting_started_installation");
-get("/docs/getting-started/configuration", "docs#getting_started_configuration");
+get("/docs/getting-started/introduction", "docs#getting_started_introduction")
+get("/docs/getting-started/installation", "docs#getting_started_installation")
+get("/docs/getting-started/configuration", "docs#getting_started_configuration")
 
 # Core Concepts
-get("/docs/core-concepts/routing", "docs#core_concepts_routing");
-get("/docs/core-concepts/controllers", "docs#core_concepts_controllers");
-get("/docs/core-concepts/middleware", "docs#core_concepts_middleware");
-get("/docs/core-concepts/views", "docs#core_concepts_views");
-get("/docs/core-concepts/websockets", "docs#core_concepts_websockets");
-get("/docs/core-concepts/liveview", "docs#core_concepts_liveview");
-get("/docs/core-concepts/i18n", "docs#core_concepts_i18n");
-get("/docs/core-concepts/request-params", "docs#core_concepts_request_params");
-get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages");
-get("/docs/core-concepts/engines", "docs#core_concepts_engines");
+get("/docs/core-concepts/routing", "docs#core_concepts_routing")
+get("/docs/core-concepts/controllers", "docs#core_concepts_controllers")
+get("/docs/core-concepts/middleware", "docs#core_concepts_middleware")
+get("/docs/core-concepts/views", "docs#core_concepts_views")
+get("/docs/core-concepts/websockets", "docs#core_concepts_websockets")
+get("/docs/core-concepts/liveview", "docs#core_concepts_liveview")
+get("/docs/core-concepts/client-interactivity", "docs#core_concepts_client_interactivity")
+get("/docs/core-concepts/i18n", "docs#core_concepts_i18n")
+get("/docs/core-concepts/request-params", "docs#core_concepts_request_params")
+get("/docs/core-concepts/error-pages", "docs#core_concepts_error_pages")
+get("/docs/core-concepts/engines", "docs#core_concepts_engines")
 
 # Database
-get("/docs/database/configuration", "docs#database_configuration");
-get("/docs/database/models", "docs#database_models");
-get("/docs/database/query-builder", "docs#database_query_builder");
-get("/docs/database/relationships", "docs#database_relationships");
-get("/docs/database/validations", "docs#database_validations");
-get("/docs/database/finders", "docs#database_finders");
-get("/docs/database/advanced", "docs#database_advanced");
-get("/docs/database/migrations", "docs#database_migrations");
+get("/docs/database/configuration", "docs#database_configuration")
+get("/docs/database/models", "docs#database_models")
+get("/docs/database/query-builder", "docs#database_query_builder")
+get("/docs/database/relationships", "docs#database_relationships")
+get("/docs/database/validations", "docs#database_validations")
+get("/docs/database/finders", "docs#database_finders")
+get("/docs/database/advanced", "docs#database_advanced")
+get("/docs/database/migrations", "docs#database_migrations")
 
 # Security
-get("/docs/security/authentication", "docs#security_authentication");
-get("/docs/security/sessions", "docs#security_sessions");
+get("/docs/security/authentication", "docs#security_authentication")
+get("/docs/security/sessions", "docs#security_sessions")
 
 # Development Tools
-get("/docs/development-tools/live-reload", "docs#development_tools_live_reload");
-get("/docs/development-tools/debugging", "docs#development_tools_debugging");
-get("/docs/development-tools/scaffold", "docs#development_tools_scaffold");
-get("/docs/development-tools/deploy", "docs#development_tools_deploy");
-get("/docs/development-tools/editor-integration", "docs#development_tools_editor_integration");
-get("/docs/development-tools/formatting", "docs#development_tools_formatting");
-get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents");
-get("/docs/development-tools/linting", "docs#development_tools_linting");
+get("/docs/development-tools/live-reload", "docs#development_tools_live_reload")
+get("/docs/development-tools/debugging", "docs#development_tools_debugging")
+get("/docs/development-tools/scaffold", "docs#development_tools_scaffold")
+get("/docs/development-tools/deploy", "docs#development_tools_deploy")
+get("/docs/development-tools/editor-integration", "docs#development_tools_editor_integration")
+get("/docs/development-tools/formatting", "docs#development_tools_formatting")
+get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents")
+get("/docs/development-tools/linting", "docs#development_tools_linting")
 
 # Language Reference
-get("/docs/language", "docs#language_index");
-get("/docs/language/variables-types", "docs#language_variables_types");
-get("/docs/language/operators", "docs#language_operators");
-get("/docs/language/control-flow", "docs#language_control_flow");
-get("/docs/language/error-handling", "docs#language_error_handling");
-get("/docs/language/functions", "docs#language_functions");
-get("/docs/language/strings", "docs#language_strings");
-get("/docs/language/arrays", "docs#language_arrays");
-get("/docs/language/hashes", "docs#language_hashes");
-get("/docs/language/collections", "docs#language_collections");
-get("/docs/language/classes-oop", "docs#language_classes_oop");
-get("/docs/language/pattern-matching", "docs#language_pattern_matching");
-get("/docs/language/pipeline-operator", "docs#language_pipeline_operator");
-get("/docs/language/integers", "docs#language_integers");
-get("/docs/language/floats", "docs#language_floats");
-get("/docs/language/booleans", "docs#language_booleans");
-get("/docs/language/null", "docs#language_null");
-get("/docs/language/decimal", "docs#language_decimal");
-get("/docs/language/symbols", "docs#language_symbols");
-get("/docs/language/modules", "docs#language_modules");
-get("/docs/language/blocks", "docs#language_blocks");
-get("/docs/language/metaprogramming", "docs#language_metaprogramming");
+get("/docs/language", "docs#language_index")
+get("/docs/language/variables-types", "docs#language_variables_types")
+get("/docs/language/operators", "docs#language_operators")
+get("/docs/language/control-flow", "docs#language_control_flow")
+get("/docs/language/error-handling", "docs#language_error_handling")
+get("/docs/language/functions", "docs#language_functions")
+get("/docs/language/strings", "docs#language_strings")
+get("/docs/language/arrays", "docs#language_arrays")
+get("/docs/language/hashes", "docs#language_hashes")
+get("/docs/language/collections", "docs#language_collections")
+get("/docs/language/classes-oop", "docs#language_classes_oop")
+get("/docs/language/pattern-matching", "docs#language_pattern_matching")
+get("/docs/language/pipeline-operator", "docs#language_pipeline_operator")
+get("/docs/language/integers", "docs#language_integers")
+get("/docs/language/floats", "docs#language_floats")
+get("/docs/language/booleans", "docs#language_booleans")
+get("/docs/language/null", "docs#language_null")
+get("/docs/language/decimal", "docs#language_decimal")
+get("/docs/language/symbols", "docs#language_symbols")
+get("/docs/language/modules", "docs#language_modules")
+get("/docs/language/blocks", "docs#language_blocks")
+get("/docs/language/metaprogramming", "docs#language_metaprogramming")
 
 # Builtins Reference
-get("/docs/builtins", "docs#builtins_index");
-get("/docs/builtins/core", "docs#builtins_core");
-get("/docs/builtins/system", "docs#builtins_system");
-get("/docs/builtins/http", "docs#builtins_http");
-get("/docs/builtins/s3", "docs#builtins_s3");
-get("/docs/builtins/json", "docs#builtins_json");
-get("/docs/builtins/crypto", "docs#builtins_crypto");
-get("/docs/builtins/jwt", "docs#builtins_jwt");
-get("/docs/builtins/vapid", "docs#builtins_vapid");
-get("/docs/builtins/regex", "docs#builtins_regex");
-get("/docs/builtins/env", "docs#builtins_env");
-get("/docs/builtins/datetime", "docs#builtins_datetime");
-get("/docs/builtins/duration", "docs#builtins_duration");
-get("/docs/builtins/validation", "docs#builtins_validation");
-get("/docs/builtins/session", "docs#builtins_session");
-get("/docs/builtins/jobs", "docs#builtins_jobs");
-get("/docs/builtins/testing", "docs#builtins_testing");
-get("/docs/builtins/i18n", "docs#builtins_i18n");
-get("/docs/builtins/cache", "docs#builtins_cache");
-get("/docs/builtins/kv", "docs#builtins_kv");
-get("/docs/builtins/solidb", "docs#builtins_solidb");
-get("/docs/builtins/rate-limit", "docs#builtins_rate_limit");
-get("/docs/builtins/security-headers", "docs#builtins_security_headers");
-get("/docs/builtins/hardening", "docs#builtins_hardening");
-get("/docs/builtins/upload", "docs#builtins_upload");
-get("/docs/builtins/soap", "docs#builtins_soap");
-get("/docs/builtins/markdown", "docs#builtins_markdown");
-get("/docs/builtins/image", "docs#builtins_image");
-get("/docs/builtins/file", "docs#builtins_file");
-get("/docs/builtins/spreadsheet", "docs#builtins_spreadsheet");
+get("/docs/builtins", "docs#builtins_index")
+get("/docs/builtins/core", "docs#builtins_core")
+get("/docs/builtins/system", "docs#builtins_system")
+get("/docs/builtins/http", "docs#builtins_http")
+get("/docs/builtins/s3", "docs#builtins_s3")
+get("/docs/builtins/json", "docs#builtins_json")
+get("/docs/builtins/crypto", "docs#builtins_crypto")
+get("/docs/builtins/jwt", "docs#builtins_jwt")
+get("/docs/builtins/vapid", "docs#builtins_vapid")
+get("/docs/builtins/regex", "docs#builtins_regex")
+get("/docs/builtins/env", "docs#builtins_env")
+get("/docs/builtins/datetime", "docs#builtins_datetime")
+get("/docs/builtins/duration", "docs#builtins_duration")
+get("/docs/builtins/validation", "docs#builtins_validation")
+get("/docs/builtins/session", "docs#builtins_session")
+get("/docs/builtins/jobs", "docs#builtins_jobs")
+get("/docs/builtins/testing", "docs#builtins_testing")
+get("/docs/builtins/i18n", "docs#builtins_i18n")
+get("/docs/builtins/cache", "docs#builtins_cache")
+get("/docs/builtins/kv", "docs#builtins_kv")
+get("/docs/builtins/solidb", "docs#builtins_solidb")
+get("/docs/builtins/rate-limit", "docs#builtins_rate_limit")
+get("/docs/builtins/security-headers", "docs#builtins_security_headers")
+get("/docs/builtins/hardening", "docs#builtins_hardening")
+get("/docs/builtins/upload", "docs#builtins_upload")
+get("/docs/builtins/soap", "docs#builtins_soap")
+get("/docs/builtins/markdown", "docs#builtins_markdown")
+get("/docs/builtins/image", "docs#builtins_image")
+get("/docs/builtins/file", "docs#builtins_file")
+get("/docs/builtins/spreadsheet", "docs#builtins_spreadsheet")
 
 # Utility
-get("/docs/utility/base64", "docs#utility_base64");
+get("/docs/utility/base64", "docs#utility_base64")
 
 # Testing
-get("/docs/testing", "docs#testing");
-get("/docs/testing-quick-reference", "docs#testing_quick_reference");
+get("/docs/testing", "docs#testing")
+get("/docs/testing-quick-reference", "docs#testing_quick_reference")
 
 # ============================================================================
 # Blog
@@ -134,43 +135,64 @@ get("/docs/blog/:slug", "blog#show")
 # Backward Compatibility Redirects (old flat URLs -> new hierarchical URLs)
 # ============================================================================
 
-get("/docs/introduction", "docs#redirect_introduction");
-get("/docs/installation", "docs#redirect_installation");
-get("/docs/configuration", "docs#redirect_configuration");
-get("/docs/routing", "docs#redirect_routing");
-get("/docs/controllers", "docs#redirect_controllers");
-get("/docs/middleware", "docs#redirect_middleware");
-get("/docs/views", "docs#redirect_views");
-get("/docs/websockets", "docs#redirect_websockets");
-get("/docs/liveview", "docs#redirect_liveview");
-get("/docs/i18n", "docs#redirect_i18n");
-get("/docs/request-params", "docs#redirect_request_params");
-get("/docs/error-pages", "docs#redirect_error_pages");
-get("/docs/database", "docs#redirect_database");
-get("/docs/models", "docs#redirect_models");
-get("/docs/migrations", "docs#redirect_migrations");
-get("/docs/authentication", "docs#redirect_authentication");
-get("/docs/sessions", "docs#redirect_sessions");
-get("/docs/validation", "docs#redirect_validation");
-get("/docs/live-reload", "docs#redirect_live_reload");
-get("/docs/debugging", "docs#redirect_debugging");
-get("/docs/scaffold", "docs#redirect_scaffold");
-get("/docs/soli-language", "docs#redirect_soli_language");
+get("/docs/introduction", "docs#redirect_introduction")
+get("/docs/installation", "docs#redirect_installation")
+get("/docs/configuration", "docs#redirect_configuration")
+get("/docs/routing", "docs#redirect_routing")
+get("/docs/controllers", "docs#redirect_controllers")
+get("/docs/middleware", "docs#redirect_middleware")
+get("/docs/views", "docs#redirect_views")
+get("/docs/websockets", "docs#redirect_websockets")
+get("/docs/liveview", "docs#redirect_liveview")
+get("/docs/i18n", "docs#redirect_i18n")
+get("/docs/request-params", "docs#redirect_request_params")
+get("/docs/error-pages", "docs#redirect_error_pages")
+get("/docs/database", "docs#redirect_database")
+get("/docs/models", "docs#redirect_models")
+get("/docs/migrations", "docs#redirect_migrations")
+get("/docs/authentication", "docs#redirect_authentication")
+get("/docs/sessions", "docs#redirect_sessions")
+get("/docs/validation", "docs#redirect_validation")
+get("/docs/live-reload", "docs#redirect_live_reload")
+get("/docs/debugging", "docs#redirect_debugging")
+get("/docs/scaffold", "docs#redirect_scaffold")
+get("/docs/soli-language", "docs#redirect_soli_language")
 
 # ============================================================================
 # WebSocket Demo
 # ============================================================================
 
-get("/websocket", "websocket#demo");
-router_websocket("/ws/chat", "websocket#chat_handler");
+get("/websocket", "websocket#demo")
+router_websocket("/ws/chat", "websocket#chat_handler")
+
+# ============================================================================
+# Client Interactivity Demo (HTMx + Alpine.js showcase)
+# ============================================================================
+
+get("/demos/client-interactivity", "demos#index")
+
+# Fragment endpoints called by HTMx widgets on the demo page.
+# These are intentionally stateless (no DB writes, no session mutation), so
+# we exempt them from same-origin CSRF gating — useful when the docs site
+# is reached through a reverse proxy that masks Origin/Referer.
+skip_csrf("/demos/api/*")
+post("/demos/api/like", "demos#like")
+get("/demos/api/search", "demos#search")
+get("/demos/api/tab/:id", "demos#tab_body")
+patch("/demos/api/todo", "demos#todo_update")
+post("/demos/api/notify", "demos#notify")
+get("/demos/api/counter", "demos#counter")
+delete("/demos/api/item", "demos#delete_item")
+get("/demos/api/modal-form", "demos#modal_form")
+get("/demos/api/chart", "demos#chart")
 
 # ============================================================================
 # LiveView Routes
 # ============================================================================
 
 # Register LiveView components with their controller handlers
-router_live("counter", "live#counter");
-router_live("metrics", "live#metrics");
+router_live("counter", "live#counter")
+router_live("metrics", "live#metrics")
 
 # ============================================================================
 # Wildcard Route Examples
@@ -179,7 +201,7 @@ router_live("metrics", "live#metrics");
 # Path /wildcard/* maps to wildcard_controller.sl functions
 # Example: /wildcard/demo → wildcard#demo
 
-get("/wildcard/*", "wildcard#*");
+get("/wildcard/*", "wildcard#*")
 
 # ============================================================================
 # Splat Route Examples
@@ -187,6 +209,6 @@ get("/wildcard/*", "wildcard#*");
 # Splat routes use *param_name to capture remaining path segments
 # The captured value includes a leading slash
 
-get("/files/*filepath", "home#files_demo");
-get("/api/*version/users/*id", "home#api_demo");
-get("/*catchall", "home#catchall_demo");
+get("/files/*filepath", "home#files_demo")
+get("/api/*version/users/*id", "home#api_demo")
+get("/*catchall", "home#catchall_demo")

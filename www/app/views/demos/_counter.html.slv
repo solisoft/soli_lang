@@ -1,0 +1,7 @@
+<div class="text-center">
+    <div class="text-4xl font-bold text-emerald-300 tabular-nums tracking-tight"
+         x-data x-init="$el.animate([{ opacity: 0.5, transform: 'scale(0.9)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 240, easing: 'ease-out' })">
+        <%= value %>
+    </div>
+    <p class="text-xs text-gray-500 mt-1">refreshed at <%= DateTime.now().format("%H:%M:%S") %></p>
+</div>

@@ -1,0 +1,21 @@
+<div id="todo-row-inner"
+     x-data="{ editing: false, value: '', original: '' }"
+     x-init="value = $el.dataset.value; original = $el.dataset.value"
+     data-value="<%= value %>"
+     class="flex items-center gap-3">
+    <span x-show="!editing" @click="editing = true; $nextTick(() => $refs.input.focus())"
+          class="flex-1 text-gray-200 cursor-text px-2 py-1 rounded hover:bg-white/5"
+          x-text="value"></span>
+    <span x-show="!editing" class="text-xs text-gray-600 select-none">click to edit</span>
+    <form x-show="editing" x-cloak
+          hx-patch="/demos/api/todo"
+          hx-target="#todo-row"
+          hx-swap="innerHTML"
+          @submit="editing = false"
+          @keydown.escape="editing = false; value = original"
+          class="flex-1 flex gap-2">
+        <input x-ref="input" x-model="value" name="value"
+               class="flex-1 px-2 py-1 rounded bg-gray-900 border border-cyan-500/40 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+        <button type="submit" class="px-3 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-medium">save</button>
+    </form>
+</div>

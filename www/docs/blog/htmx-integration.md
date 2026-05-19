@@ -1,5 +1,7 @@
 # HTMx: The Missing Link Between Traditional MVC and Modern Interactivity
 
+> **See also:** HTMx now ships in the default project template alongside Alpine.js. The canonical reference is **[Client Interactivity](/docs/core-concepts/client-interactivity)** — directives, server-side patterns, and HTMx + Alpine combined recipes.
+
 If you've been building web apps for a while, you probably remember when everything was simple: a form posts to an endpoint, the server processes it, returns HTML, the page refreshes. Then SPA frameworks arrived and everything got complicated.
 
 HTMx brings us back to simplicity while still allowing dynamic, interactive applications.

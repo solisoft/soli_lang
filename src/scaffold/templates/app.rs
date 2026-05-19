@@ -18,6 +18,12 @@ pub const INDEX_VIEW_TEMPLATE: &str = include_str!("index.html.slv");
 /// CSS file template
 pub const CSS_TEMPLATE: &str = include_str!("app.css");
 
+/// HTMx v1.9.12 — shipped in `public/js/htmx.min.js` of every new app.
+pub const HTMX_JS: &str = include_str!("htmx.min.js");
+
+/// Alpine.js v3.14.1 — shipped in `public/js/alpine.min.js` of every new app.
+pub const ALPINE_JS: &str = include_str!("alpine.min.js");
+
 /// Environment file template
 pub const ENV_TEMPLATE: &str = include_str!("env.template");
 

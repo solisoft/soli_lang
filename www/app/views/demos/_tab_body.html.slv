@@ -1,0 +1,5 @@
+<div class="p-1 bg-transparent shimmer-stop">
+    <h4 class="text-base font-medium text-cyan-200 mb-1"><%= tab["title"] %></h4>
+    <p class="text-sm text-gray-400 leading-relaxed"><%= tab["body"] %></p>
+</div>
+<style>.shimmer-stop { animation: none !important; background: none !important; }</style>

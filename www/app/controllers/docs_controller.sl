@@ -62,6 +62,10 @@ fn core_concepts_liveview(req)
     render_docs("docs/core-concepts/liveview", "Live View", "core_concepts", "liveview")
 end
 
+fn core_concepts_client_interactivity(req)
+    render_docs("docs/core-concepts/client-interactivity", "Client Interactivity", "core_concepts", "client_interactivity")
+end
+
 fn core_concepts_i18n(req)
     render_docs("docs/core-concepts/i18n", "Internationalization", "core_concepts", "i18n")
 end

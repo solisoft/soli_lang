@@ -15,5 +15,9 @@
 </head>
 <body class="min-h-full bg-slate-950 text-white font-sans antialiased">
     <%= yield %>
+
+    <!-- HTMx + Alpine.js (Soli's default client stack — see /docs/core-concepts/client-interactivity) -->
+    <script defer src="<%= public_path("js/htmx.min.js") %>"></script>
+    <script defer src="<%= public_path("js/alpine.min.js") %>"></script>
 </body>
 </html>

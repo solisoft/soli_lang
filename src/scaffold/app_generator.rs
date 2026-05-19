@@ -102,6 +102,15 @@ pub fn create_css_file(app_path: &Path) -> Result<(), String> {
     )
 }
 
+/// Vendor the default client-side stack (HTMx + Alpine.js) into `public/js/`.
+/// Wired into the base layout by `create_layout`; see
+/// `docs/core-concepts/client-interactivity` for usage.
+pub fn create_client_js(app_path: &Path) -> Result<(), String> {
+    write_file(&app_path.join("public/js/htmx.min.js"), app::HTMX_JS)?;
+    write_file(&app_path.join("public/js/alpine.min.js"), app::ALPINE_JS)?;
+    Ok(())
+}
+
 /// Create the .env file
 pub fn create_env_file(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join(".env"), app::ENV_TEMPLATE)
@@ -574,6 +583,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     // Step 4: Create assets
     progress.step("Setting up assets...");
     create_css_file(app_path)?;
+    create_client_js(app_path)?;
     create_readme(app_path, name)?;
     ProgressDisplay::done();
 

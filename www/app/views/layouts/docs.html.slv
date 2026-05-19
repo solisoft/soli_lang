@@ -187,12 +187,6 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* Search input dark styling */
-        #searchInput {
-            background-color: rgba(31, 41, 55, 0.8) !important;
-            color: white !important;
-        }
-
         /* Mobile menu */
         .mobile-menu {
             transform: translateX(-100%);
@@ -201,28 +195,10 @@
         .mobile-menu.open {
             transform: translateX(0);
         }
-
-        /* Search Modal */
-        .search-modal { display: none; }
-        .search-modal.open { display: flex; }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-300 antialiased h-full">
-    <!-- Search Modal -->
-    <div id="searchModal" class="search-modal fixed inset-0 z-[100] items-start justify-center pt-20 lg:pt-24 px-4 bg-black/70 backdrop-blur-sm overflow-hidden" onclick="closeSearchModal(event)">
-        <div class="w-full max-w-2xl bg-gray-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
-            <div class="flex items-center gap-3 p-4 border-b border-white/10">
-                <svg class="w-5 h-5 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input type="text" id="searchInput" class="flex-1 bg-gray-800/50 text-white placeholder-gray-500 outline-none px-4 py-2.5 rounded-lg border border-white/10 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all text-base" placeholder="Search documentation..." oninput="handleSearch(this.value)" autocomplete="off" spellcheck="false">
-                <kbd class="px-2 py-1 text-xs bg-gray-800 text-gray-400 rounded border border-white/10 flex-shrink-0">ESC</kbd>
-            </div>
-            <div id="searchResults" class="overflow-y-auto p-2" style="max-height: calc(100vh - 180px);">
-                <div class="text-center py-8 text-gray-500">Type to search...</div>
-            </div>
-        </div>
-    </div>
+    <%- render_partial("layouts/search_modal") %>
 
     <!-- Mobile Header -->
     <header class="lg:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 h-16 border-b border-white/5 bg-gray-950/95 backdrop-blur-xl">
@@ -351,82 +327,6 @@
 
     <!-- Scripts -->
     <script>
-    // Search index will be loaded dynamically
-    let searchIndex = null;
-    let fuse = null;
-
-    // Load search index
-    fetch('/js/search-index.json')
-        .then(r => r.json())
-        .then(data => {
-            searchIndex = data.entries;
-            fuse = new Fuse(searchIndex, {
-                keys: ['title', 'signature', 'description', 'keywords'],
-                threshold: 0.3,
-                includeMatches: true
-            });
-        })
-        .catch((e) => console.log('Search index not available', e));
-
-    function openSearchModal() {
-        document.getElementById('searchModal').classList.add('open');
-        document.getElementById('searchInput').focus();
-        document.body.classList.add('overflow-hidden');
-    }
-
-    function closeSearchModal(e) {
-        if (e && e.target !== document.getElementById('searchModal')) return;
-        document.getElementById('searchModal').classList.remove('open');
-        document.body.classList.remove('overflow-hidden');
-    }
-
-    function handleSearch(query) {
-        const resultsEl = document.getElementById('searchResults');
-        if (!fuse || !query.trim()) {
-            resultsEl.innerHTML = '<div class="text-center py-8 text-gray-500">Type to search...</div>';
-            return;
-        }
-
-        const results = fuse.search(query).slice(0, 10);
-        if (results.length === 0) {
-            resultsEl.innerHTML = '<div class="text-center py-8 text-gray-500">No results found</div>';
-            return;
-        }
-
-        resultsEl.innerHTML = results.map(r => {
-            const item = r.item;
-            const typeColors = {
-                function: 'bg-blue-500/20 text-blue-400',
-                keyword: 'bg-purple-500/20 text-purple-400',
-                operator: 'bg-amber-500/20 text-amber-400',
-                type: 'bg-green-500/20 text-green-400',
-                page: 'bg-gray-500/20 text-gray-400'
-            };
-            const color = typeColors[item.type] || typeColors.page;
-            return `
-                <a href="${item.path}" onclick="closeSearchModal({ target: document.getElementById('searchModal') })" class="block p-3 rounded-lg hover:bg-white/5 transition-colors">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="px-2 py-0.5 text-xs rounded ${color}">${item.type}</span>
-                        <span class="font-medium text-white">${item.title}</span>
-                    </div>
-                    ${item.signature ? `<code class="text-sm text-indigo-400">${item.signature}</code>` : ''}
-                    <p class="text-sm text-gray-500 mt-1">${item.description || item.category}</p>
-                </a>
-            `;
-        }).join('');
-    }
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-            e.preventDefault();
-            openSearchModal();
-        }
-        if (e.key === 'Escape') {
-            closeSearchModal({ target: document.getElementById('searchModal') });
-        }
-    });
-
     function toggleMobileMenu() {
         const sidebar = document.getElementById('mobileSidebar');
         const overlay = document.getElementById('mobileMenuOverlay');

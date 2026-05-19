@@ -3462,6 +3462,27 @@
       ]
     },
     {
+      "title": "respond_to",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/core-concepts/controllers#fn-respond_to",
+      "signature": "respond_to(req, block)",
+      "description": "Rails-style content negotiation. The block receives a `format` registrar; call `format.html`, `format.json`, `format.htmx`, `format.xml`, `format.csv`, etc. The first match for the request's `Accept` / `HX-Request` headers runs and its return value becomes the response.",
+      "keywords": [
+        "content",
+        "negotiation",
+        "format",
+        "html",
+        "json",
+        "htmx",
+        "xml",
+        "csv",
+        "respond",
+        "accept",
+        "controllers"
+      ]
+    },
+    {
       "title": "render_text",
       "type": "function",
       "category": "Controllers",
@@ -3496,7 +3517,7 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
+      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
       "keywords": [
         "params",
         "global",
@@ -4025,7 +4046,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -5256,7 +5277,7 @@
       "category": "Hash",
       "path": "/docs/language/hashes#method-update",
       "signature": "hash.update(other)",
-      "description": "Alias for merge \u2014 merges another hash",
+      "description": "Alias for merge — merges another hash",
       "keywords": [
         "hash",
         "update",
@@ -7944,7 +7965,7 @@
       "category": "Array",
       "path": "/docs/language/arrays#array-reject",
       "signature": "array.reject(fn)",
-      "description": "Inverse of filter \u2014 keeps elements where block returns false",
+      "description": "Inverse of filter — keeps elements where block returns false",
       "keywords": [
         "array",
         "reject",
@@ -7983,7 +8004,7 @@
       "category": "Int",
       "path": "/docs/language/integers#method-succ",
       "signature": "int.next",
-      "description": "Alias for .succ \u2014 returns i + 1",
+      "description": "Alias for .succ — returns i + 1",
       "keywords": [
         "int",
         "next",

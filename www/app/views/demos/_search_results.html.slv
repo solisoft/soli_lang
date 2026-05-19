@@ -1,0 +1,14 @@
+<% if query == "" %>
+    <p class="text-gray-600">Start typing to search 39 fruits.</p>
+<% elsif matches.length() == 0 %>
+    <p class="text-rose-300/70">No fruits matched <code class="text-rose-200"><%= query %></code>.</p>
+<% else %>
+    <p class="text-gray-500 mb-2"><%= matches.length() %> match<%= matches.length() == 1 ? "" : "es" %></p>
+    <ul class="grid grid-cols-2 gap-1">
+        <% for fruit in matches %>
+            <li class="px-2 py-1 rounded bg-cyan-500/10 text-cyan-200 text-sm border border-cyan-500/20">
+                <%= fruit %>
+            </li>
+        <% end %>
+    </ul>
+<% end %>

@@ -1,0 +1,21 @@
+<div>
+    <svg viewBox="0 0 240 80" class="w-full h-32" preserveAspectRatio="none">
+        <line x1="0" y1="76" x2="240" y2="76" stroke="rgb(255 255 255 / 0.08)" stroke-width="0.5" />
+        <% for bar in bars %>
+            <rect x="<%= bar["x"] %>" y="<%= bar["y"] %>" width="<%= bar["w"] %>" height="<%= bar["h"] %>"
+                  rx="1.5" class="fill-cyan-400/60 hover:fill-cyan-300 transition-colors">
+                <title><%= bar["label"] %> &middot; <%= bar["value"] %></title>
+            </rect>
+        <% end %>
+        <polyline points="<%= polyline %>" fill="none" stroke="rgb(34 211 238 / 0.95)" stroke-width="1" stroke-linejoin="round" />
+    </svg>
+    <div class="flex justify-between items-center text-xs px-1 mt-2 text-gray-500 tabular-nums">
+        <span><%= first_label %></span>
+        <span>
+            latest <span class="text-cyan-200 font-medium"><%= latest %></span>
+            <span class="text-gray-600 mx-1">&middot;</span>
+            avg <span class="text-cyan-300"><%= avg %></span>
+        </span>
+        <span><%= last_label %></span>
+    </div>
+</div>
