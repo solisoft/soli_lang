@@ -185,6 +185,13 @@ impl QueryBuilder {
                 ));
             }
         }
+        if self
+            .includes_counts
+            .iter()
+            .any(|inc| inc.relation_name == relation_name)
+        {
+            return Ok(());
+        }
         let alias = format!("{}_count", relation_name);
         self.includes_counts.push(IncludeCountClause {
             relation_name,
@@ -202,7 +209,28 @@ impl QueryBuilder {
         bind_vars: HashMap<String, serde_json::Value>,
         fields: Option<Vec<String>>,
     ) {
-        // Merge include bind vars into the main bind_vars
+        let has_extras = filter.is_some() || !bind_vars.is_empty() || fields.is_some();
+        if let Some(idx) = self
+            .includes
+            .iter()
+            .position(|inc| inc.relation_name == relation_name)
+        {
+            if !has_extras {
+                return;
+            }
+            for (k, v) in &bind_vars {
+                self.bind_vars
+                    .insert(crate::interpreter::get_symbol(k), v.clone());
+            }
+            self.includes[idx] = IncludeClause {
+                relation_name,
+                relation,
+                filter,
+                bind_vars,
+                fields,
+            };
+            return;
+        }
         for (k, v) in &bind_vars {
             self.bind_vars
                 .insert(crate::interpreter::get_symbol(k), v.clone());
@@ -227,7 +255,27 @@ impl QueryBuilder {
         filter: Option<String>,
         bind_vars: HashMap<String, serde_json::Value>,
     ) {
-        // Merge join bind vars into the main bind_vars
+        let has_extras = filter.is_some() || !bind_vars.is_empty();
+        if let Some(idx) = self
+            .joins
+            .iter()
+            .position(|j| j.relation_name == relation_name)
+        {
+            if !has_extras {
+                return;
+            }
+            for (k, v) in &bind_vars {
+                self.bind_vars
+                    .insert(crate::interpreter::get_symbol(k), v.clone());
+            }
+            self.joins[idx] = JoinClause {
+                relation_name,
+                relation,
+                filter,
+                bind_vars,
+            };
+            return;
+        }
         for (k, v) in &bind_vars {
             self.bind_vars
                 .insert(crate::interpreter::get_symbol(k), v.clone());
@@ -1324,6 +1372,79 @@ mod tests {
         assert!(
             query.contains("RETURN MERGE(doc, {posts: _rel_posts, profile: FIRST(_rel_profile)})")
         );
+    }
+
+    #[test]
+    fn test_includes_is_idempotent() {
+        let mut qb = make_qb("Contact", "contacts");
+        let make_org = || {
+            build_relation(
+                "Contact",
+                "organisation",
+                RelationType::BelongsTo,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        qb.add_include(
+            "organisation".to_string(),
+            make_org(),
+            None,
+            HashMap::new(),
+            None,
+        );
+        qb.add_include(
+            "organisation".to_string(),
+            make_org(),
+            None,
+            HashMap::new(),
+            None,
+        );
+        let (query, _) = qb.build_query();
+        assert_eq!(query.matches("LET _rel_organisation").count(), 1);
+        assert_eq!(
+            query
+                .matches("organisation: FIRST(_rel_organisation)")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_includes_second_call_with_filter_replaces_first() {
+        let mut qb = make_qb("User", "users");
+        let make_posts = || {
+            build_relation(
+                "User",
+                "posts",
+                RelationType::HasMany,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        qb.add_include(
+            "posts".to_string(),
+            make_posts(),
+            None,
+            HashMap::new(),
+            None,
+        );
+        let mut binds = HashMap::new();
+        binds.insert("p".to_string(), serde_json::Value::Bool(true));
+        qb.add_include(
+            "posts".to_string(),
+            make_posts(),
+            Some("published = @p".to_string()),
+            binds,
+            None,
+        );
+        let (query, _) = qb.build_query();
+        assert_eq!(query.matches("LET _rel_posts").count(), 1);
+        assert!(query.contains("rel.published == @p"));
     }
 
     #[test]
