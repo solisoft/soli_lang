@@ -2050,6 +2050,89 @@ impl Model {
             })),
         );
 
+        // Model.paginate({ page: 1, per: 25 }) - Paginate results.
+        // Returns { "records": [...], "pagination": { "page": n, "per": n, "total": n, "total_pages": n } }
+        native_static_methods.insert(
+            "paginate".to_string(),
+            Rc::new(NativeFunction::new("Model.paginate", Some(2), |args| {
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+
+                let params = match args.get(1) {
+                    Some(Value::Hash(h)) => h.borrow().clone(),
+                    _ => return Err("paginate() expects a Hash argument".to_string()),
+                };
+
+                let page = match params.get(&crate::interpreter::value::HashKey::String(
+                    "page".to_string(),
+                )) {
+                    Some(Value::Int(n)) if *n > 0 => *n as usize,
+                    _ => 1,
+                };
+                let per = match params.get(&crate::interpreter::value::HashKey::String(
+                    "per".to_string(),
+                )) {
+                    Some(Value::Int(n)) if *n > 0 => *n as usize,
+                    _ => 25,
+                };
+
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                let total_val = super::query::execute_query_builder_count(&qb);
+                let total = match total_val {
+                    Value::Int(n) => n as usize,
+                    _ => 0,
+                };
+
+                let total_pages = if total == 0 {
+                    1
+                } else {
+                    total.div_ceil(per)
+                };
+                let page = if page > total_pages {
+                    total_pages
+                } else {
+                    page
+                };
+                let offset = (page - 1) * per;
+
+                qb.set_offset(offset);
+                qb.set_limit(per);
+                let records = super::query::execute_query_builder(&qb);
+
+                let mut pagination = crate::interpreter::value::HashPairs::default();
+                pagination.insert(
+                    crate::interpreter::value::HashKey::String("page".to_string()),
+                    Value::Int(page as i64),
+                );
+                pagination.insert(
+                    crate::interpreter::value::HashKey::String("per".to_string()),
+                    Value::Int(per as i64),
+                );
+                pagination.insert(
+                    crate::interpreter::value::HashKey::String("total".to_string()),
+                    Value::Int(total as i64),
+                );
+                pagination.insert(
+                    crate::interpreter::value::HashKey::String("total_pages".to_string()),
+                    Value::Int(total_pages as i64),
+                );
+
+                let mut result = crate::interpreter::value::HashPairs::default();
+                result.insert(
+                    crate::interpreter::value::HashKey::String("records".to_string()),
+                    records,
+                );
+                result.insert(
+                    crate::interpreter::value::HashKey::String("pagination".to_string()),
+                    Value::Hash(Rc::new(RefCell::new(pagination))),
+                );
+
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            })),
+        );
+
         // Model.find_by(field, value) - Find first record matching field=value
         native_static_methods.insert(
             "find_by".to_string(),

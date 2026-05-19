@@ -70,6 +70,10 @@ post.comments.delete_all      # via has_many relation</code></pre>
                     <td class="py-3 px-4 text-gray-400">Skip first n documents</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">.paginate(hash)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Terminal: fetch paginated results + metadata. Args: <code>page</code> (default 1), <code>per</code> (default 25). Returns <code>{"records": [...], "pagination": {"page": n, "per": n, "total": n, "total_pages": n}}</code></td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute, return all results</td>
                 </tr>
@@ -180,6 +184,10 @@ post.comments.delete_all      # via has_many relation</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">.limit(10).offset(20)</code></td>
                     <td class="py-3 px-4"><code class="text-green-300">... LIMIT 20, 10 RETURN doc</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">User.where({}).paginate({"page": 2, "per": 10})</code></td>
+                    <td class="py-3 px-4 text-gray-400">Terminal — returns <code>{"records": [...], "pagination": {"page": 2, "per": 10, "total": 45, "total_pages": 5}}</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">User.count</code></td>

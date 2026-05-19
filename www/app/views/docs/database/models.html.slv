@@ -378,6 +378,10 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Start a query chain with offset</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">Model.paginate(hash)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Terminal: fetch paginated results + metadata. Args: <code>page</code> (default 1), <code>per</code> (default 25)</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Get all documents as instances</td>
                 </tr>
@@ -508,6 +512,73 @@ User.create({
 end</code></pre>
         </div>
     </div>
+
+    <h2 id="pagination" class="text-2xl font-bold text-white mb-6">Pagination</h2>
+    <p class="text-gray-400 mb-4">
+        <code>Model.paginate(hash)</code> (static) and <code>.paginate(hash)</code> (chainable on a QueryBuilder) are <strong>terminal</strong> methods that execute the query with pagination and return a hash with both records and pagination metadata.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Arguments</h3>
+    <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Key</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Default</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4"><code class="text-indigo-300">page</code></td>
+                    <td class="py-3 px-4 text-gray-400"><code>1</code></td>
+                    <td class="py-3 px-4 text-gray-400">Page number (1-indexed, clamped to valid range)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-indigo-300">per</code></td>
+                    <td class="py-3 px-4 text-gray-400"><code>25</code></td>
+                    <td class="py-3 px-4 text-gray-400">Results per page</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Return Value</h3>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">{
+  "records": [...],                <span class="text-gray-600"># Array of model instances for this page</span>
+  "pagination": {
+    "page":        1,              <span class="text-gray-600"># Current page (clamped)</span>
+    "per":         25,             <span class="text-gray-600"># Results per page</span>
+    "total":       100,            <span class="text-gray-600"># Total matching records (unpaginated)</span>
+    "total_pages": 4               <span class="text-gray-600"># Total number of pages</span>
+  }
+}</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Usage</h3>
+    <p class="text-gray-400 mb-4">Chain from any QueryBuilder — all filters, includes, ordering, etc. are preserved:</p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/contacts_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">def index
+  let result = Contact
+    .search(@q)
+    .includes("organisation")
+    .order("name", "asc")
+    .paginate({ "page": page, "per": 25 })
+
+  @contacts   = result["records"]
+  @pagination = result["pagination"]
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        The paginate method runs <code>count</code> first to get the total, computes <code>total_pages</code>, clamps <code>page</code> to the valid range, sets <code>offset</code> and <code>limit</code>, fetches records, and returns the result hash. If <code>total</code> is 0, <code>total_pages</code> is set to 1 and <code>page</code> is clamped to 1.
+    </p>
 
     <h2 id="uploaders" class="text-2xl font-bold text-white mb-6">Uploaders</h2>
     <p class="text-gray-400 mb-4">

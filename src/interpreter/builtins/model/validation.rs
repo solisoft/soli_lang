@@ -281,7 +281,7 @@ pub fn run_validations(
                 if !val.is_empty() {
                     let collection = class_name_to_collection(class_name);
                     #[allow(unused_variables)]
-                    let sdbql = if let Some(key) = exclude_key {
+                    let sdbql = if exclude_key.is_some() {
                         format!(
                             "FOR doc IN {} FILTER doc.{} == @val AND doc._key != @key LIMIT 1 RETURN 1",
                             collection, rule.field

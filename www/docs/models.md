@@ -189,6 +189,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
 | `Model.offset(n)` | Offset results (returns QueryBuilder) |
+| `Model.paginate(hash)` | Terminal: fetch paginated results + metadata. See [Pagination](#pagination) below. |
 
 ## Relationship DSL
 
@@ -224,7 +225,64 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `.min(field)` | Execute aggregation, return minimum of field |
 | `.max(field)` | Execute aggregation, return maximum of field |
 | `.group_by(field, func, agg_field)` | Execute grouping aggregation |
+| `.paginate(hash)` | Terminal: fetch paginated results + metadata. See [Pagination](#pagination) below. |
 | `.to_query` | Return the generated SDBQL string (for debugging) |
+
+## Pagination
+
+`Model.paginate(hash)` (static) and `.paginate(hash)` (chainable on a QueryBuilder) are **terminal** methods that execute the query with pagination and return a hash with both records and pagination metadata.
+
+### Arguments
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `page` | `1` | Page number (1-indexed, clamped to valid range) |
+| `per` | `25` | Results per page |
+
+### Return Value
+
+```soli
+{
+  "records": [...],                // Array of model instances for this page
+  "pagination": {
+    "page":        1,              // Current page (clamped)
+    "per":         25,             // Results per page
+    "total":       100,            // Total matching records (unpaginated)
+    "total_pages": 4               // Total number of pages
+  }
+}
+```
+
+### Usage
+
+Chain from any QueryBuilder — all filters, includes, ordering, etc. are preserved:
+
+```soli
+let result = Contact
+    .search(@q)
+    .includes("organisation")
+    .order("name", "asc")
+    .paginate({ page: this._page_param(), per: 25 });
+
+@contacts   = result["records"];
+@pagination = result["pagination"];
+```
+
+The paginate method:
+1. Runs `count` first to get the total matching records
+2. Computes `total_pages = ceil(total / per)`
+3. Clamps `page` to valid range (1..total_pages)
+4. Sets `offset = (page - 1) * per` and `limit = per`
+5. Fetches the records
+6. Returns the result hash
+
+If `total` is 0, `total_pages` is set to 1 and `page` is clamped to 1 (returning an empty records array with no error).
+
+Direct static call also works:
+
+```soli
+let result = Contact.paginate({ page: 2, per: 10 });
+```
 
 ## Mass Assignment Protection
 

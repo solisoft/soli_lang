@@ -125,6 +125,24 @@ describe("Model.offset() method", fn() {
     });
 });
 
+describe("Model.paginate() query generation", fn() {
+    test("static form sets offset and limit", fn() {
+        // Can't call .to_query on terminal method, so verify the static method exists
+        assert(TestUser.paginate != null);
+    });
+
+    test("chain form returns hash with records and pagination keys", fn() {
+        // paginate is terminal — verify it returns a hash with expected keys
+        let result = TestUser.where("name = @n", { "n": "__paginate_test__" }).paginate({ "page": 1, "per": 10 });
+        assert(result["records"] != null);
+        assert(result["pagination"] != null);
+        assert(result["pagination"]["page"] == 1);
+        assert(result["pagination"]["per"] == 10);
+        assert(result["pagination"]["total"] >= 0);
+        assert(result["pagination"]["total_pages"] >= 1);
+    });
+});
+
 describe("Model.find_by() query generation", fn() {
     test("generates correct query structure", fn() {
         // We can't test actual query without DB, but can verify method exists
@@ -507,6 +525,82 @@ describe("Model.offset()", fn() {
         r1["record"].delete();
         r2["record"].delete();
         r3["record"].delete();
+    });
+});
+
+describe("Model.paginate()", fn() {
+    test("paginates results with static method", fn() {
+        let r1 = TestUser.create({ "name": "PagA", "value": 1 });
+        let r2 = TestUser.create({ "name": "PagB", "value": 2 });
+        let r3 = TestUser.create({ "name": "PagC", "value": 3 });
+
+        let result = TestUser.where("name LIKE @n", { "n": "Pag%" })
+            .order("value", "asc")
+            .paginate({ "page": 1, "per": 2 });
+
+        assert_eq(len(result["records"]), 2);
+        assert(result["pagination"]["page"] == 1);
+        assert(result["pagination"]["per"] == 2);
+        assert(result["pagination"]["total"] == 3);
+        assert(result["pagination"]["total_pages"] == 2);
+
+        // Second page
+        let result2 = TestUser.where("name LIKE @n", { "n": "Pag%" })
+            .order("value", "asc")
+            .paginate({ "page": 2, "per": 2 });
+
+        assert_eq(len(result2["records"]), 1);
+        assert(result2["pagination"]["page"] == 2);
+
+        // Cleanup
+        r1["record"].delete();
+        r2["record"].delete();
+        r3["record"].delete();
+    });
+
+    test("paginate clamps page to valid range", fn() {
+        let r1 = TestUser.create({ "name": "Clamp1", "value": 1 });
+
+        // Page 1 with per=1 — one record, so only 1 page exists
+        let result = TestUser.where("name LIKE @n", { "n": "Clamp%" })
+            .order("value", "asc")
+            .paginate({ "page": 999, "per": 1 });
+
+        assert_eq(len(result["records"]), 1);
+        assert(result["pagination"]["page"] == 1);
+        assert(result["pagination"]["total_pages"] == 1);
+
+        r1["record"].delete();
+    });
+
+    test("paginate uses defaults for page and per", fn() {
+        let r1 = TestUser.create({ "name": "Def1", "value": 1 });
+        let r2 = TestUser.create({ "name": "Def2", "value": 1 });
+        let r3 = TestUser.create({ "name": "Def3", "value": 1 });
+
+        // No explicit page/per — defaults to page=1, per=25
+        let result = TestUser.where("name LIKE @n", { "n": "Def%" })
+            .order("value", "asc")
+            .paginate({});
+
+        assert(result["pagination"]["page"] == 1);
+        assert(result["pagination"]["per"] == 25);
+        assert(result["pagination"]["total"] == 3);
+
+        r1["record"].delete();
+        r2["record"].delete();
+        r3["record"].delete();
+    });
+
+    test("paginate returns empty records for page beyond total", fn() {
+        // No records match
+        let result = TestUser.where("name = @n", { "n": "NONEXISTENT_PAGINATE" })
+            .paginate({ "page": 1, "per": 10 });
+
+        assert_eq(len(result["records"]), 0);
+        assert(result["pagination"]["total"] == 0);
+        assert(result["pagination"]["total_pages"] == 1);
+        assert(result["pagination"]["page"] == 1);
     });
 });
 

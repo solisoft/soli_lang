@@ -1775,7 +1775,7 @@ impl Interpreter {
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "limit" | "offset" | "includes" | "includes_count" | "join" | "select" | "fields"
-            | "all" | "first" | "count" | "delete_all" | "to_query" | "is_a?" | "pluck" | "sum"
+            | "all" | "first" | "count" | "paginate" | "delete_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by"
             // Enumerable-style array passthrough — materializes on call.
             | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"

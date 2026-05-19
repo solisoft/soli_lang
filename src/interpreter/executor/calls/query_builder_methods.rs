@@ -34,6 +34,7 @@ impl Interpreter {
             "all" => self.qb_all(qb, arguments, span),
             "first" => self.qb_first(qb, arguments, span),
             "count" => self.qb_count(qb, arguments, span),
+            "paginate" => self.qb_paginate(qb, arguments, span),
             "delete_all" => self.qb_delete_all(qb, arguments, span),
             "exists" => self.qb_exists(qb, arguments, span),
             "pluck" => self.qb_pluck(qb, arguments, span),
@@ -606,6 +607,79 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(execute_query_builder_count(&qb.borrow()))
+    }
+
+    fn qb_paginate(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let params = match arguments.first() {
+            Some(Value::Hash(h)) => h.borrow().clone(),
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "paginate() expects a Hash argument",
+                    span,
+                ))
+            }
+        };
+
+        use crate::interpreter::value::HashKey;
+        let page = match params.get(&HashKey::String("page".to_string())) {
+            Some(Value::Int(n)) if *n > 0 => *n as usize,
+            _ => 1,
+        };
+        let per = match params.get(&HashKey::String("per".to_string())) {
+            Some(Value::Int(n)) if *n > 0 => *n as usize,
+            _ => 25,
+        };
+
+        let total_val =
+            crate::interpreter::builtins::model::execute_query_builder_count(&qb.borrow());
+        let total = match total_val {
+            Value::Int(n) => n as usize,
+            _ => 0,
+        };
+
+        let total_pages = if total == 0 {
+            1
+        } else {
+            total.div_ceil(per)
+        };
+        let page = if page > total_pages {
+            total_pages
+        } else {
+            page
+        };
+        let offset = (page - 1) * per;
+
+        let mut new_qb = qb.borrow().clone();
+        new_qb.set_offset(offset);
+        new_qb.set_limit(per);
+
+        let records = crate::interpreter::builtins::model::execute_query_builder(&new_qb);
+
+        let mut pagination = crate::interpreter::value::HashPairs::default();
+        pagination.insert(HashKey::String("page".to_string()), Value::Int(page as i64));
+        pagination.insert(HashKey::String("per".to_string()), Value::Int(per as i64));
+        pagination.insert(
+            HashKey::String("total".to_string()),
+            Value::Int(total as i64),
+        );
+        pagination.insert(
+            HashKey::String("total_pages".to_string()),
+            Value::Int(total_pages as i64),
+        );
+
+        let mut result = crate::interpreter::value::HashPairs::default();
+        result.insert(HashKey::String("records".to_string()), records);
+        result.insert(
+            HashKey::String("pagination".to_string()),
+            Value::Hash(Rc::new(RefCell::new(pagination))),
+        );
+
+        Ok(Value::Hash(Rc::new(RefCell::new(result))))
     }
 
     fn qb_exists(
