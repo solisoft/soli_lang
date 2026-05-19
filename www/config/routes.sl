@@ -184,7 +184,12 @@ post("/demos/api/notify", "demos#notify")
 get("/demos/api/counter", "demos#counter")
 delete("/demos/api/item", "demos#delete_item")
 get("/demos/api/modal-form", "demos#modal_form")
+get("/demos/api/user-form", "demos#user_form")
 get("/demos/api/chart", "demos#chart")
+get("/demos/api/users", "demos#users")
+patch("/demos/api/user/:id", "demos#user_update")
+delete("/demos/api/user/:id", "demos#user_delete")
+post("/demos/api/users", "demos#user_create")
 
 # ============================================================================
 # LiveView Routes

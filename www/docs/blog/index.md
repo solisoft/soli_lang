@@ -4,6 +4,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [Building a CRUD Datatable with HTMx, Alpine, and Soli](/docs/blog/htmx-datatable) - Search, sort, pagination, inline edit, role select, status toggle, modal add, and toast on save — one model, one controller, two partials, zero hand-written JavaScript
 - [Semantic Search with `.similar()` in Soli](/docs/blog/similar-search) - Add AI-native vector similarity search to any query chain with `.similar()`, ranking results by semantic relevance with cosine similarity
 - [No Build, No Dependency: Why It Matters for Security and Simplicity](/docs/blog/no-build-no-dependency) - Why Soli ships as a single binary with no package manager, no bundler, and no build step — and what that means for supply-chain security and operational simplicity
 - [Server-Side Password Validation in Soli](/docs/blog/password-validation) - Enforce password character-class requirements with `.letters()`, `.mixed_case()`, `.numbers()`, and `.symbols()`, and drive the HTML `passwordrules` attribute from the same validator

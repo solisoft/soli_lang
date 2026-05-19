@@ -1,0 +1,79 @@
+<tr id="user-row-<%= user["_key"] %>"
+    x-data="{ editingName: false, nameValue: '', nameOriginal: '', editingEmail: false, emailValue: '', emailOriginal: '' }"
+    x-init="nameValue = $el.dataset.name; nameOriginal = $el.dataset.name; emailValue = $el.dataset.email; emailOriginal = $el.dataset.email"
+    data-name="<%= user["name"] %>"
+    data-email="<%= user["email"] %>"
+    class="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    <span x-show="!editingName" @click="editingName = true; $nextTick(() => $refs.nameInput.focus())"
+          class="cursor-text text-gray-200 hover:text-cyan-200 transition-colors px-1 -ml-1 rounded"
+          x-text="nameValue"></span>
+    <span x-show="!editingName" class="text-[10px] text-gray-600 ml-1 select-none">click</span>
+    <form x-show="editingName" x-cloak
+          hx-patch="/demos/api/user/<%= user["_key"] %>"
+          hx-vals='{"field": "name"}'
+          hx-target="#user-row-<%= user["_key"] %>"
+          hx-swap="outerHTML"
+          @submit="editingName = false"
+          @keydown.escape="editingName = false; nameValue = nameOriginal"
+          class="inline-flex gap-1">
+      <input x-ref="nameInput" x-model="nameValue" name="value"
+             class="w-36 px-2 py-1 text-sm rounded bg-gray-900 border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+      <button type="submit" class="px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition">save</button>
+    </form>
+  </td>
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    <span x-show="!editingEmail" @click="editingEmail = true; $nextTick(() => $refs.emailInput.focus())"
+          class="cursor-text text-gray-400 hover:text-cyan-200 transition-colors px-1 -ml-1 rounded"
+          x-text="emailValue"></span>
+    <span x-show="!editingEmail" class="text-[10px] text-gray-600 ml-1 select-none">click</span>
+    <form x-show="editingEmail" x-cloak
+          hx-patch="/demos/api/user/<%= user["_key"] %>"
+          hx-vals='{"field": "email"}'
+          hx-target="#user-row-<%= user["_key"] %>"
+          hx-swap="outerHTML"
+          @submit="editingEmail = false"
+          @keydown.escape="editingEmail = false; emailValue = emailOriginal"
+          class="inline-flex gap-1">
+      <input x-ref="emailInput" x-model="emailValue" name="value" type="email"
+             class="w-56 px-2 py-1 text-sm rounded bg-gray-900 border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+      <button type="submit" class="px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition">save</button>
+    </form>
+  </td>
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    <select name="value"
+            hx-patch="/demos/api/user/<%= user["_key"] %>"
+            hx-vals='{"field": "role"}'
+            hx-target="#user-row-<%= user["_key"] %>"
+            hx-swap="outerHTML"
+            hx-trigger="change"
+            class="px-2 py-1 text-sm rounded bg-gray-950 border border-white/10 text-gray-300 cursor-pointer hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/40 transition-colors">
+      <% for role in ["Admin", "Editor", "Viewer", "Contributor"] %>
+        <option value="<%= role %>" <%= user["role"] == role ? "selected" : "" %>><%= role %></option>
+      <% end %>
+    </select>
+  </td>
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    <span hx-patch="/demos/api/user/<%= user["_key"] %>"
+          hx-vals='{"field": "status"}'
+          hx-target="#user-row-<%= user["_key"] %>"
+          hx-swap="outerHTML"
+          class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors
+                 <%= user["status"] == "Active" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25" : "bg-gray-500/15 text-gray-400 border border-gray-500/30 hover:bg-gray-500/25" %>">
+      <%= user["status"] %>
+    </span>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap"><%= user["last_login"] %></td>
+  <td class="px-4 py-3 text-sm text-right whitespace-nowrap">
+    <button hx-delete="/demos/api/user/<%= user["_key"] %>"
+            hx-target="#user-row-<%= user["_key"] %>"
+            hx-swap="outerHTML swap:200ms"
+            hx-confirm="Delete <%= user["name"] %>?"
+            class="p-1.5 rounded text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            title="Delete user">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    </button>
+  </td>
+</tr>

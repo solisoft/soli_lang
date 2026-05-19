@@ -187,4 +187,164 @@ class DemosController < Controller
       render("demos/_modal_form", {}, {"layout": false})
     end
   end
+
+  # ── 10. Users Table (dedicated DemoUser model backed by SoliDB) ──
+
+  # Add User form (HTMx-loaded into the modal body in widget #10).
+  def user_form()
+    render("demos/_user_form", {}, {"layout": false})
+  end
+
+  def _users_result(q, sort, dir, page, per_page)
+    let valid_sort_keys = ["name", "email", "role", "status", "last_login"]
+    if !valid_sort_keys.contains(sort)
+      sort = "name"
+    end
+    if dir != "desc"
+      dir = "asc"
+    end
+
+    let qb
+    if q == nil || q == ""
+      qb = DemoUser.order(sort, dir)
+    else
+      let needle = q.downcase()
+      qb = DemoUser.where(
+        "CONTAINS(LOWER(doc.name), @needle) || CONTAINS(LOWER(doc.email), @needle)",
+        { "needle": needle }
+      ).order(sort, dir)
+    end
+
+    let result = qb.paginate({"page": page, "per": per_page})
+    let records = result["records"]
+    let pg = result["pagination"]
+
+    {
+      "records": records,
+      "total": pg["total"],
+      "page": pg["page"],
+      "total_pages": pg["total_pages"],
+      "per": pg["per"],
+      "start": records.length() > 0 ? (pg["page"] - 1) * pg["per"] + 1 : 0,
+      "end_val": (pg["page"] - 1) * pg["per"] + records.length()
+    }
+  end
+
+  def users(req)
+    let p = req["all"] ?? {}
+    let sort = p["sort"] ?? "name"
+    let dir = p["dir"] ?? "asc"
+    let q = p["q"] ?? ""
+    let r = this._users_result(q, sort, dir, int(p["page"] ?? "1"), 10)
+
+    render("demos/_users_table", {
+      "users": r["records"],
+      "total": r["total"],
+      "page": r["page"],
+      "total_pages": r["total_pages"],
+      "per_page": r["per"],
+      "sort": sort,
+      "dir": dir,
+      "q": q,
+      "start": r["start"],
+      "end_val": r["end_val"]
+    }, {"layout": false})
+  end
+
+  def user_update(req)
+    let p = req["all"] ?? {}
+    let id = p["id"] ?? ""
+    let field = p["field"] ?? "name"
+    let value = p["value"] ?? ""
+
+    let user = DemoUser.find(id)
+    if user.nil?
+      return {"status": 404, "body": ""}
+    end
+
+    let attrs = {}
+    if field == "status"
+      attrs["status"] = user["status"] == "Active" ? "Inactive" : "Active"
+    else
+      attrs[field] = value
+    end
+
+    user.update(attrs)
+    if user._errors
+      # Validation failed (e.g. uniqueness on email). Re-render the row from
+      # the persisted DB state and surface the first error message as a toast.
+      let original = DemoUser.find(id)
+      let response = render("demos/_user_row", {"user": original}, {"layout": false})
+      let first = user._errors[0] ?? {}
+      let err_msg = first["message"] ?? "Could not save changes."
+      response["headers"]["HX-Trigger"] = json_stringify({
+        "soli-toast": {"kind": "error", "message": err_msg}
+      })
+      return response
+    end
+
+    let response = render("demos/_user_row", {"user": user}, {"layout": false})
+    let message = match field {
+      "name" => "Name updated to \"#{user["name"]}\".",
+      "email" => "Email updated to \"#{user["email"]}\".",
+      "role" => "Role changed to \"#{user["role"]}\".",
+      "status" => "User is now #{user["status"]}.",
+      _ => "Saved."
+    }
+    response["headers"]["HX-Trigger"] = json_stringify({
+      "soli-toast": {"kind": "success", "message": message}
+    })
+    response
+  end
+
+  def user_delete(req)
+    let p = req["all"] ?? {}
+    let id = p["id"] ?? ""
+    let user = DemoUser.find(id)
+    let name = user.nil? ? "user" : user["name"]
+    DemoUser.delete(id)
+    {
+      "status": 200,
+      "headers": {
+        "HX-Trigger": json_stringify({
+          "soli-toast": {"kind": "success", "message": "Deleted \"#{name}\"."}
+        })
+      },
+      "body": ""
+    }
+  end
+
+  def user_create(req)
+    let p = req["all"] ?? {}
+    let user = DemoUser.create({
+      "name": p["name"] ?? "New User",
+      "email": p["email"] ?? "new@example.com",
+      "role": p["role"] ?? "Viewer",
+      "status": p["status"] == "on" ? "Active" : "Inactive",
+      "last_login": DateTime.now().format("%Y-%m-%d %H:%M")
+    })
+
+    if user._errors
+      return {"status": 422, "body": str(user._errors)}
+    end
+
+    let r = this._users_result(nil, "name", "asc", 1, 10)
+    let response = render("demos/_users_table", {
+      "users": r["records"],
+      "total": r["total"],
+      "page": r["page"],
+      "total_pages": r["total_pages"],
+      "per_page": r["per"],
+      "sort": "name",
+      "dir": "asc",
+      "q": "",
+      "start": r["start"],
+      "end_val": r["end_val"]
+    }, {"layout": false})
+    response["headers"]["HX-Trigger"] = json_stringify({
+      "soli-toast": {"kind": "success", "message": "User \"#{user["name"]}\" added."},
+      "soli-add-user-close": true
+    })
+    response
+  end
 end
