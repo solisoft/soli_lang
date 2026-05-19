@@ -33,7 +33,7 @@ fn chat_handler(event)
 end
 
 # Page to display the WebSocket demo
-fn demo(req)
+fn demo
     render("websocket/demo", {
         "title": "WebSocket Demo"
     })

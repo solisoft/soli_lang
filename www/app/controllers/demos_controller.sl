@@ -10,18 +10,16 @@ class DemosController < Controller
 
   # 1. Optimistic Like button.
   # Echoes back the button with the opposite "liked" state.
-  def like(req)
-    let p = req["all"] ?? {}
-    let liked = (p["liked"] ?? "false") == "true"
-    let next_liked = !liked
+  def like
+    liked = (params["liked"] ?? "false") == "true"
+    next_liked = !liked
     render("demos/_like_button", {"liked": next_liked}, {"layout": false})
   end
 
   # 2. Live debounced search — filter a hardcoded fruit list.
-  def search(req)
-    let p = req["all"] ?? {}
-    let q = (p["q"] ?? "").downcase()
-    let fruits = [
+  def search
+    search_query = (params["q"] ?? "").downcase()
+    fruits = [
       "Apple",
       "Apricot",
       "Avocado",
@@ -62,47 +60,46 @@ class DemosController < Controller
       "Tangerine",
       "Watermelon"
     ]
-    let matches = q == "" ? [] : fruits.filter(fn(f) { f.downcase().contains(q) })
+    matches = search_query == ""
+      ? []
+      : fruits.filter(fn(fruit) { fruit.downcase().contains(search_query) })
     render("demos/_search_results", {
       "matches": matches,
-      "query": q
+      "query": search_query
     }, {"layout": false})
   end
 
   # 3. Lazy tab content. Tab id comes from the URL.
-  def tab_body(req)
-    let p = req["all"] ?? {}
-    let id = p["id"] ?? "overview"
-    let now = DateTime.now()
-    let bodies = {
+  def tab_body
+    id = params["id"] ?? "overview"
+    now = DateTime.now()
+    bodies = {
       "overview": {"title": "Overview", "body": "Lazy-loaded on click. Switch back — HTMx caches the result."},
       "stats": {"title": "Stats", "body": "47 widgets · 12 lines of JS · 0 build steps."},
       "activity": {"title": "Activity", "body": "Last refresh: #{now.format("%H:%M:%S")}."}
     }
-    let data = bodies[id] ?? bodies["overview"]
+    data = bodies[id] ?? bodies["overview"]
     render("demos/_tab_body", {"tab": data}, {"layout": false})
   end
 
   # 4. Inline edit. Accepts a new value, returns the read-only display row.
-  def todo_update(req)
-    let p = req["all"] ?? {}
-    let value = (p["value"] ?? "").trim()
-    let display = value == "" ? "(empty)" : value
+  def todo_update
+    value = (params["value"] ?? "").trim()
+    display = value == "" ? "(empty)" : value
     render("demos/_todo_row", {"value": display}, {"layout": false})
   end
 
   # 5. Toast trigger. Returns an empty body plus an HX-Trigger header that
   # spawns a client-side toast via the Alpine toast stack.
-  def notify(req)
-    let p = req["all"] ?? {}
-    let kind = p["kind"] ?? "info"
-    let message = match kind {
+  def notify
+    kind = params["kind"] ?? "info"
+    message = match kind {
       "success" => "Saved! Your changes are live.",
       "warning" => "Heads up — that field is empty.",
       "error" => "Something went wrong. Try again.",
       _ => "Just an FYI: this is what `info` toasts look like.",
     }
-    let payload = json_stringify({
+    payload = json_stringify({
       "kind": kind,
       "message": message
     })
@@ -115,9 +112,9 @@ class DemosController < Controller
 
   # 6. Live polling counter. Returns a fresh value every time it's polled.
   def counter()
-    let jitter = int(Math.random() * 8) + 2
-    let now = DateTime.now()
-    let value = (now.to_unix() % 100) + jitter
+    jitter = int(Math.random() * 8) + 2
+    now = DateTime.now()
+    value = (now.to_unix() % 100) + jitter
     render("demos/_counter", {"value": value}, {"layout": false})
   end
 
@@ -131,58 +128,57 @@ class DemosController < Controller
   # window (sine wave + jitter), render an SVG bar chart with a connected
   # sparkline overlay, and return the markup for HTMx to swap.
   def chart()
-    let n = 12
-    let now = DateTime.now()
-    let bar_width = 240.0 / n
-    let bars = []
-    let total = 0
-    for i in 0..n
-      let t = now.to_unix() - (n - 1 - i) * 2
-      let wave = Math.sin(t * 0.35) * 25 + 55
-      let jitter = Math.random() * 20
-      let value = int(wave + jitter)
+    bar_count = 12
+    now = DateTime.now()
+    bar_width = 240.0 / bar_count
+    bars = []
+    total = 0
+    for i in 0..bar_count
+      tick_unix = now.to_unix() - (bar_count - 1 - i) * 2
+      wave = Math.sin(tick_unix * 0.35) * 25 + 55
+      jitter = Math.random() * 20
+      value = int(wave + jitter)
       if value < 5
         value = 5
       end
       if value > 100
         value = 100
       end
-      let h = value * 0.7
+      bar_height = value * 0.7
       bars.push({
-        "label": DateTime.from_unix(t).format("%H:%M:%S"),
+        "label": DateTime.from_unix(tick_unix).format("%H:%M:%S"),
         "value": value,
         "x": i * bar_width + 1,
-        "y": 76 - h,
+        "y": 76 - bar_height,
         "w": bar_width - 2,
-        "h": h
+        "h": bar_height
       })
       total = total + value
     end
 
     # Build a polyline string ("x1,y1 x2,y2 ...") through each bar's top-center.
-    let pts = []
+    polyline_points = []
     for bar in bars
-      let cx = bar["x"] + bar["w"] / 2
-      pts.push("#{cx},#{bar["y"]}")
+      center_x = bar["x"] + bar["w"] / 2
+      polyline_points.push("#{center_x},#{bar["y"]}")
     end
 
     render("demos/_chart", {
       "bars": bars,
-      "polyline": pts.join(" "),
-      "avg": int(total / n),
-      "latest": bars[n - 1]["value"],
+      "polyline": polyline_points.join(" "),
+      "avg": int(total / bar_count),
+      "latest": bars[bar_count - 1]["value"],
       "first_label": bars[0]["label"],
-      "last_label": bars[n - 1]["label"]
+      "last_label": bars[bar_count - 1]["label"]
     }, {"layout": false})
   end
 
   # 8. Modal form. HTMx fetches the form HTML; Alpine drops it into an
   # open <dialog>. Submitting echoes back a thank-you panel.
-  def modal_form(req)
-    let p = req["all"] ?? {}
-    let submitted = (p["submitted"] ?? "false") == "true"
+  def modal_form
+    submitted = (params["submitted"] ?? "false") == "true"
     if submitted
-      render("demos/_modal_thanks", {"name": p["name"] ?? "friend"}, {"layout": false})
+      render("demos/_modal_thanks", {"name": params["name"] ?? "friend"}, {"layout": false})
     else
       render("demos/_modal_form", {}, {"layout": false})
     end
@@ -195,74 +191,71 @@ class DemosController < Controller
     render("demos/_user_form", {}, {"layout": false})
   end
 
-  def _users_result(q, sort, dir, page, per_page)
-    let valid_sort_keys = ["name", "email", "role", "status", "last_login"]
-    if !valid_sort_keys.contains(sort)
-      sort = "name"
+  def _users_result(search_query, sort_column, sort_direction, page, per_page)
+    valid_sort_keys = ["name", "email", "role", "status", "last_login"]
+    if !valid_sort_keys.contains(sort_column)
+      sort_column = "name"
     end
-    if dir != "desc"
-      dir = "asc"
+    if sort_direction != "desc"
+      sort_direction = "asc"
     end
 
-    let qb
-    if q == nil || q == ""
-      qb = DemoUser.order(sort, dir)
+    let query_builder
+    if search_query == nil || search_query == ""
+      query_builder = DemoUser.order(sort_column, sort_direction)
     else
-      let needle = q.downcase()
-      qb = DemoUser.where(
+      needle = search_query.downcase()
+      query_builder = DemoUser.where(
         "CONTAINS(LOWER(doc.name), @needle) || CONTAINS(LOWER(doc.email), @needle)",
         { "needle": needle }
-      ).order(sort, dir)
+      ).order(sort_column, sort_direction)
     end
 
-    let result = qb.paginate({"page": page, "per": per_page})
-    let records = result["records"]
-    let pg = result["pagination"]
+    result = query_builder.paginate({"page": page, "per": per_page})
+    records = result["records"]
+    pagination = result["pagination"]
 
     {
       "records": records,
-      "total": pg["total"],
-      "page": pg["page"],
-      "total_pages": pg["total_pages"],
-      "per": pg["per"],
-      "start": records.length() > 0 ? (pg["page"] - 1) * pg["per"] + 1 : 0,
-      "end_val": (pg["page"] - 1) * pg["per"] + records.length()
+      "total": pagination["total"],
+      "page": pagination["page"],
+      "total_pages": pagination["total_pages"],
+      "per": pagination["per"],
+      "start": records.length() > 0 ? (pagination["page"] - 1) * pagination["per"] + 1 : 0,
+      "end_val": (pagination["page"] - 1) * pagination["per"] + records.length()
     }
   end
 
-  def users(req)
-    let p = req["all"] ?? {}
-    let sort = p["sort"] ?? "name"
-    let dir = p["dir"] ?? "asc"
-    let q = p["q"] ?? ""
-    let r = this._users_result(q, sort, dir, int(p["page"] ?? "1"), 10)
+  def users
+    sort_column    = params["sort"] ?? "name"
+    sort_direction = params["dir"] ?? "asc"
+    search_query   = params["q"] ?? ""
+    result = this._users_result(
+      search_query, sort_column, sort_direction,
+      int(params["page"] ?? "1"), 10
+    )
 
     render("demos/_users_table", {
-      "users": r["records"],
-      "total": r["total"],
-      "page": r["page"],
-      "total_pages": r["total_pages"],
-      "per_page": r["per"],
-      "sort": sort,
-      "dir": dir,
-      "q": q,
-      "start": r["start"],
-      "end_val": r["end_val"]
+      "users": result["records"],
+      "total": result["total"],
+      "page": result["page"],
+      "total_pages": result["total_pages"],
+      "per_page": result["per"],
+      "sort": sort_column,
+      "dir": sort_direction,
+      "q": search_query,
+      "start": result["start"],
+      "end_val": result["end_val"]
     }, {"layout": false})
   end
 
-  def user_update(req)
-    let p = req["all"] ?? {}
-    let id = p["id"] ?? ""
-    let field = p["field"] ?? "name"
-    let value = p["value"] ?? ""
+  def user_update
+    id = params["id"] ?? ""
+    field = params["field"] ?? "name"
+    value = params["value"] ?? ""
 
-    let user = DemoUser.find(id)
-    if user.nil?
-      return {"status": 404, "body": ""}
-    end
-
-    let attrs = {}
+    user = DemoUser.find(id)
+    attrs = {}
     if field == "status"
       attrs["status"] = user["status"] == "Active" ? "Inactive" : "Active"
     else
@@ -273,18 +266,18 @@ class DemosController < Controller
     if user._errors
       # Validation failed (e.g. uniqueness on email). Re-render the row from
       # the persisted DB state and surface the first error message as a toast.
-      let original = DemoUser.find(id)
-      let response = render("demos/_user_row", {"user": original}, {"layout": false})
-      let first = user._errors[0] ?? {}
-      let err_msg = first["message"] ?? "Could not save changes."
+      original = DemoUser.find(id)
+      response = render("demos/_user_row", {"user": original}, {"layout": false})
+      first = user._errors[0] ?? {}
+      err_msg = first["message"] ?? "Could not save changes."
       response["headers"]["HX-Trigger"] = json_stringify({
         "soli-toast": {"kind": "error", "message": err_msg}
       })
       return response
     end
 
-    let response = render("demos/_user_row", {"user": user}, {"layout": false})
-    let message = match field {
+    response = render("demos/_user_row", {"user": user}, {"layout": false})
+    message = match field {
       "name" => "Name updated to \"#{user["name"]}\".",
       "email" => "Email updated to \"#{user["email"]}\".",
       "role" => "Role changed to \"#{user["role"]}\".",
@@ -297,30 +290,27 @@ class DemosController < Controller
     response
   end
 
-  def user_delete(req)
-    let p = req["all"] ?? {}
-    let id = p["id"] ?? ""
-    let user = DemoUser.find(id)
-    let name = user.nil? ? "user" : user["name"]
+  def user_delete
+    id = params["id"] ?? ""
+    user = DemoUser.find(id)
     DemoUser.delete(id)
     {
       "status": 200,
       "headers": {
         "HX-Trigger": json_stringify({
-          "soli-toast": {"kind": "success", "message": "Deleted \"#{name}\"."}
+          "soli-toast": {"kind": "success", "message": "Deleted \"#{user["name"]}\"."}
         })
       },
       "body": ""
     }
   end
 
-  def user_create(req)
-    let p = req["all"] ?? {}
-    let user = DemoUser.create({
-      "name": p["name"] ?? "New User",
-      "email": p["email"] ?? "new@example.com",
-      "role": p["role"] ?? "Viewer",
-      "status": p["status"] == "on" ? "Active" : "Inactive",
+  def user_create
+    user = DemoUser.create({
+      "name": params["name"] ?? "New User",
+      "email": params["email"] ?? "new@example.com",
+      "role": params["role"] ?? "Viewer",
+      "status": params["status"] == "on" ? "Active" : "Inactive",
       "last_login": DateTime.now().format("%Y-%m-%d %H:%M")
     })
 
@@ -328,18 +318,18 @@ class DemosController < Controller
       return {"status": 422, "body": str(user._errors)}
     end
 
-    let r = this._users_result(nil, "name", "asc", 1, 10)
-    let response = render("demos/_users_table", {
-      "users": r["records"],
-      "total": r["total"],
-      "page": r["page"],
-      "total_pages": r["total_pages"],
-      "per_page": r["per"],
+    result = this._users_result(nil, "name", "asc", 1, 10)
+    response = render("demos/_users_table", {
+      "users": result["records"],
+      "total": result["total"],
+      "page": result["page"],
+      "total_pages": result["total_pages"],
+      "per_page": result["per"],
       "sort": "name",
       "dir": "asc",
       "q": "",
-      "start": r["start"],
-      "end_val": r["end_val"]
+      "start": result["start"],
+      "end_val": result["end_val"]
     }, {"layout": false})
     response["headers"]["HX-Trigger"] = json_stringify({
       "soli-toast": {"kind": "success", "message": "User \"#{user["name"]}\" added."},

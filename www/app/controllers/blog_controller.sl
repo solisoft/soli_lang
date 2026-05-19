@@ -1,7 +1,7 @@
 # Blog Controller
 # Handles displaying blog posts (markdown content)
 
-fn index(req)
+fn index
     let posts = get_blog_posts()
     
     render("blog/index", {
@@ -67,7 +67,7 @@ fn extract_title(markdown)
     "Blog Post"
 end
 
-fn show(req)
+fn show
     let slug = req["params"]["slug"]
     
     if slug == nil or slug == ""

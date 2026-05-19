@@ -5,11 +5,11 @@
 # /wildcard/example -> wildcard#example
 
 class WildcardController extends Controller
-    fn demo(req)
+    fn demo
         render_text("Wildcard demo action!")
     end
 
-    fn example(req)
+    fn example
         let path = req["params"]["path"]
         render_text("Wildcard example! Path: " + path)
     end

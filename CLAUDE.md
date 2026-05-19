@@ -32,10 +32,13 @@ www/                   # Documentation website
 
 ### Variables and Types
 ```soli
-let name = "Alice";           // Type inference
-let age: Int = 30;           // Explicit type annotation
-const MAX_SIZE = 100;        // Constants (immutable)
+name = "Alice"                # `let` is optional — bare assignment creates the binding
+let age: Int = 30             # Use `let` when you want a type annotation or a
+                              # forward declaration assigned conditionally later
+const MAX_SIZE = 100          # Constants (immutable)
 ```
+
+Prefer the bare `name = value` form. Reach for `let` only when it earns its keep — adding a type annotation, or hoisting a variable before an `if`/`match` that assigns it in each branch.
 
 ### Functions
 ```soli
@@ -176,6 +179,23 @@ let data = fetch_data() rescue null;
 
 7. **Use pipelines** - For readable data transformation chains
 
+8. **Use intelligible variable names** - No single-letter or cryptic short names. The name should make the intent obvious without having to scan back for the assignment.
+   ```soli
+   # Bad — what is p? r? pg? qb?
+   let p = params
+   let r = users_result(p["q"], p["sort"])
+   let pg = r["pagination"]
+   let qb = User.where(...)
+
+   # Good — read top-to-bottom and the meaning is clear.
+   let search_query   = params["q"]
+   let sort_column    = params["sort"]
+   let result         = users_result(search_query, sort_column)
+   let pagination     = result["pagination"]
+   let query_builder  = User.where(...)
+   ```
+   Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`fn(x) x * 2`), and well-known math symbols inside their natural domain.
+
 ## SOLID Principles
 
 Apply these OOP design principles for maintainable code:
@@ -261,12 +281,14 @@ fn create(req: Any) -> Any {
 
 **Model**:
 ```soli
-// app/models/post.sl
-class Post extends Model {
-    // `all`, `find`, `where`, `create`, etc. are inherited from Model
-    // and use the worker's pre-configured SoliDB connection.
-}
+# app/models/post.sl
+class Post < Model
+  # `all`, `find`, `where`, `create`, etc. are inherited from Model
+  # and use the worker's pre-configured SoliDB connection.
+end
 ```
+
+`Model.find(id)` raises `RecordNotFound` when the id doesn't exist, and the request handler turns that into a `404` automatically. **Don't add a manual `if record.nil? { return 404 }` guard after `.find` — it's dead code.** When you want the "or nil" shape, use `find_by(field, value)` or `first_by(...)`, both of which return `nil` on miss.
 
 **View** (ERB templates):
 ```erb

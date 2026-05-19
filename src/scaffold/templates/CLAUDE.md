@@ -94,15 +94,38 @@ tests/               # *_spec.sl test files
 | Functions | `snake_case`           | `get_user_by_id`       |
 | Constants | `SCREAMING_SNAKE_CASE` | `MAX_SIZE`             |
 
+**Use intelligible variable names** — no single-letter or cryptic short names. The name should make the intent obvious without scanning back for the assignment.
+
+```soli
+# Bad — what is p? r? pg? qb?
+let p = params
+let r = users_result(p["q"], p["sort"])
+let pg = r["pagination"]
+let qb = User.where(...)
+
+# Good — read top-to-bottom and the meaning is clear.
+let search_query  = params["q"]
+let sort_column   = params["sort"]
+let result        = users_result(search_query, sort_column)
+let pagination    = result["pagination"]
+let query_builder = User.where(...)
+```
+
+Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`fn(x) x * 2`), and well-known math symbols inside their natural domain.
+
 ## Syntax basics
 
 Soli supports both Ruby-style (`def`/`end`, `class X < Y ... end`, `if cond ... end`) and C-style (`fn`/`{ }`, `class X extends Y { ... }`, `if cond { ... }`); they parse to the same AST. **The convention in this project is Ruby-style** for class declarations and control flow (`class Demo < Test ... end`, `if cond ... end`). Reserve `fn { ... }` for free-standing functions and lambdas. Match this style when writing new code.
 
 ```soli
 # Variables
-let name = "Alice"        # Type inferred
-let age: Int = 30         # Explicit type
+name = "Alice"            # `let` is optional — bare assignment creates the binding
+let age: Int = 30         # Use `let` when you want a type annotation, or to
+                          # forward-declare before a branch that assigns it
 const MAX = 100           # Immutable
+
+# Prefer the bare `name = value` form. Reach for `let` only when it earns
+# its keep: a type annotation, or a hoisted declaration before `if`/`match`.
 
 # Free-standing functions
 fn add(a: Int, b: Int) -> Int {
@@ -226,6 +249,11 @@ class Post < Model
     # Inherited from Model:
     #   Post.all()              Post.find(id)        Post.find_by(field, val)
     #   Post.where({...})       Post.create({...})   post.save()  post.delete()
+    #
+    # `Post.find(id)` RAISES RecordNotFound on miss — the framework converts
+    # that to a 404 automatically. Don't add `if post.nil? { 404 }` after it;
+    # that branch is unreachable. Use `find_by` / `first_by` when you want
+    # the "or nil" shape instead.
     #
     # Add associations and validations declaratively:
     belongs_to("user")

@@ -35,57 +35,56 @@ The trick that keeps the controller flat is a single private helper that knows h
 
 ```soli
 class DemosController < Controller
-  def _users_result(q, sort, dir, page, per_page)
-    let valid_sort_keys = ["name", "email", "role", "status", "last_login"]
-    sort = "name" unless valid_sort_keys.contains(sort)
-    dir = "asc" unless dir == "desc"
+  def _users_result(search_query, sort_column, sort_direction, page, per_page)
+    valid_sort_keys = ["name", "email", "role", "status", "last_login"]
+    sort_column = "name" unless valid_sort_keys.contains(sort_column)
+    sort_direction = "asc" unless sort_direction == "desc"
 
-    let qb
-    if q == nil || q == ""
-      qb = DemoUser.order(sort, dir)
+    let query_builder
+    if search_query == nil || search_query == ""
+      query_builder = DemoUser.order(sort_column, sort_direction)
     else
-      let needle = q.downcase()
-      qb = DemoUser.where(
+      needle = search_query.downcase()
+      query_builder = DemoUser.where(
         "CONTAINS(LOWER(doc.name), @needle) || CONTAINS(LOWER(doc.email), @needle)",
         { "needle": needle }
-      ).order(sort, dir)
+      ).order(sort_column, sort_direction)
     end
 
-    let result = qb.paginate({"page": page, "per": per_page})
-    let pg = result["pagination"]
-    let records = result["records"]
+    result = query_builder.paginate({"page": page, "per": per_page})
+    pagination = result["pagination"]
+    records = result["records"]
 
     {
       "records": records,
-      "total": pg["total"],
-      "page": pg["page"],
-      "total_pages": pg["total_pages"],
-      "per": pg["per"],
-      "start": records.length() > 0 ? (pg["page"] - 1) * pg["per"] + 1 : 0,
-      "end_val": (pg["page"] - 1) * pg["per"] + records.length()
+      "total": pagination["total"],
+      "page": pagination["page"],
+      "total_pages": pagination["total_pages"],
+      "per": pagination["per"],
+      "start": records.length() > 0 ? (pagination["page"] - 1) * pagination["per"] + 1 : 0,
+      "end_val": (pagination["page"] - 1) * pagination["per"] + records.length()
     }
   end
 end
 ```
 
-Two things to notice. First, sort key validation is a whitelist — never trust raw `?sort=` values, they end up in the AQL `SORT` clause. Second, `.paginate({"page": p, "per": n})` is a builtin on the query chain. It returns `{"records": [...], "pagination": {"page", "per", "total", "total_pages"}}` in a single round trip — one count query, one slice query — so we never load the whole collection just to slice it.
+Two things to notice. First, sort key validation is a whitelist — never trust raw `?sort=` values, they end up in the AQL `SORT` clause. Second, `.paginate({"page": page, "per": per_page})` is a builtin on the query chain. It returns `{"records": [...], "pagination": {"page", "per", "total", "total_pages"}}` in a single round trip — one count query, one slice query — so we never load the whole collection just to slice it.
 
 ### Listing
 
 ```soli
-def users(req)
-  let p = req["all"] ?? {}
-  let r = this._users_result(
-    p["q"] ?? "",
-    p["sort"] ?? "name",
-    p["dir"] ?? "asc",
-    int(p["page"] ?? "1"),
-    10
+def users
+  sort_column    = params["sort"] ?? "name"
+  sort_direction = params["dir"] ?? "asc"
+  search_query   = params["q"] ?? ""
+  result = this._users_result(
+    search_query, sort_column, sort_direction,
+    int(params["page"] ?? "1"), 10
   )
-  render("demos/_users_table", r.merge({
-    "sort": p["sort"] ?? "name",
-    "dir": p["dir"] ?? "asc",
-    "q": p["q"] ?? ""
+  render("demos/_users_table", result.merge({
+    "sort": sort_column,
+    "dir": sort_direction,
+    "q": search_query
   }), {"layout": false})
 end
 ```
@@ -95,34 +94,31 @@ The endpoint returns a partial — `{"layout": false}` disables the application 
 ### Inline update
 
 ```soli
-def user_update(req)
-  let p = req["all"] ?? {}
-  let user = DemoUser.find(p["id"] ?? "")
-  return {"status": 404, "body": ""} if user.nil?
-
-  let field = p["field"] ?? "name"
-  let attrs = {}
+def user_update
+  user = DemoUser.find(params["id"] ?? "")
+  field = params["field"] ?? "name"
+  attrs = {}
   if field == "status"
     attrs["status"] = user["status"] == "Active" ? "Inactive" : "Active"
   else
-    attrs[field] = p["value"] ?? ""
+    attrs[field] = params["value"] ?? ""
   end
 
   user.update(attrs)
   if user._errors
     # Validation failed (e.g. uniqueness on email). Re-render the row from
     # the persisted DB state and surface the first error as a toast.
-    let original = DemoUser.find(p["id"] ?? "")
-    let response = render("demos/_user_row", {"user": original}, {"layout": false})
-    let first = user._errors[0] ?? {}
+    original = DemoUser.find(params["id"] ?? "")
+    response = render("demos/_user_row", {"user": original}, {"layout": false})
+    first = user._errors[0] ?? {}
     response["headers"]["HX-Trigger"] = json_stringify({
       "soli-toast": {"kind": "error", "message": first["message"] ?? "Could not save changes."}
     })
     return response
   end
 
-  let response = render("demos/_user_row", {"user": user}, {"layout": false})
-  let message = match field {
+  response = render("demos/_user_row", {"user": user}, {"layout": false})
+  message = match field {
     "name"   => "Name updated to \"#{user["name"]}\".",
     "email"  => "Email updated to \"#{user["email"]}\".",
     "role"   => "Role changed to \"#{user["role"]}\".",
@@ -206,7 +202,7 @@ Each row is its own Alpine island. We keep two pieces of state per editable fiel
 
 A few things worth pointing out:
 
-- **`hx-vals` carries metadata, the form carries the value.** The input is `name="value"` and the discriminator is `field`. The controller sees both in `req["all"]`.
+- **`hx-vals` carries metadata, the form carries the value.** The input is `name="value"` and the discriminator is `field`. The controller sees both in the `params` global.
 - **`@submit="editingName = false"` does not interfere with HTMx.** Alpine's `@submit` is a plain listener that does not prevent default; HTMx still intercepts the submit and sends the AJAX request with the form data.
 - **Escape rolls back the input.** Saving the original in `nameOriginal` on init means Esc can restore the previous value without a server round-trip.
 
