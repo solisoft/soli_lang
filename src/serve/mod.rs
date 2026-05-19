@@ -6047,7 +6047,11 @@ mod tests {
         for ip in trusted {
             let parsed: IpAddr = ip.parse().unwrap();
             assert!(is_trusted_dev_peer(parsed), "{} should be trusted", ip);
-            assert!(is_trusted_dev_peer_str(ip), "{} (str) should be trusted", ip);
+            assert!(
+                is_trusted_dev_peer_str(ip),
+                "{} (str) should be trusted",
+                ip
+            );
         }
         for ip in untrusted {
             let parsed: IpAddr = ip.parse().unwrap();

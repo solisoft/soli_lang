@@ -178,8 +178,7 @@ fn login_for_token() -> Option<CachedJwt> {
         (Some(u), Some(p)) => (u, p),
         _ => return None,
     };
-    let host =
-        std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     let login_url = format!("{}/auth/login", host);
     let payload = serde_json::json!({
         "username": username,
@@ -508,5 +507,202 @@ mod tests {
         force_refresh_jwt_token();
         let cache = JWT_CACHE.lock().unwrap();
         assert!(cache.is_none());
+    }
+
+    // ---- End-to-end: cache → expiry → re-login regression --------------
+    //
+    // These tests touch SOLIDB_* env vars and the process-global
+    // JWT_CACHE, so they must run serially. Pattern mirrors
+    // `serve::mod::ENV_TEST_LOCK`.
+    static JWT_E2E_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Build a JWT-shaped string `header.payload.sig` whose decoded
+    /// payload is `{"exp": <exp_epoch>}`. The header and signature are
+    /// arbitrary — `jwt_exp` only parses the middle segment.
+    fn make_jwt_with_exp(exp_epoch: u64) -> String {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+        let payload = serde_json::json!({ "exp": exp_epoch }).to_string();
+        let payload_b64 = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        format!("h.{}.s", payload_b64)
+    }
+
+    /// Spawn a stub `/auth/login` server on a random localhost port.
+    /// Each incoming POST gets the next token from `tokens` (cycling on
+    /// the last). Returns the bound port.
+    fn spawn_login_stub(tokens: Vec<String>) -> u16 {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub login");
+        let port = listener.local_addr().unwrap().port();
+        let tokens = Arc::new(tokens);
+        let counter = Arc::new(AtomicUsize::new(0));
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let tokens = Arc::clone(&tokens);
+                let counter = Arc::clone(&counter);
+                std::thread::spawn(move || {
+                    let mut s = stream;
+                    let mut buf = [0u8; 4096];
+                    let mut total = Vec::new();
+                    loop {
+                        let n = s.read(&mut buf).unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        total.extend_from_slice(&buf[..n]);
+                        if total.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                        if total.len() > 16 * 1024 {
+                            break;
+                        }
+                    }
+                    let idx = counter.fetch_add(1, Ordering::SeqCst).min(tokens.len() - 1);
+                    let body = format!("{{\"token\":\"{}\"}}", tokens[idx]);
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = s.write_all(resp.as_bytes());
+                    let _ = s.write_all(body.as_bytes());
+                });
+            }
+        });
+        port
+    }
+
+    /// Regression test for the pre-v1.3.1 bug where the JWT was cached
+    /// in a `OnceLock<Option<String>>`, so the very first `/auth/login`
+    /// response was reused for the lifetime of the process. SolidB
+    /// rotates JWTs after 24h, so any worker that stayed up past the
+    /// expiry started 401-ing on every request.
+    ///
+    /// We give the stub *distinguishable* tokens for the two calls so a
+    /// "cache frozen forever" implementation would fail the
+    /// `first != second` assertion. With the fix, the second call
+    /// observes "near expiry", re-enters `login_for_token`, and the
+    /// returned tokens differ.
+    #[test]
+    fn get_jwt_token_refreshes_when_cached_entry_is_near_expiry() {
+        let _guard = JWT_E2E_LOCK.lock().unwrap();
+
+        // Fresh cache for the test, restored on the way out.
+        let saved = JWT_CACHE.lock().unwrap().take();
+
+        // Two distinguishable tokens — different exp claims so the JWT
+        // strings themselves differ. Both far enough in the future that
+        // they wouldn't otherwise trip the leeway check.
+        let fresh_exp_a = now_epoch() + 24 * 3600;
+        let fresh_exp_b = now_epoch() + 12 * 3600;
+        let port = spawn_login_stub(vec![
+            make_jwt_with_exp(fresh_exp_a),
+            make_jwt_with_exp(fresh_exp_b),
+        ]);
+
+        // Save + set env. SOLIDB_HOST is read lazily by login_for_token
+        // every call, so both calls go to the same stub.
+        let prev_host = std::env::var("SOLIDB_HOST").ok();
+        let prev_user = std::env::var("SOLIDB_USERNAME").ok();
+        let prev_pass = std::env::var("SOLIDB_PASSWORD").ok();
+        std::env::set_var("SOLIDB_HOST", format!("http://127.0.0.1:{}", port));
+        std::env::set_var("SOLIDB_USERNAME", "test-user");
+        std::env::set_var("SOLIDB_PASSWORD", "test-pass");
+
+        let first = get_jwt_token().expect("first login should succeed via stub");
+        let exp_after_first = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+
+        // Force the cached entry into the leeway window. The fix uses
+        // `needs_jwt_refresh` to detect this and re-login; the old
+        // `OnceLock` cache had no way to express this state at all.
+        {
+            let mut cache = JWT_CACHE.lock().unwrap();
+            if let Some(entry) = cache.as_mut() {
+                entry.exp_epoch = now_epoch() + JWT_REFRESH_LEEWAY_SECS / 2;
+            }
+        }
+
+        let second = get_jwt_token().expect("second call should re-login via stub");
+        let exp_after_second = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+
+        // Restore env + cache before assertions so test failure doesn't
+        // leak state into other tests in the same process.
+        match prev_host {
+            Some(v) => std::env::set_var("SOLIDB_HOST", v),
+            None => std::env::remove_var("SOLIDB_HOST"),
+        }
+        match prev_user {
+            Some(v) => std::env::set_var("SOLIDB_USERNAME", v),
+            None => std::env::remove_var("SOLIDB_USERNAME"),
+        }
+        match prev_pass {
+            Some(v) => std::env::set_var("SOLIDB_PASSWORD", v),
+            None => std::env::remove_var("SOLIDB_PASSWORD"),
+        }
+        *JWT_CACHE.lock().unwrap() = saved;
+
+        assert_eq!(
+            exp_after_first, fresh_exp_a,
+            "first call must cache the stub's first response"
+        );
+        assert_ne!(
+            first, second,
+            "near-expiry cache must trigger a real re-login (this fails against the old OnceLock design)"
+        );
+        assert_eq!(
+            exp_after_second, fresh_exp_b,
+            "second call must overwrite the cache with the stub's second response — proving the lifecycle is live"
+        );
+    }
+
+    /// Companion test: when the cache is fresh, `get_jwt_token` must
+    /// *not* hit `/auth/login` a second time. Belt-and-braces against a
+    /// future regression that refreshes too eagerly and turns every DB
+    /// request into a double round-trip.
+    #[test]
+    fn get_jwt_token_does_not_refresh_when_cache_is_fresh() {
+        let _guard = JWT_E2E_LOCK.lock().unwrap();
+        let saved = JWT_CACHE.lock().unwrap().take();
+
+        // Stub serves token-1 first, then would serve token-2 — if the
+        // second call somehow re-logs in, we'll see the swap.
+        let port = spawn_login_stub(vec![
+            make_jwt_with_exp(now_epoch() + 24 * 3600),
+            make_jwt_with_exp(now_epoch() + 12 * 3600),
+        ]);
+        let prev_host = std::env::var("SOLIDB_HOST").ok();
+        let prev_user = std::env::var("SOLIDB_USERNAME").ok();
+        let prev_pass = std::env::var("SOLIDB_PASSWORD").ok();
+        std::env::set_var("SOLIDB_HOST", format!("http://127.0.0.1:{}", port));
+        std::env::set_var("SOLIDB_USERNAME", "test-user");
+        std::env::set_var("SOLIDB_PASSWORD", "test-pass");
+
+        let first = get_jwt_token().expect("first call hits stub");
+        let exp_after_first = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+        let second = get_jwt_token().expect("second call should reuse cache");
+        let exp_after_second = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+
+        match prev_host {
+            Some(v) => std::env::set_var("SOLIDB_HOST", v),
+            None => std::env::remove_var("SOLIDB_HOST"),
+        }
+        match prev_user {
+            Some(v) => std::env::set_var("SOLIDB_USERNAME", v),
+            None => std::env::remove_var("SOLIDB_USERNAME"),
+        }
+        match prev_pass {
+            Some(v) => std::env::set_var("SOLIDB_PASSWORD", v),
+            None => std::env::remove_var("SOLIDB_PASSWORD"),
+        }
+        *JWT_CACHE.lock().unwrap() = saved;
+
+        assert_eq!(first, second, "cached call must return identical token");
+        assert_eq!(
+            exp_after_first, exp_after_second,
+            "cache must not have been re-seeded; if exp changed, we hit /auth/login a second time"
+        );
     }
 }

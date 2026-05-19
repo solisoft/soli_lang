@@ -196,10 +196,9 @@ pub fn commit_transaction() -> Result<(), String> {
 
     run_db_future(async move {
         let client = get_http_client().clone();
-        let response =
-            send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
-                .await
-                .map_err(|e| format!("HTTP error: {}", e))?;
+        let response = send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)
@@ -228,10 +227,9 @@ pub fn rollback_transaction() -> Result<(), String> {
 
     run_db_future(async move {
         let client = get_http_client().clone();
-        let response =
-            send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
-                .await
-                .map_err(|e| format!("HTTP error: {}", e))?;
+        let response = send_with_db_auth_retry(|| client.request(reqwest::Method::POST, &url))
+            .await
+            .map_err(|e| format!("HTTP error: {}", e))?;
         let status = response.status();
         if !status.is_success() {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(response)

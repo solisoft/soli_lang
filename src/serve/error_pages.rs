@@ -322,6 +322,7 @@ fn extract_file_from_frame(frame: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_dev_error_page(
     error: &str,
     error_type: &str,
