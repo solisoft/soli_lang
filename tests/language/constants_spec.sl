@@ -106,3 +106,46 @@ describe("Const Reassignment Error", fn() {
         assert_eq(H["key"], "new");
     });
 });
+
+describe("const_get", fn() {
+    test("resolves a const by name", fn() {
+        const MY_VALUE = 42;
+        let result = const_get("MY_VALUE");
+        assert_eq(result, 42);
+    });
+
+    test("resolves a class by name and instantiates it", fn() {
+        class User {}
+        let cls = const_get("User");
+        assert_eq(type(cls), "Class");
+        let instance = cls.new();
+        assert_eq(type(instance), "User");
+    });
+
+    test("resolves a function by name and calls it", fn() {
+        fn greet(name) { "hello " + name }
+        let result = const_get("greet");
+        assert_eq(result("world"), "hello world");
+    });
+
+    test("resolves a let variable by name", fn() {
+        let value = 99;
+        let result = const_get("value");
+        assert_eq(result, 99);
+    });
+
+    test("returns null for undefined name", fn() {
+        let result = const_get("DefinitelyNotDefined");
+        assert_null(result);
+    });
+
+    test("throws error when passed a non-string argument", fn() {
+        let threw = false;
+        try {
+            const_get(123);
+        } catch (e) {
+            threw = true;
+        }
+        assert(threw);
+    });
+});
