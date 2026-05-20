@@ -2085,11 +2085,7 @@ impl Model {
                     _ => 0,
                 };
 
-                let total_pages = if total == 0 {
-                    1
-                } else {
-                    total.div_ceil(per)
-                };
+                let total_pages = if total == 0 { 1 } else { total.div_ceil(per) };
                 let page = if page > total_pages {
                     total_pages
                 } else {

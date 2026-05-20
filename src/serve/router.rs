@@ -313,7 +313,10 @@ end
         let functions = extract_function_names(source);
         assert_eq!(functions.len(), 3);
         assert_eq!(functions[0].0, "index");
-        assert!(!functions[0].1, "no-paren form must report has_id_param=false");
+        assert!(
+            !functions[0].1,
+            "no-paren form must report has_id_param=false"
+        );
         assert_eq!(functions[1].0, "show");
         assert!(!functions[1].1);
         assert_eq!(functions[2].0, "create");
