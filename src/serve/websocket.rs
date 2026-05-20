@@ -16,7 +16,17 @@ use tokio::sync::Mutex as AsyncMutex;
 use tungstenite::Message;
 use uuid::Uuid;
 
-use crate::interpreter::value::{HashKey, HashPairs, Value};
+use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, Value};
+
+/// Convert a handler-action payload to a wire string.
+/// `Value::String` passes through; anything else is JSON-encoded so handlers
+/// can return `{"broadcast": {...}}` without manually serializing.
+fn action_payload_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.clone()),
+        other => stringify_to_string(other).ok(),
+    }
+}
 
 type ConnectionPresenceMap = HashMap<Uuid, Vec<(String, String)>>;
 
@@ -673,19 +683,13 @@ impl WebSocketHandlerAction {
                             }
                         }
                         "send" => {
-                            if let Value::String(s) = v {
-                                action.send = Some(s.clone());
-                            }
+                            action.send = action_payload_to_string(v);
                         }
                         "broadcast" => {
-                            if let Value::String(s) = v {
-                                action.broadcast = Some(s.clone());
-                            }
+                            action.broadcast = action_payload_to_string(v);
                         }
                         "broadcast_room" => {
-                            if let Value::String(s) = v {
-                                action.broadcast_room = Some(s.clone());
-                            }
+                            action.broadcast_room = action_payload_to_string(v);
                         }
                         "close" => {
                             if let Value::String(s) = v {

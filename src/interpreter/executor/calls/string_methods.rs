@@ -354,6 +354,12 @@ impl Interpreter {
                     indexmap::IndexMap::with_hasher(ahash::RandomState::new()),
                 )))),
             },
+            // Parse JSON and only return a Hash; null when the input isn't
+            // valid JSON or parses to a non-object (array, scalar, ...).
+            "to_h" => match crate::interpreter::value::parse_json(s) {
+                Ok(Value::Hash(h)) => Ok(Value::Hash(h)),
+                _ => Ok(Value::Null),
+            },
             "is_a?" => {
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));

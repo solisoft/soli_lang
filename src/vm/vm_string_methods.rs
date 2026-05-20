@@ -647,6 +647,15 @@ impl Vm {
                     indexmap::IndexMap::with_hasher(ahash::RandomState::new()),
                 )))),
             },
+            // Parse JSON and only return a Hash; null when the input isn't
+            // valid JSON or parses to a non-object (array, scalar, ...).
+            "to_h" => {
+                check_arity(0, args.len(), span)?;
+                match crate::interpreter::value::parse_json(s) {
+                    Ok(Value::Hash(h)) => Ok(Value::Hash(h)),
+                    _ => Ok(Value::Null),
+                }
+            }
             "is_a?" => {
                 check_arity(1, args.len(), span)?;
                 let class_name = match &args[0] {

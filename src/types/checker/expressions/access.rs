@@ -302,6 +302,13 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
+            "to_h" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::String),
+                    value_type: Box::new(Type::Any),
+                }),
+            }),
             // Universal methods on all types
             "class" | "inspect" => Ok(Type::Function {
                 params: vec![],

@@ -866,6 +866,39 @@
       ]
     },
     {
+      "title": "to_json",
+      "type": "method",
+      "category": "JSON",
+      "path": "/docs/builtins/json#def-to-json",
+      "signature": "value.to_json",
+      "description": "Instance-method form of JSON.stringify — works on hashes, arrays, and primitives",
+      "keywords": [
+        "json",
+        "to_json",
+        "stringify",
+        "encode",
+        "serialize",
+        "hash",
+        "array"
+      ]
+    },
+    {
+      "title": "to_h",
+      "type": "method",
+      "category": "JSON",
+      "path": "/docs/builtins/json#def-to-h",
+      "signature": "string.to_h",
+      "description": "Parse a JSON string into a hash. Returns null when the input is not a JSON object",
+      "keywords": [
+        "json",
+        "to_h",
+        "parse",
+        "decode",
+        "hash",
+        "from_json"
+      ]
+    },
+    {
       "title": "SOAP",
       "type": "class",
       "category": "SOAP",
@@ -6596,7 +6629,7 @@
       "title": "WebSocket",
       "type": "class",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket",
+      "path": "/docs/core-concepts/websockets",
       "signature": "WebSocket",
       "description": "Real-time bidirectional communication for live updates, chat, and collaborative features",
       "keywords": [
@@ -6611,7 +6644,7 @@
       "title": "ws_send",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-send",
+      "path": "/docs/core-concepts/websockets#ws_send",
       "signature": "ws_send(connection_id, message)",
       "description": "Send a message to a specific connected client",
       "keywords": [
@@ -6625,7 +6658,7 @@
       "title": "ws_broadcast",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-broadcast",
+      "path": "/docs/core-concepts/websockets#ws_broadcast",
       "signature": "ws_broadcast(message)",
       "description": "Broadcast a message to all connected clients",
       "keywords": [
@@ -6639,7 +6672,7 @@
       "title": "ws_broadcast_room",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-broadcast-room",
+      "path": "/docs/core-concepts/websockets#ws_broadcast_room",
       "signature": "ws_broadcast_room(channel, message)",
       "description": "Broadcast a message to all clients in a specific channel/room",
       "keywords": [
@@ -6654,7 +6687,7 @@
       "title": "ws_join",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-join",
+      "path": "/docs/core-concepts/websockets#ws_join",
       "signature": "ws_join(channel)",
       "description": "Join a channel/room for targeted messaging",
       "keywords": [
@@ -6668,7 +6701,7 @@
       "title": "ws_leave",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-leave",
+      "path": "/docs/core-concepts/websockets#ws_leave",
       "signature": "ws_leave(channel)",
       "description": "Leave a channel/room",
       "keywords": [
@@ -6682,7 +6715,7 @@
       "title": "ws_clients",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-clients",
+      "path": "/docs/core-concepts/websockets#ws_clients",
       "signature": "ws_clients()",
       "description": "Get list of all connected client IDs",
       "keywords": [
@@ -6695,7 +6728,7 @@
       "title": "ws_clients_in",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-clients-in",
+      "path": "/docs/core-concepts/websockets#ws_clients_in",
       "signature": "ws_clients_in(channel)",
       "description": "Get list of clients connected to a specific channel",
       "keywords": [
@@ -6709,7 +6742,7 @@
       "title": "ws_count",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-count",
+      "path": "/docs/core-concepts/websockets#ws_count",
       "signature": "ws_count()",
       "description": "Get the total number of connected clients",
       "keywords": [
@@ -6722,7 +6755,7 @@
       "title": "ws_close",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-close",
+      "path": "/docs/core-concepts/websockets#ws_close",
       "signature": "ws_close(connection_id, reason)",
       "description": "Close a specific client connection",
       "keywords": [
@@ -6735,7 +6768,7 @@
       "title": "ws_list_presence",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-list-presence",
+      "path": "/docs/core-concepts/websockets#ws_list_presence",
       "signature": "ws_list_presence(channel)",
       "description": "List all user IDs with presence in a channel",
       "keywords": [
@@ -6749,7 +6782,7 @@
       "title": "ws_presence_count",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-presence-count",
+      "path": "/docs/core-concepts/websockets#ws_presence_count",
       "signature": "ws_presence_count(channel)",
       "description": "Get the number of users with presence in a channel",
       "keywords": [
@@ -6763,7 +6796,7 @@
       "title": "ws_get_presence",
       "type": "function",
       "category": "WebSocket",
-      "path": "/docs/builtins/websocket#def-ws-get-presence",
+      "path": "/docs/core-concepts/websockets#ws_get_presence",
       "signature": "ws_get_presence(channel, user_id)",
       "description": "Get presence info for a specific user in a channel",
       "keywords": [

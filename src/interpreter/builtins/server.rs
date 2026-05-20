@@ -5,7 +5,19 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
+use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeFunction, Value};
+
+/// Coerce a WebSocket message argument to a transport string.
+/// Strings pass through unchanged; anything else is JSON-serialized. This lets
+/// handlers call `ws_send(id, { ... })` / `ws_broadcast({ ... })` without
+/// manually stringifying.
+fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> {
+    match value {
+        Value::String(s) => Ok(s.clone()),
+        other => stringify_to_string(other)
+            .map_err(|e| format!("{}() could not serialize payload to JSON: {}", fn_name, e)),
+    }
+}
 use ahash::RandomState as AHasher;
 
 /// A registered route with its handler.
@@ -1261,7 +1273,8 @@ pub fn register_websocket_builtins(env: &mut Environment) {
     // Note: The websocket() DSL function is defined in routes.sl via router_websocket()
     // WebSocket routes are registered using the DSL: websocket("/path", "controller#handler")
 
-    // ws_send(connection_id, message) - Send message to a specific client
+    // ws_send(connection_id, message) - Send message to a specific client.
+    // Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_send".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_send", Some(2), |args| {
@@ -1275,15 +1288,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                 }
             };
 
-            let message = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_send() expects string message, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let message = ws_message_to_string(&args[1], "ws_send")?;
 
             let registry = get_ws_registry();
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
@@ -1298,19 +1303,12 @@ pub fn register_websocket_builtins(env: &mut Environment) {
         })),
     );
 
-    // ws_broadcast(message) - Broadcast message to all clients
+    // ws_broadcast(message) - Broadcast message to all clients.
+    // Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_broadcast".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_broadcast", Some(1), |args| {
-            let message = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_broadcast() expects string message, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let message = ws_message_to_string(&args[0], "ws_broadcast")?;
 
             let registry = get_ws_registry();
             let registry_clone = registry.clone();
@@ -1322,7 +1320,8 @@ pub fn register_websocket_builtins(env: &mut Environment) {
         })),
     );
 
-    // ws_broadcast_room(channel, message) - Broadcast message to a channel
+    // ws_broadcast_room(channel, message) - Broadcast message to a channel.
+    // Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_broadcast_room".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_broadcast_room", Some(2), |args| {
@@ -1336,15 +1335,7 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                 }
             };
 
-            let message = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_broadcast_room() expects string message, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+            let message = ws_message_to_string(&args[1], "ws_broadcast_room")?;
 
             let registry = get_ws_registry();
             let registry_clone = registry.clone();

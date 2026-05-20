@@ -946,6 +946,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "hash",
     },
     MethodDef {
+        name: "to_h",
+        zero_arg: true,
+        ret: "hash",
+    },
+    MethodDef {
         name: "to_s",
         zero_arg: true,
         ret: "string",

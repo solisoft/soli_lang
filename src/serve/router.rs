@@ -98,6 +98,17 @@ fn extract_function_names(source: &str) -> Vec<(String, bool)> {
 
                     functions.push((func_name, has_id_param));
                 }
+            } else {
+                // Soli allows omitting `()` for no-arg functions: `fn index`.
+                // Stop at the first whitespace / `{` / `->` so we don't pull
+                // in a return-type annotation or a brace from a one-liner.
+                let func_name: String = rest
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && *c != '{')
+                    .collect();
+                if !func_name.is_empty() {
+                    functions.push((func_name, false));
+                }
             }
         }
     }
@@ -276,6 +287,58 @@ fn _helper() {
         assert_eq!(functions[0].0, "index");
         assert_eq!(functions[1].0, "show");
         assert_eq!(functions[2].0, "_helper");
+    }
+
+    #[test]
+    fn test_extract_function_names_no_parens() {
+        // Soli allows omitting `()` for zero-arg functions. The route parser
+        // must recognise this form, otherwise function-based controllers
+        // written in the idiomatic style (e.g. `fn builtins_websocket` in
+        // www/app/controllers/docs_controller.sl) silently have no actions
+        // registered and every request 500s with "Action not found".
+        let source = r#"
+fn index
+    render("home")
+end
+
+fn show
+    render("show")
+end
+
+fn create(req)
+    return {"status": 201};
+end
+"#;
+
+        let functions = extract_function_names(source);
+        assert_eq!(functions.len(), 3);
+        assert_eq!(functions[0].0, "index");
+        assert!(!functions[0].1, "no-paren form must report has_id_param=false");
+        assert_eq!(functions[1].0, "show");
+        assert!(!functions[1].1);
+        assert_eq!(functions[2].0, "create");
+    }
+
+    #[test]
+    fn test_derive_routes_no_parens() {
+        // Same scenario as test_extract_function_names_no_parens but via the
+        // higher-level entry point, to lock in the end-to-end behaviour.
+        let routes = derive_routes_from_controller(
+            "docs_controller",
+            r#"
+fn index
+    render("docs/index")
+end
+
+fn show
+    render("docs/show")
+end
+"#,
+        )
+        .unwrap();
+
+        assert!(routes.iter().any(|r| r.function_name == "index"));
+        assert!(routes.iter().any(|r| r.function_name == "show"));
     }
 
     #[test]

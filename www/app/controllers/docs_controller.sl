@@ -391,6 +391,11 @@ fn builtins_spreadsheet
     render_docs("docs/builtins/spreadsheet", "Spreadsheet Functions", "builtins", "spreadsheet")
 end
 
+# /docs/builtins/websocket merged into /docs/core-concepts/websockets
+fn builtins_websocket
+    redirect("/docs/core-concepts/websockets")
+end
+
 # ============================================================================
 # Utility
 # ============================================================================

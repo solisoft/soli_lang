@@ -86,25 +86,59 @@
             <div>
                 <h3 class="flex items-center gap-2 text-lg font-semibold text-white mb-4">
                     <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/20 text-purple-400">2</span>
-                    Handle Events
+                    Handle Events with Server-Side Helpers
                 </h3>
+                <p class="text-sm text-gray-400 mb-4">
+                    Instead of returning <code class="text-pink-300">{"broadcast": ...}</code>, call the
+                    <code class="text-pink-300">ws_*</code> helpers imperatively. Mix sends, broadcasts, and
+                    other logic in one handler.
+                </p>
                 <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl">
                     <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
                         <span class="text-xs text-gray-400 font-mono">app/controllers/websocket_controller.sl</span>
                     </div>
                     <div class="p-4 overflow-x-auto">
-                        <pre><code class="language-soli text-sm"><span class="text-purple-400">def</span> <span class="text-blue-400">chat_handler</span>(event) {
-  <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"message"</span> {
-    <span class="text-comment text-gray-500"># Broadcast to all clients</span>
-    <span class="text-purple-400">return</span> { <span class="text-green-400">"broadcast"</span>: event[<span class="text-green-400">"message"</span>] };
-  }
-}</code></pre>
+                        <pre><code class="language-soli text-sm"><span class="text-purple-400">def</span> <span class="text-blue-400">chat_handler</span>(event)
+  conn_id = event[<span class="text-green-400">"connection_id"</span>]
+
+  <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"connect"</span>
+    <span class="text-gray-500"># Greet just the new connection</span>
+    <span class="text-yellow-300">ws_send</span>(conn_id, { <span class="text-green-400">"type"</span>: <span class="text-green-400">"welcome"</span>, <span class="text-green-400">"id"</span>: conn_id })
+    <span class="text-gray-500"># Tell everyone else (hash is auto-JSON-serialized)</span>
+    <span class="text-yellow-300">ws_broadcast</span>({ <span class="text-green-400">"type"</span>: <span class="text-green-400">"join"</span>, <span class="text-green-400">"user"</span>: conn_id })
+    <span class="text-purple-400">return</span> {}
+  <span class="text-purple-400">end</span>
+
+  <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"message"</span>
+    data = event[<span class="text-green-400">"message"</span>].<span class="text-pink-300">to_h</span>
+    <span class="text-yellow-300">ws_broadcast</span>({
+      <span class="text-green-400">"type"</span>: <span class="text-green-400">"message"</span>,
+      <span class="text-green-400">"text"</span>: data[<span class="text-green-400">"text"</span>],
+      <span class="text-green-400">"from"</span>: conn_id
+    })
+    <span class="text-purple-400">return</span> {}
+  <span class="text-purple-400">end</span>
+
+  {}
+<span class="text-purple-400">end</span></code></pre>
                     </div>
                 </div>
             </div>
 
+            <div class="rounded-xl bg-indigo-500/10 ring-1 ring-indigo-500/20 p-5">
+                <h4 class="text-sm font-semibold text-indigo-300 mb-2">Helpers used on this page</h4>
+                <ul class="text-sm text-indigo-100/80 space-y-1.5">
+                    <li><code class="text-yellow-300">ws_send(conn_id, msg)</code> — reply to a single connection</li>
+                    <li><code class="text-yellow-300">ws_broadcast(msg)</code> — fan out to every connected client</li>
+                </ul>
+                <p class="text-xs text-indigo-200/60 mt-3">
+                    Other helpers available: <code>ws_broadcast_room</code>, <code>ws_close</code>,
+                    <code>ws_list_presence</code>, <code>ws_presence_count</code>, <code>ws_get_presence</code>.
+                </p>
+            </div>
+
             <div class="pt-4">
-                <a href="/docs/websockets" class="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+                <a href="/docs/core-concepts/websockets#server-functions" class="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
                     Read the full documentation
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
@@ -161,14 +195,22 @@ function connect() {
         try {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'join') {
-                addSystemMessage('New user joined the session');
+            if (data.type === 'welcome') {
+                connectionId = data.id;
+                document.getElementById('connection-id').textContent = 'ID: ' + data.id.slice(0, 8);
+            } else if (data.type === 'join') {
+                if (data.user !== connectionId) {
+                    addSystemMessage('New user joined the session');
+                }
             } else if (data.type === 'leave') {
-                addSystemMessage('User left the session');
+                if (data.user !== connectionId) {
+                    addSystemMessage('User left the session');
+                }
             } else if (data.type === 'message') {
-                // Determine if it's my message (simplified for demo)
-                // In a real app, we'd check user ID
-                addMessage(data.text, 'others');
+                // The sender already rendered their own message optimistically.
+                if (data.from !== connectionId) {
+                    addMessage(data.text, 'others');
+                }
             } else {
                 addMessage(event.data, 'others');
             }

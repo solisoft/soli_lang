@@ -1,40 +1,41 @@
-# WebSocket controller - handles WebSocket demo
+# WebSocket demo controller.
+#
+# Showcases the *server-side helper functions* — `ws_send`, `ws_broadcast` —
+# instead of the return-action pattern. The handler returns {} every time and
+# dispatches messages imperatively. This is the preferred style when you need
+# conditional sends, multiple targets, or non-WebSocket logic mixed in.
+#
+# `ws_send` and `ws_broadcast` accept a hash directly and JSON-serialize it
+# automatically, so no `.to_json` or `JSON.stringify` is needed.
+def chat_handler(event)
+  conn_id = event["connection_id"]
 
-# WebSocket handler - receives events: {type, connection_id, message?, channel?}
-# Returns: {broadcast: "msg"} to broadcast to all, {send: "msg"} to reply to sender
-fn chat_handler(event)
-    let event_type = event["type"]
-    let connection_id = event["connection_id"]
+  if event["type"] == "connect"
+    # Greet just this new connection.
+    ws_send(conn_id, { "type": "welcome", "id": conn_id })
+    # And tell everyone else someone joined.
+    ws_broadcast({ "type": "join", "user": conn_id })
+    return {}
+  end
 
-    if (event_type == "connect")
-        return {
-            "broadcast": "{\"type\":\"join\",\"user\":\"" + connection_id + "\"}",
-            "send": "{\"type\":\"welcome\",\"id\":\"" + connection_id + "\"}"
-        }
-    end
+  if event["type"] == "disconnect"
+    ws_broadcast({ "type": "leave", "user": conn_id })
+    return {}
+  end
 
-    if (event_type == "disconnect")
-        return {
-            "broadcast": "{\"type\":\"leave\",\"user\":\"" + connection_id + "\"}"
-        }
-    end
+  if event["type"] == "message"
+    data = event["message"].to_h
+    ws_broadcast({
+      "type": "message",
+      "text": data["text"],
+      "from": conn_id
+    })
+    return {}
+  end
 
-    if (event_type == "message")
-        let message = event["message"]
-        let parsed = json_parse(message)
-        let text = parsed["text"]
-        # Use "send" for echo (single client) instead of "broadcast" (all clients)
-        return {
-            "send": "{\"type\":\"echo\",\"text\":\"" + text + "\"}"
-        }
-    end
-
-    {}
+  {}
 end
 
-# Page to display the WebSocket demo
-fn demo
-    render("websocket/demo", {
-        "title": "WebSocket Demo"
-    })
+def demo
+  render("websocket/demo", { "title": "WebSocket Demo" })
 end

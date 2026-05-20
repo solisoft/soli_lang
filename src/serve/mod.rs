@@ -3729,15 +3729,29 @@ fn call_handler(
 
     let handler_result = crate::interpreter::builtins::router::resolve_handler(handler_name, None);
 
+    // Handlers may be declared as either `fn name(req)` or, more idiomatically
+    // for read-only actions, `fn name` with no parameters (they read `req`
+    // via the request-time global). Match the call arity to the declaration
+    // so the latter form doesn't trip the runtime arity check.
+    let handler_wants_request = match &handler_result {
+        Ok(Value::Function(f)) => f.full_arity() > 0,
+        _ => true,
+    };
+
     // Try VM execution in production mode for function-based handlers
     if let Some(ref mut vm) = vm {
         if !vm.failed_handlers.contains(handler_name) {
             if let Ok(ref handler_value) = handler_result {
-                match vm.call_value_direct_one(
-                    handler_value.clone(),
-                    request_hash.clone(),
-                    Span::default(),
-                ) {
+                let call_result = if handler_wants_request {
+                    vm.call_value_direct_one(
+                        handler_value.clone(),
+                        request_hash.clone(),
+                        Span::default(),
+                    )
+                } else {
+                    vm.call_value_direct(handler_value.clone(), Vec::new(), Span::default())
+                };
+                match call_result {
                     Ok(result) => {
                         vm.reset();
                         let (status, headers, body) = extract_response(result);
@@ -3761,7 +3775,12 @@ fn call_handler(
 
     match handler_result {
         Ok(handler_value) => {
-            match interpreter.call_value(handler_value, vec![request_hash], Span::default()) {
+            let args = if handler_wants_request {
+                vec![request_hash]
+            } else {
+                Vec::new()
+            };
+            match interpreter.call_value(handler_value, args, Span::default()) {
                 Ok(result) => {
                     interpreter.pop_frame();
                     let (status, headers, body) = extract_response(result);
