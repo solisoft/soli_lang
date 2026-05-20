@@ -233,6 +233,23 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         })),
     );
 
+    // const_get(name) - Resolve a string name to its value (class, function, variable, etc.)
+    env.define(
+        "const_get".to_string(),
+        Value::NativeFunction(NativeFunction::new("const_get", Some(1), |args| {
+            let name = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "const_get() expects a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(crate::interpreter::executor::current_env_lookup(&name).unwrap_or(Value::Null))
+        })),
+    );
+
     // ===== Universal collection functions =====
 
     // len(array|string|hash) - Get length (auto-resolves Futures)

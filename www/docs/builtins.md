@@ -115,6 +115,28 @@ fn check(val) {
 }
 ```
 
+#### const_get(name)
+
+Resolves a string name to its value in the current scope chain. Returns the value (class, function, variable, etc.) if defined, or `null` otherwise.
+
+Useful for dynamic dispatch — e.g., converting a string like `"DemoUser"` into the actual `DemoUser` class.
+
+**Parameters:**
+- `name` (String) - The name to look up
+
+**Returns:** Any or `null`
+
+**Example:**
+```soli
+class DemoUser { }
+
+let cls = const_get("DemoUser");
+cls.new();                   # Creates a DemoUser instance
+
+let not_found = const_get("NonExistent");
+assert_null(not_found);
+```
+
 #### str(value)
 
 Converts a value to a string.

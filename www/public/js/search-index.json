@@ -102,6 +102,22 @@
       ]
     },
     {
+      "title": "const_get",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/builtins/core#def-const-get",
+      "signature": "const_get(name)",
+      "description": "Resolves a string name to its value (class, function, variable, etc.) in the current scope chain. Returns null if not found.",
+      "keywords": [
+        "constant",
+        "lookup",
+        "resolve",
+        "class",
+        "reflection",
+        "dynamic dispatch"
+      ]
+    },
+    {
       "title": "str",
       "type": "function",
       "category": "Core",
