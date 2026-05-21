@@ -570,17 +570,26 @@ fn extract_all_action_specific_function_sources(
     results
 }
 
-/// Find matching brace position (assumes starting at opening brace)
+/// Find matching brace position (assumes starting at opening brace).
+///
+/// Returns a **byte** offset into `s` so the result can be used directly in
+/// `&s[..pos + 1]` slicing. `char_indices()` yields the byte position of each
+/// char's first byte, which is what we need: with multi-byte sequences in
+/// string literals (e.g. `"Accès refusé"`), a char-index–based result would
+/// truncate the extracted handler before its closing `}`, leaving the parser
+/// to fail with `Unexpected token 'EOF', expected }`.
 fn find_matching_brace(s: &str) -> Option<usize> {
     let mut depth = 0;
     let mut in_string = false;
     let mut string_char = ' ';
+    let mut prev_char = '\0';
 
-    for (i, c) in s.chars().enumerate() {
+    for (i, c) in s.char_indices() {
         if in_string {
-            if c == string_char && s.chars().nth(i.wrapping_sub(1)) != Some('\\') {
+            if c == string_char && prev_char != '\\' {
                 in_string = false;
             }
+            prev_char = c;
             continue;
         }
 
@@ -598,6 +607,7 @@ fn find_matching_brace(s: &str) -> Option<usize> {
             }
             _ => {}
         }
+        prev_char = c;
     }
     None
 }

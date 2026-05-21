@@ -74,6 +74,59 @@ thread_local! {
     static CURRENT_REQUEST: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
+// Closure environment shared by every view helper loaded from app/helpers/*.sl.
+// `load_view_helpers` builds it once with builtins + sibling helpers and stashes
+// the Rc here so the request lifecycle can re-bind request-scoped names
+// (`req`, `params`, `session`, `cookies`, `headers`, `flash`) on it before
+// rendering. Without this rebinding, a helper that references `req["current_user"]`
+// throws "Undefined variable" because builtins-only env never had those names.
+thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
+    static VIEW_HELPER_ENV: RefCell<Option<Rc<RefCell<Environment>>>> = const { RefCell::new(None) };
+}
+
+/// Bind request-scoped names onto the view helpers' shared closure env so user
+/// helpers (`app/helpers/*.sl`) can read `req`, `params`, etc. directly.
+///
+/// Called from the request lifecycle (`setup_controller_context` for OOP
+/// controllers and `call_handler` for function-based handlers) so the bindings
+/// reflect any mutations already applied by middleware (e.g. `req["current_user"]`).
+/// Safe to call before helpers are loaded — it's a no-op until then.
+pub fn set_helper_request_context(
+    req: &Value,
+    params: &Value,
+    session: &Value,
+    cookies: &Value,
+    headers: &Value,
+) {
+    VIEW_HELPER_ENV.with(|cell| {
+        if let Some(env_rc) = cell.borrow().as_ref() {
+            let mut env = env_rc.borrow_mut();
+            env.define_or_update("req", req.clone());
+            env.define_or_update("params", params.clone());
+            env.define_or_update("session", session.clone());
+            env.define_or_update("cookies", cookies.clone());
+            env.define_or_update("headers", headers.clone());
+        }
+    });
+}
+
+/// Clear request-scoped bindings from the helper env. Called on request exit
+/// (or interpreter teardown) so a stale request's `req` doesn't bleed into the
+/// next one if helpers happen to be re-entered outside a request scope.
+pub fn clear_helper_request_context() {
+    VIEW_HELPER_ENV.with(|cell| {
+        if let Some(env_rc) = cell.borrow().as_ref() {
+            let mut env = env_rc.borrow_mut();
+            env.define_or_update("req", Value::Null);
+            env.define_or_update("params", Value::Null);
+            env.define_or_update("session", Value::Null);
+            env.define_or_update("cookies", Value::Null);
+            env.define_or_update("headers", Value::Null);
+        }
+    });
+}
+
 /// Set the current request context (called before template rendering).
 pub fn set_current_request(req: Value) {
     CURRENT_REQUEST.with(|ctx| *ctx.borrow_mut() = Some(req));
@@ -182,6 +235,12 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         for (name, value) in helpers_map.iter() {
             helper_env.borrow_mut().define(name.clone(), value.clone());
         }
+    });
+
+    // Stash the env so the request lifecycle can rebind `req`/`params`/etc.
+    // on it (see `set_helper_request_context`).
+    VIEW_HELPER_ENV.with(|cell| {
+        *cell.borrow_mut() = Some(helper_env);
     });
 
     Ok(count)

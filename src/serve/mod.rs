@@ -3712,7 +3712,9 @@ fn call_handler(
         .borrow_mut()
         .define_or_update("params", params_value.clone());
     if let Some(vm_ref) = vm.as_deref_mut() {
-        vm_ref.globals.insert("params".to_string(), params_value);
+        vm_ref
+            .globals
+            .insert("params".to_string(), params_value.clone());
     }
 
     // Expose parsed cookies as global `cookies` so handlers/view can reference
@@ -3724,7 +3726,9 @@ fn call_handler(
         .borrow_mut()
         .define_or_update("cookies", cookies_value.clone());
     if let Some(vm_ref) = vm.as_deref_mut() {
-        vm_ref.globals.insert("cookies".to_string(), cookies_value);
+        vm_ref
+            .globals
+            .insert("cookies".to_string(), cookies_value.clone());
     }
 
     // Expose the full request hash as a global `req` so actions can omit the
@@ -3738,6 +3742,22 @@ fn call_handler(
             .globals
             .insert("req".to_string(), request_hash.clone());
     }
+
+    // Rebind request-scoped names on the view helpers' closure env so user
+    // helpers in `app/helpers/*.sl` see the *post-middleware* request — e.g.
+    // a `current_user()` helper that reads `req["current_user"]` set by
+    // `app/middleware/auth.sl`. Without this, helpers see only the env they
+    // closed over at load time (builtins + sibling helpers) and `req` is
+    // undefined.
+    let session_value = get_hash_field(&request_hash, "session").unwrap_or(Value::Null);
+    let headers_value = get_hash_field(&request_hash, "headers").unwrap_or(Value::Null);
+    crate::interpreter::builtins::template::set_helper_request_context(
+        &request_hash,
+        &params_value,
+        &session_value,
+        &cookies_value,
+        &headers_value,
+    );
 
     // Check if this is an OOP controller action (contains #)
     if handler_name.contains('#') {
@@ -4109,26 +4129,27 @@ fn call_oop_controller_action(
         request_hash,
     );
 
+    // If the action succeeded but its return value isn't a response hash, try the
+    // auto-render path. A template-not-found falls through to raw value serialization;
+    // a real render error (e.g. `<%= 3 / 0 %>` in the view or layout) gets promoted
+    // into the same RuntimeError pipeline as an action that itself raised — so the
+    // user sees a 500/dev error page instead of a blank 200.
+    let action_result = match action_result {
+        Ok(result) if !is_response_hash(&result) => {
+            let (controller_key, _) =
+                handler_name.split_once('#').unwrap_or((handler_name, ""));
+            let default_template = format!("{}/{}", controller_key, action_name);
+            match try_render_template(interpreter, &controller_instance, &default_template) {
+                Ok(Some(auto_result)) => Ok(auto_result),
+                Ok(None) => Ok(result),
+                Err(msg) => Err(RuntimeError::new(msg, Span::new(0, 0, 1, 1))),
+            }
+        }
+        other => other,
+    };
+
     let response = match action_result {
         Ok(result) => {
-            // Auto-render the default view template when the action doesn't
-            // return a response hash (no explicit render/redirect call).
-            // e.g. PostsController#show renders "posts/show" automatically.
-            if !is_response_hash(&result) {
-                let (controller_key, _) =
-                    handler_name.split_once('#').unwrap_or((handler_name, ""));
-                let default_template = format!("{}/{}", controller_key, action_name);
-                if let Some(auto_result) =
-                    try_render_template(interpreter, &controller_instance, &default_template)
-                {
-                    let (status, resp_headers, body) = extract_response(auto_result);
-                    return Some(ResponseData {
-                        status,
-                        headers: resp_headers,
-                        body,
-                    });
-                }
-            }
             let (status, resp_headers, body) = extract_response(result);
             ResponseData {
                 status,
@@ -4611,12 +4632,17 @@ fn is_response_hash(value: &Value) -> bool {
 }
 
 /// Auto-render the default template for an action when no explicit render/redirect was called.
-/// Returns None if the template cannot be rendered (falls through to raw value serialization).
+/// Returns:
+///   * `Ok(Some(value))` — template rendered successfully.
+///   * `Ok(None)` — template file doesn't exist; caller should fall through to raw value serialization.
+///   * `Err(msg)` — template exists but rendering raised an error (e.g. `<%= 3 / 0 %>` in the
+///     view or its layout). The caller must surface this as a 500 / dev error page rather than
+///     silently returning a blank 200.
 fn try_render_template(
     interpreter: &mut Interpreter,
     controller_instance: &Value,
     template_name: &str,
-) -> Option<Value> {
+) -> Result<Option<Value>, String> {
     use crate::interpreter::builtins::template::get_template_cache;
 
     // Build data hash from controller instance fields and params
@@ -4641,7 +4667,7 @@ fn try_render_template(
     // Get template cache and render
     let cache = match get_template_cache() {
         Ok(c) => c,
-        Err(_) => return None,
+        Err(_) => return Ok(None),
     };
 
     // Inject req context, controller vars, helpers (same as render() builtin)
@@ -4652,7 +4678,17 @@ fn try_render_template(
     // Render template — returns full HTML string
     let body = match cache.render(template_name, &data, None) {
         Ok(html) => html,
-        Err(_) => return None,
+        Err(e) => {
+            // The only legitimate fall-through case is "the top-level view file
+            // for this action doesn't exist" — the action returned a raw value
+            // and there's no matching view. A nested partial or layout that
+            // can't be resolved is a real bug and must surface, not blank-page.
+            let top_level_missing = format!("Template '{}' not found", template_name);
+            if e.starts_with(&top_level_missing) {
+                return Ok(None);
+            }
+            return Err(e);
+        }
     };
 
     // Build response hash
@@ -4671,7 +4707,7 @@ fn try_render_template(
     );
     response_pairs.insert(HashKey::String("body".to_string()), Value::String(body));
 
-    Some(Value::Hash(Rc::new(RefCell::new(response_pairs))))
+    Ok(Some(Value::Hash(Rc::new(RefCell::new(response_pairs)))))
 }
 
 /// Extract response from a value returned by after action.
