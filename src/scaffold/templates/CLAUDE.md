@@ -40,6 +40,9 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 | `import "../models/post.sl"` in controller | nothing — already auto-loaded              | Triggers `style/redundant-model-import` lint.                                |
 | Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
 | Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |
+| `if x == nil \|\| x == ""`                 | `if x.blank?`                              | `.blank?` covers both nil and empty string in one call.                      |
+| `if s != "a" && s != "b" && s != "c"`      | `unless ["a", "b", "c"].includes?(s)`      | Intent is membership check, not a pile of `&&`.                              |
+| `x = x \|\| default`                       | `x \|\|= default`                          | `\|\|=` is a single operator for "set if nil/false".                         |
 
 ## Recipes
 
@@ -174,6 +177,13 @@ let label = match value {
 # Postfix conditionals (idiomatic)
 print("adult") if age >= 18
 let data = fetch() rescue null     # returns null if fetch() throws
+
+# Concise defaults and guards
+this.balance ||= 0                 # ||= sets when nil/false
+this.email = this.email.trim().downcase() unless this.email.blank?  # .blank? covers nil + ""
+unless ["up", "late", "overdue"].includes?(this.status)              # membership check
+    add_error("invalid status")
+end
 ```
 
 ## Routes (`config/routes.sl`)
@@ -493,4 +503,7 @@ soli lint                             # static analysis
 6. **Use named route helpers** (`posts_path`, `root_path`) — never hand-built URL strings.
 7. **Validate at the model**, not in the controller — keep controllers thin.
 8. **Return errors early** — don't pile `if`s; bail with a 422/redirect at the first invalid branch.
-9. **Test new features to >90% coverage** — non-negotiable, see above.
+9. **Use `.blank?` for nil/empty checks** — replaces `x == nil || x == ""`.
+10. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
+11. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
+12. **Test new features to >90% coverage** — non-negotiable, see above.

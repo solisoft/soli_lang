@@ -179,7 +179,38 @@ let data = fetch_data() rescue null;
 
 7. **Use pipelines** - For readable data transformation chains
 
-8. **Use intelligible variable names** - No single-letter or cryptic short names. The name should make the intent obvious without having to scan back for the assignment.
+8. **Use concise defaults and guards** - Prefer idiomatic short forms over verbose nil/empty checks
+   ```soli
+   # .blank? combines nil and empty-string into one check
+   this.email = this.email.trim().downcase() unless this.email.blank?
+   this.status = "up" if this.status.blank?
+   this.initials = this.initials_from(this.name) if this.initials.blank?
+
+   # ||= for falsey defaults (handles nil and false)
+   this.balance ||= 0
+   this.is_council ||= false
+
+   # || for inline defaults in expressions
+   let name = params["name"] || "Guest"
+   let timeout = config["timeout"] || 30
+   ```
+
+9. **Use `.includes?` for membership checks** - More readable than chained `||` comparisons
+   ```soli
+   # Instead of: if s != "a" && s != "b" && s != "c"
+   unless ["up", "late", "overdue"].includes?(this.status)
+       this._errors = this._errors ?? []
+       this._errors.push({"field": "status", "message": "invalid"})
+       return false
+   end
+
+   # Positive check reads naturally too
+   if ["admin", "moderator"].includes?(role)
+       grant_access()
+   end
+   ```
+
+10. **Use intelligible variable names** - No single-letter or cryptic short names. The name should make the intent obvious without having to scan back for the assignment.
    ```soli
    # Bad — what is p? r? pg? qb?
    let p = params
