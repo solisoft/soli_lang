@@ -131,6 +131,100 @@ describe("DateTime Instance Methods", fn() {
     });
 });
 
+describe("DateTime Boundary Methods", fn() {
+    test("beginning_of_minute truncates seconds and subseconds", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let bm = dt.beginning_of_minute();
+        let em = dt.end_of_minute();
+        assert(bm <= dt);
+        assert(dt <= em);
+        assert_eq(bm.second(), 0);
+        assert_eq(em.second(), 59);
+    });
+
+    test("beginning_of_hour zeroes minutes and below", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let bh = dt.beginning_of_hour();
+        let eh = dt.end_of_hour();
+        assert(bh <= dt);
+        assert(dt <= eh);
+        assert_eq(bh.second(), 0);
+        assert_eq(eh.second(), 59);
+    });
+
+    test("beginning_of_day zeroes time", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let bd = dt.beginning_of_day();
+        let ed = dt.end_of_day();
+        assert(bd <= dt);
+        assert(dt <= ed);
+        assert_eq(bd.second(), 0);
+        assert_eq(ed.second(), 59);
+        assert_eq(bd.day(), dt.day());
+        assert_eq(ed.day(), dt.day());
+    });
+
+    test("beginning_of_month returns day 1 with zero time within same month", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let bm = dt.beginning_of_month();
+        let em = dt.end_of_month();
+        assert(bm <= dt);
+        assert(dt <= em);
+        assert_eq(bm.month(), dt.month());
+        assert_eq(bm.day(), 1);
+        assert_eq(bm.second(), 0);
+        assert_eq(em.month(), dt.month());
+        assert(em.day() >= 28);
+        assert_eq(em.second(), 59);
+    });
+
+    test("beginning_of_year returns Jan 1 with zero time", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let by = dt.beginning_of_year();
+        let ey = dt.end_of_year();
+        assert(by <= dt);
+        assert(dt <= ey);
+        assert_eq(by.year(), dt.year());
+        assert_eq(by.month(), 1);
+        assert_eq(by.day(), 1);
+        assert_eq(by.second(), 0);
+        assert_eq(ey.year(), dt.year());
+        assert_eq(ey.month(), 12);
+        assert_eq(ey.day(), 31);
+        assert_eq(ey.second(), 59);
+    });
+
+    test("boundary methods do not mutate original", fn() {
+        let dt = DateTime.parse("2024-06-15T10:30:45Z");
+        let original_unix = dt.to_unix();
+        let _boundary = dt.beginning_of_day();
+        assert_eq(dt.to_unix(), original_unix);
+        let _boundary2 = dt.beginning_of_month();
+        assert_eq(dt.to_unix(), original_unix);
+    });
+
+    test("end_of_month handles December", fn() {
+        let dt = DateTime.parse("2024-12-15T10:30:45Z");
+        let boundary = dt.end_of_month();
+        assert_eq(boundary.month(), 12);
+        assert_eq(boundary.day(), 31);
+    });
+
+    test("end_of_month handles February in leap year", fn() {
+        let dt = DateTime.parse("2024-02-15T10:30:45Z");
+        let boundary = dt.end_of_month();
+        assert_eq(boundary.month(), 2);
+        assert_eq(boundary.day(), 29);
+    });
+
+    test("end_of_month handles February in non-leap year", fn() {
+        let dt = DateTime.parse("2023-02-15T10:30:45Z");
+        let boundary = dt.end_of_month();
+        assert_eq(boundary.month(), 2);
+        assert_eq(boundary.day(), 28);
+    });
+});
+
 describe("DateTime Individual Accessors", fn() {
     test("year() returns correct year", fn() {
         let dt = DateTime.parse("2024-06-15T10:30:00Z");

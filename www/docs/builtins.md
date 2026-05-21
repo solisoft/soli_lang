@@ -2023,6 +2023,88 @@ Adds years to the date. Use negative values to subtract.
 
 **Returns:** DateTime - A new DateTime instance
 
+### Instance Methods - Boundaries
+
+#### .beginning_of_minute()
+
+Truncates seconds and sub-seconds to zero, keeping the same minute.
+
+**Returns:** DateTime - A new DateTime instance
+
+**Example:**
+```soli
+dt = DateTime.parse("2024-06-15T10:30:45.123Z")
+dt.beginning_of_minute().to_iso()  # "2024-06-15T10:30:00.000Z" (approximately)
+```
+
+#### .end_of_minute()
+
+Sets seconds to 59 and milliseconds to 999, keeping the same minute.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .beginning_of_hour()
+
+Sets minutes, seconds, and sub-seconds to zero, keeping the same hour.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .end_of_hour()
+
+Sets minutes to 59, seconds to 59, and milliseconds to 999, keeping the same hour.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .beginning_of_day()
+
+Sets hours, minutes, seconds, and sub-seconds to zero, keeping the same day.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .end_of_day()
+
+Sets the time to 23:59:59.999, keeping the same day.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .beginning_of_month()
+
+Sets the day to 1 and time to 00:00:00.000, keeping the same month and year.
+
+**Returns:** DateTime - A new DateTime instance
+
+**Example:**
+```soli
+dt = DateTime.parse("2024-06-15T10:30:45Z")
+dt.beginning_of_month().day()    # 1
+dt.beginning_of_month().hour()   # 0
+```
+
+#### .end_of_month()
+
+Sets the date to the last day of the month and time to 23:59:59.999, keeping the same month and year.
+
+**Returns:** DateTime - A new DateTime instance
+
+**Example:**
+```soli
+dt = DateTime.parse("2024-06-15T10:30:45Z")
+dt.end_of_month().day()    # 30
+dt.end_of_month().hour()   # 23
+```
+
+#### .beginning_of_year()
+
+Sets the date to January 1st and time to 00:00:00.000, keeping the same year.
+
+**Returns:** DateTime - A new DateTime instance
+
+#### .end_of_year()
+
+Sets the date to December 31st and time to 23:59:59.999, keeping the same year.
+
+**Returns:** DateTime - A new DateTime instance
+
 ### Comparison
 
 Two `DateTime` instances can be compared with the standard operators (`<`,

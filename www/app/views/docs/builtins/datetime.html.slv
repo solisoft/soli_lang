@@ -476,6 +476,177 @@ next_year = today.add_years(1)</code></pre>
         </section>
     </section>
 
+    <!-- Boundaries -->
+    <section id="section-boundaries" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Boundaries</h2>
+
+        <section id="def-beginning-of-minute" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-beginning-of-minute" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.beginning_of_minute()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Truncate seconds and sub-seconds to zero, keeping the same minute.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-end-of-minute" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-end-of-minute" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.end_of_minute()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set seconds to 59 and milliseconds to 999, keeping the same minute.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-beginning-of-hour" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-beginning-of-hour" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.beginning_of_hour()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set minutes, seconds, and sub-seconds to zero, keeping the same hour.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-end-of-hour" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-end-of-hour" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.end_of_hour()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set minutes to 59, seconds to 59, and milliseconds to 999, keeping the same hour.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-beginning-of-day" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-beginning-of-day" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.beginning_of_day()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set hours, minutes, seconds, and sub-seconds to zero, keeping the same day.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-end-of-day" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-end-of-day" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.end_of_day()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the time to 23:59:59.999, keeping the same day.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-beginning-of-month" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-beginning-of-month" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.beginning_of_month()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the day to 1 and time to 00:00:00.000, keeping the same month and year.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-06-15T10:30:45Z")
+dt.beginning_of_month().day()    # 1
+dt.beginning_of_month().hour()   # 0</code></pre>
+            </div>
+        </section>
+
+        <section id="def-end-of-month" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-end-of-month" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.end_of_month()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the date to the last day of the month and time to 23:59:59.999, keeping the same month and year.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-06-15T10:30:45Z")
+dt.end_of_month().day()    # 30
+dt.end_of_month().hour()   # 23</code></pre>
+            </div>
+        </section>
+
+        <section id="def-beginning-of-year" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-beginning-of-year" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.beginning_of_year()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the date to January 1st and time to 00:00:00.000, keeping the same year.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+
+        <section id="def-end-of-year" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-end-of-year" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">.end_of_year()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Set the date to December 31st and time to 23:59:59.999, keeping the same year.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">DateTime</code> - A new DateTime instance
+                </div>
+            </div>
+        </section>
+    </section>
+
     <!-- Comparison -->
     <section id="section-comparison" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Comparison</h2>
