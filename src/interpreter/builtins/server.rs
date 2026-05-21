@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::interpreter::builtins::session::parse_cookies_from_header;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeFunction, Value};
 
@@ -815,6 +816,7 @@ struct RequestHashKeys {
     /// SEC-030: actual TCP peer IP (no port). Always populated when the
     /// request comes from the HTTP server.
     remote_addr: HashKey,
+    cookies: HashKey,
 }
 
 thread_local! {
@@ -830,6 +832,7 @@ thread_local! {
         files: HashKey::String("files".to_string()),
         all: HashKey::String("all".to_string()),
         remote_addr: HashKey::String("remote_addr".to_string()),
+        cookies: HashKey::String("cookies".to_string()),
     };
 }
 
@@ -953,6 +956,22 @@ pub fn build_request_hash_with_parsed(
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
+    // Parse cookies from the Cookie header before headers are consumed.
+    // The cookie header name is lowercased by the HTTP parser.
+    let raw_cookie = headers.get("cookie").map(|s| s.as_str());
+    let parsed_cookies = parse_cookies_from_header(raw_cookie);
+    let cookies_value = if parsed_cookies.is_empty() {
+        // Always set a default empty hash, never Null, so callers can safely
+        // index into it.
+        Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    } else {
+        let mut map = HashPairs::with_capacity_and_hasher(parsed_cookies.len(), AHasher::default());
+        for (k, v) in parsed_cookies {
+            map.insert(HashKey::String(k), Value::String(v));
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    };
+
     let header_value = if headers.is_empty() {
         None
     } else {
@@ -1000,7 +1019,8 @@ pub fn build_request_hash_with_parsed(
     // (missing keys return Null on access via StrKey lookup)
     let request_pairs: HashPairs = REQUEST_KEYS.with(|keys| {
         // Count how many fields we'll actually insert
-        let capacity = 2 // method + path are always present
+        // cookies is always present (defaults to empty hash)
+        let capacity = 3 // method + path + cookies are always present
             + if params_value.is_some() { 1 } else { 0 }
             + if query_value.is_some() { 1 } else { 0 }
             + if header_value.is_some() { 1 } else { 0 }
@@ -1040,6 +1060,7 @@ pub fn build_request_hash_with_parsed(
         if !peer_ip.is_empty() {
             map.insert(keys.remote_addr.clone(), Value::String(peer_ip.to_string()));
         }
+        map.insert(keys.cookies.clone(), cookies_value);
         map
     });
 

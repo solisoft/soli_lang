@@ -317,6 +317,19 @@ describe("Feature Name", fn() {
 });
 ```
 
+## Cookies
+
+Soli exposes parsed cookies from the `Cookie` header as a global `cookies` hash, defaulting to `{}`.
+
+### Cookies Functions
+```soli
+cookies["theme"];                // Read a cookie (bracket access)
+cookies.theme;                   // Read a cookie (dot access)
+set_cookie("name", "value");     // Set a response cookie (Set-Cookie header)
+```
+
+Use `set_cookie` in controllers and middleware to write response cookies. The cookie is emitted with `Path=/`.
+
 ## Session Storage
 
 Soli provides session management with pluggable storage backends.

@@ -152,7 +152,7 @@ clear_authorization();
 Manage cookies for session-based authentication testing:
 
 ```soli
-set_cookie("session_id", "abc123session");
+set_request_cookie("session_id", "abc123session");
 response = get("/dashboard");
 clear_cookies();
 ```
@@ -618,7 +618,7 @@ describe("Request Headers", fn()
   end)
 
   test("cookies persist across requests", fn()
-    set_cookie("session_id", "session-abc-123")
+    set_request_cookie("session_id", "session-abc-123")
     
     response = get("/dashboard")
     data = res_json(response)

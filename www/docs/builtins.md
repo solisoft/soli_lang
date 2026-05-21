@@ -2492,6 +2492,40 @@ Gets the current session ID.
 
 ---
 
+## Cookies
+
+Cookies are automatically parsed from the `Cookie` header and exposed as a global `cookies` hash, defaulting to `{}` when no cookies are present.
+
+### cookies
+
+Global hash of parsed cookies. Available in controllers, middleware, and views.
+
+**Type:** Hash
+
+**Example:**
+```soli
+theme = cookies["theme"] or "light"
+session_id = cookies.session_id
+```
+
+### set_cookie(name, value)
+
+Sets a response cookie that is sent to the client as a `Set-Cookie` header with `Path=/`.
+
+**Parameters:**
+- `name` (String) - Cookie name
+- `value` (String) - Cookie value
+
+**Returns:** null
+
+**Example:**
+```soli
+set_cookie("session_id", "abc123")
+set_cookie("theme", "dark")
+```
+
+---
+
 ## Background Jobs and Cron
 
 Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/jobs/{name}_job.sl` (`class {Name}Job` with a `static fn perform(args: Hash)`), then enqueue or schedule it. Full guide: [jobs.md](jobs.md).

@@ -220,9 +220,30 @@ end</code></pre>
             <p class="text-sm text-gray-400 mt-1">User session data storage</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-indigo-300 font-bold">req.cookies</code>
+            <p class="text-sm text-gray-400 mt-1">Parsed cookies from the <code>Cookie</code> header, available globally as <code>cookies</code></p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-indigo-300 font-bold">req["remote_addr"]</code>
             <p class="text-sm text-gray-400 mt-1">Actual TCP peer IP. Used by <code>rate_limit</code> for buckets; honored as the trusted client identifier when <code>enable_trust_proxy()</code> is off, otherwise the rightmost <code>X-Forwarded-For</code> entry wins.</p>
         </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Cookies</h2>
+    <div class="space-y-6 mb-12">
+        <section id="fn-set_cookie" class="scroll-mt-20">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#fn-set_cookie" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">set_cookie(name, value)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 text-sm mb-3">Set a response cookie sent back to the client as a <code>Set-Cookie</code> header. The cookie is emitted with <code>Path=/</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("session_id", "abc123");
+set_cookie("theme", "dark");</code></pre>
+            </div>
+        </section>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Response Types</h2>

@@ -97,9 +97,9 @@
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">clear_authorization()</td>
                 </tr>
                 <tr class="hover:bg-white/5">
-                    <td class="py-3 px-4"><code class="text-emerald-300">set_cookie(name, value)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set cookie</td>
-                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">set_cookie("sid", "abc")</td>
+                    <td class="py-3 px-4"><code class="text-emerald-300">set_request_cookie(name, value)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set request cookie for test</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">set_request_cookie("sid", "abc")</td>
                 </tr>
                 <tr class="hover:bg-white/5">
                     <td class="py-3 px-4"><code class="text-emerald-300">clear_cookies()</code></td>

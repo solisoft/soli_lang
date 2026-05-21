@@ -826,13 +826,14 @@ fn instantiate_class(class_value: &Value) -> Result<Value, String> {
 }
 
 /// Set up the request context for a controller instance.
-/// This injects req, params, session, headers into the controller.
+/// This injects req, params, session, headers, cookies into the controller.
 pub fn setup_controller_context(
     controller: &Value,
     req: &Value,
     params: &Value,
     session: &Value,
     headers: &Value,
+    cookies: &Value,
 ) {
     if let Value::Instance(inst_rc) = controller {
         let mut inst = inst_rc.borrow_mut();
@@ -840,6 +841,7 @@ pub fn setup_controller_context(
         inst.fields.insert("params".to_string(), params.clone());
         inst.fields.insert("session".to_string(), session.clone());
         inst.fields.insert("headers".to_string(), headers.clone());
+        inst.fields.insert("cookies".to_string(), cookies.clone());
     }
 
     // Also set the current request context for view rendering

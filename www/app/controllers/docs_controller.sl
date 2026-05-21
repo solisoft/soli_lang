@@ -5,17 +5,14 @@ fn index
     redirect("/docs/getting-started/introduction")
 end
 
-# Helper to render docs pages with consistent context and caching
+# Helper to render docs pages with consistent context
 fn render_docs(view, title, section, subsection)
-    let response = render(view, {
+    render(view, {
         "title": title,
         "section": section,
         "subsection": subsection,
         "layout": "layouts/docs"
     })
-    # Add cache headers - browsers will cache for 1 hour, revalidate after
-    response["headers"]["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
-    response
 end
 
 # ============================================================================

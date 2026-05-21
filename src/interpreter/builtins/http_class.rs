@@ -176,7 +176,13 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
         // validating a UUID-v4 `SOLI_INTERNAL_TEST_RUNNER` token).
         // Production/dev/staging — no matter what `APP_ENV` says —
         // stays blocked.
-        if !ssrf_test_mode() {
+        // SEC-085: allow `SOLI_DEV_ALLOW_SSRF=1` for local development.
+        let dev_allowed = std::env::var("SOLI_DEV_ALLOW_SSRF")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .map(|n| n != 0)
+            .unwrap_or(false);
+        if !ssrf_test_mode() && !dev_allowed {
             return Err("Access to private/localhost addresses is not allowed".to_string());
         }
     }

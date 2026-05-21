@@ -274,6 +274,12 @@ fn create
   # Session data
   user_id = req.session["user_id"];
 
+  # Parsed cookies (from Cookie header)
+  session_id = req.cookies["session_id"];
+
+  # Same value via the global shorthand
+  session_id = cookies.session_id;
+
   # Actual TCP peer IP (no port). Used by `rate_limit` for buckets.
   # Honored as the trustworthy client identifier when `enable_trust_proxy()`
   # is off; otherwise the rightmost `X-Forwarded-For` entry wins.
@@ -301,6 +307,37 @@ class PostsController < Controller
   end
 end
 ```
+
+## Cookies
+
+The `cookies` global gives you read access to cookies sent by the client. It is a hash parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:
+
+```soli
+fn show
+  # Read a cookie
+  theme = cookies["theme"] or "light";
+
+  # Dot access also works
+  session_id = cookies.session_id;
+end
+```
+
+### set_cookie(name, value)
+
+Write a response cookie. The cookie is sent back to the client as a `Set-Cookie` header:
+
+```soli
+fn login
+  set_cookie("session_id", "abc123");
+  set_cookie("theme", "dark");
+
+  {"status": 200, "body": "Logged in"}
+end
+```
+
+> **Note:** `set_cookie` sets minimal cookie attributes (`Path=/`). For advanced options like `Max-Age`, `Secure`, `HttpOnly`, or `SameSite`, set the `Set-Cookie` header directly in your response.
+
+Cookies set via `set_cookie` are visible in templates and subsequent reads within the same request through the `cookies` global.
 
 ## Returning Responses
 

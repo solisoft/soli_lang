@@ -528,6 +528,49 @@ pub fn get_current_session_id() -> Option<String> {
     CURRENT_SESSION_ID.with(|id| id.borrow().clone())
 }
 
+// Response cookies accumulated during request handling via set_cookie().
+thread_local! {
+    static RESPONSE_COOKIES: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Clear any response cookies accumulated from a previous request.
+pub fn clear_response_cookies() {
+    RESPONSE_COOKIES.with(|c| c.borrow_mut().clear());
+}
+
+/// Store a response cookie to be emitted as a Set-Cookie header.
+pub fn set_response_cookie(name: &str, value: &str) {
+    RESPONSE_COOKIES.with(|c| c.borrow_mut().push((name.to_string(), value.to_string())));
+}
+
+/// Drain all accumulated response cookies (called in finalize_response).
+pub fn take_response_cookies() -> Vec<(String, String)> {
+    RESPONSE_COOKIES.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
+/// Parse a Cookie header string into a HashMap of name -> value.
+pub fn parse_cookies_from_header(cookie_header: Option<&str>) -> HashMap<String, String> {
+    let mut cookies = HashMap::new();
+    let header = match cookie_header {
+        Some(h) => h,
+        None => return cookies,
+    };
+    for cookie in header.split(';') {
+        let cookie = cookie.trim();
+        if cookie.is_empty() {
+            continue;
+        }
+        if let Some(pos) = cookie.find('=') {
+            let name = cookie[..pos].trim().to_string();
+            let value = cookie[pos + 1..].trim().to_string();
+            if !name.is_empty() {
+                cookies.insert(name, value);
+            }
+        }
+    }
+    cookies
+}
+
 /// Get or create a session for the given cookie value.
 /// Returns the session ID to use (may be new if expired or invalid).
 ///
@@ -943,6 +986,37 @@ pub fn register_session_builtins(env: &mut Environment) {
             );
 
             Ok(Value::Hash(Rc::new(RefCell::new(hash))))
+        })),
+    );
+}
+
+/// Register cookie-related builtins (set_cookie) that are available in all
+/// contexts (controllers, views, middleware).
+pub fn register_cookie_builtins(env: &mut Environment) {
+    // set_cookie(name, value) -> Null
+    env.define(
+        "set_cookie".to_string(),
+        Value::NativeFunction(NativeFunction::new("set_cookie", Some(2), |args| {
+            let name = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "set_cookie() expects string name, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let value = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "set_cookie() expects string value, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            set_response_cookie(&name, &value);
+            Ok(Value::Null)
         })),
     );
 }

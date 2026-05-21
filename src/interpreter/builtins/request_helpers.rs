@@ -151,10 +151,10 @@ pub fn register_request_helpers(env: &mut Environment) {
     );
 
     env.define(
-        "set_cookie".to_string(),
-        Value::NativeFunction(NativeFunction::new("set_cookie", Some(2), |args| {
-            let name = extract_string(&args[0], "set_cookie(name, value)")?;
-            let value = extract_string(&args[1], "set_cookie(name, value)")?;
+        "set_request_cookie".to_string(),
+        Value::NativeFunction(NativeFunction::new("set_request_cookie", Some(2), |args| {
+            let name = extract_string(&args[0], "set_request_cookie(name, value)")?;
+            let value = extract_string(&args[1], "set_request_cookie(name, value)")?;
             COOKIES.with(|cell| {
                 let mut cookies = cell.borrow_mut();
                 if !cookies.is_empty() {

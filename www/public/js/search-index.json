@@ -7779,6 +7779,33 @@
       ]
     },
     {
+      "title": "cookies",
+      "type": "variable",
+      "category": "Controllers",
+      "path": "/docs/controllers#",
+      "signature": "cookies",
+      "description": "Global hash of parsed cookies from the Cookie header, defaults to {}",
+      "keywords": [
+        "cookies",
+        "cookie",
+        "request"
+      ]
+    },
+    {
+      "title": "set_cookie",
+      "type": "function",
+      "category": "Controllers",
+      "path": "/docs/controllers#",
+      "signature": "set_cookie(name, value)",
+      "description": "Set a response cookie sent as a Set-Cookie header",
+      "keywords": [
+        "cookie",
+        "set",
+        "response",
+        "header"
+      ]
+    },
+    {
       "title": "halt",
       "type": "function",
       "category": "Controllers",

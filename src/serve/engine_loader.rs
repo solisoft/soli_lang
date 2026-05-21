@@ -335,7 +335,26 @@ fn load_engine_controller_directory(
             .borrow()
             .get(&class_name)
             .map(|v| matches!(v, Value::Class(_)))
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || {
+                // For nested controllers, also check the simple class name
+                if controller_key.contains('/') {
+                    controller_key
+                        .rsplit('/')
+                        .next()
+                        .and_then(|simple| {
+                            let simple_class = to_pascal_case_controller(simple);
+                            interpreter
+                                .environment
+                                .borrow()
+                                .get(&simple_class)
+                                .map(|v| matches!(v, Value::Class(_)))
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            };
 
         for route in routes {
             let full_handler_name = format!("{}#{}", controller_key, route.function_name);

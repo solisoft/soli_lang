@@ -155,6 +155,23 @@ fn about_stub(req: Any) -> Any {
 # the ones from `resources("posts")` plus the `name: "about"` one-off.
 # Returns a JSON object the e2e test asserts on field-by-field; the keys
 # match the helper names so failures are easy to read.
+# Return the cookies hash received by the server.
+fn echo_cookies(req: Any) -> Any {
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json_stringify(cookies)
+    };
+}
+
+# Set a response cookie and return a simple response.
+fn set_cookie_demo(req: Any) -> Any {
+    let name = req["query"]["name"] || "test_cookie";
+    let value = req["query"]["value"] || "test_value";
+    set_cookie(name, value);
+    return {"status": 200, "body": "cookie set"};
+}
+
 fn named_routes_probe(req: Any) -> Any {
     let result = {
         "posts_path": posts_path(),

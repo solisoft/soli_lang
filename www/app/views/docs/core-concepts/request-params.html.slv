@@ -161,6 +161,37 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- The global cookies -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30"></span>
+            The Global <code class="text-amber-300">cookies</code> Variable
+        </h2>
+        <p class="text-gray-400 mb-6">
+            The server also sets a global <code class="text-amber-300">cookies</code> variable to the same value as <code class="text-amber-300">req["cookies"]</code>. This hash contains all cookies parsed from the <code>Cookie</code> header, defaulting to <code>{}</code> when no cookies are present. Like <code>params</code>, the <code>cookies</code> global is refreshed before each request and is available in controllers, middleware, and views.
+        </p>
+
+        <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl mb-6">
+            <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
+                <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                <span class="ml-2 text-xs text-gray-500 font-mono">controllers/profile_controller.sl</span>
+            </div>
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">fn show(req: Any) -> Any
+  # Read cookies directly (no req prefix needed)
+  theme = cookies["theme"] or "light";
+
+  # Dot access also works
+  session_id = cookies.session_id;
+
+  {"status": 200, "body": "OK"}
+end</code></pre>
+            </div>
+        </div>
+    </section>
+
     <!-- Priority Order -->
     <section>
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
@@ -335,6 +366,16 @@ end</code></pre></code></pre>
                         <td class="py-3 px-4 text-cyan-300 font-mono">params</td>
                         <td class="py-3 px-4 text-gray-300">Hash</td>
                         <td class="py-3 px-4 text-gray-400">Global shorthand for <code class="text-cyan-300">req["all"]</code>, refreshed per request</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-cyan-300 font-mono">cookies</td>
+                        <td class="py-3 px-4 text-gray-300">Hash</td>
+                        <td class="py-3 px-4 text-gray-400">Global <code class="text-cyan-300">req["cookies"]</code>, parsed from the <code>Cookie</code> header. Defaults to <code>{}</code>. Refreshed per request.</td>
+                    </tr>
+                    <tr class="hover:bg-white/5">
+                        <td class="py-3 px-4 text-cyan-300 font-mono">req["cookies"]</td>
+                        <td class="py-3 px-4 text-gray-300">Hash</td>
+                        <td class="py-3 px-4 text-gray-400">Parsed cookies from the <code>Cookie</code> header</td>
                     </tr>
                     <tr class="hover:bg-white/5">
                         <td class="py-3 px-4 text-cyan-300 font-mono">req["json"]</td>

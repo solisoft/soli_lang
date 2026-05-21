@@ -403,7 +403,7 @@ pub fn inject_template_helpers(data: &Value) {
     }
 }
 
-/// Inject req and params from current request context into data hash.
+/// Inject req, params, and cookies from current request context into data hash.
 pub fn inject_request_context(data: &Value) {
     if let Value::Hash(hash) = data {
         if let Some(req) = get_current_request() {
@@ -413,15 +413,22 @@ pub fn inject_request_context(data: &Value) {
                 h.insert(req_key, req.clone());
             }
 
-            // Extract params from req and inject as top-level "params"
             if let Value::Hash(req_hash) = &req {
-                if let Some(params) = req_hash
-                    .borrow()
-                    .get(&HashKey::String("params".to_string()))
-                {
+                let borrowed = req_hash.borrow();
+
+                // Extract params from req and inject as top-level "params"
+                if let Some(params) = borrowed.get(&HashKey::String("params".to_string())) {
                     let params_key = HashKey::String("params".to_string());
                     if !h.contains_key(&params_key) {
                         h.insert(params_key, params.clone());
+                    }
+                }
+
+                // Extract cookies from req and inject as top-level "cookies"
+                if let Some(cookies) = borrowed.get(&HashKey::String("cookies".to_string())) {
+                    let cookies_key = HashKey::String("cookies".to_string());
+                    if !h.contains_key(&cookies_key) {
+                        h.insert(cookies_key, cookies.clone());
                     }
                 }
             }

@@ -23,7 +23,7 @@ Quick lookup for E2E controller testing helpers.
 | `clear_headers()` | Remove headers | `clear_headers()` |
 | `set_authorization(token)` | Set Bearer token | `set_authorization("jwt-token")` |
 | `clear_authorization()` | Clear auth header | `clear_authorization()` |
-| `set_cookie(name, value)` | Set cookie | `set_cookie("sid", "abc")` |
+| `set_request_cookie(name, value)` | Set request cookie for test | `set_request_cookie("sid", "abc")` |
 | `clear_cookies()` | Remove cookies | `clear_cookies()` |
 
 ## Response Functions

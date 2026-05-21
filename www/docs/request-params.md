@@ -52,6 +52,20 @@ end
 
 `params` is refreshed before each request, so it is always in sync with the current handler's `req["all"]`. Dot access (`params.name`) and bracket access (`params["name"]`) both work.
 
+## The `cookies` Global
+
+For convenience, the server also sets a global `cookies` variable to the same value as `req["cookies"]`. This hash contains all cookies parsed from the `Cookie` header, defaulting to `{}` when no cookies are present:
+
+```soli
+fn show
+  # Read cookies directly (no req prefix needed)
+  theme = cookies["theme"] or "light";
+  session_id = cookies.session_id;
+end
+```
+
+Like `params`, the `cookies` global is refreshed before each request and is available in controllers, middleware, and views.
+
 ## Priority Order
 
 When the same parameter exists in multiple sources, values are merged with this priority (highest wins):
@@ -160,6 +174,7 @@ end
 | `json` | Any/Null | Parsed JSON body |
 | `form` | Hash/Null | Parsed form data |
 | `files` | Array | Uploaded files |
+| `cookies` | Hash | Parsed cookies from the `Cookie` header |
 
 ### Parameter Access Patterns
 

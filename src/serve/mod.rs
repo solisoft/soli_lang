@@ -224,8 +224,9 @@ static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    create_session_cookie, ensure_session, extract_session_id_from_cookie, get_current_session_id,
-    session_cookie_if_changed, set_current_session_id,
+    clear_response_cookies, create_session_cookie, ensure_session, extract_session_id_from_cookie,
+    get_current_session_id, session_cookie_if_changed, set_current_session_id,
+    take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs};
@@ -3699,6 +3700,18 @@ fn call_handler(
         vm_ref.globals.insert("params".to_string(), params_value);
     }
 
+    // Expose parsed cookies as global `cookies` so handlers/view can reference
+    // cookies directly. Default to an empty hash (not Null).
+    let cookies_value = get_hash_field(&request_hash, "cookies")
+        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+    interpreter
+        .global_env()
+        .borrow_mut()
+        .define_or_update("cookies", cookies_value.clone());
+    if let Some(vm_ref) = vm.as_deref_mut() {
+        vm_ref.globals.insert("cookies".to_string(), cookies_value);
+    }
+
     // Expose the full request hash as a global `req` so actions can omit the
     // `(req)` parameter when they don't need to destructure the request.
     interpreter
@@ -3938,10 +3951,28 @@ fn call_oop_controller_action(
 
     // Check if this is an OOP controller (has a class definition)
     // Convert controller_key (e.g., "posts") to PascalCase class name (e.g., "PostsController")
+    // For nested paths like "dashboard/cluster", also try the simple class name "ClusterController"
     let class_name = to_pascal_case_controller(controller_key);
 
+    // Look up the class in the environment - try both full-path and simple names
+    let class_value = interpreter
+        .environment
+        .borrow()
+        .get(&class_name)
+        .or_else(|| {
+            // For nested controllers, try the simple class name (last segment)
+            if controller_key.contains('/') {
+                controller_key.rsplit('/').next().and_then(|simple| {
+                    let simple_class = to_pascal_case_controller(simple);
+                    interpreter.environment.borrow().get(&simple_class)
+                })
+            } else {
+                None
+            }
+        });
+
     // Look up the class in the environment
-    let class_value = match interpreter.environment.borrow().get(&class_name) {
+    let class_value = match class_value {
         Some(v) => v,
         None => {
             return None;
@@ -3966,6 +3997,8 @@ fn call_oop_controller_action(
     let params = get_hash_field(request_hash, "params").unwrap_or(Value::Null);
     let session = get_hash_field(request_hash, "session").unwrap_or(Value::Null);
     let headers = get_hash_field(request_hash, "headers").unwrap_or(Value::Null);
+    let cookies = get_hash_field(request_hash, "cookies")
+        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
 
     // Instantiate the controller
     let controller_instance = match create_controller_instance(&class_name, interpreter) {
@@ -4009,13 +4042,14 @@ fn call_oop_controller_action(
         }
     };
 
-    // Set up controller context (req, params, session, headers)
+    // Set up controller context (req, params, session, headers, cookies)
     setup_controller_context(
         &controller_instance,
         request_hash,
         &params,
         &session,
         &headers,
+        &cookies,
     );
 
     // Publish the instance as the thread-local "current controller" so `render(...)`
@@ -4648,9 +4682,10 @@ fn setup_controller_context(
     params: &Value,
     session: &Value,
     headers: &Value,
+    cookies: &Value,
 ) {
     crate::interpreter::builtins::controller::registry::setup_controller_context(
-        controller, req, params, session, headers,
+        controller, req, params, session, headers, cookies,
     );
 }
 
@@ -4829,6 +4864,9 @@ fn handle_request(
         None
     };
     let is_new_session = session_id.as_ref() != cookie_session_id.as_ref();
+
+    // Clear response cookies from any previous request on this thread.
+    clear_response_cookies();
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
@@ -5011,6 +5049,32 @@ fn handle_request(
     let req_scheme = if is_https { "https" } else { "http" }.to_string();
     crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
 
+    // Expose params and cookies as globals so middleware, handlers, and views
+    // can reference them directly. These are also re-set inside dispatch_request
+    // after middleware may have modified the request hash.
+    let middleware_params = get_hash_field(&request_hash, "all")
+        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+    interpreter
+        .global_env()
+        .borrow_mut()
+        .define_or_update("params", middleware_params.clone());
+    if let Some(vm_ref) = vm.as_mut() {
+        vm_ref
+            .globals
+            .insert("params".to_string(), middleware_params);
+    }
+    let middleware_cookies = get_hash_field(&request_hash, "cookies")
+        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+    interpreter
+        .global_env()
+        .borrow_mut()
+        .define_or_update("cookies", middleware_cookies.clone());
+    if let Some(vm_ref) = vm.as_mut() {
+        vm_ref
+            .globals
+            .insert("cookies".to_string(), middleware_cookies);
+    }
+
     // Helper to finalize response with session cookie and timing
     let finalize_response = |mut resp: ResponseData| -> ResponseData {
         // Drop the per-request scheme/host so a `<name>_url` call between
@@ -5023,6 +5087,13 @@ fn handle_request(
             cookie_secure,
         ) {
             resp.headers.push(("Set-Cookie".to_string(), cookie_value));
+        }
+        // Emit any response cookies accumulated via set_cookie()
+        for (name, value) in take_response_cookies() {
+            resp.headers.push((
+                "Set-Cookie".to_string(),
+                format!("{}={}; Path=/", name, value),
+            ));
         }
         // Add security headers if enabled
         {

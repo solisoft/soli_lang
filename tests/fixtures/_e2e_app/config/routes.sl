@@ -21,3 +21,5 @@ get("/hash", "api#hash_query");
 get("/for", "api#for_loop_demo");
 get("/while", "api#while_loop_demo");
 get("/closure", "api#closure_demo");
+get("/cookies", "api#echo_cookies");
+get("/set_cookie", "api#set_cookie_demo");

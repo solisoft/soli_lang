@@ -398,3 +398,47 @@ fn server_handles_concurrent_requests() {
         assert_eq!(body, r#"{"pong":true}"#);
     }
 }
+
+#[test]
+fn cookies_global_returns_empty_hash_when_no_cookie_header() {
+    let server = ServerProcess::start();
+    let resp = ureq::get(&server.url("/cookies"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("cookies request");
+    assert_eq!(resp.status(), 200);
+    let body = body_string(resp);
+    assert_eq!(body, "{}", "expected empty cookies hash, got: {}", body);
+}
+
+#[test]
+fn cookies_global_parses_cookie_header() {
+    let server = ServerProcess::start();
+    let resp = ureq::get(&server.url("/cookies"))
+        .timeout(Duration::from_secs(3))
+        .set("Cookie", "foo=bar; session_id=abc123")
+        .call()
+        .expect("cookies request");
+    assert_eq!(resp.status(), 200);
+    let body = body_string(resp);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("invalid JSON {:?}: {}", body, e));
+    assert_eq!(parsed["foo"], "bar");
+    assert_eq!(parsed["session_id"], "abc123");
+}
+
+#[test]
+fn set_cookie_emits_set_cookie_header() {
+    let server = ServerProcess::start();
+    let resp = ureq::get(&server.url("/set_cookie?name=my_cookie&value=my_value"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("set_cookie request");
+    assert_eq!(resp.status(), 200);
+    let set_cookie = resp.header("set-cookie").unwrap_or("");
+    assert!(
+        set_cookie.contains("my_cookie=my_value"),
+        "expected Set-Cookie with my_cookie=my_value, got: {}",
+        set_cookie
+    );
+}

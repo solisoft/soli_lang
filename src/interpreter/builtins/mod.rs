@@ -450,6 +450,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register spreadsheet builtins (Spreadsheet.csv, Spreadsheet.excel, etc.)
     spreadsheet::register_spreadsheet_builtins(env);
+
+    // Register cookie builtins (set_cookie) — registered last so they win over
+    // any test helpers with the same name (e.g. set_cookie in request_helpers).
+    session::register_cookie_builtins(env);
 }
 
 /// Register the Error class and built-in error types.
