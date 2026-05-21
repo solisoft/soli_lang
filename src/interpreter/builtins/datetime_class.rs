@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use chrono::{Datelike, Local, Timelike};
+use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone, Timelike};
 
 use super::i18n::helpers::{get_locale as i18n_get_locale, interpolate, lookup_translation};
 use crate::interpreter::environment::Environment;
@@ -760,6 +760,516 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             }
                             _ => Ok(Value::String(formatted)),
                         }
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    // Clone for boundary instance methods
+    let dt_methods_for_boundaries = dt_native_methods.clone();
+
+    dt_native_methods.insert(
+        "beginning_of_minute".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.beginning_of_minute",
+            Some(0),
+            {
+                let methods = dt_methods_for_boundaries.clone();
+                move |args| {
+                    let this = match args.first() {
+                        Some(Value::Instance(inst)) => inst,
+                        _ => {
+                            return Err(
+                                "DateTime.beginning_of_minute() called on non-DateTime".to_string()
+                            )
+                        }
+                    };
+                    let ts = this.borrow().fields.get("_ts").cloned();
+                    match ts {
+                        Some(Value::Int(t)) => {
+                            let dt = chrono::DateTime::from_timestamp(
+                                t / 1_000_000_000,
+                                (t % 1_000_000_000) as u32,
+                            )
+                            .ok_or_else(|| "Invalid timestamp".to_string())?;
+                            let local = dt.with_timezone(&Local);
+                            let boundary = local
+                                .with_second(0)
+                                .and_then(|d| d.with_nanosecond(0))
+                                .ok_or_else(|| {
+                                    "Failed to compute beginning_of_minute".to_string()
+                                })?;
+                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                            let mut inst = Instance::new(Rc::new(Class {
+                                name: "DateTime".to_string(),
+                                superclass: None,
+                                methods: Rc::new(RefCell::new(HashMap::new())),
+                                static_methods: HashMap::new(),
+                                native_static_methods: HashMap::new(),
+                                native_methods: methods.clone(),
+                                static_fields: Rc::new(RefCell::new(HashMap::new())),
+                                fields: HashMap::new(),
+                                constructor: None,
+                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                                ..Default::default()
+                            }));
+                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                        }
+                        _ => Err("DateTime missing internal timestamp".to_string()),
+                    }
+                }
+            },
+        )),
+    );
+
+    dt_native_methods.insert(
+        "end_of_minute".to_string(),
+        Rc::new(NativeFunction::new("DateTime.end_of_minute", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.end_of_minute() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let boundary = local
+                            .with_second(59)
+                            .and_then(|d| d.with_nanosecond(999_000_000))
+                            .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    dt_native_methods.insert(
+        "beginning_of_hour".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.beginning_of_hour",
+            Some(0),
+            {
+                let methods = dt_methods_for_boundaries.clone();
+                move |args| {
+                    let this = match args.first() {
+                        Some(Value::Instance(inst)) => inst,
+                        _ => {
+                            return Err(
+                                "DateTime.beginning_of_hour() called on non-DateTime".to_string()
+                            )
+                        }
+                    };
+                    let ts = this.borrow().fields.get("_ts").cloned();
+                    match ts {
+                        Some(Value::Int(t)) => {
+                            let dt = chrono::DateTime::from_timestamp(
+                                t / 1_000_000_000,
+                                (t % 1_000_000_000) as u32,
+                            )
+                            .ok_or_else(|| "Invalid timestamp".to_string())?;
+                            let local = dt.with_timezone(&Local);
+                            let boundary = local
+                                .with_minute(0)
+                                .and_then(|d| d.with_second(0))
+                                .and_then(|d| d.with_nanosecond(0))
+                                .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
+                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                            let mut inst = Instance::new(Rc::new(Class {
+                                name: "DateTime".to_string(),
+                                superclass: None,
+                                methods: Rc::new(RefCell::new(HashMap::new())),
+                                static_methods: HashMap::new(),
+                                native_static_methods: HashMap::new(),
+                                native_methods: methods.clone(),
+                                static_fields: Rc::new(RefCell::new(HashMap::new())),
+                                fields: HashMap::new(),
+                                constructor: None,
+                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                                ..Default::default()
+                            }));
+                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                        }
+                        _ => Err("DateTime missing internal timestamp".to_string()),
+                    }
+                }
+            },
+        )),
+    );
+
+    dt_native_methods.insert(
+        "end_of_hour".to_string(),
+        Rc::new(NativeFunction::new("DateTime.end_of_hour", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.end_of_hour() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let boundary = local
+                            .with_minute(59)
+                            .and_then(|d| d.with_second(59))
+                            .and_then(|d| d.with_nanosecond(999_000_000))
+                            .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    dt_native_methods.insert(
+        "beginning_of_day".to_string(),
+        Rc::new(NativeFunction::new("DateTime.beginning_of_day", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => {
+                        return Err("DateTime.beginning_of_day() called on non-DateTime".to_string())
+                    }
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let boundary = local
+                            .with_hour(0)
+                            .and_then(|d| d.with_minute(0))
+                            .and_then(|d| d.with_second(0))
+                            .and_then(|d| d.with_nanosecond(0))
+                            .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    dt_native_methods.insert(
+        "end_of_day".to_string(),
+        Rc::new(NativeFunction::new("DateTime.end_of_day", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.end_of_day() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let boundary = local
+                            .with_hour(23)
+                            .and_then(|d| d.with_minute(59))
+                            .and_then(|d| d.with_second(59))
+                            .and_then(|d| d.with_nanosecond(999_000_000))
+                            .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    dt_native_methods.insert(
+        "beginning_of_month".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.beginning_of_month",
+            Some(0),
+            {
+                let methods = dt_methods_for_boundaries.clone();
+                move |args| {
+                    let this = match args.first() {
+                        Some(Value::Instance(inst)) => inst,
+                        _ => {
+                            return Err(
+                                "DateTime.beginning_of_month() called on non-DateTime".to_string()
+                            )
+                        }
+                    };
+                    let ts = this.borrow().fields.get("_ts").cloned();
+                    match ts {
+                        Some(Value::Int(t)) => {
+                            let dt = chrono::DateTime::from_timestamp(
+                                t / 1_000_000_000,
+                                (t % 1_000_000_000) as u32,
+                            )
+                            .ok_or_else(|| "Invalid timestamp".to_string())?;
+                            let local = dt.with_timezone(&Local);
+                            let naive = NaiveDate::from_ymd_opt(local.year(), local.month(), 1)
+                                .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?
+                                .and_hms_nano_opt(0, 0, 0, 0)
+                                .ok_or_else(|| {
+                                    "Failed to compute beginning_of_month".to_string()
+                                })?;
+                            let boundary = Local.from_local_datetime(&naive).unwrap();
+                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                            let mut inst = Instance::new(Rc::new(Class {
+                                name: "DateTime".to_string(),
+                                superclass: None,
+                                methods: Rc::new(RefCell::new(HashMap::new())),
+                                static_methods: HashMap::new(),
+                                native_static_methods: HashMap::new(),
+                                native_methods: methods.clone(),
+                                static_fields: Rc::new(RefCell::new(HashMap::new())),
+                                fields: HashMap::new(),
+                                constructor: None,
+                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                                ..Default::default()
+                            }));
+                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                        }
+                        _ => Err("DateTime missing internal timestamp".to_string()),
+                    }
+                }
+            },
+        )),
+    );
+
+    dt_native_methods.insert(
+        "end_of_month".to_string(),
+        Rc::new(NativeFunction::new("DateTime.end_of_month", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.end_of_month() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let (next_year, next_month) = if local.month() == 12 {
+                            (local.year() + 1, 1)
+                        } else {
+                            (local.year(), local.month() + 1)
+                        };
+                        let last_day = NaiveDate::from_ymd_opt(next_year, next_month, 1)
+                            .ok_or_else(|| "Failed to compute end_of_month".to_string())?
+                            - Duration::days(1);
+                        let naive = last_day
+                            .and_hms_nano_opt(23, 59, 59, 999_000_000)
+                            .ok_or_else(|| "Failed to compute end_of_month".to_string())?;
+                        let boundary = Local.from_local_datetime(&naive).unwrap();
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                    }
+                    _ => Err("DateTime missing internal timestamp".to_string()),
+                }
+            }
+        })),
+    );
+
+    dt_native_methods.insert(
+        "beginning_of_year".to_string(),
+        Rc::new(NativeFunction::new(
+            "DateTime.beginning_of_year",
+            Some(0),
+            {
+                let methods = dt_methods_for_boundaries.clone();
+                move |args| {
+                    let this = match args.first() {
+                        Some(Value::Instance(inst)) => inst,
+                        _ => {
+                            return Err(
+                                "DateTime.beginning_of_year() called on non-DateTime".to_string()
+                            )
+                        }
+                    };
+                    let ts = this.borrow().fields.get("_ts").cloned();
+                    match ts {
+                        Some(Value::Int(t)) => {
+                            let dt = chrono::DateTime::from_timestamp(
+                                t / 1_000_000_000,
+                                (t % 1_000_000_000) as u32,
+                            )
+                            .ok_or_else(|| "Invalid timestamp".to_string())?;
+                            let local = dt.with_timezone(&Local);
+                            let naive = NaiveDate::from_ymd_opt(local.year(), 1, 1)
+                                .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?
+                                .and_hms_nano_opt(0, 0, 0, 0)
+                                .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?;
+                            let boundary = Local.from_local_datetime(&naive).unwrap();
+                            let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                            let mut inst = Instance::new(Rc::new(Class {
+                                name: "DateTime".to_string(),
+                                superclass: None,
+                                methods: Rc::new(RefCell::new(HashMap::new())),
+                                static_methods: HashMap::new(),
+                                native_static_methods: HashMap::new(),
+                                native_methods: methods.clone(),
+                                static_fields: Rc::new(RefCell::new(HashMap::new())),
+                                fields: HashMap::new(),
+                                constructor: None,
+                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                                ..Default::default()
+                            }));
+                            inst.set("_ts".to_string(), Value::Int(new_ts));
+                            Ok(Value::Instance(Rc::new(RefCell::new(inst))))
+                        }
+                        _ => Err("DateTime missing internal timestamp".to_string()),
+                    }
+                }
+            },
+        )),
+    );
+
+    dt_native_methods.insert(
+        "end_of_year".to_string(),
+        Rc::new(NativeFunction::new("DateTime.end_of_year", Some(0), {
+            let methods = dt_methods_for_boundaries.clone();
+            move |args| {
+                let this = match args.first() {
+                    Some(Value::Instance(inst)) => inst,
+                    _ => return Err("DateTime.end_of_year() called on non-DateTime".to_string()),
+                };
+                let ts = this.borrow().fields.get("_ts").cloned();
+                match ts {
+                    Some(Value::Int(t)) => {
+                        let dt = chrono::DateTime::from_timestamp(
+                            t / 1_000_000_000,
+                            (t % 1_000_000_000) as u32,
+                        )
+                        .ok_or_else(|| "Invalid timestamp".to_string())?;
+                        let local = dt.with_timezone(&Local);
+                        let first_of_next = NaiveDate::from_ymd_opt(local.year() + 1, 1, 1)
+                            .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
+                        let last_day = first_of_next - Duration::days(1);
+                        let naive = last_day
+                            .and_hms_nano_opt(23, 59, 59, 999_000_000)
+                            .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
+                        let boundary = Local.from_local_datetime(&naive).unwrap();
+                        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
+                        let mut inst = Instance::new(Rc::new(Class {
+                            name: "DateTime".to_string(),
+                            superclass: None,
+                            methods: Rc::new(RefCell::new(HashMap::new())),
+                            static_methods: HashMap::new(),
+                            native_static_methods: HashMap::new(),
+                            native_methods: methods.clone(),
+                            static_fields: Rc::new(RefCell::new(HashMap::new())),
+                            fields: HashMap::new(),
+                            constructor: None,
+                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
+                            ..Default::default()
+                        }));
+                        inst.set("_ts".to_string(), Value::Int(new_ts));
+                        Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
                 }
