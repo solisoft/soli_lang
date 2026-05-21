@@ -409,11 +409,16 @@ import "erb";                  // Builtin module
 let name = "Alice";
 let greeting = "Hello \(name)!";  // "Hello Alice!"
 
-// Multi-line
-let text = @"
-    This is a 
-    multi-line string
-";
+// Multi-line / raw strings — NOTE: `@"..."` is NOT a valid form.
+// Soli supports three raw / multiline string syntaxes:
+let lua_raw = [[
+    This is a raw multi-line string.
+    Backslashes are literal: \n stays as two chars.
+]];
+let triple  = """
+    Triple-quoted, also raw, multi-line.
+""";
+let single  = r"C:\Users\name";   // raw, single-line
 ```
 
 ## Important Notes

@@ -130,16 +130,26 @@ def down(db)
 end
 ```
 
-For multi-line queries, prefer the `@"..."` raw-string form so you don't have
-to escape every `"`:
+For multi-line queries, use one of Soli's raw multiline string forms so you
+don't have to escape every `"`:
+
+- `[[ ... ]]` — Lua-style, raw (no escape processing). Best when the query
+  contains `"` and you don't want to think about escaping.
+- `""" ... """` — triple-quoted, raw, multiline. Best when the query contains
+  `]` characters (e.g. array literals in SDBQL).
+- `r"..."` — raw, single-line only.
+
+> **There is no `@"..."` syntax.** Don't write `db.query(@"...")` — it's a
+> parse error. The `@` prefix is reserved for `@sdbql{...}` model-side blocks
+> (which you should not use here, see above).
 
 ```soli
 def up(db)
-  db.query(@"
+  db.query([[
     FOR p IN posts
       FILTER p.slug == null
       UPDATE p WITH { slug: SUBSTITUTE(LOWER(p.title), ' ', '-') } IN posts
-  ")
+  ]])
 end
 ```
 
@@ -257,7 +267,7 @@ from each spec — whatever your project convention is.)
 | Use `soli generate migration` for naming                    | Hand-pick a timestamp prefix                                        |
 | Write a real `down(db)` for every migration                 | Leave `# TODO` or `pass` in `down`                                  |
 | Use `db.query("...")` with a plain SDBQL string             | Use `@sdbql{...}` blocks here — that's the model-side DSL, not migrations |
-| Use raw strings `@"..."` for multi-line SDBQL               | Hand-escape `\"` across long queries                                |
+| Use `[[ ... ]]` or `""" ... """` for multi-line SDBQL       | Hand-escape `\"` across long queries — or invent `@"..."` (not a thing) |
 | Name indexes consistently (`idx_<field>`)                   | Use anonymous indexes or random names                                |
 | Split unrelated schema changes into separate migrations     | Bundle "create posts" + "seed demo data" into one file              |
 | Treat applied migrations as immutable                       | Edit a migration after it's been run anywhere                       |

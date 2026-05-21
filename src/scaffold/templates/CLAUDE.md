@@ -32,6 +32,7 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 |--------------------------------------------|--------------------------------------------|------------------------------------------------------------------------------|
 | `// comment`                               | `# comment`                                | `//` was standardized away — lint flags it.                                  |
 | `${name}` / `#{name}` in a string          | `\(name)`                                  | Backslash-paren is the only interpolation form.                              |
+| `@"multi\nline"` raw string                | `[[multi\nline]]` or `""" ... """`         | `@"..."` doesn't exist; `@` is only for `@sdbql{...}` query blocks.          |
 | `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
 | `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
 | `x \|\| default`                           | `x ?? default`                             | `\|\|` returns the wrong side when `x` is `0` or `""` (those are TRUTHY).    |
@@ -143,6 +144,17 @@ let halve  = |x| { return x / 2; };
 
 # String interpolation
 let msg = "Hi \(name), age \(age)"
+
+# Multiline / raw strings (NO @"..." — that form does not exist)
+let lua_raw = [[
+    Raw text. No escape processing.
+    Good for queries with embedded "double quotes".
+]]
+let triple = """
+    Raw, multiline. Closes on """.
+    Good for content with ] or ]] inside.
+"""
+let single_raw = r"C:\Users\name"   # raw, single-line only
 
 # Collection iteration — Ruby-style block, no parens before `do`
 [1, 2, 3].map do |x| x * 2 end
