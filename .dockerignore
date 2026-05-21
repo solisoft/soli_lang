@@ -1,4 +1,5 @@
 target/
 .git/
-www/
+www/*
+!www/docs
 *.md
