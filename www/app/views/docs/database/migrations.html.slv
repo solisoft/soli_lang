@@ -196,6 +196,19 @@ end</code></pre></code></pre>
   db.query("INSERT { name: 'Admin', role: 'admin' } INTO users")
   # Update existing data
   db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users")
+
+  # Bind variables (preferred for user data — avoids escaping issues)
+  digest = bcrypt_hash("changeme")
+  db.query(
+    "INSERT { email: @e, name: @n, role: @r, password_digest: @d } INTO users",
+    { "e": "admin@example.com", "n": "Admin", "r": "admin", "d": digest }
+  )
+
+  # Bind variables work in FILTER / RETURN too
+  db.query(
+    "FOR doc IN users FILTER doc.status == @status RETURN doc",
+    { "status": "active" }
+  )
 end</code></pre></code></pre>
         </div>
     </div>
@@ -311,8 +324,8 @@ SOLIDB_PASSWORD=secret</code></pre>
                     <td class="py-3 px-4 text-gray-400">List indexes for a collection</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Execute a raw SDBQL query</td>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql, bind_vars?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Execute a raw SDBQL query, optionally with a hash of bind variables</td>
                 </tr>
             </tbody>
         </table>

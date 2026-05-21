@@ -372,9 +372,12 @@ let _db_name = "{}";
 let _db = Solidb(_db_host, _db_name);
 {}
 class MigrationDb {{
-    // Run a raw SDBQL query
-    fn query(sdbql: String) -> Any {{
-        return solidb_query(_db_host, _db_name, sdbql);
+    // Run a raw SDBQL query, optionally with bind variables
+    fn query(sdbql: String, bind_vars: Any = null) -> Any {{
+        if bind_vars == null {{
+            return _db.query(sdbql);
+        }}
+        return _db.query(sdbql, bind_vars);
     }}
 
     // Collection management. `collection_type` is optional — pass any

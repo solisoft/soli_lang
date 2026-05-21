@@ -189,8 +189,18 @@ fn up(db: Any)    # Insert seed data
   # Update existing data
   db.query("FOR u IN users FILTER u.role == 'guest' UPDATE u WITH { role: 'user' } IN users")
 
-  # Complex queries with bind variables
-  db.query("FOR doc IN users FILTER doc.status == @status RETURN doc")
+  # Bind variables (preferred for user data — avoids escaping issues)
+  digest = bcrypt_hash("changeme")
+  db.query(
+    "INSERT { email: @e, name: @n, role: @r, password_digest: @d } INTO users",
+    { "e": "admin@example.com", "n": "Admin", "r": "admin", "d": digest }
+  )
+
+  # Bind variables work in FILTER / RETURN too
+  db.query(
+    "FOR doc IN users FILTER doc.status == @status RETURN doc",
+    { "status": "active" }
+  )
 end
 ```
 
@@ -293,4 +303,4 @@ Applied migrations are tracked in the `_migrations` collection with:
 | `db.create_index(collection, name, fields, options)` | Create an index |
 | `db.drop_index(collection, name)` | Drop an index |
 | `db.list_indexes(collection)` | List indexes for a collection |
-| `db.query(sdbql)` | Execute a raw SDBQL query |
+| `db.query(sdbql, bind_vars?)` | Execute a raw SDBQL query, optionally with a hash of bind variables |

@@ -176,7 +176,13 @@ fn register_global_solidb_functions(env: &mut Environment) {
 
     env.define(
         "solidb_query".to_string(),
-        Value::NativeFunction(NativeFunction::new("solidb_query", Some(3), |args| {
+        Value::NativeFunction(NativeFunction::new("solidb_query", None, |args| {
+            if args.len() < 3 || args.len() > 4 {
+                return Err(format!(
+                    "solidb_query() expects 3 or 4 arguments (host, database, sdbql[, bind_vars]), got {}",
+                    args.len()
+                ));
+            }
             let addr = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -277,23 +283,15 @@ fn register_solidb_class(env: &mut Environment) {
     for (method_name, min_args) in method_definitions {
         let method = method_name.to_string();
         let arity = min_args + 1;
-        // `create_collection` accepts an optional `collection_type` arg —
-        // `"blob"`, `"columnar"`, `"timeseries"`, etc. (forwarded verbatim
-        // to SolidB; the server decides what's valid). Register variadic
-        // and validate inside.
-        let registered_arity = if method_name == "create_collection" {
-            None
-        } else {
-            Some(arity)
-        };
+        // `create_collection` accepts an optional `collection_type` arg;
+        // `query` accepts an optional `bind_vars` hash. Both register
+        // variadic and validate arg counts inside the dispatch arm.
+        let variadic = matches!(method_name, "create_collection" | "query");
+        let registered_arity = if variadic { None } else { Some(arity) };
         // User-facing arity (without the implicit instance arg) for the
         // class native_method. Method dispatch in the executor prepends
         // the instance automatically.
-        let user_arity = if method_name == "create_collection" {
-            None
-        } else {
-            Some(min_args)
-        };
+        let user_arity = if variadic { None } else { Some(min_args) };
 
         let inner = Rc::new(NativeFunction::new(
             format!("solidb_{}", method_name),
@@ -375,6 +373,12 @@ fn register_solidb_class(env: &mut Environment) {
                         })
                     }
                     "query" => {
+                        if args.len() < 2 || args.len() > 3 {
+                            return Err(format!(
+                                "query() expects 1 or 2 arguments (sdbql[, bind_vars]), got {}",
+                                args.len() - 1
+                            ));
+                        }
                         let sdbql = match &args[1] {
                             Value::String(s) => s.clone(),
                             other => {
