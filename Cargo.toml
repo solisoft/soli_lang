@@ -7,7 +7,26 @@ authors = ["Solilang Team"]
 license = "MIT"
 repository = "https://github.com/solisoft/soli_lang"
 
-exclude = ["www"]
+# Exclude the docs-website runtime from the published crate, but keep
+# www/docs/*.md so the scaffolder can bundle them into every new app.
+exclude = [
+    "www/.claude",
+    "www/.env",
+    "www/CLAUDE.md",
+    "www/README.md",
+    "www/app",
+    "www/app.infos",
+    "www/config",
+    "www/db",
+    "www/node_modules",
+    "www/package-lock.json",
+    "www/package.json",
+    "www/public",
+    "www/soli.toml",
+    "www/stdlib",
+    "www/tailwind.config.js",
+    "www/tests",
+]
 
 [[bin]]
 name = "soli"
@@ -23,6 +42,10 @@ embedding = []
 thiserror = "1.0"
 colored = "2.1"
 dirs = "5.0"
+
+# Embed www/docs/*.md into the binary so `soli new` can copy them
+# into every scaffolded app under docs/.
+include_dir = "0.7"
 
 # Memory allocator - much better RSS behavior than glibc for multi-threaded apps
 mimalloc = { version = "0.1", default-features = false }

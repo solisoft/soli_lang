@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 
-use crate::scaffold::templates::{agents, app};
+use crate::scaffold::templates::{agents, app, bundled_docs};
 use crate::scaffold::ui::{ProgressDisplay, Spinner};
 
 /// Create directories for a new application
@@ -154,6 +154,40 @@ pub fn create_nested_claude_mds(app_path: &Path) -> Result<(), String> {
     ];
     for (rel, content) in nested {
         write_file(&app_path.join(rel), content)?;
+    }
+    Ok(())
+}
+
+/// Copy the bundled Soli language docs (www/docs/*.md) into the user's app
+/// under `docs/`. Per-directory CLAUDE.md files reference these by relative
+/// path, so a coding agent can resolve them locally without an internet
+/// round-trip.
+pub fn create_bundled_docs(app_path: &Path) -> Result<(), String> {
+    let target_root = app_path.join("docs");
+    fs::create_dir_all(&target_root)
+        .map_err(|e| format!("Failed to create docs/ directory: {e}"))?;
+
+    write_bundled_dir(&bundled_docs::DOCS, &target_root)
+}
+
+/// Recursively write every file from an embedded `include_dir!` tree to disk,
+/// honoring the skip list defined in `bundled_docs`.
+fn write_bundled_dir(dir: &include_dir::Dir, target_root: &Path) -> Result<(), String> {
+    for file in dir.files() {
+        let rel = file.path().to_string_lossy();
+        if !bundled_docs::should_copy(&rel) {
+            continue;
+        }
+        let target = target_root.join(file.path());
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create '{}': {e}", parent.display()))?;
+        }
+        fs::write(&target, file.contents())
+            .map_err(|e| format!("Failed to write '{}': {e}", target.display()))?;
+    }
+    for subdir in dir.dirs() {
+        write_bundled_dir(subdir, target_root)?;
     }
     Ok(())
 }
@@ -565,6 +599,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_claude_md(app_path)?;
     create_agents_md(app_path)?;
     create_nested_claude_mds(app_path)?;
+    create_bundled_docs(app_path)?;
     create_dot_claude(app_path)?;
     create_tailwind_config(app_path)?;
     create_package_json(app_path, name)?;
