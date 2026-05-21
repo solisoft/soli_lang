@@ -1871,6 +1871,163 @@
       ]
     },
     {
+      "title": ".beginning_of_minute()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-beginning-of-minute",
+      "signature": "datetime.beginning_of_minute()",
+      "description": "Truncate seconds and sub-seconds to zero, keeping the same minute",
+      "keywords": [
+        "datetime",
+        "beginning",
+        "start",
+        "minute",
+        "truncate",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".end_of_minute()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-end-of-minute",
+      "signature": "datetime.end_of_minute()",
+      "description": "Set seconds to 59 and milliseconds to 999, keeping the same minute",
+      "keywords": [
+        "datetime",
+        "end",
+        "minute",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".beginning_of_hour()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-beginning-of-hour",
+      "signature": "datetime.beginning_of_hour()",
+      "description": "Set minutes, seconds, and sub-seconds to zero, keeping the same hour",
+      "keywords": [
+        "datetime",
+        "beginning",
+        "start",
+        "hour",
+        "truncate",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".end_of_hour()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-end-of-hour",
+      "signature": "datetime.end_of_hour()",
+      "description": "Set minutes to 59, seconds to 59, and milliseconds to 999, keeping the same hour",
+      "keywords": [
+        "datetime",
+        "end",
+        "hour",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".beginning_of_day()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-beginning-of-day",
+      "signature": "datetime.beginning_of_day()",
+      "description": "Set hours, minutes, seconds, and sub-seconds to zero, keeping the same day (midnight)",
+      "keywords": [
+        "datetime",
+        "beginning",
+        "start",
+        "day",
+        "midnight",
+        "truncate",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".end_of_day()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-end-of-day",
+      "signature": "datetime.end_of_day()",
+      "description": "Set the time to 23:59:59.999, keeping the same day",
+      "keywords": [
+        "datetime",
+        "end",
+        "day",
+        "midnight",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".beginning_of_month()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-beginning-of-month",
+      "signature": "datetime.beginning_of_month()",
+      "description": "Set the day to 1 and time to 00:00:00.000, keeping the same month and year",
+      "keywords": [
+        "datetime",
+        "beginning",
+        "start",
+        "month",
+        "first",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".end_of_month()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-end-of-month",
+      "signature": "datetime.end_of_month()",
+      "description": "Set the date to the last day of the month and time to 23:59:59.999 (leap-year aware: February resolves to day 29 in leap years, 28 otherwise)",
+      "keywords": [
+        "datetime",
+        "end",
+        "month",
+        "last",
+        "leap",
+        "leap year",
+        "february",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".beginning_of_year()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-beginning-of-year",
+      "signature": "datetime.beginning_of_year()",
+      "description": "Set the date to January 1st and time to 00:00:00.000, keeping the same year",
+      "keywords": [
+        "datetime",
+        "beginning",
+        "start",
+        "year",
+        "january",
+        "boundary"
+      ]
+    },
+    {
+      "title": ".end_of_year()",
+      "type": "method",
+      "category": "DateTime",
+      "path": "/docs/builtins/datetime#def-end-of-year",
+      "signature": "datetime.end_of_year()",
+      "description": "Set the date to December 31st and time to 23:59:59.999, keeping the same year",
+      "keywords": [
+        "datetime",
+        "end",
+        "year",
+        "december",
+        "boundary"
+      ]
+    },
+    {
       "title": "Duration.seconds",
       "type": "method",
       "category": "Duration",
