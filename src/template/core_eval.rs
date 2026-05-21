@@ -37,6 +37,11 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             crate::interpreter::builtins::register_builtins(&mut env, true);
             crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
             crate::interpreter::builtins::template::inject_helpers_into_env(&mut env);
+            // Mirror the worker's main env: views need `<name>_path` /
+            // `<name>_url` helpers too. Without this, calls like
+            // `admin_path()` in a `.html.slv` template fall through to the
+            // lenient-undefined path and crash as "not callable".
+            crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
             *opt = Some(Rc::new(RefCell::new(env)));
         }
         opt.as_ref().unwrap().clone()
@@ -45,8 +50,10 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
 
 /// Drop the cached builtins env so the next template render rebuilds it.
 /// Called on helper hot reload so updated `app/helpers/*.sl` definitions
-/// take effect. Active renders keep their existing `Rc<Environment>` and
-/// finish cleanly — only the thread-local cache slot is cleared.
+/// take effect, and on routes hot reload so updated `<name>_path` /
+/// `<name>_url` helpers reflect the new patterns. Active renders keep
+/// their existing `Rc<Environment>` and finish cleanly — only the
+/// thread-local cache slot is cleared.
 pub fn reset_builtins_rc() {
     BUILTINS_RC.with(|cell| *cell.borrow_mut() = None);
 }
@@ -479,6 +486,49 @@ mod tests {
         assert!(matches!(v, Value::NativeFunction(_)));
 
         clear_view_helpers();
+        reset_builtins_rc();
+    }
+
+    #[test]
+    fn test_named_route_helpers_resolve_in_template_env() {
+        use crate::interpreter::builtins::named_routes::rebuild_named_routes;
+        use crate::interpreter::builtins::server::{clear_routes, restore_routes, Route};
+        use crate::interpreter::builtins::template::clear_view_helpers;
+
+        // Isolate this thread's route + template state.
+        clear_view_helpers();
+        clear_routes();
+        reset_builtins_rc();
+
+        // Install one named route (mirrors `get("/admin", "admin#index", name: "admin")`)
+        // and rebuild the named-route lookup the helpers read from.
+        let routes = vec![Route {
+            method: "GET".to_string(),
+            path_pattern: "/admin".to_string(),
+            handler_name: "admin#index".to_string(),
+            name: Some("admin".to_string()),
+            middleware: vec![],
+            middleware_names: vec![],
+        }];
+        rebuild_named_routes(&routes);
+        restore_routes(routes);
+
+        // Bare-name lookup must resolve to the registered NativeFunction
+        // (proves the helper is bound in the template's enclosing env).
+        let data = make_hash(vec![]);
+        let mut interp = create_template_interpreter(&data);
+        let resolved =
+            evaluate_with_interpreter(&Expr::Var("admin_path".to_string()), &mut interp).unwrap();
+        assert!(matches!(resolved, Value::NativeFunction(_)));
+
+        // And actually invoking `admin_path()` must produce the registered
+        // path string — this is the user-visible behavior the fix restores.
+        let called =
+            evaluate_with_interpreter(&Expr::Call("admin_path".to_string(), vec![]), &mut interp)
+                .unwrap();
+        assert_eq!(called, Value::String("/admin".to_string()));
+
+        clear_routes();
         reset_builtins_rc();
     }
 

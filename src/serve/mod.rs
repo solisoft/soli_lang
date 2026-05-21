@@ -1577,6 +1577,11 @@ fn worker_loop(
                 &controllers_dir,
                 &mut file_tracker,
             );
+            // Drop the template builtins env so the next render rebuilds it
+            // and re-seeds `<name>_path` / `<name>_url` helpers from the
+            // refreshed route table — otherwise views keep calling the old
+            // helpers (or fail to resolve names added in this edit).
+            crate::template::core_eval::reset_builtins_rc();
         }
 
         // Drain all pending events non-blockingly before sleeping
@@ -4136,8 +4141,7 @@ fn call_oop_controller_action(
     // user sees a 500/dev error page instead of a blank 200.
     let action_result = match action_result {
         Ok(result) if !is_response_hash(&result) => {
-            let (controller_key, _) =
-                handler_name.split_once('#').unwrap_or((handler_name, ""));
+            let (controller_key, _) = handler_name.split_once('#').unwrap_or((handler_name, ""));
             let default_template = format!("{}/{}", controller_key, action_name);
             match try_render_template(interpreter, &controller_instance, &default_template) {
                 Ok(Some(auto_result)) => Ok(auto_result),
