@@ -175,7 +175,7 @@ class User < Model
   validates("name",  { "custom": "validate_name" })
 
   def validate_name
-    if this.name == nil || this.name.length() < 2
+    if this.name.blank? || this.name.length() < 2
       this._errors.push({ "field": "name", "message": "too short" })
     end
   end
@@ -290,8 +290,117 @@ depending on hook) aborts the operation.
 - `attr_accessible(field1, field2, ...)` — whitelist fields for mass-assignment.
   When set, `Model.create(params)` silently drops any key not on the list.
   Pair with controller-side `_permit_params` for defense in depth.
-- `uploader("avatar", { ... })` — declare a blob attachment field.
+- `uploader("avatar", { ... })` — declare a blob attachment field. See
+  **Attachments and uploads** below for the full contract.
 - `translate("title", "body")` — declare translatable fields (i18n).
+
+## Attachments and uploads
+
+Declare a blob attachment with `uploader("field", { ... })` in the class body.
+The framework wires the validation, storage (SoliDB blob collection), and
+URL/HTTP plumbing for you — controllers don't need to touch the blob store.
+
+```soli
+class Contact < Model
+  uploader("photo", {
+    "multiple":      false,
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      2_000_000,        # bytes — rejects above this
+    "collection":    "contact_photos"   # optional; defaults to "contact_photos"
+  })
+
+  uploader("attachments", {             # multi-file field
+    "multiple":      true,
+    "content_types": ["application/pdf", "image/png"],
+    "max_size":      5_000_000
+  })
+end
+```
+
+| Option          | Meaning                                                                          |
+|-----------------|----------------------------------------------------------------------------------|
+| `multiple`      | `false` (default) → one blob per record. `true` → array of blob ids.              |
+| `content_types` | Allow-list of MIME types. Anything else is rejected before storage.               |
+| `max_size`      | Hard cap in bytes. Above this → `_errors` populated, no blob stored.              |
+| `collection`    | SoliDB blob collection name. Defaults to `<class_snake>_<field>s` (`contact_photos`). |
+
+The uploader adds a `<field>_blob_id` column (single) or `<field>_blob_ids`
+array (multiple) to the document. You don't read those directly — use the
+auto-generated instance methods below.
+
+### Auto-generated instance methods
+
+`uploader("photo", ...)` adds three methods on every instance:
+
+| Method                        | What it does                                                                |
+|-------------------------------|------------------------------------------------------------------------------|
+| `contact.attach_photo(file)`  | Validate + store the file, update the `<field>_blob_id(s)` column.            |
+| `contact.detach_photo(id?)`   | Delete the blob and clear the column. `id` is required when `multiple: true`. |
+| `contact.photo_url(opts?)`    | Return the public URL for the stored blob (or `nil` if none stored).          |
+
+`file` is the hash returned by `find_uploaded_file(req, "photo")` in a
+controller (see **Controllers — Handling file uploads**). On a failed attach,
+`contact._errors` is populated and `attach_photo` returns `false` — the same
+error-rendering flow used by `Model.create` validation failures.
+
+```soli
+def create
+  @contact = Contact.create(this._permit_params(params))
+  if @contact._errors
+    return render("contacts/new")
+  end
+
+  photo = find_uploaded_file(params, "photo")
+  if !photo.nil? && !@contact.attach_photo(photo)
+    return render("contacts/new")    # attach failed → _errors set
+  end
+
+  redirect(contact_path(@contact))
+end
+```
+
+### Wiring the upload routes
+
+Add `uploads("contacts", "photo")` to `config/routes.sl`. That single call
+registers a GET / POST / DELETE family (plus `:blob_id`-scoped variants for
+multi-file fields) backed by the framework's built-in `AttachmentsController`:
+
+```soli
+# config/routes.sl
+resources("contacts")
+uploads("contacts", "photo")        # for the photo field
+uploads("contacts", "attachments")  # for the multi-file field
+```
+
+| Route                                                | Purpose                          |
+|------------------------------------------------------|----------------------------------|
+| `GET    /contacts/:id/photo`                          | Stream the blob (with transforms).|
+| `POST   /contacts/:id/photo`                          | Upload a file (multipart).        |
+| `DELETE /contacts/:id/photo`                          | Detach (single) or the named blob.|
+| `GET    /contacts/:id/attachments/:blob_id`           | Stream one entry from a multi field. |
+| `DELETE /contacts/:id/attachments/:blob_id`           | Remove that one entry.            |
+
+The default routes target the framework's `AttachmentsController` — override
+by defining your own `class AttachmentsController < Controller` if you need
+auth checks, signed URLs, etc. Soli's loader processes app controllers after
+the framework prelude, so a same-named class shadows the default cleanly.
+
+### Cleanup on delete
+
+`detach_all_uploads(record)` is available for `before_delete` hooks if you
+need to wipe attached blobs alongside the record. Without it, a deleted
+record leaves orphan blobs in the collection.
+
+```soli
+class Contact < Model
+  uploader("photo", { ... })
+  before_delete("cleanup_uploads")
+
+  def cleanup_uploads
+    detach_all_uploads(this)
+  end
+end
+```
 
 ## Inspecting AQL queries (`--dev`)
 

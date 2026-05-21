@@ -142,6 +142,7 @@ Always available inside templates:
 |--------------------------------------------|--------------------------------------------------------------------|
 | `partial("dir/name", { ... })`             | Render a partial.                                                  |
 | `public_path("css/app.css")`               | Cache-busted asset URL (fingerprinted).                            |
+| `upload_url(record, "field", opts?)`       | URL for an uploader-managed blob (with optional transforms — see **Rendering uploads**). |
 | `t("posts.title")`                         | i18n lookup; respects current locale.                              |
 | `time_ago(timestamp)`                      | "3 minutes ago"-style relative time.                                |
 | `current_path()`                           | Current request path.                                              |
@@ -163,6 +164,84 @@ Always available inside templates:
 
 There is **no `link_to` helper** in Soli — write the `<a>` tag yourself with
 `<%= attr(...) %>` around URLs that contain user data.
+
+## Rendering uploads and image transforms
+
+For attachment fields declared with `uploader(...)` on a model (see
+`app/models/CLAUDE.md` → **Attachments and uploads**), the auto-generated
+`<field>_url` instance method — or the standalone `upload_url(record, "field")`
+helper — returns a URL served by the framework's `AttachmentsController`.
+The URL hits SoliDB, decodes the blob, and streams it back.
+
+```erb
+<% if !@contact.photo_url().nil? %>
+  <img src="<%= attr(@contact.photo_url()) %>" alt="<%= attr(@contact.name) %>">
+<% end %>
+```
+
+For a `multiple: true` field, the per-record getter returns `nil` — iterate
+the stored blob ids and ask for each URL:
+
+```erb
+<% for blob_id in (@document.attachments_blob_ids ?? []) %>
+  <li>
+    <a href="<%= attr(@document.attachments_url(blob_id)) %>">Download</a>
+  </li>
+<% end %>
+```
+
+### Image transforms via query string
+
+When the stored blob is an image (`Content-Type: image/*`), the URL accepts a
+small set of query parameters and the controller pipes the blob through
+Soli's `Image` builtin before responding. Browsers cache each (URL,
+query-string) combination independently — same params → cache hit, no
+re-transformation cost. Failed transforms fall back to streaming the original
+bytes.
+
+Pass options as a hash to `upload_url` / `<field>_url`:
+
+```erb
+<img src="<%= attr(@contact.photo_url({ "thumb": 120 })) %>">
+
+<img src="<%= attr(@contact.photo_url({ "w": 400, "h": 300, "fit": "cover" })) %>">
+
+<img src="<%= attr(@contact.photo_url({ "square": 64, "fmt": "webp", "q": 80 })) %>">
+```
+
+| Key                  | Effect                                                                  |
+|----------------------|--------------------------------------------------------------------------|
+| `w`, `h`             | Resize to those dimensions (may distort if both set without `fit`).      |
+| `thumb`              | Square-fit thumbnail, max edge = value.                                  |
+| `square`             | Sugar for `w=N&h=N&fit=cover` — square crop to N×N.                      |
+| `fit`                | `"cover"` (fill + center-crop) or `"contain"` (fit inside). Needs `w`+`h`.|
+| `crop`               | `"x,y,w,h"` — pick a source region first; runs before sizing.            |
+| `flipx`, `flipy`     | Horizontal / vertical flip.                                              |
+| `rot`                | `90`, `180`, or `270` — quarter-turn rotation.                            |
+| `blur`               | Gaussian blur sigma (float).                                             |
+| `bright`             | Brightness delta (signed int).                                           |
+| `contrast`           | Contrast factor (float; 1.0 = unchanged).                                |
+| `hue`                | Hue rotation in degrees.                                                 |
+| `gray`               | Truthy → grayscale.                                                       |
+| `invert`             | Truthy → invert colors.                                                   |
+| `fmt`                | Re-encode: `"webp"`, `"png"`, `"jpeg"`.                                   |
+| `q`                  | Output quality (int, encoder-specific).                                   |
+
+Pipeline order is fixed: `crop` → `flip`/`rot` → resize (`thumb` / `fit` /
+`w+h` / `square`) → effects (`blur`, `bright`, `contrast`, `hue`, `invert`,
+`gray`) → encode (`fmt`, `q`). Width/height are clamped server-side to 1000 px
+so a hand-crafted URL can't drive a multi-GB allocation.
+
+For ad-hoc image processing outside the uploader pipeline (e.g. a job that
+generates a derivative and stores it under another field), use the `Image`
+builtin directly:
+
+```soli
+img = Image.from_buffer(file["data"])
+thumb_b64 = img.thumbnail(200).format("webp").quality(80).to_buffer()
+```
+
+`Image` is mostly used in models/jobs, not in views — keep templates thin.
 
 ## App-level helpers
 

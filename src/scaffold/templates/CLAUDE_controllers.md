@@ -84,6 +84,7 @@ globals so you don't have to dig:
 | `req["headers"]`      | Lowercased header hash. `req["headers"]["user-agent"]`.        |
 | `req["method"]`       | `"GET"`, `"POST"`, ...                                          |
 | `req["path"]`         | Request path.                                                   |
+| `req["files"]`        | Array of uploaded files (multipart only). See **Handling file uploads**. |
 | `cookies`             | **Global** read-only hash of parsed cookies. `cookies.theme`.   |
 
 `params` reads route params, query params, and parsed body fields with the
@@ -341,6 +342,84 @@ or `first_by(...)` when you want the "or nil" shape:
 @post  = Post.find(params["id"])             # raises → 404
 @draft = Post.find_by("slug", params["slug"]) # nil on miss
 ```
+
+## Handling file uploads
+
+For `multipart/form-data` requests, the framework parses every file part into
+`req["files"]` — an array of hashes. Use the `find_uploaded_file(req, "field")`
+helper to pull one by form field name; it returns `nil` if no file was
+attached under that name or the request wasn't multipart.
+
+```soli
+photo = find_uploaded_file(params, "photo")
+# nil, or:
+# {
+#   "name":         "photo",                # form field name
+#   "filename":     "vacation.jpg",          # client-supplied filename
+#   "content_type": "image/jpeg",
+#   "size":         184_213,                 # bytes
+#   "data":         "<base64 body>"
+# }
+```
+
+**Don't read the bytes yourself.** When the field is declared with
+`uploader(...)` on the model, hand the file straight to the auto-generated
+`attach_<field>` method — it runs the configured MIME/size validations and
+stores the blob in SoliDB for you:
+
+```soli
+def create
+  @contact = Contact.create(this._permit_params(params))
+  if @contact._errors
+    return render("contacts/new")
+  end
+
+  photo = find_uploaded_file(params, "photo")
+  if !photo.nil? && !@contact.attach_photo(photo)
+    # attach_<field> populates @contact._errors on failure (bad MIME,
+    # too large, or storage error). Re-render with the same flow you
+    # use for validation errors.
+    return render("contacts/new")
+  end
+
+  redirect(contact_path(@contact))
+end
+```
+
+For multi-file fields (`uploader("attachments", { "multiple": true, ... })`),
+iterate `req["files"]` directly and attach one by one:
+
+```soli
+def upload_batch
+  @document = Document.find(params["id"])
+  for file in (req["files"] ?? [])
+    next unless file["name"] == "attachments"
+    @document.attach_attachments(file)    # array column; each call pushes one blob
+  end
+  redirect(document_path(@document))
+end
+```
+
+The whole upload contract (declarations, options, routes, cleanup) is in
+`app/models/CLAUDE.md` → **Attachments and uploads**. Don't re-implement
+blob storage in the controller.
+
+### Form markup
+
+The HTML form needs `enctype="multipart/form-data"` and one `<input type="file">`
+per uploader field. Anything posted under a name that doesn't match an
+uploader is just ignored.
+
+```erb
+<form action="<%= contacts_path() %>" method="post" enctype="multipart/form-data">
+  <input type="text" name="name">
+  <input type="file" name="photo" accept="image/*">
+  <button type="submit">Create</button>
+</form>
+```
+
+The cap on `req["files"]` array length is `SOLI_MAX_UPLOAD_FILES` (default 32
+per request); excess files are dropped before the action runs.
 
 ## Cookies and sessions
 
