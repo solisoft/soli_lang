@@ -259,6 +259,37 @@ impl Vm {
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
+            "concat" => {
+                // Validate all args and snapshot their elements before
+                // mutating self, so `arr.concat(arr)` and bad-arg failures
+                // leave the receiver untouched.
+                let mut to_append: Vec<Value> = Vec::new();
+                for arg in args.iter() {
+                    let other = match arg {
+                        Value::Array(other_arr) => other_arr.borrow().clone(),
+                        Value::Instance(inst) => {
+                            match inst.borrow().fields.get("__value").cloned() {
+                                Some(Value::Array(other_arr)) => other_arr.borrow().clone(),
+                                _ => {
+                                    return Err(RuntimeError::type_error(
+                                        "Array.concat() argument must be an Array",
+                                        span,
+                                    ))
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(RuntimeError::type_error(
+                                "Array.concat() argument must be an Array",
+                                span,
+                            ))
+                        }
+                    };
+                    to_append.extend(other);
+                }
+                arr.borrow_mut().extend(to_append);
+                Ok(Value::Array(arr.clone()))
+            }
             "contains" | "include?" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));

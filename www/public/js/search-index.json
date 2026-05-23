@@ -4484,6 +4484,24 @@
       ]
     },
     {
+      "title": ".concat()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-concat",
+      "signature": "array.concat(other, ...)",
+      "description": "Append elements of one or more arrays to the receiver in place and return it",
+      "keywords": [
+        "array",
+        "concat",
+        "append",
+        "extend",
+        "merge",
+        "combine",
+        "mutate",
+        "in-place"
+      ]
+    },
+    {
       "title": ".first()",
       "type": "method",
       "category": "Array",

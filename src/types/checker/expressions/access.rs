@@ -137,6 +137,11 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Null),
             }),
+            // variadic - accepts one or more arrays to append in place
+            "concat" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
             // Universal methods on all types
             "class" | "inspect" | "to_string" | "to_json" => Ok(Type::Function {
                 params: vec![],

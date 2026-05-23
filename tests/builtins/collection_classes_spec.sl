@@ -278,6 +278,62 @@ describe("Collection Classes", fn() {
             assert_eq(compacted.get(2), 3);
         });
 
+        test("Array.concat() appends another array in place", fn() {
+            let arr = [1, 2];
+            arr.concat([3, 4]);
+            assert_eq(arr.length(), 4);
+            assert_eq(arr.get(0), 1);
+            assert_eq(arr.get(1), 2);
+            assert_eq(arr.get(2), 3);
+            assert_eq(arr.get(3), 4);
+        });
+
+        test("Array.concat() returns the receiver (same instance)", fn() {
+            let arr = [1, 2];
+            let result = arr.concat([3]);
+            assert_eq(result.length(), 3);
+            // Mutating via the original binding is reflected in the returned reference
+            arr.push(99);
+            assert_eq(result.length(), 4);
+            assert_eq(result.get(3), 99);
+        });
+
+        test("Array.concat() accepts multiple array arguments", fn() {
+            let arr = [1];
+            arr.concat([2, 3], [4, 5]);
+            assert_eq(arr.length(), 5);
+            assert_eq(arr.get(0), 1);
+            assert_eq(arr.get(4), 5);
+        });
+
+        test("Array.concat() with an empty array is a no-op", fn() {
+            let arr = [1, 2, 3];
+            arr.concat([]);
+            assert_eq(arr.length(), 3);
+            assert_eq(arr.get(0), 1);
+            assert_eq(arr.get(2), 3);
+        });
+
+        test("Array.concat() does not mutate the passed-in array", fn() {
+            let a = [1, 2];
+            let b = [3, 4];
+            a.concat(b);
+            assert_eq(b.length(), 2);
+            assert_eq(b.get(0), 3);
+            assert_eq(b.get(1), 4);
+        });
+
+        test("Array.concat() raises on non-Array argument", fn() {
+            let threw = false;
+            try {
+                let arr = [1, 2];
+                arr.concat(42);
+            } catch (e) {
+                threw = true;
+            }
+            assert(threw);
+        });
+
         test("Array.flatten() flattens nested arrays", fn() {
             let arr = [1, [2, 3], [4, [5, 6]]];
             let flat = arr.flatten();

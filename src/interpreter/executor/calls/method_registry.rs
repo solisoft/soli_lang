@@ -1067,6 +1067,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "concat",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "count",
         zero_arg: true,
         ret: "int",
