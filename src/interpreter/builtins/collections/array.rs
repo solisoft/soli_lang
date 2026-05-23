@@ -270,6 +270,36 @@ pub fn register_array_class(env: &mut Environment) {
     }
 
     array_native_methods.insert(
+        "concat".to_string(),
+        Rc::new(NativeFunction::new("Array.concat", None, |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst.clone(),
+                _ => return Err("Array.concat() called on non-Array".to_string()),
+            };
+            let mut to_append: Vec<Value> = Vec::new();
+            for arg in args.iter().skip(1) {
+                let other = match arg {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
+                        Some(Value::Array(arr)) => arr.borrow().clone(),
+                        _ => return Err("Array.concat() argument must be an Array".to_string()),
+                    },
+                    _ => return Err("Array.concat() argument must be an Array".to_string()),
+                };
+                to_append.extend(other);
+            }
+            let value_opt = this.borrow().fields.get("__value").cloned();
+            match value_opt {
+                Some(Value::Array(arr)) => {
+                    arr.borrow_mut().extend(to_append);
+                    Ok(Value::Instance(this))
+                }
+                _ => Err("Array missing internal value".to_string()),
+            }
+        })),
+    );
+
+    array_native_methods.insert(
         "flatten".to_string(),
         Rc::new(NativeFunction::new("Array.flatten", None, |args| {
             let this = match args.first() {

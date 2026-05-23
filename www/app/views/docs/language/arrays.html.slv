@@ -580,6 +580,34 @@ print(cleaned)  # [1, "hello", [1], {a: 1}]</code></pre>
                 </div>
             </section>
 
+            <section id="method-concat" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-concat" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.concat(other, ...)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Append the elements of one or more arrays to the receiver <em>in place</em>, then return the receiver. Unlike <code class="text-indigo-300">+</code> (which builds a new array), <code class="text-indigo-300">.concat</code> mutates the original — matching Ruby's <code class="text-indigo-300">Array#concat</code>. Passed-in arrays are not modified. Raises if any argument is not an Array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">a = [1, 2]
+a.concat([3, 4])
+print(a);  # [1, 2, 3, 4]
+
+# Multiple arrays
+nums = [1]
+nums.concat([2, 3], [4, 5])
+print(nums);  # [1, 2, 3, 4, 5]
+
+# Empty arg is a no-op
+[1, 2].concat([])  # [1, 2]
+
+# Returns the receiver, so chaining mutates the same array
+arr = []
+arr.concat([1, 2]).concat([3])
+print(arr);  # [1, 2, 3]</code></pre>
+                </div>
+            </section>
+
             <section id="method-flatten" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-flatten" class="group flex items-center gap-2 mb-3">

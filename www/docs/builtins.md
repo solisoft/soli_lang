@@ -212,6 +212,30 @@ len({"a": 1})     # 1
 
 Array operations like `push()`, `pop()`, `map()`, `filter()`, and more are available as methods on the Array class. See the Array class documentation for details.
 
+#### concat(other, ...)
+
+Appends the elements of one or more arrays to the receiver **in place**, then returns the receiver. Mirrors Ruby's `Array#concat` — unlike `+`, which produces a new array, `.concat` mutates the original. The passed-in arrays are not modified. Raises if any argument is not an Array.
+
+**Parameters:**
+- `other` (Array) - One or more arrays whose elements are appended to the receiver
+
+**Returns:** Array - The mutated receiver
+
+**Example:**
+```soli
+a = [1, 2]
+a.concat([3, 4])
+print(a)  # [1, 2, 3, 4]
+
+# Multiple arrays at once
+nums = [1]
+nums.concat([2, 3], [4, 5])
+print(nums)  # [1, 2, 3, 4, 5]
+
+# Empty arg is a no-op
+[1, 2].concat([])  # [1, 2]
+```
+
 #### range(start, end, step?)
 
 Creates an array of numbers from start to end (exclusive).

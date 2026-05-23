@@ -127,7 +127,7 @@ impl Interpreter {
         match *method.receiver {
             Value::Array(ref arr) => {
                 match method.method_name.as_str() {
-                    "push" | "pop" | "clear" => {
+                    "push" | "pop" | "clear" | "concat" => {
                         // Mutating methods need the original Rc<RefCell>
                         match method.method_name.as_str() {
                             "push" => {
@@ -163,6 +163,38 @@ impl Interpreter {
                                 }
                                 arr.borrow_mut().clear();
                                 Ok(Value::Null)
+                            }
+                            "concat" => {
+                                // Validate every argument before mutating so a
+                                // bad arg (or `arr.concat(arr)`) doesn't leave
+                                // the receiver in a half-extended state.
+                                let mut to_append: Vec<Value> = Vec::new();
+                                for arg in arguments.iter() {
+                                    let other =
+                                        match arg {
+                                            Value::Array(other_arr) => other_arr.borrow().clone(),
+                                            Value::Instance(inst) => {
+                                                match inst.borrow().fields.get("__value").cloned() {
+                                                    Some(Value::Array(other_arr)) => {
+                                                        other_arr.borrow().clone()
+                                                    }
+                                                    _ => return Err(RuntimeError::type_error(
+                                                        "Array.concat() argument must be an Array",
+                                                        span,
+                                                    )),
+                                                }
+                                            }
+                                            _ => {
+                                                return Err(RuntimeError::type_error(
+                                                    "Array.concat() argument must be an Array",
+                                                    span,
+                                                ))
+                                            }
+                                        };
+                                    to_append.extend(other);
+                                }
+                                arr.borrow_mut().extend(to_append);
+                                Ok(Value::Array(arr.clone()))
                             }
                             _ => unreachable!(),
                         }
