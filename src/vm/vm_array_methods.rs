@@ -231,6 +231,53 @@ impl Vm {
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
             }
+            "intersection" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let other = extract_array_arg(&args[0], "intersection", span)?;
+                let items = arr.borrow();
+                let mut result: Vec<Value> = Vec::new();
+                for item in items.iter() {
+                    if other.contains(item) && !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "union" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let other = extract_array_arg(&args[0], "union", span)?;
+                let items = arr.borrow();
+                let mut result: Vec<Value> = Vec::new();
+                for item in items.iter() {
+                    if !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                for item in &other {
+                    if !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "difference" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let other = extract_array_arg(&args[0], "difference", span)?;
+                let items = arr.borrow();
+                let mut result: Vec<Value> = Vec::new();
+                for item in items.iter() {
+                    if !other.contains(item) && !result.contains(item) {
+                        result.push(item.clone());
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
             "compact" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
@@ -850,5 +897,26 @@ impl Vm {
                 span,
             }),
         }
+    }
+}
+
+fn extract_array_arg(
+    value: &Value,
+    method_name: &str,
+    span: Span,
+) -> Result<Vec<Value>, RuntimeError> {
+    match value {
+        Value::Array(arr) => Ok(arr.borrow().clone()),
+        Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
+            Some(Value::Array(arr)) => Ok(arr.borrow().clone()),
+            _ => Err(RuntimeError::type_error(
+                format!("Array.{}() argument must be an Array", method_name),
+                span,
+            )),
+        },
+        _ => Err(RuntimeError::type_error(
+            format!("Array.{}() argument must be an Array", method_name),
+            span,
+        )),
     }
 }

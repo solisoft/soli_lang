@@ -809,6 +809,9 @@ impl Interpreter {
             "sort_by" => self.array_sort_by(items, arguments, span),
             "reverse" => self.array_reverse(items, arguments, span),
             "uniq" => self.array_uniq(items, arguments, span),
+            "intersection" => self.array_intersection(items, arguments, span),
+            "union" => self.array_union(items, arguments, span),
+            "difference" => self.array_difference(items, arguments, span),
             "compact" => self.array_compact(items, arguments, span),
             "compact_blank" => self.array_compact_blank(items, arguments, span),
             "flatten" => self.array_flatten(items, arguments, span),
@@ -1529,6 +1532,68 @@ impl Interpreter {
         let mut result = Vec::new();
         for item in items {
             if !result.contains(item) {
+                result.push(item.clone());
+            }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_intersection(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let other = extract_array_arg(&arguments[0], "intersection", span)?;
+        let mut result: Vec<Value> = Vec::new();
+        for item in items {
+            if other.contains(item) && !result.contains(item) {
+                result.push(item.clone());
+            }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_union(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let other = extract_array_arg(&arguments[0], "union", span)?;
+        let mut result: Vec<Value> = Vec::new();
+        for item in items {
+            if !result.contains(item) {
+                result.push(item.clone());
+            }
+        }
+        for item in &other {
+            if !result.contains(item) {
+                result.push(item.clone());
+            }
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_difference(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let other = extract_array_arg(&arguments[0], "difference", span)?;
+        let mut result: Vec<Value> = Vec::new();
+        for item in items {
+            if !other.contains(item) && !result.contains(item) {
                 result.push(item.clone());
             }
         }
@@ -2434,6 +2499,28 @@ impl Interpreter {
             .map_err(|e| RuntimeError::General { message: e, span })?;
 
         Ok(result)
+    }
+}
+
+fn extract_array_arg(
+    value: &crate::interpreter::value::Value,
+    method_name: &str,
+    span: Span,
+) -> RuntimeResult<Vec<crate::interpreter::value::Value>> {
+    use crate::interpreter::value::Value;
+    match value {
+        Value::Array(arr) => Ok(arr.borrow().clone()),
+        Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
+            Some(Value::Array(arr)) => Ok(arr.borrow().clone()),
+            _ => Err(RuntimeError::type_error(
+                format!("Array.{}() argument must be an Array", method_name),
+                span,
+            )),
+        },
+        _ => Err(RuntimeError::type_error(
+            format!("Array.{}() argument must be an Array", method_name),
+            span,
+        )),
     }
 }
 

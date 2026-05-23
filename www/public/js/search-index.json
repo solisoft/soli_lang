@@ -4502,6 +4502,60 @@
       ]
     },
     {
+      "title": ".intersection()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-intersection",
+      "signature": "array.intersection(other)",
+      "description": "Return a new array of elements present in both arrays, deduplicated",
+      "keywords": [
+        "array",
+        "intersection",
+        "intersect",
+        "common",
+        "shared",
+        "overlap",
+        "set",
+        "and"
+      ]
+    },
+    {
+      "title": ".union()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-union",
+      "signature": "array.union(other)",
+      "description": "Return a new array of all elements from both arrays, deduplicated (receiver first)",
+      "keywords": [
+        "array",
+        "union",
+        "combine",
+        "merge",
+        "join",
+        "set",
+        "or",
+        "deduplicate"
+      ]
+    },
+    {
+      "title": ".difference()",
+      "type": "method",
+      "category": "Array",
+      "path": "/docs/language/arrays#method-difference",
+      "signature": "array.difference(other)",
+      "description": "Return a new array of receiver elements not in other, deduplicated",
+      "keywords": [
+        "array",
+        "difference",
+        "diff",
+        "subtract",
+        "minus",
+        "exclude",
+        "remove",
+        "set"
+      ]
+    },
+    {
       "title": ".first()",
       "type": "method",
       "category": "Array",

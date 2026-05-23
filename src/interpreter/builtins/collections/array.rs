@@ -269,6 +269,103 @@ pub fn register_array_class(env: &mut Environment) {
         }
     }
 
+    fn extract_array(arg: &Value) -> Result<Vec<Value>, String> {
+        match arg {
+            Value::Array(arr) => Ok(arr.borrow().clone()),
+            Value::Instance(inst) => match inst.borrow().fields.get("__value").cloned() {
+                Some(Value::Array(arr)) => Ok(arr.borrow().clone()),
+                _ => Err("argument must be an Array".to_string()),
+            },
+            _ => Err("argument must be an Array".to_string()),
+        }
+    }
+
+    array_native_methods.insert(
+        "intersection".to_string(),
+        Rc::new(NativeFunction::new("Array.intersection", Some(1), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Array.intersection() called on non-Array".to_string()),
+            };
+            let other = match args.get(1) {
+                Some(v) => extract_array(v)
+                    .map_err(|_| "Array.intersection() argument must be an Array".to_string())?,
+                None => return Err("Array.intersection() requires one argument".to_string()),
+            };
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::Array(arr)) => {
+                    let mut result: Vec<Value> = Vec::new();
+                    for item in arr.borrow().iter() {
+                        if other.contains(item) && !result.contains(item) {
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+                _ => Err("Array missing internal value".to_string()),
+            }
+        })),
+    );
+
+    array_native_methods.insert(
+        "union".to_string(),
+        Rc::new(NativeFunction::new("Array.union", Some(1), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Array.union() called on non-Array".to_string()),
+            };
+            let other = match args.get(1) {
+                Some(v) => extract_array(v)
+                    .map_err(|_| "Array.union() argument must be an Array".to_string())?,
+                None => return Err("Array.union() requires one argument".to_string()),
+            };
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::Array(arr)) => {
+                    let mut result: Vec<Value> = Vec::new();
+                    for item in arr.borrow().iter() {
+                        if !result.contains(item) {
+                            result.push(item.clone());
+                        }
+                    }
+                    for item in other.iter() {
+                        if !result.contains(item) {
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+                _ => Err("Array missing internal value".to_string()),
+            }
+        })),
+    );
+
+    array_native_methods.insert(
+        "difference".to_string(),
+        Rc::new(NativeFunction::new("Array.difference", Some(1), |args| {
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err("Array.difference() called on non-Array".to_string()),
+            };
+            let other = match args.get(1) {
+                Some(v) => extract_array(v)
+                    .map_err(|_| "Array.difference() argument must be an Array".to_string())?,
+                None => return Err("Array.difference() requires one argument".to_string()),
+            };
+            match this.borrow().fields.get("__value").cloned() {
+                Some(Value::Array(arr)) => {
+                    let mut result: Vec<Value> = Vec::new();
+                    for item in arr.borrow().iter() {
+                        if !other.contains(item) && !result.contains(item) {
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::Array(Rc::new(RefCell::new(result))))
+                }
+                _ => Err("Array missing internal value".to_string()),
+            }
+        })),
+    );
+
     array_native_methods.insert(
         "concat".to_string(),
         Rc::new(NativeFunction::new("Array.concat", None, |args| {

@@ -142,6 +142,10 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
+            "intersection" | "union" | "difference" => Ok(Type::Function {
+                params: vec![Type::Array(Box::new(inner_type.clone()))],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
             // Universal methods on all types
             "class" | "inspect" | "to_string" | "to_json" => Ok(Type::Function {
                 params: vec![],

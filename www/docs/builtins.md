@@ -236,6 +236,55 @@ print(nums)  # [1, 2, 3, 4, 5]
 [1, 2].concat([])  # [1, 2]
 ```
 
+#### intersection(other)
+
+Returns a new array of elements present in **both** the receiver and `other`, in receiver order, with duplicates removed. Originals are unchanged. Raises if the argument is not an Array.
+
+**Parameters:**
+- `other` (Array) - The array to intersect with
+
+**Returns:** Array - A new deduplicated array of shared elements
+
+**Example:**
+```soli
+[1, 2, 3].intersection([2, 3, 4])      # [2, 3]
+[1, 1, 2, 2, 3].intersection([1, 2])    # [1, 2]
+[1, 2, 3].intersection([4, 5, 6])        # []
+[].intersection([1, 2])                  # []
+```
+
+#### union(other)
+
+Returns a new array containing every element from the receiver followed by every new element from `other`, with duplicates removed. Originals are unchanged. Raises if the argument is not an Array.
+
+**Parameters:**
+- `other` (Array) - The array to union with
+
+**Returns:** Array - A new deduplicated array containing both inputs
+
+**Example:**
+```soli
+[1, 2, 3].union([2, 3, 4])    # [1, 2, 3, 4]
+[1, 1, 2].union([2, 3])        # [1, 2, 3]
+[1, 1, 2].union([])            # [1, 2]
+```
+
+#### difference(other)
+
+Returns a new array of receiver elements that are **not** in `other`, with duplicates removed. Unlike `-`, the result is always deduplicated. Originals are unchanged. Raises if the argument is not an Array.
+
+**Parameters:**
+- `other` (Array) - The array of elements to exclude
+
+**Returns:** Array - A new deduplicated array of receiver-only elements
+
+**Example:**
+```soli
+[1, 2, 3].difference([2, 3])      # [1]
+[1, 1, 2, 2, 3].difference([3])    # [1, 2]
+[1, 2, 3].difference([1, 2, 3])    # []
+```
+
 #### range(start, end, step?)
 
 Creates an array of numbers from start to end (exclusive).
