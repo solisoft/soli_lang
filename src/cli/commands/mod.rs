@@ -601,8 +601,16 @@ pub fn run_test(
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
+    show_uncovered: bool,
 ) {
-    test_runner::run_test(paths, jobs, coverage_formats, coverage_min, no_coverage);
+    test_runner::run_test(
+        paths,
+        jobs,
+        coverage_formats,
+        coverage_min,
+        no_coverage,
+        show_uncovered,
+    );
 }
 
 pub fn run_init() {

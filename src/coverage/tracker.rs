@@ -362,7 +362,44 @@ impl CoverageTracker {
     }
 
     pub fn get_aggregated_coverage(&self) -> AggregatedCoverage {
-        self.global_coverage.lock().unwrap().clone()
+        let mut aggregated = self.global_coverage.lock().unwrap().clone();
+
+        // Fill in zero-hit LineCoverage entries for every executable line
+        // that never got a hit. Without this, the HTML reporter (which keys
+        // off file_cov.lines) renders un-hit executable lines as plain
+        // context — invisible — instead of red ✗. The coverage% itself was
+        // already correct via covered_lines / total_lines, but you couldn't
+        // SEE which lines were uncovered, defeating the purpose of the view.
+        for (path, executable) in &self.executable_lines {
+            let file_cov = aggregated
+                .file_coverages
+                .entry(path.clone())
+                .or_insert_with(|| FileCoverage {
+                    path: path.clone(),
+                    lines: HashMap::new(),
+                    branches: HashMap::new(),
+                    total_lines: 0,
+                    covered_lines: 0,
+                    total_branches: 0,
+                    covered_branches: 0,
+                });
+            if file_cov.total_lines == 0 {
+                file_cov.total_lines = executable.len() as u32;
+            }
+            for (line_num, source) in executable {
+                file_cov
+                    .lines
+                    .entry(*line_num)
+                    .or_insert_with(|| LineCoverage {
+                        line_number: *line_num,
+                        hits: 0,
+                        source_code: source.clone(),
+                        is_executable: true,
+                    });
+            }
+        }
+
+        aggregated
     }
 
     pub fn merge_test_coverage(&mut self, test_cov: TestCoverage) {

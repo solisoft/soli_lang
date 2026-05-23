@@ -122,26 +122,33 @@ impl CoverageReporter {
         if self.config.show_uncovered {
             let uncovered = coverage.uncovered_lines();
             if !uncovered.is_empty() {
-                output.push_str("\nUncovered lines:\n");
-                for uncov in uncovered.iter().take(20) {
-                    let display_path = if let Some(ref root) = self.config.root_dir {
-                        uncov
-                            .path
-                            .strip_prefix(root)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| uncov.path.to_string_lossy().to_string())
-                    } else {
-                        uncov.path.to_string_lossy().to_string()
-                    };
+                output.push_str(&format!(
+                    "\nUncovered lines ({}):\n",
+                    uncovered.len()
+                ));
+                // Already sorted by (path, line_number) in `uncovered_lines()`;
+                // group consecutively rather than rebuilding a HashMap to keep
+                // file order stable.
+                let mut current_path: Option<&PathBuf> = None;
+                for uncov in &uncovered {
+                    if current_path != Some(&uncov.path) {
+                        current_path = Some(&uncov.path);
+                        let display_path = if let Some(ref root) = self.config.root_dir {
+                            uncov
+                                .path
+                                .strip_prefix(root)
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| uncov.path.to_string_lossy().to_string())
+                        } else {
+                            uncov.path.to_string_lossy().to_string()
+                        };
+                        output.push_str(&format!("\n  \x1b[1m{}\x1b[0m\n", display_path));
+                    }
                     output.push_str(&format!(
-                        "  {}:{} ({}))\n",
-                        display_path,
+                        "    \x1b[31m{:>4}\x1b[0m  \x1b[90m{}\x1b[0m\n",
                         uncov.line_number,
                         uncov.source_code.trim()
                     ));
-                }
-                if uncovered.len() > 20 {
-                    output.push_str(&format!("  ... and {} more\n", uncovered.len() - 20));
                 }
             }
         }

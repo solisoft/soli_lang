@@ -40,6 +40,10 @@ pub enum Command {
         coverage_formats: Vec<String>,
         coverage_min: Option<f64>,
         no_coverage: bool,
+        /// List every uncovered executable line under the coverage summary.
+        /// Opt-in via `--show-uncovered` — by default the report only shows
+        /// the per-file percentages so the summary stays scannable.
+        show_uncovered: bool,
     },
     DbMigrate {
         action: DbMigrateAction,
@@ -131,7 +135,7 @@ pub fn print_usage() {
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--no-coverage]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--standalone]");
@@ -181,6 +185,7 @@ pub fn print_usage() {
     eprintln!("  --coverage           Generate coverage report (console)");
     eprintln!("  --coverage=FORMAT    Also generate FORMAT reports: html, json, xml (comma-sep)");
     eprintln!("  --coverage-min N     Fail if coverage is below N% (default: 80)");
+    eprintln!("  --show-uncovered     List every uncovered line in the console report");
     eprintln!("  --no-coverage        Skip coverage collection");
     eprintln!("  --help, -h      Show this help message");
     eprintln!();
@@ -721,6 +726,7 @@ pub fn parse_args() -> Options {
                 let mut coverage_formats: Vec<String> = vec!["console".to_string()];
                 let mut coverage_min: Option<f64> = None;
                 let mut no_coverage = false;
+                let mut show_uncovered = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
                         // Support `--coverage=html`, `--coverage=json,xml`,
@@ -788,6 +794,9 @@ pub fn parse_args() -> Options {
                             "--no-coverage" => {
                                 no_coverage = true;
                             }
+                            "--show-uncovered" => {
+                                show_uncovered = true;
+                            }
                             "--coverage-min" => {
                                 i += 1;
                                 if i >= args.len() {
@@ -821,6 +830,7 @@ pub fn parse_args() -> Options {
                     },
                     coverage_min: if no_coverage { None } else { coverage_min },
                     no_coverage,
+                    show_uncovered,
                 };
                 return options;
             }

@@ -283,6 +283,7 @@ pub fn run_test(
     coverage_formats: &[String],
     coverage_min: Option<f64>,
     no_coverage: bool,
+    show_uncovered: bool,
 ) {
     let test_paths: Vec<PathBuf> = if paths.is_empty() {
         vec![std::env::current_dir()
@@ -355,12 +356,14 @@ pub fn run_test(
     model_preamble_files.push((PathBuf::from("<test-helpers>"), helpers_src));
 
     // Load every `.sl` in app/models, app/services, app/helpers,
-    // app/middleware into the test interpreter. Models and services define
-    // classes used in tests; helpers and middleware define top-level `def`
-    // functions that unit tests can call directly (without going through
+    // app/middleware, app/jobs into the test interpreter. Models and services
+    // define classes used in tests; helpers and middleware define top-level
+    // `def` functions that unit tests can call directly (without going through
     // an HTTP request) — e.g. `authorize_admin(req)` or
-    // `active_link(path, current)`.
-    for sub in ["models", "services", "helpers", "middleware"] {
+    // `active_link(path, current)`. Jobs are also classes that specs invoke
+    // directly (`EmailJob.perform(...)`); without preloading them, the call
+    // throws "undefined" and a `try/catch` in the spec can pass vacuously.
+    for sub in ["models", "services", "helpers", "middleware", "jobs"] {
         let dir = app_dir.join("app").join(sub);
         if !dir.is_dir() {
             continue;
@@ -1136,7 +1139,7 @@ pub fn run_test(
                     threshold: coverage_min.or(Some(80.0)),
                     exclude_patterns: Vec::new(),
                     exclude_lines: Vec::new(),
-                    show_uncovered: true,
+                    show_uncovered,
                     per_test: false,
                     root_dir: Some(app_dir.clone()),
                 };

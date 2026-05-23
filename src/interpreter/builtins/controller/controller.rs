@@ -154,6 +154,12 @@ pub struct ControllerAction {
 pub struct BeforeAction {
     pub actions: Vec<String>,   // Empty = all actions
     pub handler_source: String, // Soli function source code
+    /// 1-based line number where `fn(...)` starts in the original controller
+    /// file. Used by the handler executor to pad the wrapped source so that
+    /// AST span lines align with the original file — without this, every
+    /// before_action hit gets attributed to lines 1..N of the synthetic
+    /// wrapper, polluting the controller's coverage map.
+    pub source_line: usize,
 }
 
 /// After action hook.
@@ -161,6 +167,8 @@ pub struct BeforeAction {
 pub struct AfterAction {
     pub actions: Vec<String>,   // Empty = all actions
     pub handler_source: String, // Soli function source code
+    /// See `BeforeAction::source_line`.
+    pub source_line: usize,
 }
 
 /// Controller metadata for routing.

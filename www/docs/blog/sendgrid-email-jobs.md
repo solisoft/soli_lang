@@ -2,15 +2,15 @@
 
 Email delivery is one of those features that quietly turns a synchronous request into a slow one. The user submits a signup form, your controller posts to SendGrid's API, the API takes 300 ms on a good day and several seconds on a bad one — and the user waits. The fix is not "make HTTP faster"; the fix is to take the work off the request path entirely.
 
-This post walks through two things together: building a thin SendGrid wrapper as a Soli library, then handing the delivery off to a SolidB-backed background job so the controller returns immediately. By the end you will have a `SendGrid.send_mail(...)` you can call from anywhere, an `EmailJob` you can enqueue with one line, and a clear mental model of why those two pieces belong on opposite sides of the queue.
+This post walks through two things together: building a thin SendGrid wrapper as an `app/services/` class, then handing the delivery off to a SolidB-backed background job so the controller returns immediately. By the end you will have a `SendGrid.send_mail(...)` you can call from anywhere, an `EmailJob` you can enqueue with one line, and a clear mental model of why those two pieces belong on opposite sides of the queue.
 
 ## The Shape of the Solution
 
 Three files and a route do the whole job:
 
 ```
-lib/sendgrid.sl            # thin wrapper around the v3 Messages API
-app/jobs/email_job.sl      # static perform — receives args, calls SendGrid
+app/services/sendgrid.sl             # thin wrapper around the v3 Messages API
+app/jobs/email_job.sl                # static perform — receives args, calls SendGrid
 app/controllers/users_controller.sl  # enqueues EmailJob.perform_later(...)
 ```
 
@@ -18,10 +18,10 @@ The controller never touches SendGrid. It validates input, persists the user, en
 
 ## Step 1: A Thin SendGrid Wrapper
 
-Wrap the SendGrid v3 Messages API once, in a place you can reuse from any job, controller, or one-off script. Put it under `lib/` so it sits next to your application code without polluting `app/`.
+Wrap the SendGrid v3 Messages API once, in a place you can reuse from any job, controller, or one-off script. Drop it in `app/services/` — Soli autoloads every `.sl` file under that directory at boot, so the class is available everywhere without an `import`.
 
 ```soli
-# lib/sendgrid.sl
+# app/services/sendgrid.sl
 class SendGrid
   SEND_URL = "https://api.sendgrid.com/v3/mail/send"
 
@@ -67,11 +67,7 @@ A few things to notice:
 - **A 202 with an empty body is the success case.** Treating any 2xx as `ok: true` keeps the wrapper boring; the caller decides what to do with non-2xx.
 - **No retry logic in the library.** Retries belong to the queue, not to the library. SolidB will re-fire the job if the handler raises or returns a 5xx — letting the wrapper stay thin.
 
-Mention this wrapper from anywhere in the codebase:
-
-```soli
-import "/lib/sendgrid.sl"
-```
+Because `app/services/` is autoloaded, you call `SendGrid.send_mail(...)` from any controller, job, or script without an `import` line.
 
 ## Step 2: The Email Job
 
@@ -79,8 +75,6 @@ Now the asynchronous half. Soli's background-job system loads every class under 
 
 ```soli
 # app/jobs/email_job.sl
-import "/lib/sendgrid.sl"
-
 class EmailJob
   static def perform(args)
     to      = args["to"]
@@ -111,8 +105,6 @@ This is the line the user actually waits for:
 
 ```soli
 # app/controllers/users_controller.sl
-import "/app/jobs/email_job.sl"
-
 class UsersController
   def create
     user = User.create(params["user"])
@@ -157,7 +149,7 @@ Configure it with three env vars (`SOLI_JOBS_DATABASE`, `SOLI_JOBS_CALLBACK_URL`
 Two boundaries make this clean:
 
 - **The library doesn't know about the queue.** `SendGrid.send_mail` is a synchronous function. It works in a controller, a script, a `soli console` session, or a test. Pulling SendGrid into a separate file like this means a future "send a password reset" feature wires up the same wrapper into a `PasswordResetJob` without copying API code.
-- **The controller doesn't know about SendGrid.** It enqueues an email by *intent* (to, subject, body), not by transport. If you swap SendGrid for SES tomorrow, you touch `lib/sendgrid.sl` and `EmailJob`. The controller and the SignupForm don't care.
+- **The controller doesn't know about SendGrid.** It enqueues an email by *intent* (to, subject, body), not by transport. If you swap SendGrid for SES tomorrow, you touch `app/services/sendgrid.sl` and `EmailJob`. The controller and the SignupForm don't care.
 
 That separation is what lets the request return in 10 ms while the email still goes out a second later — the user gets their redirect, the email shows up, and you never had to put SendGrid's latency into your SLO.
 

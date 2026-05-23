@@ -4437,6 +4437,7 @@ fn execute_before_actions(
         // Execute the before_action handler
         match crate::interpreter::builtins::controller::registry::execute_handler_source(
             &before_action.handler_source,
+            before_action.source_line,
             interpreter,
             req.clone(),
         ) {
@@ -4510,6 +4511,7 @@ fn execute_after_actions(
         // Execute the after_action handler
         match crate::interpreter::builtins::controller::registry::execute_after_handler_source(
             &after_action.handler_source,
+            after_action.source_line,
             interpreter,
             req.clone(),
             response_value.clone(),

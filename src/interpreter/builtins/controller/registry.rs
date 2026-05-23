@@ -342,12 +342,21 @@ fn extract_superclass_name(source: &str) -> Option<String> {
 
 /// Parse the static block for controller configuration.
 fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Result<(), String> {
-    // Find static { ... } block
-    let static_block = extract_static_block(source)?;
+    // Find static { ... } block, along with the file line where its body
+    // starts. We need that offset so each extracted hook's `source_line`
+    // (line of `fn` within the static block) can be translated back to the
+    // original file's line — which is what coverage hits must be attributed
+    // to.
+    let (static_block, body_start_line) = extract_static_block_with_line(source)?;
 
     if static_block.is_empty() {
         return Ok(());
     }
+
+    // `extract_function_source` returns a 1-based line counted within the
+    // static block; adding `body_start_line - 1` shifts it into file-line
+    // space.
+    let line_shift = body_start_line.saturating_sub(1);
 
     // Parse this.layout = "..."
     if let Some(layout) = extract_quoted_value(&static_block, "this.layout") {
@@ -355,38 +364,46 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
     }
 
     // Parse this.before_action = fn(req) { ... }
-    if let Some(handler_source) = extract_function_source(&static_block, "this.before_action") {
+    if let Some((handler_source, local_line)) =
+        extract_function_source(&static_block, "this.before_action")
+    {
         info.before_actions.push(BeforeAction {
             actions: Vec::new(), // Empty = all actions
             handler_source,
+            source_line: local_line + line_shift,
         });
     }
 
     // Parse this.before_action(:action1, :action2) = fn(req) { ... } — may appear multiple times
-    for (actions, handler_source) in
+    for (actions, handler_source, local_line) in
         extract_all_action_specific_function_sources(&static_block, "this.before_action")
     {
         info.before_actions.push(BeforeAction {
             actions,
             handler_source,
+            source_line: local_line + line_shift,
         });
     }
 
     // Parse this.after_action = fn(req, response) { ... }
-    if let Some(handler_source) = extract_function_source(&static_block, "this.after_action") {
+    if let Some((handler_source, local_line)) =
+        extract_function_source(&static_block, "this.after_action")
+    {
         info.after_actions.push(AfterAction {
             actions: Vec::new(),
             handler_source,
+            source_line: local_line + line_shift,
         });
     }
 
     // Parse this.after_action(:action1, :action2) = fn(req, response) { ... } — may appear multiple times
-    for (actions, handler_source) in
+    for (actions, handler_source, local_line) in
         extract_all_action_specific_function_sources(&static_block, "this.after_action")
     {
         info.after_actions.push(AfterAction {
             actions,
             handler_source,
+            source_line: local_line + line_shift,
         });
     }
 
@@ -394,7 +411,10 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
 }
 
 /// Extract the `static { ... }` block from source. Returns an empty string if absent.
-fn extract_static_block(source: &str) -> Result<String, String> {
+/// Also returns the 1-based line where the block body starts in the file, so
+/// extracted handler line numbers can be translated back from static-block-local
+/// coordinates to file coordinates.
+fn extract_static_block_with_line(source: &str) -> Result<(String, usize), String> {
     let bytes = source.as_bytes();
     let mut search_from = 0;
 
@@ -426,6 +446,7 @@ fn extract_static_block(source: &str) -> Result<String, String> {
         // phantom string literal that never closes, leaving the scanner stuck
         // in string mode and misreporting "Unclosed static block".
         let body_start = i + 1;
+        let body_start_line = source[..body_start].bytes().filter(|&b| b == b'\n').count() + 1;
         let mut depth = 1;
         let mut in_string = false;
         let mut string_char = 0u8;
@@ -461,7 +482,7 @@ fn extract_static_block(source: &str) -> Result<String, String> {
                     b'}' => {
                         depth -= 1;
                         if depth == 0 {
-                            return Ok(source[body_start..j].to_string());
+                            return Ok((source[body_start..j].to_string(), body_start_line));
                         }
                     }
                     _ => {}
@@ -473,7 +494,7 @@ fn extract_static_block(source: &str) -> Result<String, String> {
         return Err("Unclosed static block".to_string());
     }
 
-    Ok(String::new())
+    Ok((String::new(), 0))
 }
 
 fn is_ident_byte(b: u8) -> bool {
@@ -495,10 +516,11 @@ fn extract_quoted_value(source: &str, key: &str) -> Option<String> {
 }
 
 /// Extract a function definition source code like this.before_action = fn(req) { ... }
-fn extract_function_source(source: &str, key: &str) -> Option<String> {
+fn extract_function_source(source: &str, key: &str) -> Option<(String, usize)> {
     let key_pattern = format!("{} = ", key);
     if let Some(pos) = source.find(&key_pattern) {
-        let after = &source[pos + key_pattern.len()..];
+        let fn_byte = pos + key_pattern.len();
+        let after = &source[fn_byte..];
 
         // Look for fn(...) { pattern
         if after.starts_with("fn") {
@@ -508,18 +530,23 @@ fn extract_function_source(source: &str, key: &str) -> Option<String> {
             // Include "fn" prefix in the result (index 0 to matching brace)
             let fn_source = &after[..fn_start + fn_end + 1];
 
-            // Return the complete function source code including "fn"
-            return Some(fn_source.to_string());
+            // 1-based line number where `fn` appears in the original file.
+            // The +1 makes it match how editors display lines.
+            let source_line = source[..fn_byte].bytes().filter(|&b| b == b'\n').count() + 1;
+            return Some((fn_source.to_string(), source_line));
         }
     }
     None
 }
 
 /// Extract every `this.before_action(:a, :b) = fn(...) { ... }` occurrence in order.
+/// Returns the list of action names, the function source, and the 1-based line
+/// number where `fn(...)` appears in the original file (needed for coverage
+/// span alignment in `execute_handler_source`).
 fn extract_all_action_specific_function_sources(
     source: &str,
     key: &str,
-) -> Vec<(Vec<String>, String)> {
+) -> Vec<(Vec<String>, String, usize)> {
     let pattern = format!("{}(:", key);
     let mut results = Vec::new();
     let mut cursor = 0;
@@ -556,14 +583,14 @@ fn extract_all_action_specific_function_sources(
         };
 
         let fn_source = &after_fn[..fn_start + fn_end + 1];
-        let consumed_end = (after.as_ptr() as usize - source.as_ptr() as usize)
-            + actions_end
-            + 4
-            + fn_start
-            + fn_end
-            + 1;
+        // Byte offset of `fn` in the original source; line is the count of
+        // preceding newlines + 1.
+        let fn_byte = (after.as_ptr() as usize - source.as_ptr() as usize) + actions_end + 4;
+        let source_line = source[..fn_byte].bytes().filter(|&b| b == b'\n').count() + 1;
 
-        results.push((actions, fn_source.to_string()));
+        let consumed_end = fn_byte + fn_start + fn_end + 1;
+
+        results.push((actions, fn_source.to_string(), source_line));
         cursor = consumed_end;
     }
 
@@ -720,12 +747,26 @@ fn normalize_empty_handler_body(src: &str) -> String {
 
 pub fn execute_handler_source(
     handler_source: &str,
+    source_line: usize,
     interpreter: &mut Interpreter,
     req: Value,
 ) -> Result<Value, String> {
-    // Create a wrapper that defines the function, calls it, and stores the result
+    // Pad the wrapped source with `source_line - 1` newlines so that the
+    // `fn(req) { ... }` body lands on the same line numbers it occupied in
+    // the original controller file. Without padding, parsed spans start at
+    // line 1 and get recorded against the controller's path by coverage —
+    // polluting the controller's hit map with phantom hits on comment/blank
+    // lines.
+    let padding = "\n".repeat(source_line.saturating_sub(1));
+    eprintln!(
+        "[cov-debug] execute_handler_source: source_line={}, handler_src_len={}, wrap_len={}",
+        source_line,
+        handler_source.len(),
+        padding.len() + handler_source.len()
+    );
     let wrapped_source = format!(
-        "let __handler = {}; let __result = __handler(req);",
+        "{}let __handler = {}; let __result = __handler(req);",
+        padding,
         normalize_empty_handler_body(handler_source)
     );
 
@@ -766,13 +807,16 @@ pub fn execute_handler_source(
 /// Uses thread-local cache to avoid re-parsing on every request.
 pub fn execute_after_handler_source(
     handler_source: &str,
+    source_line: usize,
     interpreter: &mut Interpreter,
     req: Value,
     response: Value,
 ) -> Result<Value, String> {
-    // Create a wrapper that defines the function, calls it, and stores the result
+    // See `execute_handler_source` for why we pad with leading newlines.
+    let padding = "\n".repeat(source_line.saturating_sub(1));
     let wrapped_source = format!(
-        "let __handler = {}; let __result = __handler(req, response);",
+        "{}let __handler = {}; let __result = __handler(req, response);",
+        padding,
         normalize_empty_handler_body(handler_source)
     );
 
@@ -998,7 +1042,7 @@ mod tests {
 
         // Handler: reads from req, writes to the controller via @sigil.
         let handler_source = "fn(req) { @uid_from_hook = req[\"uid\"]; req }";
-        let result = execute_handler_source(handler_source, &mut interp, req);
+        let result = execute_handler_source(handler_source, 1, &mut interp, req);
 
         // The hook should return the req (not an error).
         assert!(
