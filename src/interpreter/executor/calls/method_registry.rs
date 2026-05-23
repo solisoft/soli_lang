@@ -1087,6 +1087,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "difference",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
         name: "drop",
         zero_arg: false,
         ret: "array",
@@ -1150,6 +1155,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         name: "inspect",
         zero_arg: true,
         ret: "string",
+    },
+    MethodDef {
+        name: "intersection",
+        zero_arg: false,
+        ret: "array",
     },
     MethodDef {
         name: "is_a?",
@@ -1289,6 +1299,11 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     MethodDef {
         name: "uniq",
         zero_arg: true,
+        ret: "array",
+    },
+    MethodDef {
+        name: "union",
+        zero_arg: false,
         ret: "array",
     },
     MethodDef {

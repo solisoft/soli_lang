@@ -608,6 +608,80 @@ print(arr);  # [1, 2, 3]</code></pre>
                 </div>
             </section>
 
+            <section id="section-set-ops" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-gradient-to-br from-cyan-500/5 to-blue-500/5 border border-cyan-500/20 p-5">
+                    <h3 class="text-lg font-bold text-cyan-300 mb-2">Set Operations</h3>
+                    <p class="text-gray-400 mb-0"><code class="text-indigo-300">.intersection</code>, <code class="text-indigo-300">.union</code>, and <code class="text-indigo-300">.difference</code> treat arrays as sets — they always return new, deduplicated arrays. The receiver and the argument are left untouched.</p>
+                </div>
+            </section>
+
+            <section id="method-intersection" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-intersection" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.intersection(other)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a new array of elements present in <em>both</em> the receiver and <code class="text-indigo-300">other</code>, in the order they appear in the receiver, with duplicates removed. Raises if the argument is not an Array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].intersection([2, 3, 4])      # [2, 3]
+["a", "b", "c"].intersection(["b", "d"])  # ["b"]
+
+# Duplicates in the receiver collapse
+[1, 1, 2, 2, 3].intersection([1, 2])    # [1, 2]
+
+# No overlap returns an empty array
+[1, 2, 3].intersection([4, 5, 6])        # []
+
+# Empty receiver returns an empty array
+[].intersection([1, 2])                  # []</code></pre>
+                </div>
+            </section>
+
+            <section id="method-union" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-union" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.union(other)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a new array containing every element from the receiver followed by every new element from <code class="text-indigo-300">other</code>, with duplicates removed. Raises if the argument is not an Array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].union([2, 3, 4])    # [1, 2, 3, 4]
+
+# Duplicates collapse — even within the receiver
+[1, 1, 2].union([2, 3])        # [1, 2, 3]
+
+# Empty other returns the deduped receiver
+[1, 1, 2].union([])            # [1, 2]
+
+# Order preserved: receiver first, then new elements from other
+["a", "b"].union(["c", "a"])    # ["a", "b", "c"]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-difference" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-difference" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.difference(other)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns a new array of receiver elements that are <em>not</em> in <code class="text-indigo-300">other</code>, with duplicates removed. Unlike <code class="text-indigo-300">-</code>, the result is always deduplicated. Raises if the argument is not an Array.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">[1, 2, 3].difference([2, 3])      # [1]
+
+# Duplicates in the receiver collapse
+[1, 1, 2, 2, 3].difference([3])    # [1, 2]
+
+# All elements removed → empty array
+[1, 2, 3].difference([1, 2, 3])    # []
+
+# Empty other returns the deduped receiver
+[1, 1, 2, 3].difference([])        # [1, 2, 3]</code></pre>
+                </div>
+            </section>
+
             <section id="method-flatten" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-flatten" class="group flex items-center gap-2 mb-3">

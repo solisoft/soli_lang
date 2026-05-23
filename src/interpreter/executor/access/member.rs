@@ -1676,7 +1676,8 @@ impl Interpreter {
             | "slice" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get"
             | "to_string" | "to_json" | "join" | "is_a?" | "all" | "includes" | "order"
             | "delete" | "delete_at" | "shift" | "unshift" | "insert" | "rotate" | "reject"
-            | "none?" | "one?" | "values_at" | "count" => Ok(Value::Method(ValueMethod {
+            | "none?" | "one?" | "values_at" | "count" | "intersection" | "union"
+            | "difference" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),

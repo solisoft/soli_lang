@@ -336,3 +336,83 @@ describe("Array - Ruby-compat methods", fn() {
         assert_eq([1, 2, 3, 4].count(fn(x) x % 2 == 0), 2);
     });
 });
+
+describe("Array - Set Operations", fn() {
+    test("intersection returns shared elements in receiver order", fn() {
+        assert_eq([1, 2, 3].intersection([2, 3, 4]), [2, 3]);
+    });
+
+    test("intersection deduplicates the result", fn() {
+        assert_eq([1, 1, 2, 2, 3].intersection([1, 2]), [1, 2]);
+    });
+
+    test("intersection with no overlap returns empty array", fn() {
+        assert_eq([1, 2, 3].intersection([4, 5, 6]), []);
+    });
+
+    test("intersection with empty receiver returns empty array", fn() {
+        assert_eq([].intersection([1, 2, 3]), []);
+    });
+
+    test("intersection with empty other returns empty array", fn() {
+        assert_eq([1, 2, 3].intersection([]), []);
+    });
+
+    test("intersection works with strings", fn() {
+        assert_eq(["a", "b", "c"].intersection(["b", "c", "d"]), ["b", "c"]);
+    });
+
+    test("union returns all elements, receiver first, deduplicated", fn() {
+        assert_eq([1, 2, 3].union([2, 3, 4]), [1, 2, 3, 4]);
+    });
+
+    test("union deduplicates within receiver and across", fn() {
+        assert_eq([1, 1, 2].union([2, 3]), [1, 2, 3]);
+    });
+
+    test("union with empty other returns deduped receiver", fn() {
+        assert_eq([1, 1, 2, 3].union([]), [1, 2, 3]);
+    });
+
+    test("union with empty receiver returns deduped other", fn() {
+        assert_eq([].union([1, 2, 2, 3]), [1, 2, 3]);
+    });
+
+    test("union with two empty arrays returns empty array", fn() {
+        assert_eq([].union([]), []);
+    });
+
+    test("difference returns receiver elements not in other", fn() {
+        assert_eq([1, 2, 3].difference([2, 3]), [1]);
+    });
+
+    test("difference deduplicates the result", fn() {
+        assert_eq([1, 1, 2, 2, 3].difference([3]), [1, 2]);
+    });
+
+    test("difference with no overlap returns deduped receiver", fn() {
+        assert_eq([1, 1, 2].difference([3, 4]), [1, 2]);
+    });
+
+    test("difference where other contains all returns empty array", fn() {
+        assert_eq([1, 2, 3].difference([1, 2, 3]), []);
+    });
+
+    test("difference with empty other returns deduped receiver", fn() {
+        assert_eq([1, 1, 2, 3].difference([]), [1, 2, 3]);
+    });
+
+    test("difference with empty receiver returns empty array", fn() {
+        assert_eq([].difference([1, 2]), []);
+    });
+
+    test("set operations leave originals unchanged", fn() {
+        let a = [1, 2, 3];
+        let b = [2, 3, 4];
+        a.intersection(b);
+        a.union(b);
+        a.difference(b);
+        assert_eq(a, [1, 2, 3]);
+        assert_eq(b, [2, 3, 4]);
+    });
+});
