@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub struct Metrics {
     pub http_requests_total: AtomicU64,
@@ -91,6 +91,48 @@ impl Metrics {
         ));
 
         out
+    }
+
+    pub fn record_lexing(&self, elapsed: Duration) {
+        self.lexing_duration_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.lexing_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_parsing(&self, elapsed: Duration) {
+        self.parsing_duration_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.parsing_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_vm_execution(&self, elapsed: Duration) {
+        self.vm_execution_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.vm_execution_count.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+pub struct VmTimingGuard {
+    start: Instant,
+}
+
+impl VmTimingGuard {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Default for VmTimingGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for VmTimingGuard {
+    fn drop(&mut self) {
+        Metrics::global().record_vm_execution(self.start.elapsed());
     }
 }
 

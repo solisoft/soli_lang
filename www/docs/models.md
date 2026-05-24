@@ -388,11 +388,13 @@ silently lost.
 
 ## Callbacks
 
-Define lifecycle callbacks to run code at specific points:
+Define lifecycle callbacks to run code at specific points. The method name
+can be passed as a string or a symbol:
 
 ```soli
 class User < Model
-  before_save("normalize_email")
+  before_save("normalize_email")   # both strings and symbols work
+  before_save(:normalize_email)    # Ruby-style symbol shorthand
   after_create("send_welcome_email")
   before_update("log_changes")
   after_delete("cleanup_related")
@@ -443,7 +445,7 @@ Returning `false` from any `before_*` callback aborts the operation. The native 
 
 ```soli
 class Audited < Model
-  before_save("can_save")
+  before_save("can_save")  # symbols also work: before_save(:can_save)
 
   def can_save
     return false if User.current.is_nil?  # returns false → save() / update() aborts
@@ -530,11 +532,13 @@ end
 
 ## Relationships
 
-Declare associations using the built-in DSL:
+Declare associations using the built-in DSL. Association names accept strings
+or symbols:
 
 ```soli
 class User < Model
-  has_many("posts")
+  has_many("posts")      # strings and symbols both work
+  has_many(:posts)       # Ruby-style symbol shorthand
   has_one("profile")
 end
 
@@ -1209,13 +1213,15 @@ SDBQL uses:
 ```soli
 # app/models/user.sl
 class User < Model
-  has_many("posts")
+  has_many("posts")      # strings and symbols both work
+  has_many(:posts)       # Ruby-style symbol shorthand
   has_one("profile")
 
   validates("email", { "presence": true, "uniqueness": true })
   validates("name", { "presence": true, "min_length": 2 })
 
-  before_save("normalize_email")
+  before_save("normalize_email")   # strings and symbols both work
+  before_save(:normalize_email)    # Ruby-style symbol shorthand
 
   fn normalize_email()
     this.email = this.email.downcase;
@@ -1228,7 +1234,7 @@ end
 
 # app/models/post.sl
 class Post < Model
-  belongs_to("user")
+  belongs_to("user")     # symbols also work
   has_many("comments")
 
   validates("title", { "presence": true, "min_length": 3 })

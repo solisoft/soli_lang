@@ -176,7 +176,7 @@
         <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
     <span class="text-purple-400">end</span>
 
-    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
+    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)  <span class="text-gray-600"># symbols also work: before_save(:normalize_fields)</span>
 <span class="text-purple-400">end</span></code></pre>
         </div>
     </div>
@@ -432,7 +432,7 @@
         <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
     <span class="text-purple-400">end</span>
 
-    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)
+    <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)  <span class="text-gray-600"># symbols also work: before_save(:normalize_fields)</span>
 <span class="text-purple-400">end</span></code></pre>
         </div>
     </div>

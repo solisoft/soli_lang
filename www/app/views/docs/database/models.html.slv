@@ -904,13 +904,15 @@ end</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># app/models/user.sl
 class User < Model
-  has_many("posts")
+  has_many("posts")      # strings and symbols both work
+  has_many(:posts)       # Ruby-style symbol shorthand
   has_one("profile")
 
   validates("email", { "presence": true, "uniqueness": true })
   validates("name", { "presence": true, "min_length": 2 })
 
-  before_save("normalize_email")
+  before_save("normalize_email")   # strings and symbols both work
+  before_save(:normalize_email)    # Ruby-style symbol shorthand
 
   def normalize_email
     this.email = this.email.downcase

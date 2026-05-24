@@ -46,12 +46,13 @@
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Defining Relationships</h2>
-    <p class="text-gray-400 mb-4">Add relationship declarations at the top of your model class body:</p>
+    <p class="text-gray-400 mb-4">Add relationship declarations at the top of your model class body. Names accept strings or symbols:</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-  has_many("posts")
+  has_many("posts")      # strings and symbols both work
+  has_many(:posts)       # Ruby-style symbol shorthand
   has_one("profile")
 end
 

@@ -1016,9 +1016,10 @@ impl Model {
                     let class_name = get_class_name_from_class(&args)?;
                     let method_name = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
+                        Some(Value::Symbol(s)) => s.clone(),
                         Some(other) => {
                             return Err(format!(
-                                "{}() expects string method name, got {}",
+                                "{}() expects string or symbol method name, got {}",
                                 callback_name,
                                 other.type_name()
                             ))
@@ -1072,9 +1073,10 @@ impl Model {
                     let class_name = get_class_name_from_class(&args)?;
                     let name = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
+                        Some(Value::Symbol(s)) => s.clone(),
                         Some(other) => {
                             return Err(format!(
-                                "relation expects string name, got {}",
+                                "relation expects string or symbol name, got {}",
                                 other.type_name()
                             ))
                         }
@@ -3346,9 +3348,10 @@ pub fn register_model_builtins(env: &mut Environment) {
                     let class_name = get_class_name_from_class(&args)?;
                     let method_name = match args.get(1) {
                         Some(Value::String(s)) => s.clone(),
+                        Some(Value::Symbol(s)) => s.clone(),
                         Some(other) => {
                             return Err(format!(
-                                "{}() expects string method name, got {}",
+                                "{}() expects string or symbol method name, got {}",
                                 callback_name_for_closure,
                                 other.type_name()
                             ))
@@ -3530,9 +3533,10 @@ pub fn register_model_builtins(env: &mut Environment) {
                 let class_name = get_class_name_from_class(&args)?;
                 let name = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    Some(Value::Symbol(s)) => s.clone(),
                     Some(other) => {
                         return Err(format!(
-                            "relation expects string name, got {}",
+                            "relation expects string or symbol name, got {}",
                             other.type_name()
                         ))
                     }
@@ -3587,9 +3591,10 @@ pub fn register_model_builtins(env: &mut Environment) {
                 let class_name = get_class_name_from_class(&args)?;
                 let name = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    Some(Value::Symbol(s)) => s.clone(),
                     Some(other) => {
                         return Err(format!(
-                            "has_and_belongs_to_many expects string name, got {}",
+                            "has_and_belongs_to_many expects string or symbol name, got {}",
                             other.type_name()
                         ))
                     }

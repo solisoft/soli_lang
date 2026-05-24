@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::value::{Class, HashKey, HashPairs, StrKey, Value};
+use crate::metrics::VmTimingGuard;
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -141,6 +142,7 @@ impl Vm {
 
     /// Run the dispatch loop.
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
+        let _guard = VmTimingGuard::new();
         loop {
             // Fetch opcode and advance IP in a scoped borrow
             let op = {

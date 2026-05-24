@@ -122,10 +122,7 @@ impl CoverageReporter {
         if self.config.show_uncovered {
             let uncovered = coverage.uncovered_lines();
             if !uncovered.is_empty() {
-                output.push_str(&format!(
-                    "\nUncovered lines ({}):\n",
-                    uncovered.len()
-                ));
+                output.push_str(&format!("\nUncovered lines ({}):\n", uncovered.len()));
                 // Already sorted by (path, line_number) in `uncovered_lines()`;
                 // group consecutively rather than rebuilding a HashMap to keep
                 // file order stable.

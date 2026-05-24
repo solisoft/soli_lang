@@ -334,9 +334,15 @@ impl Parser {
             }
 
             if class_level_names.contains(&name.as_str()) {
-                // Look ahead for left paren
+                // Look ahead for left paren, symbol, or string (for no-parens form:
+                // belongs_to :user, before_save "method")
                 if let Some(next) = self.tokens.get(self.current + 1) {
-                    return matches!(next.kind, TokenKind::LeftParen);
+                    return matches!(
+                        next.kind,
+                        TokenKind::LeftParen
+                            | TokenKind::SymbolLiteral(_)
+                            | TokenKind::StringLiteral(_)
+                    );
                 }
             }
         }
@@ -348,6 +354,7 @@ impl Parser {
         let start_span = self.current_span();
 
         // Check for bare class-level macro (no parentheses): e.g., soft_delete
+        // or e.g., belongs_to :user, before_save "method_name"
         if let TokenKind::Identifier(name) = &self.peek().kind {
             let bare_names = ["soft_delete"];
             if bare_names.contains(&name.as_str()) {
@@ -365,6 +372,31 @@ impl Parser {
                     span,
                 );
                 return Ok(Stmt::new(StmtKind::Expression(call), span, None));
+            }
+
+            // Handle no-parens form with symbol argument: belongs_to :user
+            // The expression parser can't handle bare-symbol infix, so parse it here.
+            if let Some(next) = self.tokens.get(self.current + 1) {
+                if matches!(
+                    next.kind,
+                    TokenKind::SymbolLiteral(_) | TokenKind::StringLiteral(_)
+                ) {
+                    let callee_name = name.clone();
+                    self.advance(); // consume the identifier
+                    let arg_expr = self.expression()?; // parse :user or "method"
+                    let span = start_span.merge(&self.previous_span());
+                    let callee = Expr::new(ExprKind::Variable(callee_name), start_span);
+                    let arguments = vec![crate::ast::expr::Argument::Positional(arg_expr)];
+                    let call = Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(callee),
+                            arguments,
+                        },
+                        span,
+                    );
+                    self.match_token(&TokenKind::Semicolon);
+                    return Ok(Stmt::new(StmtKind::Expression(call), span, None));
+                }
             }
         }
 

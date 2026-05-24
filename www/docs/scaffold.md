@@ -73,7 +73,8 @@ class Users < Model
         validates("email", { "presence": true })
     end
 
-    before_save("normalize_fields")
+    before_save("normalize_fields")  # strings and symbols both work
+    before_save(:normalize_fields)   # Ruby-style symbol shorthand
 end
 ```
 

@@ -2,7 +2,9 @@
 
 use crate::error::LexerError;
 use crate::lexer::token::{Token, TokenKind};
+use crate::metrics::Metrics;
 use crate::span::Span;
+use std::time::Instant;
 
 /// The lexer transforms source code into a stream of tokens.
 pub struct Scanner<'a> {
@@ -32,6 +34,7 @@ impl<'a> Scanner<'a> {
 
     /// Scan all tokens from the source.
     pub fn scan_tokens(&mut self) -> Result<Vec<Token>, LexerError> {
+        let start = Instant::now();
         let mut tokens = Vec::new();
 
         loop {
@@ -43,6 +46,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
+        Metrics::global().record_lexing(start.elapsed());
         Ok(tokens)
     }
 

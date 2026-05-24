@@ -163,14 +163,15 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Callbacks</h2>
     <p class="text-gray-400 mb-4">
-        Callbacks let you hook into the lifecycle of a model record. Declare them at the class level with the name of the instance method to call.
+        Callbacks let you hook into the lifecycle of a model record. Declare them at the class level with the name of the instance method to call — strings or symbols are both accepted.
     </p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
-  before_save("normalize_email")
+  before_save("normalize_email")   # strings and symbols both work
+  before_save(:normalize_email)    # Ruby-style symbol shorthand
   after_create("send_welcome_email")
   before_update("log_changes")
   after_delete("cleanup_related")
@@ -264,7 +265,7 @@ end</code></pre>
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Audited &lt; Model
-  before_save("can_save")
+  before_save("can_save")   # symbols also work: before_save(:can_save)
 
   def can_save
     return false if User.current.is_nil?  # returns false → save() / update() aborts
@@ -288,7 +289,7 @@ end</code></pre>
   validates("password", { "min_length": 8 })
   validates("role", { "custom": "validate_role" })
 
-  before_save("normalize_email")
+  before_save("normalize_email")   # symbols also work: before_save(:normalize_email)
   after_create("send_welcome_email")
   before_delete("cleanup_related")
 

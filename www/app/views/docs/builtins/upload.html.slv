@@ -278,7 +278,7 @@ def update
 end</code></pre>
         </div>
         <p class="text-gray-400 mt-4 text-sm">
-            The DSL handles validation, base64 encoding, replace-on-upload, and orphan cleanup. Pair it with <code>before_delete("cleanup_uploads")</code> + <code>detach_all_uploads(self)</code> to remove blobs when the record is destroyed.
+            The DSL handles validation, base64 encoding, replace-on-upload, and orphan cleanup. Pair it with <code>before_delete("cleanup_uploads")</code> (symbols also work: <code>before_delete(:cleanup_uploads)</code>) + <code>detach_all_uploads(self)</code> to remove blobs when the record is destroyed.
         </p>
     </section>
 </div>

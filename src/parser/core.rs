@@ -3,7 +3,9 @@
 use crate::ast::*;
 use crate::error::ParserError;
 use crate::lexer::{Token, TokenKind};
+use crate::metrics::Metrics;
 use crate::span::Span;
+use std::time::Instant;
 
 pub type ParseResult<T> = Result<T, ParserError>;
 
@@ -37,12 +39,14 @@ impl Parser {
 
     /// Parse a complete program.
     pub fn parse(&mut self) -> ParseResult<Program> {
+        let start = Instant::now();
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
             statements.push(self.declaration()?);
         }
 
+        Metrics::global().record_parsing(start.elapsed());
         Ok(Program::new(statements))
     }
 
