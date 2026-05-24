@@ -4,6 +4,7 @@
 
 ### Features
 
+* **feat(model):** accept Symbol arguments in DSL callbacks and relationships (`before_save :method`, `has_many :posts`, etc.) for Ruby-style shorthand ([#](https://github.com/solisoft/soli_lang/commit/436b4ff))
 * **feat(parser):** `~` shorthand for `implements`; Ruby-style classes-oop docs ([6d157bb](https://github.com/solisoft/soli_lang/commit/6d157bb))
 * **feat(dev-bar):** break down render time per middleware ([e2509af](https://github.com/solisoft/soli_lang/commit/e2509af))
 * **feat(dev-bar):** add hierarchical flamegraph and per-template breakdown ([0119472](https://github.com/solisoft/soli_lang/commit/0119472))
@@ -40,6 +41,7 @@
 
 ### Bug Fixes
 
+* **fix(metrics):** wire lexing/parsing/VM execution counters — they were defined but never incremented, always showing 0 ([#](https://github.com/solisoft/soli_lang/commit/436b4ff))
 * **fix(image):** validate write paths against image jail without false negatives on non-existent targets ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
 * **fix(jwt):** enforce HMAC secret floor before token header parsing; surface explicit PEM errors for RS256/EdDSA ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
 * **fix(model):** tighten `is_unique_violation` to require HTTP 409 status — prevents silent misclassification of unrelated 5xx errors ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
