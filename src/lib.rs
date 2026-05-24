@@ -19,6 +19,7 @@ pub mod lexer;
 pub mod lint;
 pub mod live;
 pub mod lsp;
+pub mod metrics;
 pub mod migration;
 pub mod module;
 pub mod parser;

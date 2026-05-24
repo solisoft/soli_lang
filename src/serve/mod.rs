@@ -1769,6 +1769,21 @@ async fn handle_hyper_request(
     let uri = req.uri();
     let path = uri.path().to_string();
 
+    // Increment total request counter before any routing decisions
+    crate::metrics::Metrics::global()
+        .http_requests_total
+        .fetch_add(1, Ordering::Relaxed);
+
+    // Prometheus metrics endpoint — no CSRF check, intended for scraping
+    if path == "/_metrics" && method == "GET" {
+        let body = crate::metrics::Metrics::global().render_prometheus();
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .body(Full::new(Bytes::from(body)))
+            .unwrap());
+    }
+
     // SEC-014: same-origin gate for state-changing requests. Runs before
     // routing so a cross-origin POST is rejected before any controller
     // sees it. WebSocket upgrades have their own check (`websocket_origin_allowed`)
