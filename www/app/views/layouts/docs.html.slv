@@ -114,6 +114,7 @@
             padding-bottom: 0.75rem;
             border-bottom: 1px solid rgba(255,255,255,0.08);
             letter-spacing: -0.015em;
+            scroll-margin-top: 5rem;
         }
 
         .prose-docs h3 {
@@ -121,6 +122,28 @@
             font-weight: 600;
             font-size: 1.25rem;
             margin-top: 2.5rem;
+            scroll-margin-top: 5rem;
+        }
+
+        /* Right-rail "On this page" TOC */
+        .toc a {
+            display: block;
+            padding: 0.3rem 0;
+            color: rgba(148, 163, 184, 0.85);
+            font-size: 0.83rem;
+            line-height: 1.4;
+            transition: color .15s ease;
+            text-decoration: none;
+            border-bottom: 0;
+        }
+        .toc a:hover { color: #fff; }
+        .toc a.is-current { color: #c7d2fe; }
+        .toc a.is-current::before {
+            content: "● ";
+            color: #818cf8;
+            font-size: 0.6em;
+            vertical-align: middle;
+            margin-right: 0.25rem;
         }
 
         .prose-docs p { color: #9ca3af; line-height: 1.8; margin-bottom: 1.5rem; }
@@ -303,23 +326,39 @@
 
             <!-- Content Area -->
             <div class="px-4 py-8 lg:px-8 lg:py-12 pt-20 lg:pt-12">
-                <div class="w-full">
-                    <article class="prose prose-invert max-w-none animate-fade-in prose-docs">
-                        <%= yield %>
-                    </article>
+                <div class="xl:grid xl:grid-cols-[minmax(0,1fr)_220px] xl:gap-12">
+                    <div class="min-w-0">
+                        <article id="doc-article" class="prose prose-invert max-w-none animate-fade-in prose-docs">
+                            <!-- Two nested wrappers absorb up to 2 stray </div> tags from
+                                 malformed page content so the layout's column structure
+                                 stays intact even when an individual page has mismatched
+                                 tags. -->
+                            <div><div>
+                                <%= yield %>
+                            </div></div>
+                        </article>
 
-                    <!-- Footer -->
-                    <footer class="mt-16 pt-8 border-t border-white/5">
-                        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm">
-                            <p class="text-gray-500">&copy; 2026 SoliLang. MIT License.</p>
-                            <a href="https://github.com/solisoft/soli_lang" target="_blank" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                                Edit this page on GitHub
-                            </a>
+                        <!-- Footer -->
+                        <footer class="mt-16 pt-8 border-t border-white/5">
+                            <div class="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm">
+                                <p class="text-gray-500">&copy; 2026 SoliLang. MIT License.</p>
+                                <a href="https://github.com/solisoft/soli_lang" target="_blank" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Edit this page on GitHub
+                                </a>
+                            </div>
+                        </footer>
+                    </div>
+
+                    <!-- Right rail: on-this-page TOC -->
+                    <aside class="hidden xl:block">
+                        <div class="sticky top-20">
+                            <p class="text-[10px] font-mono tracking-[0.22em] uppercase text-gray-500 mb-3">On this page</p>
+                            <nav id="page-toc" class="toc border-l border-white/10 pl-4"></nav>
                         </div>
-                    </footer>
+                    </aside>
                 </div>
             </div>
         </main>
@@ -397,9 +436,79 @@
     document.addEventListener('DOMContentLoaded', function() {
         initHighlighting();
         scrollToActiveMenuItem();
+        buildOnThisPage();
     });
 
-    document.addEventListener('livereload:update', initHighlighting);
+    document.addEventListener('livereload:update', function() {
+        initHighlighting();
+        buildOnThisPage();
+    });
+
+    // Holds the current observer so we can disconnect it before rebuilding
+    // (livereload re-injects the article body, leaving the old observer
+    // pointing at detached nodes).
+    let __tocObserver = null;
+
+    function buildOnThisPage() {
+        const article = document.getElementById('doc-article');
+        const toc = document.getElementById('page-toc');
+        if (!article || !toc) return;
+
+        const slug = function(s) {
+            return s.toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .slice(0, 60);
+        };
+
+        const headings = Array.from(article.querySelectorAll('h2'));
+        toc.innerHTML = '';
+
+        if (__tocObserver) { __tocObserver.disconnect(); __tocObserver = null; }
+
+        if (headings.length === 0) {
+            toc.innerHTML = '<p class="text-[12.5px] text-gray-500 italic">No subsections.</p>';
+            return;
+        }
+
+        const seen = new Set();
+        const links = new Map();
+        headings.forEach(function(h) {
+            const text = (h.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text) return;
+
+            let id = h.id;
+            if (!id) {
+                id = slug(text);
+                let n = 1;
+                while (seen.has(id)) { id = slug(text) + '-' + (++n); }
+                h.id = id;
+            }
+            seen.add(id);
+
+            const a = document.createElement('a');
+            a.href = '#' + id;
+            a.textContent = text;
+            toc.appendChild(a);
+            links.set(id, a);
+        });
+
+        // Scope the observer to the scrolling <main>, not the viewport — the
+        // article lives inside `lg:h-screen lg:overflow-y-auto`.
+        const scrollRoot = document.querySelector('main.lg\\:overflow-y-auto') || null;
+        __tocObserver = new IntersectionObserver(function(entries) {
+            entries.forEach(function(e) {
+                if (e.isIntersecting) {
+                    const id = e.target.id;
+                    links.forEach(function(a) { a.classList.remove('is-current'); });
+                    const cur = links.get(id);
+                    if (cur) cur.classList.add('is-current');
+                }
+            });
+        }, { root: scrollRoot, rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+
+        headings.forEach(function(h) { __tocObserver.observe(h); });
+    }
 
     function scrollToActiveMenuItem() {
         const currentPath = window.location.pathname;

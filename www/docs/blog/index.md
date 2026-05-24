@@ -4,6 +4,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [Event Streaming from Soli with `es`](/docs/blog/event-streaming-with-es) - Wire es — a single-binary, HTTP+JSON, Kafka-shaped broker — to a Soli app end-to-end: produce events from a controller, drain them with a consumer-group-backed background job, and resume cleanly after a restart
 - [Building a CRUD Datatable with HTMx, Alpine, and Soli](/docs/blog/htmx-datatable) - Search, sort, pagination, inline edit, role select, status toggle, modal add, and toast on save — one model, one controller, two partials, zero hand-written JavaScript
 - [Semantic Search with `.similar()` in Soli](/docs/blog/similar-search) - Add AI-native vector similarity search to any query chain with `.similar()`, ranking results by semantic relevance with cosine similarity
 - [No Build, No Dependency: Why It Matters for Security and Simplicity](/docs/blog/no-build-no-dependency) - Why Soli ships as a single binary with no package manager, no bundler, and no build step — and what that means for supply-chain security and operational simplicity

@@ -744,8 +744,6 @@ end</code></pre>
 "not json".parse_json          # {}</code></pre>
                 </div>
             </section>
-        </div>
-    </section>
 
             <!-- Case comparison -->
             <section id="method-casecmp" class="scroll-mt-20 mb-6">
