@@ -556,7 +556,13 @@ pub fn html_response(body: String, status: i64) -> Value {
 /// 304 per ~4 billion distinct renders — far below anything that matters for
 /// navigation caching.
 ///
-/// Format: quoted 16-hex-digit strong validator (RFC 7232 §2.3).
+/// Format: `W/` weak validator with quoted 16-hex-digit body (RFC 7232 §2.3).
+/// Weak (not strong) so the header survives content-encoding transformations
+/// applied by CDNs in front of the app — Cloudflare and friends strip strong
+/// ETags when they re-encode (Brotli/gzip) because the byte stream the client
+/// receives no longer matches what the origin hashed. Weak validators assert
+/// semantic equivalence rather than byte-identity, which is exactly what we
+/// need: the same render is "the same response" whether compressed or not.
 fn etag_for_body(body: &str) -> String {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
@@ -565,7 +571,7 @@ fn etag_for_body(body: &str) -> String {
         hash ^= b as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
     }
-    format!("\"{:016x}\"", hash)
+    format!("W/\"{:016x}\"", hash)
 }
 
 /// Check if a template path is a markdown file.
@@ -1248,12 +1254,20 @@ mod tests {
             Value::String(s) => s.clone(),
             v => panic!("ETag must be a String, got {:?}", v),
         };
-        // RFC 7232 strong validator: quoted opaque string. Ours is exactly
-        // 16 hex chars wrapped in quotes (18 chars total).
-        assert_eq!(etag.len(), 18, "ETag should be \"<16 hex>\", got {}", etag);
+        // RFC 7232 weak validator: `W/` followed by a quoted opaque string.
+        // Weak (not strong) so the header survives CDN content-encoding
+        // transformations — see `etag_for_body` doc comment. Format is
+        // `W/"<16 hex>"`, 20 chars total.
+        assert_eq!(
+            etag.len(),
+            20,
+            "ETag should be W/\"<16 hex>\", got {}",
+            etag
+        );
         assert!(
-            etag.starts_with('"') && etag.ends_with('"'),
-            "ETag must be quoted"
+            etag.starts_with("W/\"") && etag.ends_with('"'),
+            "ETag must be a weak quoted validator, got {}",
+            etag
         );
 
         let cc = match &hdrs[&HashKey::String("Cache-Control".to_string())] {
