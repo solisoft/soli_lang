@@ -41,6 +41,7 @@
 
 ### Bug Fixes
 
+* **fix(prefetch):** emit weak ETag (`W/"..."`) so CDNs that re-encode (Brotli/gzip) don't strip it — strong ETags were being dropped at Cloudflare, breaking 304 reuse and turning the hover-prefetch feature into a cosmetic load
 * **fix(metrics):** wire lexing/parsing/VM execution counters — they were defined but never incremented, always showing 0 ([#](https://github.com/solisoft/soli_lang/commit/436b4ff))
 * **fix(image):** validate write paths against image jail without false negatives on non-existent targets ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
 * **fix(jwt):** enforce HMAC secret floor before token header parsing; surface explicit PEM errors for RS256/EdDSA ([368df5f](https://github.com/solisoft/soli_lang/commit/368df5f))
