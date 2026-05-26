@@ -183,6 +183,11 @@ pub fn evaluate_with_interpreter(
                 (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
                 (Value::Float(f), "to_i") => return Ok(Value::Int(*f as i64)),
                 (Value::Int(n), "to_i") => return Ok(Value::Int(*n)),
+                (Value::String(s), "to_f" | "to_float") => {
+                    return Ok(Value::Float(s.parse::<f64>().unwrap_or(0.0)))
+                }
+                (Value::Float(f), "to_f" | "to_float") => return Ok(Value::Float(*f)),
+                (Value::Int(n), "to_f" | "to_float") => return Ok(Value::Float(*n as f64)),
                 (Value::Array(arr), "length" | "len") => {
                     return Ok(Value::Int(arr.borrow().len() as i64))
                 }
@@ -205,8 +210,21 @@ pub fn evaluate_with_interpreter(
                     let vals: Vec<Value> = h.borrow().values().cloned().collect();
                     return Ok(Value::Array(Rc::new(RefCell::new(vals))));
                 }
+                (Value::String(s), "to_s" | "to_string") => {
+                    return Ok(Value::String(s.clone()))
+                }
                 (Value::Int(_) | Value::Float(_), "to_s" | "to_string") => {
                     return Ok(Value::String(format!("{}", base_val)));
+                }
+                (Value::Bool(b), "to_s" | "to_string") => {
+                    return Ok(Value::String(if *b { "true" } else { "false" }.to_string()))
+                }
+                (Value::Null, "to_s" | "to_string") => return Ok(Value::String(String::new())),
+                (Value::Array(arr), "to_a" | "to_array") => {
+                    return Ok(Value::Array(Rc::clone(arr)))
+                }
+                (Value::Null, "to_a" | "to_array") => {
+                    return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))))
                 }
                 _ => {} // Fall through to full evaluate
             }
