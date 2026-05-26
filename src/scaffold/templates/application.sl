@@ -6,27 +6,24 @@
 # pick whichever fits your flow.
 
 # ---------------------------------------------------------------------
-# enable_trust_proxy — opt-in, INSECURE BY DEFAULT.
+# enable_trust_proxy — ON BY DEFAULT in scaffolded apps.
 # ---------------------------------------------------------------------
-# When enabled, the server honours `X-Forwarded-Host` /
-# `X-Forwarded-Proto` / etc. from inbound requests for CSRF, redirects,
-# `request.host`, and the cookie `Secure` flag. ONLY enable this when:
+# Makes the server honour `X-Forwarded-Host` / `X-Forwarded-Proto` /
+# etc. from inbound requests for CSRF, redirects, `request.host`, and
+# the cookie `Secure` flag. This is the right default for the typical
+# deployment shape (app behind nginx / Caddy / an ALB / fly-proxy).
 #
-#   1. The app sits behind a reverse proxy (nginx, Caddy, AWS ALB, ...)
-#      that you control, AND
-#   2. That proxy strips client-supplied `X-Forwarded-*` headers and
-#      rewrites them with the values it observed itself.
+# SECURITY: only safe when the proxy in front of the app strips
+# client-supplied `X-Forwarded-*` headers and rewrites them with the
+# values it observed itself. Without that, a remote client can spoof
+# the request authority and scheme — downgrading CSRF / origin checks
+# and producing phishing-shaped redirects from `*_url` helpers.
 #
-# Without (2), an attacker can spoof request authority and scheme,
-# downgrading CSRF / origin checks and triggering phishing-shaped
-# redirects from `*_url` helpers. If the app is exposed directly to the
-# internet (no proxy), leave this commented out.
-#
-# Uncomment after confirming your proxy strips inbound `X-Forwarded-*`:
-#
-#   enable_trust_proxy
-#
-# Equivalent operator-level toggle: `SOLI_TRUST_PROXY=1` in the env.
+# If you're exposing the app DIRECTLY to the internet with no proxy in
+# front, comment the next line out (or set `SOLI_TRUST_PROXY=0` in the
+# env) so spoofed `X-Forwarded-*` headers can't be trusted.
+
+enable_trust_proxy
 
 # ---------------------------------------------------------------------
 # CSRF / same-origin policy.
@@ -39,17 +36,17 @@
 #   authority localhost:20004
 #
 # This usually means the app sits behind a proxy/local hostname
-# (`example.test` → `localhost:20004`) but Soli is reading the raw
-# `Host: localhost:20004` because `enable_trust_proxy` is off. Two
-# common fixes:
+# (`example.test` → `localhost:20004`) and the proxy is NOT sending
+# `X-Forwarded-Host`, so Soli falls back to the raw `Host` header even
+# though `enable_trust_proxy` is on. Two common fixes:
 #
-#   - You DO have a trusted proxy that rewrites X-Forwarded-Host →
-#     uncomment `enable_trust_proxy` above. CSRF will then compare the
-#     forwarded host to the Origin.
+#   - You have a proxy → configure it to set `X-Forwarded-Host` (and
+#     `X-Forwarded-Proto`) to the public-facing hostname. CSRF will
+#     then compare that forwarded host to the Origin.
 #
-#   - You DON'T have a proxy and the mismatch is from a specific
-#     webhook / public API endpoint → opt that path out with
-#     `skip_csrf`. Pattern is exact path or `/prefix/*` glob:
+#   - The mismatch is from a specific webhook / public API endpoint →
+#     opt that path out with `skip_csrf`. Pattern is exact path or
+#     `/prefix/*` glob:
 #
 #       # skip_csrf("/webhooks/stripe")    # exact path
 #       # skip_csrf("/api/*")              # everything under /api/

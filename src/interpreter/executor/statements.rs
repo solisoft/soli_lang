@@ -8,7 +8,7 @@ use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Function, Value};
+use crate::interpreter::value::{Class, Function, HashKey, HashPairs, Value};
 use crate::span::Span;
 
 use super::{ControlFlow, Interpreter, RuntimeResult};
@@ -589,22 +589,47 @@ impl Interpreter {
 
                         // Build arguments with class as first argument
                         let mut args = vec![Value::Class(class_rc.clone())];
-                        for arg in arguments {
-                            match arg {
-                                Argument::Positional(expr) => {
-                                    args.push(self.evaluate(expr)?);
+                        let has_named = arguments
+                            .iter()
+                            .any(|arg| matches!(arg, Argument::Named(_)));
+                        if has_named {
+                            let mut hash_pairs = HashPairs::default();
+                            for arg in arguments {
+                                match arg {
+                                    Argument::Positional(expr) => {
+                                        args.push(self.evaluate(expr)?);
+                                    }
+                                    Argument::Named(named) => {
+                                        let val = self.evaluate(&named.value)?;
+                                        hash_pairs.insert(HashKey::String(named.name.clone()), val);
+                                    }
+                                    Argument::Block(_) => {
+                                        return Err(RuntimeError::type_error(
+                                            "model validation does not support block arguments",
+                                            stmt.span,
+                                        ));
+                                    }
                                 }
-                                Argument::Named(_) => {
-                                    return Err(RuntimeError::type_error(
-                                        "model validation does not support named arguments",
-                                        stmt.span,
-                                    ));
-                                }
-                                Argument::Block(_) => {
-                                    return Err(RuntimeError::type_error(
-                                        "model validation does not support block arguments",
-                                        stmt.span,
-                                    ));
+                            }
+                            args.push(Value::Hash(Rc::new(RefCell::new(hash_pairs))));
+                        } else {
+                            for arg in arguments {
+                                match arg {
+                                    Argument::Positional(expr) => {
+                                        args.push(self.evaluate(expr)?);
+                                    }
+                                    Argument::Named(_) => {
+                                        return Err(RuntimeError::type_error(
+                                            "model validation does not support named arguments",
+                                            stmt.span,
+                                        ));
+                                    }
+                                    Argument::Block(_) => {
+                                        return Err(RuntimeError::type_error(
+                                            "model validation does not support block arguments",
+                                            stmt.span,
+                                        ));
+                                    }
                                 }
                             }
                         }

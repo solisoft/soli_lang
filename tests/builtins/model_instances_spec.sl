@@ -16,6 +16,41 @@ class ValidatedItem extends Model
     validates("title", { "min_length": 3 })
 end
 
+class ValidatedWithBareHash extends Model
+    validates(:name, presence: true)
+    validates(:name, min_length: 2)
+    validates(:email, presence: true, format: "^[^@]+@[^@]+$")
+end
+
+class ValidatedMixedStyle extends Model
+    validates("name", { "presence": true })
+    validates(:name, min_length: 2)
+    validates(:email, presence: true, format: "^[^@]+@[^@]+$")
+end
+
+class ValidatedStringBareHash extends Model
+    validates("title", presence: true)
+    validates("title", min_length: 3)
+    validates("title", max_length: 100)
+end
+
+class ValidatedNumericBareHash extends Model
+    validates(:quantity, numericality: true, min: 0, max: 1000)
+    validates(:price, presence: true, numericality: true, min: 0.01)
+end
+
+class ValidatedUniquenessBareHash extends Model
+    validates(:code, presence: true, uniqueness: true)
+end
+
+class CallbackWithExtraArgs extends Model
+    before_save(:normalize_name)
+
+    fn normalize_name {
+        this.name = this.name.trim().downcase() unless this.name.blank?
+    }
+end
+
 // Detect DB availability
 let __db_available = false;
 try
@@ -96,6 +131,184 @@ describe("Model.create return shape on validation failure (no DB)", fn() {
         let item = ValidatedItem.create({ "title": "ab" });  // min_length 3
         assert_eq(item.title, "ab");
         assert_not_null(item._errors);
+    });
+});
+
+describe("Instance validation with bare-hash syntax (no DB)", fn() {
+    test("validates presence with bare hash options", fn() {
+        let item = ValidatedWithBareHash.new();
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        assert(len(errors) > 0);
+        assert_eq(errors[0]["field"], "name");
+        assert_eq(errors[0]["message"], "can't be blank");
+    });
+
+    test("validates min_length with bare hash options", fn() {
+        let item = ValidatedWithBareHash.new();
+        item.name = "a";  // too short (min 2)
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        assert(len(errors) > 0);
+        let has_length_error = false;
+        for e in errors
+            if e["message"].contains("too short")
+                has_length_error = true;
+            end
+        end
+        assert(has_length_error);
+    });
+
+    test("validates multiple bare hash options", fn() {
+        let item = ValidatedWithBareHash.new();
+        item.name = "OK";
+        item.email = "not-an-email";  // format validation
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        assert(len(errors) > 0);
+        let has_format_error = false;
+        for e in errors
+            if e["field"] == "email"
+                has_format_error = true;
+            end
+        end
+        assert(has_format_error);
+    });
+
+    test("validates with string field name and bare hash", fn() {
+        let item = ValidatedStringBareHash.new();
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        assert(len(errors) > 0);
+        assert_eq(errors[0]["field"], "title");
+        assert_eq(errors[0]["message"], "can't be blank");
+    });
+
+    test("validates string field name with min_length via bare hash", fn() {
+        let item = ValidatedStringBareHash.new();
+        item.title = "ab";  // too short (min 3)
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        let has_length_error = false;
+        for e in errors
+            if e["message"].contains("too short")
+                has_length_error = true;
+            end
+        end
+        assert(has_length_error);
+    });
+
+    test("validates max_length via bare hash", fn() {
+        let item = ValidatedStringBareHash.new();
+        let mut long = "";
+        for i in 0..101
+            long = long + "x";
+        end
+        item.title = long;
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        let has_length_error = false;
+        for e in errors
+            if e["message"].contains("too long")
+                has_length_error = true;
+            end
+        end
+        assert(has_length_error);
+    });
+
+    test("validates numericality with bare hash options", fn() {
+        let item = ValidatedNumericBareHash.new();
+        item.quantity = "not-a-number";
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        let has_numericality_error = false;
+        for e in errors
+            if e["field"] == "quantity"
+                has_numericality_error = true;
+            end
+        end
+        assert(has_numericality_error);
+    });
+
+    test("validates min and max with bare hash on numeric field", fn() {
+        let item = ValidatedNumericBareHash.new();
+        item.quantity = -1;  # below min 0
+        let ok = item.save();
+        assert_eq(ok, false);
+    });
+
+    test("validates multiple numeric and presence options via bare hash", fn() {
+        let item = ValidatedNumericBareHash.new();
+        # price missing → presence failure
+        item.quantity = 5;
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        let has_price_error = false;
+        for e in errors
+            if e["field"] == "price"
+                has_price_error = true;
+            end
+        end
+        assert(has_price_error);
+    });
+
+    test("mixed old and new syntax work together", fn() {
+        let item = ValidatedMixedStyle.new();
+        # name presence (old style) should trigger
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        assert(len(errors) > 0);
+        # At least one error for name field
+        let has_name_error = false;
+        for e in errors
+            if e["field"] == "name"
+                has_name_error = true;
+            end
+        end
+        assert(has_name_error);
+    });
+
+    test("mixed syntax format validation works", fn() {
+        let item = ValidatedMixedStyle.new();
+        item.name = "OK";
+        item.email = "bad-email";
+        let ok = item.save();
+        assert_eq(ok, false);
+
+        let errors = item.errors;
+        let has_email_error = false;
+        for e in errors
+            if e["field"] == "email"
+                has_email_error = true;
+            end
+        end
+        assert(has_email_error);
+    });
+
+    test("before_save with symbol syntax still works", fn() {
+        let item = CallbackWithExtraArgs.new();
+        item.name = "  Hello  ";
+        item.save();
+        # The symbol argument form is converted correctly by the executor
+        assert_eq(item.name, "hello");
     });
 });
 

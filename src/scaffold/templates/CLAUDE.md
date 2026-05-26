@@ -41,6 +41,8 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 | Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
 | Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |
 | `if x == nil \|\| x == ""`                 | `if x.blank?`                              | `.blank?` covers both nil and empty string in one call.                      |
+| `if x == nil` / `if x != nil`              | `if x.nil?` / `unless x.nil?`              | `.nil?` reads as the question; reserve `==`/`!=` for value comparisons.      |
+| `user == nil ? nil : user._key`            | `user&._key`                               | Safe navigation short-circuits to `nil` if the receiver is `nil`.            |
 | `if s != "a" && s != "b" && s != "c"`      | `unless ["a", "b", "c"].includes?(s)`      | Intent is membership check, not a pile of `&&`.                              |
 | `x = x \|\| default`                       | `x \|\|= default`                          | `\|\|=` is a single operator for "set if nil/false".                         |
 
@@ -504,6 +506,8 @@ soli lint                             # static analysis
 7. **Validate at the model**, not in the controller — keep controllers thin.
 8. **Return errors early** — don't pile `if`s; bail with a 422/redirect at the first invalid branch.
 9. **Use `.blank?` for nil/empty checks** — replaces `x == nil || x == ""`.
-10. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
-11. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
-12. **Test new features to >90% coverage** — non-negotiable, see above.
+10. **Use `.nil?` over `== nil`** — `if x.nil?` / `unless x.nil?` reads as a question; keep `==`/`!=` for value comparisons.
+11. **Use `&.` to short-circuit on nil** — `user&._key` replaces `user == nil ? nil : user._key`; chain it (`user&.address&.city`) instead of nested guards.
+12. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
+13. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
+14. **Test new features to >90% coverage** — non-negotiable, see above.

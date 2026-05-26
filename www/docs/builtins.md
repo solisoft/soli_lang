@@ -2195,6 +2195,30 @@ a < later    # true
 later >= a   # true
 ```
 
+### Helper Functions
+
+These free-standing functions are also available alongside the `DateTime` class.
+
+#### time_ago(timestamp)
+
+Returns a human-readable relative time string. Uses the current I18n locale for translations (supports en, fr, de, es, it, pt, ja, zh).
+
+**Parameters:**
+- `timestamp` (Int|String) — Unix timestamp or date string
+
+**Returns:** String
+
+**Examples:**
+```soli
+time_ago(datetime_now() - 7200)  # "2 hours ago" (en)
+                                 # "il y a 2 heures" (fr)
+                                 # "vor 2 Stunden" (de)
+time_ago(ts)                     # "5 seconds ago"
+time_ago(ts)                     # "1 minute ago"
+time_ago(ts)                     # "2 weeks ago"
+time_ago(future_ts)              # "in the future"
+```
+
 ### Complete Example
 
 ```soli

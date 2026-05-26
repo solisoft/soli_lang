@@ -9,7 +9,7 @@
         </p>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Finder Methods</h2>
+    <h2 id="finder-methods" class="text-2xl font-bold text-white mb-6">Finder Methods</h2>
     <p class="text-gray-400 mb-6">
         Finder methods provide convenient shortcuts for common lookup patterns. They return model instances (or <code>null</code> when no match is found).
     </p>
@@ -74,7 +74,7 @@ post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Aggregations</h2>
+    <h2 id="aggregations" class="text-2xl font-bold text-white mb-6">Aggregations</h2>
     <p class="text-gray-400 mb-6">
         Aggregation methods let you compute sums, averages, minimums, maximums, and grouped totals directly in the database.
     </p>
@@ -152,7 +152,7 @@ q = User.where("active = @a", { "a": true }).sum("balance").to_query
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Pluck</h2>
+    <h2 id="pluck" class="text-2xl font-bold text-white mb-6">Pluck</h2>
     <p class="text-gray-400 mb-6">
         Use <code>pluck</code> to retrieve only specific field values instead of full model instances. This is more efficient when you only need a subset of fields.
     </p>
@@ -185,7 +185,7 @@ users = User.pluck("name", "email").all
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Exists</h2>
+    <h2 id="exists" class="text-2xl font-bold text-white mb-6">Exists</h2>
     <p class="text-gray-400 mb-6">
         Check whether any records match a query without fetching them. Returns a boolean.
     </p>
@@ -202,7 +202,7 @@ q = User.where("role = @r", { "r": "admin" }).exists.to_query
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Instance Increment/Decrement</h2>
+    <h2 id="instance-increment-decrement" class="text-2xl font-bold text-white mb-6">Instance Increment/Decrement</h2>
     <p class="text-gray-400 mb-6">
         Perform atomic updates and utility operations on individual model instances.
     </p>
@@ -265,7 +265,7 @@ user.reload</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Vector / Similarity Search</h2>
+    <h2 id="vector-similarity-search" class="text-2xl font-bold text-white mb-6">Vector / Similarity Search</h2>
     <p class="text-gray-400 mb-6">
         Soli supports AI-native vector similarity search as a first-class database primitive.
         Chain <code class="text-indigo-400">.similar(query, field?, top_k?)</code> onto any query to rank results by semantic relevance.

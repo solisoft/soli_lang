@@ -915,9 +915,10 @@ impl Model {
 
                 let field = match args.get(1) {
                     Some(Value::String(s)) => s.clone(),
+                    Some(Value::Symbol(s)) => s.clone(),
                     Some(other) => {
                         return Err(format!(
-                            "validates() expects string field name, got {}",
+                            "validates() expects string or symbol field name, got {}",
                             other.type_name()
                         ))
                     }
@@ -3231,9 +3232,10 @@ pub fn register_model_builtins(env: &mut Environment) {
 
             let field = match args.get(1) {
                 Some(Value::String(s)) => s.clone(),
+                Some(Value::Symbol(s)) => s.clone(),
                 Some(other) => {
                     return Err(format!(
-                        "validates() expects string field name, got {}",
+                        "validates() expects string or symbol field name, got {}",
                         other.type_name()
                     ))
                 }

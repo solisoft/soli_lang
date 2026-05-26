@@ -181,6 +181,8 @@ pub fn evaluate_with_interpreter(
                     return Ok(Value::String(s.chars().rev().collect()))
                 }
                 (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
+                (Value::Float(f), "to_i") => return Ok(Value::Int(*f as i64)),
+                (Value::Int(n), "to_i") => return Ok(Value::Int(*n)),
                 (Value::Array(arr), "length" | "len") => {
                     return Ok(Value::Int(arr.borrow().len() as i64))
                 }

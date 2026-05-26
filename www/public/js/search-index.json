@@ -871,7 +871,7 @@
       "category": "JSON",
       "path": "/docs/builtins/json#def-to-json",
       "signature": "value.to_json",
-      "description": "Instance-method form of JSON.stringify — works on hashes, arrays, and primitives",
+      "description": "Instance-method form of JSON.stringify \u2014 works on hashes, arrays, and primitives",
       "keywords": [
         "json",
         "to_json",
@@ -3723,7 +3723,7 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
+      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
       "keywords": [
         "params",
         "global",
@@ -4252,7 +4252,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -5555,7 +5555,7 @@
       "category": "Hash",
       "path": "/docs/language/hashes#method-update",
       "signature": "hash.update(other)",
-      "description": "Alias for merge — merges another hash",
+      "description": "Alias for merge \u2014 merges another hash",
       "keywords": [
         "hash",
         "update",
@@ -8270,7 +8270,7 @@
       "category": "Array",
       "path": "/docs/language/arrays#array-reject",
       "signature": "array.reject(fn)",
-      "description": "Inverse of filter — keeps elements where block returns false",
+      "description": "Inverse of filter \u2014 keeps elements where block returns false",
       "keywords": [
         "array",
         "reject",
@@ -8309,7 +8309,7 @@
       "category": "Int",
       "path": "/docs/language/integers#method-succ",
       "signature": "int.next",
-      "description": "Alias for .succ — returns i + 1",
+      "description": "Alias for .succ \u2014 returns i + 1",
       "keywords": [
         "int",
         "next",
@@ -8400,6 +8400,1413 @@
         "embedding",
         "vector",
         "ai"
+      ]
+    },
+    {
+      "title": "Model.create",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.create(data)",
+      "description": "Insert a new document. Returns a class instance.",
+      "keywords": [
+        "create",
+        "insert",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.create_many",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.create_many([data,...])",
+      "description": "Batch insert multiple documents",
+      "keywords": [
+        "batch",
+        "insert",
+        "bulk",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.find",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.find(id)",
+      "description": "Get document by ID. Raises RecordNotFound if missing.",
+      "keywords": [
+        "find",
+        "get",
+        "id",
+        "model",
+        "orm",
+        "record"
+      ]
+    },
+    {
+      "title": "Model.find_by",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.find_by(field, value)",
+      "description": "Find first record by field value, returns null when missing.",
+      "keywords": [
+        "find",
+        "query",
+        "filter",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.first_by",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.first_by(field, value)",
+      "description": "Find first record by field with ordering",
+      "keywords": [
+        "find",
+        "first",
+        "order",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.find_or_create_by",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.find_or_create_by(field, value, data?)",
+      "description": "Find by field, or create if not found",
+      "keywords": [
+        "find",
+        "create",
+        "upsert",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.find_by_*",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#finder-methods",
+      "signature": "Model.find_by_{field}(value)",
+      "description": "Dynamic finder: find_by_field, find_by_field1_and_field2(...), etc.",
+      "keywords": [
+        "dynamic",
+        "finder",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.where",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.where(filter)",
+      "description": "Hash filter or SDBQL filter string. Returns QueryBuilder.",
+      "keywords": [
+        "where",
+        "filter",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.all",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.all",
+      "description": "Get all documents as instances",
+      "keywords": [
+        "all",
+        "list",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.count",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.count",
+      "description": "Count all documents",
+      "keywords": [
+        "count",
+        "total",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.update",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.update(id, data)",
+      "description": "Update a document by ID",
+      "keywords": [
+        "update",
+        "edit",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.upsert",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.upsert(id, data)",
+      "description": "Insert or update document by ID",
+      "keywords": [
+        "upsert",
+        "insert",
+        "update",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.delete(id)",
+      "description": "Delete a document by ID",
+      "keywords": [
+        "delete",
+        "remove",
+        "destroy",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.delete_all",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.delete_all",
+      "description": "Wipe every document in the collection",
+      "keywords": [
+        "delete",
+        "clear",
+        "wipe",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.transaction",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "Model.transaction()",
+      "description": "Execute block or get transaction handle for manual control",
+      "keywords": [
+        "transaction",
+        "atomic",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.order",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.order(field, direction?)",
+      "description": "Start a query chain sorted by field",
+      "keywords": [
+        "order",
+        "sort",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.limit",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.limit(n)",
+      "description": "Start a query chain limited to n results",
+      "keywords": [
+        "limit",
+        "top",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.offset",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.offset(n)",
+      "description": "Start a query chain with offset",
+      "keywords": [
+        "offset",
+        "skip",
+        "page",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.paginate",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#pagination",
+      "signature": "Model.paginate(hash)",
+      "description": "Fetch paginated results + metadata",
+      "keywords": [
+        "paginate",
+        "page",
+        "pagination",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.select",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.select(field, ...)",
+      "description": "Select specific fields. Returns QueryBuilder.",
+      "keywords": [
+        "select",
+        "fields",
+        "projection",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.includes",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.includes(rel, ...)",
+      "description": "Eager load relations. Returns QueryBuilder.",
+      "keywords": [
+        "includes",
+        "eager",
+        "load",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.join",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.join(rel, filter?, binds?)",
+      "description": "Filter by related existence. Returns QueryBuilder.",
+      "keywords": [
+        "join",
+        "filter",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.with_deleted",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#soft-delete",
+      "signature": "Model.with_deleted",
+      "description": "Include soft-deleted records in query",
+      "keywords": [
+        "soft",
+        "delete",
+        "deleted",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.only_deleted",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#soft-delete",
+      "signature": "Model.only_deleted",
+      "description": "Query only deleted records",
+      "keywords": [
+        "soft",
+        "delete",
+        "deleted",
+        "trash",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.scope",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#scopes",
+      "signature": "Model.scope(name, fn)",
+      "description": "Define a reusable named query scope",
+      "keywords": [
+        "scope",
+        "named",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.sum",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "Model.sum(field)",
+      "description": "Aggregation: compute sum of a field",
+      "keywords": [
+        "sum",
+        "aggregation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.avg",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "Model.avg(field)",
+      "description": "Aggregation: compute average of a field",
+      "keywords": [
+        "avg",
+        "average",
+        "aggregation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.min",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "Model.min(field)",
+      "description": "Aggregation: compute minimum of a field",
+      "keywords": [
+        "min",
+        "minimum",
+        "aggregation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.max",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "Model.max(field)",
+      "description": "Aggregation: compute maximum of a field",
+      "keywords": [
+        "max",
+        "maximum",
+        "aggregation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.group_by",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "Model.group_by(field, func, agg_field)",
+      "description": "Group-by aggregation",
+      "keywords": [
+        "group",
+        "aggregation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.pluck",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#pluck",
+      "signature": "Model.pluck(field, ...)",
+      "description": "Select specific fields as raw values",
+      "keywords": [
+        "pluck",
+        "select",
+        "fields",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.mock_query_result",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.mock_query_result(query, results)",
+      "description": "Register mock data for a specific AQL query (for testing)",
+      "keywords": [
+        "mock",
+        "test",
+        "query",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.clear_mocks",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#static-methods",
+      "signature": "Model.clear_mocks()",
+      "description": "Clear all registered mock responses",
+      "keywords": [
+        "mock",
+        "clear",
+        "test",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.save",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.save(hash?)",
+      "description": "Insert (if new) or update (if existing). Returns instance with _key.",
+      "keywords": [
+        "save",
+        "persist",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.update",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.update(hash?)",
+      "description": "Persist current fields to DB. Requires _key.",
+      "keywords": [
+        "update",
+        "save",
+        "persist",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.delete()",
+      "description": "Delete the document from DB. Supports soft delete.",
+      "keywords": [
+        "delete",
+        "remove",
+        "destroy",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.reload",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.reload()",
+      "description": "Refresh instance from database",
+      "keywords": [
+        "reload",
+        "refresh",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.increment",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#instance-increment-decrement",
+      "signature": "instance.increment(field, n?)",
+      "description": "Atomically add n (default 1) to a numeric field",
+      "keywords": [
+        "increment",
+        "atomic",
+        "counter",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.decrement",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#instance-increment-decrement",
+      "signature": "instance.decrement(field, n?)",
+      "description": "Atomically subtract n (default 1) from a numeric field",
+      "keywords": [
+        "decrement",
+        "atomic",
+        "counter",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.touch",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.touch()",
+      "description": "Update _updated_at timestamp without changing other fields",
+      "keywords": [
+        "touch",
+        "timestamp",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.restore",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#soft-delete",
+      "signature": "instance.restore()",
+      "description": "Restore a soft-deleted record",
+      "keywords": [
+        "restore",
+        "soft",
+        "delete",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.errors",
+      "type": "property",
+      "category": "Database",
+      "path": "/docs/database/models#instance-methods",
+      "signature": "instance.errors",
+      "description": "Return validation errors from last save/update",
+      "keywords": [
+        "errors",
+        "validation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.where",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.where(filter, bind_vars?)",
+      "description": "Add filter condition (ANDed with existing)",
+      "keywords": [
+        "where",
+        "filter",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.order",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.order(field, direction?)",
+      "description": "Set sort order",
+      "keywords": [
+        "order",
+        "sort",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.limit",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.limit(n)",
+      "description": "Limit results to n documents",
+      "keywords": [
+        "limit",
+        "top",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.offset",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.offset(n)",
+      "description": "Skip first n documents",
+      "keywords": [
+        "offset",
+        "skip",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.paginate",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#pagination",
+      "signature": "query.paginate(hash)",
+      "description": "Fetch paginated results + metadata",
+      "keywords": [
+        "paginate",
+        "page",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.all",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.all",
+      "description": "Execute query, return all results",
+      "keywords": [
+        "all",
+        "execute",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.first",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.first",
+      "description": "Execute query, return first result",
+      "keywords": [
+        "first",
+        "one",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.count",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.count",
+      "description": "Execute query, return count",
+      "keywords": [
+        "count",
+        "total",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.exists",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#exists",
+      "signature": "query.exists",
+      "description": "Return boolean indicating if records exist",
+      "keywords": [
+        "exists",
+        "any",
+        "check",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.delete_all",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.delete_all",
+      "description": "Bulk delete matching documents",
+      "keywords": [
+        "delete",
+        "bulk",
+        "remove",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.similar",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#vector-similarity-search",
+      "signature": "query.similar(query, field?, top_k?)",
+      "description": "Vector similarity search. Ranks results by semantic relevance.",
+      "keywords": [
+        "similar",
+        "vector",
+        "search",
+        "ai",
+        "embedding",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.pluck",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#pluck",
+      "signature": "query.pluck(field, ...)",
+      "description": "Return only specified fields as raw values",
+      "keywords": [
+        "pluck",
+        "select",
+        "fields",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.sum",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "query.sum(field)",
+      "description": "Set aggregation mode: sum of field",
+      "keywords": [
+        "sum",
+        "aggregation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.avg",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "query.avg(field)",
+      "description": "Set aggregation mode: average of field",
+      "keywords": [
+        "avg",
+        "average",
+        "aggregation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.min",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "query.min(field)",
+      "description": "Set aggregation mode: minimum of field",
+      "keywords": [
+        "min",
+        "minimum",
+        "aggregation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.max",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "query.max(field)",
+      "description": "Set aggregation mode: maximum of field",
+      "keywords": [
+        "max",
+        "maximum",
+        "aggregation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.group_by",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/finders#aggregations",
+      "signature": "query.group_by(field, func, agg_field)",
+      "description": "Set group-by aggregation mode",
+      "keywords": [
+        "group",
+        "aggregation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.includes",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.includes(rel, ...)",
+      "description": "Eager load relations via subqueries",
+      "keywords": [
+        "includes",
+        "eager",
+        "load",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.select",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.select(field, ...)",
+      "description": "Select specific fields on the main collection",
+      "keywords": [
+        "select",
+        "fields",
+        "projection",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.fields",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.fields(field, ...)",
+      "description": "Alias for select()",
+      "keywords": [
+        "fields",
+        "select",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.join",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.join(rel, filter?, binds?)",
+      "description": "Filter by existence of related records",
+      "keywords": [
+        "join",
+        "filter",
+        "relation",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "query.to_query",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.to_query",
+      "description": "Return the generated SDBQL string (for debugging)",
+      "keywords": [
+        "to_query",
+        "debug",
+        "sql",
+        "query",
+        "orm"
+      ]
+    },
+    {
+      "title": "has_many",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships",
+      "signature": "has_many(name)",
+      "description": "Declare a one-to-many relationship",
+      "keywords": [
+        "has_many",
+        "relation",
+        "association",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "has_one",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships",
+      "signature": "has_one(name)",
+      "description": "Declare a one-to-one relationship",
+      "keywords": [
+        "has_one",
+        "relation",
+        "association",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "belongs_to",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships",
+      "signature": "belongs_to(name)",
+      "description": "Declare an inverse (belongs-to) relationship",
+      "keywords": [
+        "belongs_to",
+        "relation",
+        "association",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "belongs_to (polymorphic)",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships",
+      "signature": "belongs_to(name, {polymorphic: true})",
+      "description": "Declare a polymorphic belongs-to relationship",
+      "keywords": [
+        "belongs_to",
+        "polymorphic",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "add_<singular>",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships#habtm-adding-removing",
+      "signature": "instance.add_<singular>(item)",
+      "description": "Add a related record to HABTM association",
+      "keywords": [
+        "add",
+        "habtm",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "remove_<singular>",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/relationships#habtm-adding-removing",
+      "signature": "instance.remove_<singular>(item)",
+      "description": "Remove a related record from HABTM association",
+      "keywords": [
+        "remove",
+        "habtm",
+        "relation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "<< (shovel operator)",
+      "type": "operator",
+      "category": "Database",
+      "path": "/docs/database/relationships#habtm-shovel-operator",
+      "signature": "relation << item",
+      "description": "Shorthand for add_<singular> on HABTM associations",
+      "keywords": [
+        "shovel",
+        "append",
+        "habtm",
+        "relation",
+        "orm"
+      ]
+    },
+    {
+      "title": "validates",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#defining-validations",
+      "signature": "validates(field, rules)",
+      "description": "Declare validation rules for a field",
+      "keywords": [
+        "validates",
+        "validation",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "attr_accessible",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#mass-assignment",
+      "signature": "attr_accessible(...)",
+      "description": "Mass-assignment protection: whitelist permitted keys",
+      "keywords": [
+        "attr_accessible",
+        "mass",
+        "assignment",
+        "whitelist",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "before_save",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "before_save(method_name)",
+      "description": "Callback before create or update",
+      "keywords": [
+        "before_save",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "after_save",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "after_save(method_name)",
+      "description": "Callback after create or update",
+      "keywords": [
+        "after_save",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "before_create",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "before_create(method_name)",
+      "description": "Callback before inserting new record",
+      "keywords": [
+        "before_create",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "after_create",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "after_create(method_name)",
+      "description": "Callback after inserting new record",
+      "keywords": [
+        "after_create",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "before_update",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "before_update(method_name)",
+      "description": "Callback before updating existing record",
+      "keywords": [
+        "before_update",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "after_update",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "after_update(method_name)",
+      "description": "Callback after updating existing record",
+      "keywords": [
+        "after_update",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "before_delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "before_delete(method_name)",
+      "description": "Callback before deleting record",
+      "keywords": [
+        "before_delete",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "after_delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/validations#callbacks",
+      "signature": "after_delete(method_name)",
+      "description": "Callback after deleting record",
+      "keywords": [
+        "after_delete",
+        "callback",
+        "hook",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "soft_delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#soft-delete",
+      "signature": "soft_delete",
+      "description": "Enable soft-delete mode for the model (marks records with deleted_at)",
+      "keywords": [
+        "soft_delete",
+        "soft",
+        "delete",
+        "trash",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "uploader",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "uploader(name, options)",
+      "description": "Declare a blob attachment field with validation rules",
+      "keywords": [
+        "uploader",
+        "upload",
+        "file",
+        "attachment",
+        "blob",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.attach_<field>",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "instance.attach_<field>(file)",
+      "description": "Attach a file to an uploader field",
+      "keywords": [
+        "attach",
+        "upload",
+        "file",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.detach_<field>",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "instance.detach_<field>(blob_id?)",
+      "description": "Detach a file from an uploader field",
+      "keywords": [
+        "detach",
+        "remove",
+        "file",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.<field>_url",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "instance.<field>_url()",
+      "description": "Return proxy URL for an uploader field (single)",
+      "keywords": [
+        "url",
+        "upload",
+        "file",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "instance.<field>_urls",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/models#uploaders",
+      "signature": "instance.<field>_urls()",
+      "description": "Return one URL per stored blob (multiple)",
+      "keywords": [
+        "urls",
+        "upload",
+        "file",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.create_many (batch)",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#batch-operations",
+      "signature": "Model.create_many([data, ...])",
+      "description": "Batch insert multiple documents",
+      "keywords": [
+        "batch",
+        "insert",
+        "bulk",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "Model.upsert (batch)",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#batch-operations",
+      "signature": "Model.upsert(id, data)",
+      "description": "Insert or update document by ID",
+      "keywords": [
+        "upsert",
+        "batch",
+        "model",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.create",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.create(doc)",
+      "description": "Create a document within a transaction",
+      "keywords": [
+        "transaction",
+        "create",
+        "tx",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.get",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.get(key)",
+      "description": "Get a document within a transaction",
+      "keywords": [
+        "transaction",
+        "get",
+        "tx",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.update",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.update(key, doc)",
+      "description": "Update a document within a transaction",
+      "keywords": [
+        "transaction",
+        "update",
+        "tx",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.delete",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.delete(key)",
+      "description": "Delete a document within a transaction",
+      "keywords": [
+        "transaction",
+        "delete",
+        "tx",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.commit",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.commit()",
+      "description": "Commit all changes in a transaction",
+      "keywords": [
+        "transaction",
+        "commit",
+        "tx",
+        "orm"
+      ]
+    },
+    {
+      "title": "tx.rollback",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/advanced#transactions",
+      "signature": "tx.rollback()",
+      "description": "Rollback all changes in a transaction",
+      "keywords": [
+        "transaction",
+        "rollback",
+        "undo",
+        "tx",
+        "orm"
       ]
     }
   ]
