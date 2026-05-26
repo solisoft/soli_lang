@@ -210,9 +210,7 @@ pub fn evaluate_with_interpreter(
                     let vals: Vec<Value> = h.borrow().values().cloned().collect();
                     return Ok(Value::Array(Rc::new(RefCell::new(vals))));
                 }
-                (Value::String(s), "to_s" | "to_string") => {
-                    return Ok(Value::String(s.clone()))
-                }
+                (Value::String(s), "to_s" | "to_string") => return Ok(Value::String(s.clone())),
                 (Value::Int(_) | Value::Float(_), "to_s" | "to_string") => {
                     return Ok(Value::String(format!("{}", base_val)));
                 }
