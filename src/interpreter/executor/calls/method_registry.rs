@@ -1312,6 +1312,16 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "pluck",
+        zero_arg: false,
+        ret: "array",
+    },
+    MethodDef {
+        name: "pick",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "zip",
         zero_arg: false,
         ret: "array",

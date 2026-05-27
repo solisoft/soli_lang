@@ -7,6 +7,7 @@
 
 use crossbeam::channel;
 use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use crate::serve::RequestData;
 
@@ -49,7 +50,7 @@ impl HotReloadVersions {
 /// Per-worker queue for distributing requests without contention.
 /// Each worker has its own dedicated channel, eliminating receiver contention.
 pub(crate) struct WorkerQueues {
-    senders: Vec<channel::Sender<RequestData>>,
+    senders: Arc<[channel::Sender<RequestData>]>,
     receivers: Vec<channel::Receiver<RequestData>>,
     /// Shared round-robin counter across all senders for even distribution.
     next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -57,17 +58,17 @@ pub(crate) struct WorkerQueues {
 
 impl WorkerQueues {
     pub(crate) fn new(num_workers: usize, capacity_per_worker: usize) -> Self {
-        let mut senders = Vec::with_capacity(num_workers);
+        let mut senders_vec = Vec::with_capacity(num_workers);
         let mut receivers = Vec::with_capacity(num_workers);
 
         for _ in 0..num_workers {
             let (tx, rx) = channel::bounded(capacity_per_worker);
-            senders.push(tx);
+            senders_vec.push(tx);
             receivers.push(rx);
         }
 
         Self {
-            senders,
+            senders: senders_vec.into(),
             receivers,
             next_worker: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
@@ -75,9 +76,10 @@ impl WorkerQueues {
 
     /// Get a sender that round-robins across workers (lock-free).
     /// All senders share the same counter for even distribution across connections.
+    /// Cloning the Arc is extremely cheap (no allocation, just refcount bump).
     pub(crate) fn get_sender(&self) -> WorkerSender {
         WorkerSender {
-            senders: self.senders.clone(),
+            senders: Arc::clone(&self.senders),
             next_worker: self.next_worker.clone(),
         }
     }
@@ -91,7 +93,7 @@ impl WorkerQueues {
 /// A sender that distributes requests across workers using round-robin
 #[derive(Clone)]
 pub(crate) struct WorkerSender {
-    senders: Vec<channel::Sender<RequestData>>,
+    senders: Arc<[channel::Sender<RequestData>]>,
     next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
