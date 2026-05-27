@@ -1,7 +1,7 @@
 # No Build, No Dependency: Why It Matters for Security and Simplicity
 
-<figure style="margin:1.5rem auto;max-width:1200px;">
-  <img src="/images/blog/no-build-no-dependency.svg" width="1200" height="630" alt="A single glowing Soli binary on the left, contrasted with a tangled npm dependency graph on the right whose nodes include compromised and vulnerable packages." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/no-build-no-dependency.jpg" width="1024" height="576" alt="No Build, No Dependency: A clean glowing Soli single binary on the left contrasted with a massive, tangled, vulnerable dependency graph on the right, illustrating supply chain risk and complexity." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
 </figure>
 
 Every modern web stack has a dependency graph. Most developers treat this as a fact of life, like taxes or log rotation. You install a framework, and npm quietly installs 800 packages to power it. You install a build tool, and that build tool has its own transitive tree. You upgrade one package, and three others break. The lock file grows, the `node_modules` folder swells past a gigabyte, and at some point you stop counting.

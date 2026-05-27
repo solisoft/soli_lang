@@ -1,5 +1,9 @@
 # Server-Side Password Validation in Soli
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/password-validation.jpg" width="1024" height="576" alt="Server-side password validation in Soli showing live feedback for character class rules: letters, mixed case, numbers, and symbols, plus the generated passwordrules attribute." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 Frontend password rules are a good start, but they're just a suggestion. Anyone can bypass your browser, curl your API, and register with `"password"` as their password. Server-side validation isn't optional — it's your last line of defense.
 
 Soli's validation system gives you five character-class rules that mirror what password managers and security standards expect, plus a way to tell the browser the same rules through the `passwordrules` HTML attribute.

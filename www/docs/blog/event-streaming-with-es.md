@@ -6,6 +6,11 @@ Most "event streaming" guides start by installing Java, then Kafka, then ZooKeep
 
 This post wires `es` to a Soli app end-to-end: start the broker, create a topic, build a thin `Es` wrapper, emit events from a controller, and drain them with a background job that uses a consumer group so it can resume after a restart.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/event-streaming-es.jpg" width="1024" height="576" alt="Architecture of event streaming with Soli and the lightweight es broker: controller produces events via HTTP, es stores them durably with partitions, background job consumes using consumer groups with offset tracking." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Soli + `es`: simple HTTP production, durable partitioned log, and resumable consumption via background jobs — with almost no operational overhead.</figcaption>
+</figure>
+
 ## What `es` Looks Like on the Wire
 
 Before any Soli code, the conceptual map. `es` exposes a small HTTP surface — small enough to fit in one table, with three logical groupings:

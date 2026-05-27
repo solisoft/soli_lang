@@ -1,5 +1,9 @@
 # Why Raw Benchmarks Don't Tell the Full Story
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/benchmarks-reality.jpg" width="1024" height="576" alt="Why raw benchmarks lie: contrast between synthetic hello-world/JSON micro-benchmarks showing unrealistic high numbers versus real-world HTTP load testing with oha revealing latency percentiles, errors, and complex system interactions." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 ## The Problem with Synthetic Benchmarks
 
 When evaluating programming languages and frameworks, we often see headlines like "X is 10x faster than Y" based on simple benchmarks like hello-world or JSON serialization. These numbers are misleading because they don't reflect real-world workloads.

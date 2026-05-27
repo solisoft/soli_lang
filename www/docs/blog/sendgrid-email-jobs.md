@@ -4,6 +4,11 @@ Email delivery is one of those features that quietly turns a synchronous request
 
 This post walks through two things together: building a thin SendGrid wrapper as an `app/services/` class, then handing the delivery off to a SolidB-backed background job so the controller returns immediately. By the end you will have a `SendGrid.send_mail(...)` you can call from anywhere, an `EmailJob` you can enqueue with one line, and a clear mental model of why those two pieces belong on opposite sides of the queue.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/sendgrid-jobs-flow.jpg" width="1024" height="576" alt="Email delivery flow in Soli: controller enqueues EmailJob via perform_later to SolidB queue; background job later executes and calls SendGrid API while the user request has already completed." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Keep the user request fast. Move the slow email work into a background job.</figcaption>
+</figure>
+
 ## The Shape of the Solution
 
 Three files and a route do the whole job:

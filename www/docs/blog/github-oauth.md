@@ -1,5 +1,9 @@
 # Adding "Sign in with GitHub" to Your Soli App
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/github-oauth.jpg" width="1024" height="576" alt="Adding Sign in with GitHub to a Soli app: OAuth 2.0 flow showing user clicking the button, redirect to GitHub, code exchange, and session creation." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 Most developer tools ship with GitHub login. It's familiar, fast, and your users already have an account. Here's how to wire it up in Soli — from creating the OAuth app to storing the user in your database.
 
 ## How OAuth 2.0 Works

@@ -6,6 +6,11 @@ Datatables are the workhorse of any admin UI: a list of records you can search, 
 
 In Soli, it is one model, one controller, two partials, and a sprinkle of HTMx attributes. Total: about 250 lines, zero hand-written JavaScript.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/htmx-datatable.jpg" width="1024" height="576" alt="Modern admin CRUD datatable built with Soli + HTMx: searchable, sortable, paginated, with inline editing, role dropdowns, status toggles, and real-time row updates with no JavaScript framework." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">A full-featured, production-ready admin datatable — powered by server-rendered HTML and HTMx.</figcaption>
+</figure>
+
 ## What we are building
 
 - **Search** — debounced, hits the server, swaps just the table

@@ -85,6 +85,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_DATABASE` | SolidB database that stores queues and cron entries. Falls back to `SOLIDB_DATABASE`. | `default` |
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
 | `SOLI_JOBS_CALLBACK_URL` | Base URL SolidB calls when a job fires. | `http://127.0.0.1:3000/_jobs/run` |
+| `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). If unset, `/_jobs/run/:name` is not registered — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks). | unset |
 
 ## Cache And KV
 

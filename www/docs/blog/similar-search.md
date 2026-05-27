@@ -17,6 +17,11 @@ end
 
 Each result gets a `_similarity_score` field (0.0 to 1.0) so you can surface relevance to your users.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/similar-search.jpg" width="1024" height="576" alt="Semantic vector search in Soli: a natural language query is embedded and compared via cosine similarity against document vectors stored in the database, returning the most relevant results ranked by meaning." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">`.similar()` turns natural language into ranked results using built-in vector similarity — no extra services required.</figcaption>
+</figure>
+
 ## How It Works
 
 The `.similar()` method is a QueryBuilder chain method. When you call it:

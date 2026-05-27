@@ -1,10 +1,7 @@
 # How Soli Competes with Big Frameworks
 
-<figure style="margin:1.5rem auto;max-width:1200px;">
-  <picture>
-    <source type="image/webp" srcset="/images/blog/competing-with-big-frameworks.webp">
-    <img src="/images/blog/competing-with-big-frameworks.png" width="1536" height="1024" alt="A glowing hexagonal Soli core radiating brand-color light, surrounded by tall stacked tower-blocks representing the layered complexity of bigger frameworks." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
-  </picture>
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/competing-with-big-frameworks.jpg" width="1024" height="576" alt="How Soli competes with big frameworks: a clean glowing hexagonal Soli core contrasted against massive, complex, layered framework towers representing heavy architecture and bloat." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
 </figure>
 
 Every web framework competes with the same giants: Rails, Laravel, Django, Spring, Next.js, NestJS, and the rest of the ecosystems that have already solved a lot of hard problems.

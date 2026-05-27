@@ -1,5 +1,9 @@
 # Importing CSV & Excel Files in Soli
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/spreadsheet-functions.jpg" width="1024" height="576" alt="Importing CSV and Excel files in Soli: spreadsheet data being parsed into structured arrays and hashes using built-in spreadsheet functions." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 Soli makes working with spreadsheet data straightforward. Whether you're importing user data from a CSV export, processing Excel reports, or building a data pipeline, the built-in spreadsheet functions have you covered.
 
 ## Parsing CSV Data

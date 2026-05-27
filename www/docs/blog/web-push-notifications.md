@@ -6,6 +6,11 @@ For years, the answer in the Node ecosystem has been the `web-push` package. It'
 
 Soli ships the whole stack natively. Four builtins — `vapid_generate_keys`, `vapid_sign`, `vapid_encrypt`, `vapid_send` — cover RFC 8291 and RFC 8292 end to end. No `npm install`, no sidecar, no FFI. This post walks you through dropping `web-push` and sending your first push from a Soli controller.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/web-push-vapid.jpg" width="1024" height="576" alt="Web Push notification flow with native Soli VAPID: Soli server generates keys and sends encrypted push via VAPID, through browser push service, directly to the user's device with no external npm dependencies." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Native VAPID in Soli: the entire push pipeline lives inside your single binary.</figcaption>
+</figure>
+
 ## Before / After
 
 If you have ever delivered Web Push from a Node service, this is roughly the shape of it:

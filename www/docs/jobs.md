@@ -161,5 +161,6 @@ In `--dev` mode, editing a file under `app/jobs/` reloads the class without rest
 
 ## See Also
 
+- [Background Jobs & Cron deep dive (blog)](/docs/blog/background-jobs-and-cron) — architecture, security model, production patterns, and real examples.
 - [SolidB queues and cron API](https://solidb.solisoft.net/docs/) — the underlying server-side primitives.
 - [Sessions](sessions.md) — same pluggable-backend pattern, different domain.

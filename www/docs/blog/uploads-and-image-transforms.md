@@ -1,5 +1,9 @@
 # From `_handle_photo` to `uploader("photo", { ... })` — Soli's New Attachment Pipeline
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/uploads-and-image-transforms.jpg" width="1024" height="576" alt="Soli attachment pipeline: URL query params like ?w=800&h=600&fit=cover&square=400&blur=8&bright=15&fmt=webp&q=80 drive on-the-fly image transforms directly from the attachment URL." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 Most file-upload code in MVC apps follows the same broken pattern: a 50-line handler in your controller that parses multipart, validates the file, encodes to base64, calls the storage backend, deletes the previous blob on replace, and threads error handling everywhere. Then your model needs a `*_url()` method, a cleanup callback, and a delete cascade. Then you need a controller for serving the bytes back. Then you need every project to copy this same boilerplate.
 
 Soli now ships all of that out of the box.

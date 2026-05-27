@@ -2,6 +2,11 @@
 
 Two-factor authentication (2FA) adds an extra layer of security to your accounts. Instead of just knowing something (password), the user must also have something (their phone). TOTP (Time-based One-Time Password) is the standard used by Google Authenticator, Authy, and most authenticator apps.
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/totp-auth.jpg" width="1024" height="576" alt="TOTP two-factor authentication flow in Soli: app generates secret and QR code, user scans with authenticator app on phone, phone produces 6-digit rotating code, Soli verifies the code on login." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Native TOTP enrollment and verification — no external 2FA provider required.</figcaption>
+</figure>
+
 ## What is TOTP?
 
 TOTP generates a 6-digit code that changes every 30 seconds. It's based on:

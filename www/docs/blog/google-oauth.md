@@ -1,5 +1,9 @@
 # Implementing Google OAuth in SoliLang
 
+<figure style="margin:1.5rem auto;max-width:1024px;">
+  <img src="/images/blog/google-oauth.jpg" width="1024" height="576" alt="Implementing Google OAuth in Soli: Sign in with Google button and OAuth 2.0 flow showing redirect to Google, code exchange, and secure session creation." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
+</figure>
+
 This guide walks you through implementing Google OAuth authentication in your SoliLang application.
 
 ## Prerequisites

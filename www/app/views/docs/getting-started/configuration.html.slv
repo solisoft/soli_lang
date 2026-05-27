@@ -139,6 +139,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_DATABASE</code></td><td class="py-3 px-4">SolidB database that stores queues and cron entries. Falls back to <code>SOLIDB_DATABASE</code>.</td><td class="py-3 px-4"><code>default</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_DEFAULT_QUEUE</code></td><td class="py-3 px-4">Queue used when no queue is specified.</td><td class="py-3 px-4"><code>default</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_JOBS_CALLBACK_URL</code></td><td class="py-3 px-4">Base URL SolidB calls when a job fires.</td><td class="py-3 px-4"><code>http://127.0.0.1:3000/_jobs/run</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_JOBS_SECRET</code></td><td class="py-3 px-4"><strong>Required.</strong> HMAC-SHA256 key used to sign and verify job callbacks (<code>X-Job-Signature</code> header). If unset, <code>/_jobs/run/:name</code> is not registered &mdash; see <a class="text-amber-400 hover:underline" href="/docs/jobs#security-signed-callbacks">Jobs / Signed Callbacks</a>.</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>
         </div>
