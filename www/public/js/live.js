@@ -197,6 +197,7 @@
 
         /**
          * Apply a patch (quick-diff output)
+         * Now handles granular line-based patches from the improved server diff.
          */
         applyPatch(patches) {
             // Parse JSON string if needed
@@ -216,11 +217,18 @@
                 return;
             }
 
+            let appliedGranular = false;
+
             patches.forEach(patch => {
                 switch (patch.type) {
                     case 'replace':
                         if (patch.old && patch.new) {
-                            this.replaceElement(patch.old, patch.new);
+                            if (this.replaceElement(patch.old, patch.new)) {
+                                appliedGranular = true;
+                            } else {
+                                // Could not apply granularly — fall back to full for safety
+                                this.applyRender(patch.new);
+                            }
                         } else if (patch.new) {
                             this.applyRender(patch.new);
                         }
@@ -238,41 +246,80 @@
                 }
             });
 
-            // Re-bind event handlers after patches
-            this.bindEvents();
+            // Only re-bind if we actually touched the DOM with patches
+            if (appliedGranular || patches.length > 0) {
+                this.bindEvents();
+            }
         }
 
         /**
-         * Replace an element by its content
+         * Replace an element / region by its content.
+         * Returns true if a targeted replacement was performed, false if caller should fall back.
          */
         replaceElement(oldContent, newContent) {
-            // Create temporary elements
-            const oldTemp = document.createElement('div');
-            oldTemp.innerHTML = oldContent;
-            const oldEl = oldTemp.firstElementChild;
+            const root = this.getRoot();
+            if (!root) return false;
 
-            const newTemp = document.createElement('div');
-            newTemp.innerHTML = newContent;
-            const newEl = newTemp.firstElementChild;
+            // Fast path 1: exact match on a direct child with data-live-id (very common in Soli LiveView)
+            try {
+                const oldTemp = document.createElement('div');
+                oldTemp.innerHTML = oldContent.trim();
+                const oldEl = oldTemp.firstElementChild;
 
-            // Find the element in the DOM
-            if (oldEl) {
-                const selector = this.getSelectorForElement(oldEl);
-                const existingEl = document.querySelector(selector);
-
-                if (existingEl) {
-                    existingEl.outerHTML = newContent;
-                } else {
-                    // Fallback: replace by data-live-id
-                    const liveId = oldEl.getAttribute('data-live-id');
+                if (oldEl) {
+                    const liveId = oldEl.getAttribute && oldEl.getAttribute('data-live-id');
                     if (liveId) {
-                        const el = document.querySelector(`[data-live-id="${liveId}"]`);
-                        if (el) {
-                            el.outerHTML = newContent;
+                        const target = root.querySelector(`[data-live-id="${liveId}"]`);
+                        if (target) {
+                            target.outerHTML = newContent;
+                            return true;
                         }
                     }
                 }
+            } catch (_) {}
+
+            // Fast path 2: the old content appears exactly once inside the current root HTML.
+            // This is pragmatic and very effective for small text / bit / counter updates.
+            const currentHTML = root.innerHTML;
+            if (oldContent && currentHTML.includes(oldContent)) {
+                // Only do the replacement if it appears exactly once (safety)
+                const first = currentHTML.indexOf(oldContent);
+                const last = currentHTML.lastIndexOf(oldContent);
+                if (first !== -1 && first === last) {
+                    root.innerHTML = currentHTML.replace(oldContent, newContent);
+                    return true;
+                }
             }
+
+            // Existing selector-based logic (kept for backward compatibility with richer patches)
+            try {
+                const oldTemp = document.createElement('div');
+                oldTemp.innerHTML = oldContent;
+                const oldEl = oldTemp.firstElementChild;
+
+                if (oldEl) {
+                    const selector = this.getSelectorForElement(oldEl);
+                    const existingEl = root.querySelector(selector); // scoped to this LiveView root
+
+                    if (existingEl) {
+                        existingEl.outerHTML = newContent;
+                        return true;
+                    }
+
+                    // Fallback: replace by data-live-id anywhere in this LiveView
+                    const liveId = oldEl.getAttribute && oldEl.getAttribute('data-live-id');
+                    if (liveId) {
+                        const el = root.querySelector(`[data-live-id="${liveId}"]`);
+                        if (el) {
+                            el.outerHTML = newContent;
+                            return true;
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Could not apply granularly
+            return false;
         }
 
         /**

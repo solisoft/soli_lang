@@ -407,7 +407,7 @@ pub fn exec_async_query_with_binds(
 
     let result = run_db_future(future);
 
-    if let (Some(q), Some(t0)) = (log_query, started) {
+    let db_duration = if let (Some(q), Some(t0)) = (log_query, started) {
         let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
         let dur_us = (elapsed * 1000.0).max(0.0) as u64;
         let span_name: String = q.chars().take(80).collect();
@@ -419,7 +419,14 @@ pub fn exec_async_query_with_binds(
             None,
         );
         super::query_log::record(q, log_binds, elapsed);
-    }
+        std::time::Duration::from_millis(elapsed as u64)
+    } else {
+        std::time::Duration::ZERO
+    };
+
+    // Always feed the coarse production Prometheus counter (Phase A).
+    // The rich per-query log stays gated to --dev.
+    crate::metrics::Metrics::global().record_db_queries(db_duration);
 
     result
 }
@@ -489,7 +496,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
         Err(e) => Value::String(format!("Error: {}", e)),
     };
 
-    if let (Some(q), Some(t0)) = (log_query, started) {
+    let db_duration = if let (Some(q), Some(t0)) = (log_query, started) {
         let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
         let dur_us = (elapsed * 1000.0).max(0.0) as u64;
         let span_name: String = q.chars().take(80).collect();
@@ -501,7 +508,14 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
             None,
         );
         super::query_log::record(q, None, elapsed);
-    }
+        std::time::Duration::from_millis(elapsed as u64)
+    } else {
+        std::time::Duration::ZERO
+    };
+
+    // Always feed the coarse production Prometheus counter (Phase A).
+    // The rich per-query log stays gated to --dev.
+    crate::metrics::Metrics::global().record_db_queries(db_duration);
 
     result
 }

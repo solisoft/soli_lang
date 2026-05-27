@@ -9,6 +9,15 @@ pub struct Metrics {
     pub parsing_count: AtomicU64,
     pub vm_execution_ns_total: AtomicU64,
     pub vm_execution_count: AtomicU64,
+    /// Total wall time spent rendering templates (views + layouts + partials) in production.
+    pub template_render_duration_ns_total: AtomicU64,
+    pub template_render_count: AtomicU64,
+    /// Coarse total time spent inside all middleware for the request (populated from middleware_log).
+    pub middleware_duration_ns_total: AtomicU64,
+    pub middleware_count: AtomicU64,
+    /// Coarse total time spent in DB / SolidB queries (from query_log).
+    pub db_query_duration_ns_total: AtomicU64,
+    pub db_query_count: AtomicU64,
     start_time: std::sync::OnceLock<Instant>,
 }
 
@@ -22,6 +31,12 @@ impl Metrics {
             parsing_count: AtomicU64::new(0),
             vm_execution_ns_total: AtomicU64::new(0),
             vm_execution_count: AtomicU64::new(0),
+            template_render_duration_ns_total: AtomicU64::new(0),
+            template_render_count: AtomicU64::new(0),
+            middleware_duration_ns_total: AtomicU64::new(0),
+            middleware_count: AtomicU64::new(0),
+            db_query_duration_ns_total: AtomicU64::new(0),
+            db_query_count: AtomicU64::new(0),
             start_time: std::sync::OnceLock::new(),
         }
     }
@@ -90,6 +105,58 @@ impl Metrics {
             self.vm_execution_count.load(Ordering::Relaxed)
         ));
 
+        // Template rendering (views + layouts + partials) — always measured, cheap atomics.
+        out.push_str(
+            "# HELP soli_template_render_duration_seconds Total time spent rendering templates (views, layouts, partials).\n",
+        );
+        out.push_str("# TYPE soli_template_render_duration_seconds counter\n");
+        out.push_str(&format!(
+            "soli_template_render_duration_seconds {:.9}\n",
+            self.template_render_duration_ns_total
+                .load(Ordering::Relaxed) as f64
+                / 1_000_000_000.0
+        ));
+        out.push_str(
+            "# HELP soli_template_render_duration_seconds_count Number of template renders.\n",
+        );
+        out.push_str("# TYPE soli_template_render_duration_seconds_count counter\n");
+        out.push_str(&format!(
+            "soli_template_render_duration_seconds_count {}\n",
+            self.template_render_count.load(Ordering::Relaxed)
+        ));
+
+        // Coarse middleware total (populated from middleware_log snapshot at end of request).
+        out.push_str(
+            "# HELP soli_middleware_duration_seconds Total time spent in middleware (all middleware combined).\n",
+        );
+        out.push_str("# TYPE soli_middleware_duration_seconds counter\n");
+        out.push_str(&format!(
+            "soli_middleware_duration_seconds {:.9}\n",
+            self.middleware_duration_ns_total.load(Ordering::Relaxed) as f64 / 1_000_000_000.0
+        ));
+        out.push_str("# HELP soli_middleware_duration_seconds_count Number of requests that went through middleware timing.\n");
+        out.push_str("# TYPE soli_middleware_duration_seconds_count counter\n");
+        out.push_str(&format!(
+            "soli_middleware_duration_seconds_count {}\n",
+            self.middleware_count.load(Ordering::Relaxed)
+        ));
+
+        // Coarse DB / SolidB query time (from query_log snapshot).
+        out.push_str(
+            "# HELP soli_db_query_duration_seconds Total time spent in database / SolidB queries.\n",
+        );
+        out.push_str("# TYPE soli_db_query_duration_seconds counter\n");
+        out.push_str(&format!(
+            "soli_db_query_duration_seconds {:.9}\n",
+            self.db_query_duration_ns_total.load(Ordering::Relaxed) as f64 / 1_000_000_000.0
+        ));
+        out.push_str("# HELP soli_db_query_duration_seconds_count Number of requests with DB query timing.\n");
+        out.push_str("# TYPE soli_db_query_duration_seconds_count counter\n");
+        out.push_str(&format!(
+            "soli_db_query_duration_seconds_count {}\n",
+            self.db_query_count.load(Ordering::Relaxed)
+        ));
+
         out
     }
 
@@ -109,6 +176,28 @@ impl Metrics {
         self.vm_execution_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.vm_execution_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record one template render (view + layout + any partials executed during it).
+    /// Called unconditionally from the template engine; atomics are extremely cheap.
+    pub fn record_template_render(&self, elapsed: Duration) {
+        self.template_render_duration_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.template_render_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record total time spent in middleware for one request (sum of all middleware durations).
+    pub fn record_middleware(&self, elapsed: Duration) {
+        self.middleware_duration_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.middleware_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record total time spent in DB/SolidB queries for one request.
+    pub fn record_db_queries(&self, elapsed: Duration) {
+        self.db_query_duration_ns_total
+            .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+        self.db_query_count.fetch_add(1, Ordering::Relaxed);
     }
 }
 

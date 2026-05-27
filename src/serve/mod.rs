@@ -287,11 +287,24 @@ pub(crate) struct ResponseData {
 use file_upload::uploaded_files_to_value;
 
 /// Serve an MVC application from a folder in production mode by default.
+///
+/// Respects `SOLI_WORKERS` env var (or falls back to CPU core count).
+/// Operators running on boxes with many cores can pin this low (e.g. 2-4)
+/// to keep baseline RSS from duplicated interpreter state + tokio runtimes
+/// under control — directly relevant to "keep RAM low as much as possible".
 pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
-    // Default to number of CPU cores for optimal parallelism
-    let num_workers = std::thread::available_parallelism()
-        .map(|p| p.get())
-        .unwrap_or(server_constants::DEFAULT_WORKER_COUNT);
+    // Allow operators to explicitly cap workers (common on multi-core boxes
+    // when the goal is minimizing memory rather than maximizing throughput).
+    let num_workers = std::env::var("SOLI_WORKERS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|p| p.get())
+                .unwrap_or(server_constants::DEFAULT_WORKER_COUNT)
+        });
+
     serve_folder_with_options(folder, port, false, num_workers)
 }
 
@@ -4270,13 +4283,22 @@ fn invoke_middleware_with_frame(
 ) -> Result<Value, RuntimeError> {
     let _phase = phase_log::PhaseTimer::start("middleware");
     let _span = span_log::SpanGuard::start(name, span_log::SpanKind::Middleware);
+
+    // Always measure for the coarse production Prometheus counter (Phase A).
+    // The rich per-middleware log stays gated to --dev.
+    let mw_start = std::time::Instant::now();
     let per_mw_start = middleware_log::is_enabled().then(std::time::Instant::now);
+
     interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
     if let Some(path) = source_path {
         interpreter.set_source_path(PathBuf::from(path));
     }
     let result = interpreter.call_value(handler, vec![request_hash], span);
     interpreter.pop_frame();
+
+    let elapsed = mw_start.elapsed();
+    crate::metrics::Metrics::global().record_middleware(elapsed);
+
     if let Some(start) = per_mw_start {
         middleware_log::record(name, start.elapsed().as_micros() as u64);
     }
@@ -5179,6 +5201,26 @@ fn handle_request(
                     let phases = phase_log::snapshot();
                     let middlewares = middleware_log::snapshot();
                     let views = view_log::snapshot();
+
+                    // Feed coarse totals into the always-on Prometheus metrics (Phase A).
+                    // These give production-visible numbers even when the rich per-item dev bar is off.
+                    {
+                        let mw_total_us: u64 = middlewares.iter().map(|(_, us)| *us).sum();
+                        if mw_total_us > 0 {
+                            crate::metrics::Metrics::global()
+                                .record_middleware(std::time::Duration::from_micros(mw_total_us));
+                        }
+
+                        let db_total_ns: u64 = queries
+                            .iter()
+                            .map(|q| (q.duration_ms * 1_000_000.0) as u64)
+                            .sum();
+                        if db_total_ns > 0 {
+                            crate::metrics::Metrics::global()
+                                .record_db_queries(std::time::Duration::from_nanos(db_total_ns));
+                        }
+                    }
+
                     // Close the root request span *before* snapshotting —
                     // span_log only records a span on close, so without this
                     // the top-level request rectangle would be missing from

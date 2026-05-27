@@ -404,18 +404,28 @@ impl Session {
 }
 
 /// Thread-safe in-memory session store.
+///
+/// In production (the common case when apps do not call `session_configure`),
+/// this store must not grow unbounded. We therefore clean aggressively on both
+/// a request counter (legacy) and a wall-time basis so that low-traffic or
+/// bursty workloads still reclaim memory from expired sessions.
 pub struct InMemorySessionStore {
     sessions: RwLock<HashMap<String, Session>>,
     max_age: Duration,
     request_counter: AtomicU64,
+    /// Last time we ran a full expiry sweep. Protected by a mutex because
+    /// we only mutate it inside the (rare) cleanup path.
+    last_cleanup: std::sync::Mutex<Instant>,
 }
 
 impl InMemorySessionStore {
     fn new() -> Self {
+        let now = Instant::now();
         Self {
             sessions: RwLock::new(HashMap::new()),
             max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
+            last_cleanup: std::sync::Mutex::new(now),
         }
     }
 
@@ -427,10 +437,31 @@ impl InMemorySessionStore {
     }
 }
 
+/// How often the in-memory session store will voluntarily run expiry cleanup,
+/// even if the request counter has not yet hit the old 1000-request threshold.
+/// This is critical for low-traffic prod deployments (or "just testing" a
+/// complex app) that use the default in_memory driver and would otherwise
+/// accumulate sessions for a very long time.
+const IN_MEMORY_SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
+
 impl SessionStore for InMemorySessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
-        if count.is_multiple_of(1000) {
+        let should_cleanup_by_count = count.is_multiple_of(1000);
+
+        // Time-based cleanup: ensures that even very low traffic or bursty
+        // production workloads (the exact scenario reported: 1 worker, prod
+        // mode, default in_memory, complex app) will eventually reclaim memory
+        // from expired sessions instead of growing for hours.
+        let should_cleanup_by_time = {
+            if let Ok(last) = self.last_cleanup.lock() {
+                last.elapsed() >= IN_MEMORY_SESSION_CLEANUP_INTERVAL
+            } else {
+                false
+            }
+        };
+
+        if should_cleanup_by_count || should_cleanup_by_time {
             self.cleanup();
         }
 
@@ -502,8 +533,16 @@ impl SessionStore for InMemorySessionStore {
     }
 
     fn cleanup(&self) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.retain(|_, session| !session.is_expired(self.max_age));
+        {
+            let mut sessions = self.sessions.write().unwrap();
+            sessions.retain(|_, session| !session.is_expired(self.max_age));
+        }
+
+        // Record that we just did a sweep so the time-based trigger doesn't
+        // fire again immediately.
+        if let Ok(mut last) = self.last_cleanup.lock() {
+            *last = Instant::now();
+        }
     }
 
     fn driver_name(&self) -> &'static str {

@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use crate::interpreter::value::Value;
 use crate::serve::{vfs_exists, vfs_read_to_string};
@@ -113,6 +113,10 @@ impl TemplateCache {
             _span.set_render_id(id);
         }
 
+        // Unconditional timing for production Prometheus metrics (Phase A visibility).
+        // This captures the full cost of view + layout + all partials executed during render.
+        let render_start = Instant::now();
+
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
 
@@ -184,6 +188,8 @@ impl TemplateCache {
         if let (Some(start), Some(id)) = (view_start, view_id) {
             crate::serve::view_log::record(id, template_name, start.elapsed().as_micros() as u64);
         }
+        // Record for production Prometheus metrics (unconditional, cheap).
+        crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
         result
     }
 
@@ -199,6 +205,9 @@ impl TemplateCache {
         if let Some(id) = view_id {
             _span.set_render_id(id);
         }
+
+        // Unconditional timing for production Prometheus metrics (Phase A).
+        let render_start = Instant::now();
 
         // Partials start with underscore
         let partial_name = if name.contains('/') {
@@ -241,6 +250,8 @@ impl TemplateCache {
         if let (Some(start), Some(id)) = (view_start, view_id) {
             crate::serve::view_log::record(id, name, start.elapsed().as_micros() as u64);
         }
+        // Record for production Prometheus metrics (unconditional, cheap).
+        crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
         Ok(result)
     }
 
