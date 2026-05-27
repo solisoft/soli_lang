@@ -27,14 +27,43 @@ In loopback-only mode no extra setup is needed; the auto-generated token is embe
 
 ### Production Mode (`--no-dev`)
 
-In production mode, error pages are minimal and user-friendly:
+In production mode, error pages keep the clean, branded look but **also surface the full failure context** so an operator can debug an incident without redeploying with `--dev`:
 
-- No stack traces or internal details
-- Clean, branded error pages
-- Error ID for support reference
+- Clean, branded 500/404/etc. pages with the error ID for support reference
+- A collapsed **Error details** block appended to the page containing:
+  - The error message
+  - The Soli-side call stack (function names + file:line)
+  - The redacted request snapshot (method, path, query, params, headers, body — auth headers and password / token / api-key params are replaced with `[REDACTED]`, body is always redacted)
+  - The local environment at the point of failure (variables in scope)
 - Navigation options (Go Home, Go Back)
 
-Custom error pages can override the defaults.
+Custom error pages can override the defaults — see [Custom Error Pages](#custom-error-pages). When a custom template is installed it takes precedence and the appended details block is **not** rendered.
+
+#### Production stderr logging
+
+Production mode also writes a multi-line block to stderr for every 500 — useful when you only have access to the container / journald logs:
+
+```
+[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
+  stack:
+    show at app/controllers/users.sl:92
+    find at app/models/user.sl:14
+  request:
+    {
+      "body": "[REDACTED]",
+      "headers": { ... },
+      "method": "GET",
+      "params": { ... },
+      "path": "/users/42",
+      "query": { ... },
+      "session": "N/A"
+    }
+  env: {"current_user": null, "user_id": null, ...}
+```
+
+The first `[ERROR] request_id=… METHOD PATH - msg` line is preserved verbatim from earlier versions so any log parser keyed on that prefix keeps working. The same redaction rules apply to the stderr snapshot as to the HTML response.
+
+Correlate a customer's "Error ID" (shown on the error page) to the matching stderr block by searching the logs for `request_id=<that id>`.
 
 ## Default Error Pages
 
@@ -194,7 +223,7 @@ SOLI_ENV=production soli serve
 
 This ensures:
 - Custom error pages are used
-- No sensitive information is leaked
+- Auth headers, tokens, passwords, and request bodies are redacted in both the page and the stderr block
 - Error IDs are generated for support reference
 
 ## Troubleshooting

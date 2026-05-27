@@ -26,6 +26,7 @@ pub mod websocket;
 pub(crate) mod app_loader;
 pub mod engine_loader;
 pub mod env_loader;
+mod error_logging;
 mod error_pages;
 mod file_tracker;
 pub(crate) mod file_upload;
@@ -3861,29 +3862,29 @@ fn call_handler(
                         interpreter.pop_frame();
                         return resp;
                     }
-                    // Capture environment BEFORE popping frame so we can see local variables
-                    let captured_env = if dev_mode && e.breakpoint_env_json().is_none() {
+                    // Capture environment BEFORE popping the frame so local
+                    // variables of the failing call are still visible.
+                    let captured_env = if e.breakpoint_env_json().is_none() {
                         Some(interpreter.serialize_environment_for_debug())
                     } else {
                         None
                     };
                     interpreter.pop_frame();
+                    let stack_trace: Vec<String> = e
+                        .breakpoint_stack_trace()
+                        .map(|st| st.to_vec())
+                        .unwrap_or_else(|| interpreter.get_stack_trace());
+                    let env_json: Option<String> = e
+                        .breakpoint_env_json()
+                        .map(|s| s.to_string())
+                        .or(captured_env);
                     if dev_mode {
-                        // Use captured stack trace from error if available, otherwise get from interpreter
-                        let stack_trace: Vec<String> = e
-                            .breakpoint_stack_trace()
-                            .map(|st| st.to_vec())
-                            .unwrap_or_else(|| interpreter.get_stack_trace());
-                        let breakpoint_env = e
-                            .breakpoint_env_json()
-                            .map(|s| s.to_string())
-                            .or(captured_env);
                         let error_html = error_pages::render_error_page(
                             &e.to_string(),
                             interpreter,
                             request_data,
                             &stack_trace,
-                            breakpoint_env.as_deref(),
+                            env_json.as_deref(),
                         );
                         ResponseData {
                             status: if e.is_breakpoint() { 200 } else { 500 },
@@ -3896,12 +3897,23 @@ fn call_handler(
                     } else {
                         let request_id = Uuid::new_v4().to_string();
                         let error_msg = e.to_string();
-                        eprintln!(
-                            "[ERROR] request_id={} {} {} - {}",
-                            request_id, request_data.method, request_data.path, error_msg
+                        error_logging::log_production_error(
+                            &request_id,
+                            request_data,
+                            &error_msg,
+                            &stack_trace,
+                            env_json.as_deref(),
                         );
-                        let error_html =
-                            error_pages::render_production_error_page(500, &error_msg, &request_id);
+                        let error_html = error_pages::render_production_error_page(
+                            500,
+                            &error_msg,
+                            &request_id,
+                            Some(error_pages::ProductionErrorContext {
+                                stack_trace: &stack_trace,
+                                env_json: env_json.as_deref(),
+                                request_data,
+                            }),
+                        );
                         ResponseData {
                             status: 500,
                             headers: vec![(
@@ -3915,15 +3927,12 @@ fn call_handler(
             }
         }
         Err(e) => {
-            let captured_env = if dev_mode {
-                Some(interpreter.serialize_environment_for_debug())
-            } else {
-                None
-            };
+            let captured_env = Some(interpreter.serialize_environment_for_debug());
             interpreter.pop_frame();
+            // This error is a String from resolve_handler, no captured
+            // stack trace — use whatever the interpreter still holds.
+            let stack_trace = interpreter.get_stack_trace();
             if dev_mode {
-                // This error is a String from resolve_handler, no captured stack trace
-                let stack_trace = interpreter.get_stack_trace();
                 let error_html = error_pages::render_error_page(
                     &e.to_string(),
                     interpreter,
@@ -3942,12 +3951,23 @@ fn call_handler(
             } else {
                 let request_id = Uuid::new_v4().to_string();
                 let error_msg = e.to_string();
-                eprintln!(
-                    "[ERROR] request_id={} {} {} - {}",
-                    request_id, request_data.method, request_data.path, error_msg
+                error_logging::log_production_error(
+                    &request_id,
+                    request_data,
+                    &error_msg,
+                    &stack_trace,
+                    captured_env.as_deref(),
                 );
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
+                let error_html = error_pages::render_production_error_page(
+                    500,
+                    &error_msg,
+                    &request_id,
+                    Some(error_pages::ProductionErrorContext {
+                        stack_trace: &stack_trace,
+                        env_json: captured_env.as_deref(),
+                        request_data,
+                    }),
+                );
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -4057,14 +4077,15 @@ fn call_oop_controller_action(
     let controller_instance = match create_controller_instance(&class_name, interpreter) {
         Ok(inst) => inst,
         Err(e) => {
+            let stack_trace = interpreter.get_stack_trace();
+            let env_json = interpreter.serialize_environment_for_debug();
             return Some(if dev_mode {
-                let stack_trace = interpreter.get_stack_trace();
                 let error_html = error_pages::render_error_page(
                     &e,
                     interpreter,
                     request_data,
                     &stack_trace,
-                    None,
+                    Some(&env_json),
                 );
                 ResponseData {
                     status: 500,
@@ -4077,12 +4098,23 @@ fn call_oop_controller_action(
             } else {
                 let request_id = Uuid::new_v4().to_string();
                 let error_msg = e.to_string();
-                eprintln!(
-                    "[ERROR] request_id={} {} {} - {}",
-                    request_id, request_data.method, request_data.path, error_msg
+                error_logging::log_production_error(
+                    &request_id,
+                    request_data,
+                    &error_msg,
+                    &stack_trace,
+                    Some(&env_json),
                 );
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
+                let error_html = error_pages::render_production_error_page(
+                    500,
+                    &error_msg,
+                    &request_id,
+                    Some(error_pages::ProductionErrorContext {
+                        stack_trace: &stack_trace,
+                        env_json: Some(&env_json),
+                        request_data,
+                    }),
+                );
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -4177,44 +4209,59 @@ fn call_oop_controller_action(
         Err(e) => {
             if let Some(resp) = record_not_found_response(&e) {
                 resp
-            } else if dev_mode {
-                // Use breakpoint's captured stack trace if available, otherwise get current
+            } else {
                 let stack_trace: Vec<String> = e
                     .breakpoint_stack_trace()
                     .map(|st| st.to_vec())
                     .unwrap_or_else(|| interpreter.get_stack_trace());
-                let breakpoint_env = e.breakpoint_env_json();
-                let error_html = error_pages::render_error_page(
-                    &e.to_string(),
-                    interpreter,
-                    request_data,
-                    &stack_trace,
-                    breakpoint_env,
-                );
-                ResponseData {
-                    status: if e.is_breakpoint() { 200 } else { 500 },
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                }
-            } else {
-                let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                eprintln!(
-                    "[ERROR] request_id={} {} {} - {}",
-                    request_id, request_data.method, request_data.path, error_msg
-                );
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
-                ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
+                let env_json: Option<String> = e
+                    .breakpoint_env_json()
+                    .map(|s| s.to_string())
+                    .or_else(|| Some(interpreter.serialize_environment_for_debug()));
+                if dev_mode {
+                    let error_html = error_pages::render_error_page(
+                        &e.to_string(),
+                        interpreter,
+                        request_data,
+                        &stack_trace,
+                        env_json.as_deref(),
+                    );
+                    ResponseData {
+                        status: if e.is_breakpoint() { 200 } else { 500 },
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
+                        body: error_html.into_bytes(),
+                    }
+                } else {
+                    let request_id = Uuid::new_v4().to_string();
+                    let error_msg = e.to_string();
+                    error_logging::log_production_error(
+                        &request_id,
+                        request_data,
+                        &error_msg,
+                        &stack_trace,
+                        env_json.as_deref(),
+                    );
+                    let error_html = error_pages::render_production_error_page(
+                        500,
+                        &error_msg,
+                        &request_id,
+                        Some(error_pages::ProductionErrorContext {
+                            stack_trace: &stack_trace,
+                            env_json: env_json.as_deref(),
+                            request_data,
+                        }),
+                    );
+                    ResponseData {
+                        status: 500,
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/html; charset=utf-8".to_string(),
+                        )],
+                        body: error_html.into_bytes(),
+                    }
                 }
             }
         }
@@ -4268,6 +4315,90 @@ fn middleware_fallback_stack(name: &str, source_path: Option<&str>) -> Vec<Strin
     match source_path {
         Some(path) => vec![format!("{} at {}:1", name, path)],
         None => vec![format!("{} at unknown:1", name)],
+    }
+}
+
+/// Build a production 500 response for a middleware that returned an
+/// `Error(String)` result. Captures the synthetic middleware stack
+/// frame and the interpreter's current environment, writes the full
+/// context block to stderr, and embeds the same context in the
+/// rendered HTML.
+fn middleware_prod_error_string(
+    interpreter: &Interpreter,
+    data: &RequestData,
+    mw_name: &str,
+    mw_source: Option<&str>,
+    err: &str,
+) -> ResponseData {
+    let request_id = Uuid::new_v4().to_string();
+    let stack_trace = middleware_fallback_stack(mw_name, mw_source);
+    let env_json = interpreter.serialize_environment_for_debug();
+    error_logging::log_production_error(&request_id, data, err, &stack_trace, Some(&env_json));
+    let error_html = error_pages::render_production_error_page(
+        500,
+        err,
+        &request_id,
+        Some(error_pages::ProductionErrorContext {
+            stack_trace: &stack_trace,
+            env_json: Some(&env_json),
+            request_data: data,
+        }),
+    );
+    ResponseData {
+        status: 500,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        )],
+        body: error_html.into_bytes(),
+    }
+}
+
+/// Build a production 500 response for a middleware that raised a
+/// `RuntimeError`. Prefers the error's captured stack/env when present
+/// (set by the inner interpreter frame) and falls back to a synthetic
+/// middleware frame plus the current environment otherwise.
+fn middleware_prod_error_runtime(
+    interpreter: &Interpreter,
+    data: &RequestData,
+    mw_name: &str,
+    mw_source: Option<&str>,
+    e: &RuntimeError,
+) -> ResponseData {
+    let request_id = Uuid::new_v4().to_string();
+    let error_msg = e.to_string();
+    let stack_trace: Vec<String> = e
+        .breakpoint_stack_trace()
+        .map(|st| st.to_vec())
+        .unwrap_or_else(|| middleware_fallback_stack(mw_name, mw_source));
+    let env_json: String = e
+        .breakpoint_env_json()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| interpreter.serialize_environment_for_debug());
+    error_logging::log_production_error(
+        &request_id,
+        data,
+        &error_msg,
+        &stack_trace,
+        Some(&env_json),
+    );
+    let error_html = error_pages::render_production_error_page(
+        500,
+        &error_msg,
+        &request_id,
+        Some(error_pages::ProductionErrorContext {
+            stack_trace: &stack_trace,
+            env_json: Some(&env_json),
+            request_data: data,
+        }),
+    );
+    ResponseData {
+        status: 500,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        )],
+        body: error_html.into_bytes(),
     }
 }
 
@@ -4565,7 +4696,7 @@ fn execute_after_actions(
 fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
     let message = err.record_not_found_message()?;
     let request_id = Uuid::new_v4().to_string();
-    let body = error_pages::render_production_error_page(404, &message, &request_id);
+    let body = error_pages::render_production_error_page(404, &message, &request_id, None);
     Some(ResponseData {
         status: 404,
         headers: vec![(
@@ -4969,6 +5100,7 @@ fn handle_request(
                 404,
                 "The page you're looking for doesn't exist.",
                 &request_id,
+                None,
             );
             let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
                 data.headers
@@ -5035,6 +5167,7 @@ fn handle_request(
                 404,
                 "Action not found for this route.",
                 &request_id,
+                None,
             );
             return ResponseData {
                 status: 404,
@@ -5317,21 +5450,13 @@ fn handle_request(
                             body: error_html.into_bytes(),
                         });
                     }
-                    let request_id = Uuid::new_v4().to_string();
-                    eprintln!(
-                        "[ERROR] request_id={} {} {} - {}",
-                        request_id, method, path, err
-                    );
-                    let error_html =
-                        error_pages::render_production_error_page(500, &err, &request_id);
-                    return finalize_response(ResponseData {
-                        status: 500,
-                        headers: vec![(
-                            "Content-Type".to_string(),
-                            "text/html; charset=utf-8".to_string(),
-                        )],
-                        body: error_html.into_bytes(),
-                    });
+                    return finalize_response(middleware_prod_error_string(
+                        interpreter,
+                        data,
+                        &mw_name,
+                        mw_source.as_deref(),
+                        &err,
+                    ));
                 }
             },
             Err(e) => {
@@ -5361,22 +5486,13 @@ fn handle_request(
                         body: error_html.into_bytes(),
                     });
                 }
-                let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                eprintln!(
-                    "[ERROR] request_id={} {} {} - {}",
-                    request_id, method, path, error_msg
-                );
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
-                return finalize_response(ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                });
+                return finalize_response(middleware_prod_error_runtime(
+                    interpreter,
+                    data,
+                    &mw_name,
+                    mw_source.as_deref(),
+                    &e,
+                ));
             }
         }
     }
@@ -5433,21 +5549,13 @@ fn handle_request(
                             body: error_html.into_bytes(),
                         });
                     }
-                    let request_id = Uuid::new_v4().to_string();
-                    eprintln!(
-                        "[ERROR] request_id={} {} {} - {}",
-                        request_id, method, path, err
-                    );
-                    let error_html =
-                        error_pages::render_production_error_page(500, &err, &request_id);
-                    return finalize_response(ResponseData {
-                        status: 500,
-                        headers: vec![(
-                            "Content-Type".to_string(),
-                            "text/html; charset=utf-8".to_string(),
-                        )],
-                        body: error_html.into_bytes(),
-                    });
+                    return finalize_response(middleware_prod_error_string(
+                        interpreter,
+                        data,
+                        &mw_name,
+                        mw_source.as_deref(),
+                        &err,
+                    ));
                 }
             },
             Err(e) => {
@@ -5473,22 +5581,13 @@ fn handle_request(
                         body: error_html.into_bytes(),
                     });
                 }
-                let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                eprintln!(
-                    "[ERROR] request_id={} {} {} - {}",
-                    request_id, method, path, error_msg
-                );
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
-                return finalize_response(ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                });
+                return finalize_response(middleware_prod_error_runtime(
+                    interpreter,
+                    data,
+                    &mw_name,
+                    mw_source.as_deref(),
+                    &e,
+                ));
             }
         }
     }

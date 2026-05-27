@@ -915,19 +915,16 @@ where
     serde_json::Value::Object(out)
 }
 
-/// Build the JSON document the dev error page embeds as
-/// `currentRequestData`. SEC-083: secret-bearing headers (auth, cookie,
-/// CSRF tokens, etc.) and params (passwords, tokens, api keys, ...) are
-/// replaced with `"[REDACTED]"` before serialisation. When
-/// `redact_body` is true (remote-allowed dev mode), the raw body is
-/// also redacted because the page can be rendered by anyone reaching
-/// the host and login / signup POSTs would otherwise leak cleartext
-/// credentials. On loopback-only dev (`redact_body == false`) the body
-/// passes through so the in-page REPL can evaluate snippets that touch
-/// `req.body`. Routing through `serde_json` also fixes the previous
-/// JSON-breakage hazard from the hand-rolled `format!("{:?}", hashmap)`
-/// rendering.
-fn build_redacted_request_data_json(request_data: &RequestData, redact_body: bool) -> String {
+/// Build the redacted JSON view of a request used by both the dev error
+/// page and the production error logger / response. SEC-083 redaction
+/// is applied to headers and params. `redact_body` controls whether the
+/// raw body is also redacted: pass `true` whenever the snapshot will be
+/// rendered to anyone other than a loopback dev user (production logs,
+/// production HTML response, non-loopback dev page).
+pub(super) fn redacted_request_snapshot(
+    request_data: &RequestData,
+    redact_body: bool,
+) -> serde_json::Value {
     let query = redact_map(&request_data.query, param_should_redact);
     let headers = redact_map(&request_data.headers, header_should_redact);
     let body = if redact_body {
@@ -935,7 +932,7 @@ fn build_redacted_request_data_json(request_data: &RequestData, redact_body: boo
     } else {
         serde_json::Value::String(request_data.body.clone())
     };
-    let doc = serde_json::json!({
+    serde_json::json!({
         "method": request_data.method.as_ref(),
         "path": request_data.path,
         // The page treats `params` and `query` as the same view (both fed
@@ -946,7 +943,19 @@ fn build_redacted_request_data_json(request_data: &RequestData, redact_body: boo
         "headers": headers,
         "body": body,
         "session": "N/A",
-    });
+    })
+}
+
+/// Build the JSON document the dev error page embeds as
+/// `currentRequestData`. Wraps [`redacted_request_snapshot`] and
+/// serialises to a string. When `redact_body` is true (remote-allowed
+/// dev mode), the raw body is also redacted because the page can be
+/// rendered by anyone reaching the host and login / signup POSTs would
+/// otherwise leak cleartext credentials. On loopback-only dev
+/// (`redact_body == false`) the body passes through so the in-page REPL
+/// can evaluate snippets that touch `req.body`.
+fn build_redacted_request_data_json(request_data: &RequestData, redact_body: bool) -> String {
+    let doc = redacted_request_snapshot(request_data, redact_body);
     serde_json::to_string(&doc).unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -968,10 +977,24 @@ pub(super) fn get_source_file(
     Some([(file_path.to_string(), lines)].iter().cloned().collect())
 }
 
+/// Context surfaced in the production 500 page alongside the generic
+/// status copy. When `Some`, the rendered HTML appends a collapsed
+/// `<details>` block containing the call stack, redacted request
+/// snapshot, and the local environment at the point of failure. All
+/// values are HTML-escaped and the request body is redacted via
+/// [`redacted_request_snapshot`] before rendering — same posture as the
+/// non-loopback dev page.
+pub(super) struct ProductionErrorContext<'a> {
+    pub stack_trace: &'a [String],
+    pub env_json: Option<&'a str>,
+    pub request_data: &'a RequestData,
+}
+
 pub(super) fn render_production_error_page(
     status_code: u16,
     message: &str,
     request_id: &str,
+    context: Option<ProductionErrorContext<'_>>,
 ) -> String {
     if let Some(custom_html) = crate::interpreter::builtins::template::render_error_template(
         status_code,
@@ -1081,6 +1104,11 @@ pub(super) fn render_production_error_page(
         }
     };
 
+    let details_html = context
+        .as_ref()
+        .map(|ctx| render_production_details_block(message, ctx))
+        .unwrap_or_default();
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -1090,7 +1118,7 @@ pub(super) fn render_production_error_page(
     <title>{title}</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background-color: #f8f9fa; color: #212529; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background-color: #f8f9fa; color: #212529; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }}
         .container {{ text-align: center; max-width: 500px; }}
         .error-code {{ font-size: 120px; font-weight: 700; color: #e9ecef; line-height: 1; margin-bottom: 20px; }}
         .error-code.error {{ color: #f8d7da; }}
@@ -1106,6 +1134,11 @@ pub(super) fn render_production_error_page(
         .btn-secondary:hover {{ background-color: #f8f9fa; border-color: #adb5bd; }}
         .error-details {{ margin-top: 32px; padding-top: 24px; border-top: 1px solid #dee2e6; font-size: 12px; color: #adb5bd; }}
         .error-id {{ font-family: monospace; background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 11px; }}
+        .error-debug {{ margin-top: 24px; width: 100%; max-width: 960px; font-size: 13px; color: #495057; background: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px 20px; }}
+        .error-debug > summary {{ cursor: pointer; font-weight: 600; color: #343a40; user-select: none; }}
+        .error-debug h3 {{ font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #6c757d; margin-top: 16px; margin-bottom: 6px; }}
+        .error-debug pre {{ background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 10px 12px; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #212529; white-space: pre-wrap; word-break: break-word; }}
+        .error-debug .muted {{ color: #adb5bd; font-style: italic; }}
     </style>
 </head>
 <body>
@@ -1122,6 +1155,7 @@ pub(super) fn render_production_error_page(
             <p style="margin-top: 8px;">Error ID: <span class="error-id">{request_id}</span></p>
         </div>
     </div>
+    {details_html}
 </body>
 </html>"#,
         title = escape_html(&title),
@@ -1130,6 +1164,60 @@ pub(super) fn render_production_error_page(
         description = escape_html(&description),
         code_class = code_class,
         request_id = request_id,
+        details_html = details_html,
+    )
+}
+
+/// Render the collapsed `<details>` block appended to the production 500
+/// page when callers opt-in via [`ProductionErrorContext`]. All textual
+/// values pass through [`escape_html`]; the request snapshot is built
+/// from [`redacted_request_snapshot`] with `redact_body = true`.
+fn render_production_details_block(message: &str, ctx: &ProductionErrorContext<'_>) -> String {
+    let stack_html = if ctx.stack_trace.is_empty() {
+        r#"<span class="muted">no stack frames captured</span>"#.to_string()
+    } else {
+        let joined = ctx
+            .stack_trace
+            .iter()
+            .map(|frame| escape_html(frame))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("<pre>{}</pre>", joined)
+    };
+
+    let request_json = serde_json::to_string_pretty(&redacted_request_snapshot(
+        ctx.request_data,
+        /* redact_body = */ true,
+    ))
+    .unwrap_or_else(|_| "{}".to_string());
+
+    let env_html = match ctx.env_json {
+        Some(env) if !env.is_empty() => {
+            let pretty = serde_json::from_str::<serde_json::Value>(env)
+                .ok()
+                .and_then(|v| serde_json::to_string_pretty(&v).ok())
+                .unwrap_or_else(|| env.to_string());
+            format!("<pre>{}</pre>", escape_html(&pretty))
+        }
+        _ => r#"<span class="muted">no environment captured</span>"#.to_string(),
+    };
+
+    format!(
+        r#"<details class="error-debug">
+        <summary>Error details</summary>
+        <h3>Message</h3>
+        <pre>{message}</pre>
+        <h3>Stack</h3>
+        {stack_html}
+        <h3>Request</h3>
+        <pre>{request_json}</pre>
+        <h3>Environment</h3>
+        {env_html}
+    </details>"#,
+        message = escape_html(message),
+        stack_html = stack_html,
+        request_json = escape_html(&request_json),
+        env_html = env_html,
     )
 }
 
@@ -1178,7 +1266,7 @@ mod tests {
             (429, "Too Many Requests"),
         ];
         for (code, heading) in cases {
-            let html = render_production_error_page(code, "msg", "req-id");
+            let html = render_production_error_page(code, "msg", "req-id", None);
             assert!(
                 html.contains(heading),
                 "status {}: heading {:?} missing from page",
@@ -1208,7 +1296,7 @@ mod tests {
             (504, "Gateway Timeout"),
         ];
         for (code, heading) in cases {
-            let html = render_production_error_page(code, "msg", "req-id");
+            let html = render_production_error_page(code, "msg", "req-id", None);
             assert!(
                 html.contains(heading),
                 "status {}: heading {:?} missing from page",
@@ -1227,10 +1315,12 @@ mod tests {
     // page with the right heading and the generic `info` style.
     #[test]
     fn unknown_status_falls_through_to_generic_info_page() {
-        let html = render_production_error_page(418, "msg", "req-id");
+        let html = render_production_error_page(418, "msg", "req-id", None);
         // Unknown-to-the-explicit-match but get_status_text still covers 418?
         // Actually 418 isn't in get_status_text, so the heading is "Error".
         assert!(html.contains("error-code info"));
+        // No context passed → no details block emitted.
+        assert!(!html.contains("<details class=\"error-debug\""));
     }
 
     // SEC-083 — request snapshot redaction.
@@ -1445,5 +1535,57 @@ mod tests {
         let json = build_redacted_request_data_json(&req, false);
         let _: serde_json::Value =
             serde_json::from_str(&json).expect("must be valid JSON despite quoted values");
+    }
+
+    #[test]
+    fn redacted_snapshot_redacts_body_when_requested() {
+        let req = make_request_data();
+        let snap = redacted_request_snapshot(&req, /* redact_body = */ true);
+        assert_eq!(snap["body"], serde_json::Value::String("[REDACTED]".into()));
+        let snap = redacted_request_snapshot(&req, /* redact_body = */ false);
+        assert!(
+            snap["body"]
+                .as_str()
+                .map(|s| s.contains("hunter2"))
+                .unwrap_or(false),
+            "body should pass through when redact_body is false"
+        );
+    }
+
+    #[test]
+    fn production_page_with_context_appends_details_block() {
+        let req = make_request_data();
+        let stack = vec![
+            "show at app/controllers/users.sl:92".to_string(),
+            "find at app/models/user.sl:14".to_string(),
+        ];
+        let env = r#"{"current_user":null,"user_id":42}"#;
+        let html = render_production_error_page(
+            500,
+            "Undefined variable 'user_id' at app/controllers/users.sl:92:15",
+            "abc123",
+            Some(ProductionErrorContext {
+                stack_trace: &stack,
+                env_json: Some(env),
+                request_data: &req,
+            }),
+        );
+        assert!(
+            html.contains("<details class=\"error-debug\""),
+            "details block must be present"
+        );
+        assert!(html.contains("show at app/controllers/users.sl:92"));
+        // Secrets are redacted in the embedded request snapshot.
+        assert!(html.contains("[REDACTED]"));
+        assert!(!html.contains("Bearer leaked-jwt"));
+        assert!(!html.contains("hunter2"));
+        // Env is rendered.
+        assert!(html.contains("current_user"));
+    }
+
+    #[test]
+    fn production_page_without_context_has_no_details_block() {
+        let html = render_production_error_page(500, "boom", "abc123", None);
+        assert!(!html.contains("<details class=\"error-debug\""));
     }
 }

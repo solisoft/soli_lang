@@ -89,11 +89,15 @@
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                        No stack traces or internal details
+                        Collapsed details block with stack, redacted request, and env
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                         Error ID for support reference
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        Multi-line stderr block with full context
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
@@ -104,6 +108,35 @@
                     <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve --no-dev</code>
                 </div>
             </div>
+        </div>
+
+        <!-- Production stderr block -->
+        <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
+            <h3 class="font-semibold text-white mb-3">Production stderr logging</h3>
+            <p class="text-gray-400 text-sm mb-4">
+                Every 500 in production also writes a multi-line block to stderr — useful when you only have access to container / journald logs. The first <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
+            </p>
+            <pre class="text-xs text-gray-300 bg-gray-900 p-4 rounded overflow-x-auto"><code>[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
+  stack:
+    show at app/controllers/users.sl:92
+    find at app/models/user.sl:14
+  request:
+    {
+      "body": "[REDACTED]",
+      "headers": { ... },
+      "method": "GET",
+      "params": { ... },
+      "path": "/users/42",
+      "query": { ... },
+      "session": "N/A"
+    }
+  env: {"current_user": null, "user_id": null, ...}</code></pre>
+            <p class="text-gray-500 text-xs mt-3">
+                The same redaction rules apply to both stderr and the on-page details block: <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted.
+            </p>
+            <p class="text-gray-500 text-xs mt-2">
+                Correlate a customer's <em>Error ID</em> to a stderr block by searching the logs for <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">request_id=&lt;that id&gt;</code>.
+            </p>
         </div>
     </section>
 
@@ -336,7 +369,7 @@ SOLI_ENV=production soli serve</code></pre>
                 </li>
                 <li class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                    No sensitive information is leaked
+                    Auth headers, tokens, passwords, and request bodies are redacted
                 </li>
                 <li class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
