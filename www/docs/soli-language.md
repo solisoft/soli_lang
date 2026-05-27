@@ -1377,6 +1377,28 @@ all_positive = numbers.every(fn(x) x > 0);  # true
 # some - check if any element matches
 has_large = numbers.some(fn(x) x > 8);  # true
 
+# dig - safe nested access (returns null on any miss, no errors)
+data = [
+  { "user": { "name": "Alice", "posts": [ { "title": "Hello" } ] } },
+  { "user": { "name": "Bob" } }
+]
+print(data.dig(0, "user", "name"));           # "Alice"
+print(data.dig(0, "user", "posts", 0, "title")); # "Hello"
+print(data.dig(1, "user", "posts", 0));       # null (safe, no crash)
+print([10, 20, 30].dig(-1));                  # 30 (negative index supported)
+
+# pluck - extract one or more fields (very useful on arrays of hashes)
+posts = [
+  { "id": 1, "title": "Hello" },
+  { "id": 2, "title": "World" }
+]
+print(posts.pluck("title"));           # ["Hello", "World"]          (single field → flat array)
+print(posts.pluck("id", "title"));     # [[1, "Hello"], [2, "World"]] (multiple → array of arrays)
+
+# pick - value(s) from the *first* element only (the “get one” companion to pluck)
+print(posts.pick("title"));      # "Hello"
+print(posts.pick("id", "title")); # [1, "Hello"]
+
 # chunk - split into chunks
 fn chunk(arr: Array, size: Int) -> Array[]
   result = [];

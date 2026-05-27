@@ -337,6 +337,164 @@ describe("Array - Ruby-compat methods", fn() {
     });
 });
 
+describe("Array#dig - safe nested access", fn() {
+    test("dig on simple array with integer index", fn() {
+        let arr = [10, 20, 30];
+        assert_eq(arr.dig(0), 10);
+        assert_eq(arr.dig(2), 30);
+    });
+
+    test("dig with negative index", fn() {
+        let arr = [10, 20, 30];
+        assert_eq(arr.dig(-1), 30);
+        assert_eq(arr.dig(-2), 20);
+        assert_eq(arr.dig(-3), 10);
+    });
+
+    test("dig returns null for out of bounds", fn() {
+        let arr = [1, 2, 3];
+        assert_null(arr.dig(5));
+        assert_null(arr.dig(-10));
+    });
+
+    test("dig into nested arrays", fn() {
+        let arr = [[1, 2], [3, [4, 5]]];
+        assert_eq(arr.dig(0, 1), 2);
+        assert_eq(arr.dig(1, 1, 0), 4);
+    });
+
+    test("dig into nested hashes inside array", fn() {
+        let arr = [{"user": {"name": "Alice"}}, {"user": {"name": "Bob"}}];
+        assert_eq(arr.dig(0, "user", "name"), "Alice");
+        assert_eq(arr.dig(1, "user", "name"), "Bob");
+    });
+
+    test("dig mixed array and hash path", fn() {
+        let data = [{"items": [10, {"price": 99}]}];
+        assert_eq(data.dig(0, "items", 1, "price"), 99);
+    });
+
+    test("dig stops and returns null on first miss", fn() {
+        let arr = [[1, 2], [3, 4]];
+        assert_null(arr.dig(0, 5));      # index 5 does not exist in [1,2]
+        assert_null(arr.dig(9, 0));      # first key already misses
+    });
+
+    test("dig with empty path returns the array itself (wrapped)", fn() {
+        # dig requires at least one argument (consistent with Hash#dig)
+        # Calling with zero args is an arity error.
+        let err = null;
+        try {
+            [1, 2].dig();
+        } catch (e) {
+            err = e;
+        }
+        assert(err != null);
+    });
+});
+
+describe("Array#pluck - extract fields from arrays of hashes/arrays", fn() {
+    test("pluck single field from array of hashes", fn() {
+        let posts = [
+            { "id": 1, "title": "Hello" },
+            { "id": 2, "title": "World" },
+            { "id": 3, "title": "Soli" }
+        ];
+        assert_eq(posts.pluck("title"), ["Hello", "World", "Soli"]);
+        assert_eq(posts.pluck("id"), [1, 2, 3]);
+    });
+
+    test("pluck returns null for missing keys", fn() {
+        let users = [
+            { "name": "Alice" },
+            { "name": "Bob", "email": "bob@example.com" }
+        ];
+        assert_eq(users.pluck("email"), [null, "bob@example.com"]);
+    });
+
+    test("pluck multiple fields returns array of arrays", fn() {
+        let data = [
+            { "name": "Alice", "age": 30 },
+            { "name": "Bob", "age": 25 }
+        ];
+        let result = data.pluck("name", "age");
+        assert_eq(len(result), 2);
+        assert_eq(result[0], ["Alice", 30]);
+        assert_eq(result[1], ["Bob", 25]);
+    });
+
+    test("pluck works with integer indices on arrays of arrays", fn() {
+        let rows = [
+            [10, "foo"],
+            [20, "bar"],
+            [30, "baz"]
+        ];
+        assert_eq(rows.pluck(0), [10, 20, 30]);
+        assert_eq(rows.pluck(1), ["foo", "bar", "baz"]);
+    });
+
+    test("pluck multiple indices returns rows as arrays", fn() {
+        let matrix = [
+            [1, 2, 3],
+            [4, 5, 6]
+        ];
+        assert_eq(matrix.pluck(0, 2), [[1, 3], [4, 6]]);
+    });
+
+    test("pluck on empty array returns empty array", fn() {
+        assert_eq([].pluck("anything"), []);
+    });
+
+    test("pluck on non-hash/non-array elements returns nulls", fn() {
+        let mixed = [ { "x": 1 }, "not a hash", 42, null ];
+        assert_eq(mixed.pluck("x"), [1, null, null, null]);
+    });
+});
+
+describe("Array#pick - first matching value(s) from the first element", fn() {
+    test("pick single field returns value from first element", fn() {
+        let posts = [
+            { "id": 1, "title": "Hello" },
+            { "id": 2, "title": "World" }
+        ];
+        assert_eq(posts.pick("title"), "Hello");
+        assert_eq(posts.pick("id"), 1);
+    });
+
+    test("pick returns null on empty array", fn() {
+        assert_null([].pick("title"));
+    });
+
+    test("pick returns null when first element lacks the key", fn() {
+        let users = [
+            { "name": "Alice" },
+            { "name": "Bob", "email": "bob@x.com" }
+        ];
+        assert_null(users.pick("email"));  # first row has no email
+    });
+
+    test("pick multiple fields returns array of values from first element", fn() {
+        let row = [
+            { "name": "Alice", "age": 30, "active": true },
+            { "name": "Bob", "age": 25 }
+        ];
+        assert_eq(row.pick("name", "age"), ["Alice", 30]);
+    });
+
+    test("pick with integer indices works on arrays of arrays", fn() {
+        let rows = [
+            [10, "foo"],
+            [20, "bar"]
+        ];
+        assert_eq(rows.pick(1), "foo");
+        assert_eq(rows.pick(0, 1), [10, "foo"]);
+    });
+
+    test("pick on non-hash first element returns null", fn() {
+        assert_null([ "string", { "x": 1 } ].pick("x"));
+    });
+});
+
 describe("Array - Set Operations", fn() {
     test("intersection returns shared elements in receiver order", fn() {
         assert_eq([1, 2, 3].intersection([2, 3, 4]), [2, 3]);

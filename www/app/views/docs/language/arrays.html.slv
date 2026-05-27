@@ -461,6 +461,91 @@ print(names.index_of("Dave"));     # -1 (not found)</code></pre>
                 </div>
             </section>
 
+            <section id="method-dig" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-dig" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.dig(...keys)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Safely navigate nested arrays and hashes. Returns <code>null</code> on the first missing key or out-of-bounds index (instead of raising). Supports negative array indices.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># Works with arrays of hashes (very common after .all() or JSON)
+data = [
+  { "user": { "name": "Alice", "posts": [ { "title": "Hello" } ] } },
+  { "user": { "name": "Bob" } }
+]
+
+print(data.dig(0, "user", "name"));           # "Alice"
+print(data.dig(0, "user", "posts", 0, "title")); # "Hello"
+print(data.dig(1, "user", "posts", 0));       # null (safe)
+print(data.dig(99, "user"));                  # null
+
+# Also works on plain nested arrays
+matrix = [[1, 2], [3, [4, 5]]]
+print(matrix.dig(1, 1, 0));  # 4
+print(matrix.dig(0, 5));     # null
+
+# Negative indices are supported
+print([10, 20, 30].dig(-1)); # 30</code></pre>
+                </div>
+            </section>
+
+            <section id="method-pluck" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-pluck" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.pluck(field, ...)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Extract one or more fields from an array of hashes or arrays. With a single field it returns a flat array of values. With multiple fields it returns an array of arrays (one row per element). Missing keys or out-of-bounds indices yield <code>null</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">posts = [
+  { "id": 1, "title": "Hello", "author": "Alice" },
+  { "id": 2, "title": "World", "author": "Bob" }
+]
+
+# Single field → flat array of values
+titles = posts.pluck("title")
+print(titles);  # ["Hello", "World"]
+
+# Multiple fields → array of arrays
+rows = posts.pluck("id", "title")
+print(rows);    # [[1, "Hello"], [2, "World"]]
+
+# Works with integer indices too (arrays of arrays)
+matrix = [[10, "foo"], [20, "bar"]]
+print(matrix.pluck(0));           # [10, 20]
+print(matrix.pluck(0, 1));        # [[10, "foo"], [20, "bar"]]
+
+# Missing keys are null (no crash)
+print(posts.pluck("published_at"));  # [null, null]</code></pre>
+                </div>
+            </section>
+
+            <section id="method-pick" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-pick" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.pick(field, ...)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Return value(s) from the <strong>first</strong> element only (convenient “get one” helper). Single field returns a scalar (or <code>null</code>); multiple fields return an array. Empty receiver or missing keys on the first element yield <code>null</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">posts = [
+  { "id": 1, "title": "Hello" },
+  { "id": 2, "title": "World" }
+]
+
+print(posts.pick("title"));      # "Hello"
+print(posts.pick("id", "title")); # [1, "Hello"]
+
+# On empty or when first element lacks the key
+[].pick("title")                       # null
+[{"name": "Alice"}].pick("email")      # null</code></pre>
+                </div>
+            </section>
+
             <section id="method-sort" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sort" class="group flex items-center gap-2 mb-3">

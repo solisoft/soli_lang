@@ -843,6 +843,9 @@ impl Interpreter {
             "values_at" => self.array_values_at(items, arguments, span),
             "count" => self.array_count(items, arguments, span),
             "get" => self.array_get(items, arguments, span),
+            "dig" => self.array_dig(items, arguments, span),
+            "pluck" => Self::array_pluck(items, arguments, span),
+            "pick" => Self::array_pick(items, arguments, span),
             "length" | "len" | "size" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
@@ -2044,6 +2047,130 @@ impl Interpreter {
                 length: items.len(),
                 span,
             })
+    }
+
+    fn array_dig(
+        &mut self,
+        items: &[Value],
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+
+        let mut current: Option<Value> = Some(Value::Array(Rc::new(RefCell::new(items.to_vec()))));
+        for key in arguments {
+            current = match current.take() {
+                Some(Value::Hash(hash)) => {
+                    let hash_key = key.to_hash_key();
+                    if let Some(hash_key) = hash_key {
+                        let hash_ref = hash.borrow();
+                        hash_ref.get(&hash_key).cloned()
+                    } else {
+                        None
+                    }
+                }
+                Some(Value::Array(arr)) => {
+                    if let Value::Int(idx) = key {
+                        let arr_ref = arr.borrow();
+                        let idx = if idx < 0 {
+                            arr_ref.len() as i64 + idx
+                        } else {
+                            idx
+                        };
+                        let idx = idx as usize;
+                        if idx < arr_ref.len() {
+                            Some(arr_ref[idx].clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if current.is_none() {
+                return Ok(Value::Null);
+            }
+        }
+        Ok(current.unwrap_or(Value::Null))
+    }
+
+    fn array_pluck(items: &[Value], arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Err(RuntimeError::new(
+                "pluck() requires at least one field name or index",
+                span,
+            ));
+        }
+
+        let mut result = Vec::with_capacity(items.len());
+
+        for item in items {
+            if arguments.len() == 1 {
+                let v = Self::extract_pluck_field(item, &arguments[0]);
+                result.push(v);
+            } else {
+                let row: Vec<Value> = arguments
+                    .iter()
+                    .map(|k| Self::extract_pluck_field(item, k))
+                    .collect();
+                result.push(Value::Array(Rc::new(RefCell::new(row))));
+            }
+        }
+
+        Ok(Value::Array(Rc::new(RefCell::new(result))))
+    }
+
+    fn array_pick(items: &[Value], arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
+        if arguments.is_empty() {
+            return Err(RuntimeError::new(
+                "pick() requires at least one field name or index",
+                span,
+            ));
+        }
+
+        if items.is_empty() {
+            return Ok(Value::Null);
+        }
+
+        let first = &items[0];
+
+        if arguments.len() == 1 {
+            return Ok(Self::extract_pluck_field(first, &arguments[0]));
+        }
+
+        let row: Vec<Value> = arguments
+            .iter()
+            .map(|k| Self::extract_pluck_field(first, k))
+            .collect();
+
+        Ok(Value::Array(Rc::new(RefCell::new(row))))
+    }
+
+    fn extract_pluck_field(value: &Value, key: &Value) -> Value {
+        match (value, key) {
+            (Value::Hash(h), Value::String(s)) => {
+                let hk = HashKey::String(s.clone());
+                h.borrow().get(&hk).cloned().unwrap_or(Value::Null)
+            }
+            (Value::Array(a), Value::Int(i)) => {
+                let arr = a.borrow();
+                let idx = if *i < 0 {
+                    (arr.len() as i64 + *i) as usize
+                } else {
+                    *i as usize
+                };
+                if idx < arr.len() {
+                    arr[idx].clone()
+                } else {
+                    Value::Null
+                }
+            }
+            _ => Value::Null,
+        }
     }
 
     fn array_length(
