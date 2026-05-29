@@ -378,6 +378,41 @@ impl TypeEnvironment {
             },
         );
 
+        // uuid_v4() / uuid_v7() -> String
+        self.functions.insert(
+            "uuid_v4".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            },
+        );
+        self.functions.insert(
+            "uuid_v7".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // ulid() -> String
+        self.functions.insert(
+            "ulid".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // nanoid(size?, alphabet?) -> String
+        // Variadic 0-2 args; params use Any so the type checker accepts all forms.
+        self.functions.insert(
+            "nanoid".to_string(),
+            Type::Function {
+                params: vec![Type::Any, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // File I/O functions
         // barf(String, String|Array<Int>) -> Void
         self.functions.insert(
@@ -1417,6 +1452,57 @@ impl TypeEnvironment {
             );
         }
         self.classes.insert("KV".to_string(), kv_class);
+
+        // UUID class — UUID.v4() / UUID.v7() -> String
+        let mut uuid_class = ClassType::new("UUID".to_string());
+        for name in &["v4", "v7"] {
+            uuid_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![],
+                    return_type: Type::String,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("UUID".to_string(), uuid_class);
+
+        // ULID class — ULID.generate() / ULID.new() -> String
+        let mut ulid_class = ClassType::new("ULID".to_string());
+        for name in &["generate", "new"] {
+            ulid_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![],
+                    return_type: Type::String,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("ULID".to_string(), ulid_class);
+
+        // NanoID class — NanoID.generate(size?, alphabet?) / NanoID.new(...) -> String
+        let mut nanoid_class = ClassType::new("NanoID".to_string());
+        for name in &["generate", "new"] {
+            nanoid_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![
+                        ("size".to_string(), Type::Any),
+                        ("alphabet".to_string(), Type::Any),
+                    ],
+                    return_type: Type::String,
+                    is_private: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("NanoID".to_string(), nanoid_class);
     }
 
     /// Enter a new scope.

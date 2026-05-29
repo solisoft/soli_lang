@@ -136,6 +136,12 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "hmac",
     "secure_compare",
     "sha256",
+    // UUID generation
+    "uuid_v4",
+    "uuid_v7",
+    // ULID / NanoID generation
+    "ulid",
+    "nanoid",
     // VAPID / Web Push builtins
     "vapid_generate_keys",
     "vapid_sign",

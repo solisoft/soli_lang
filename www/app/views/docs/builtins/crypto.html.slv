@@ -320,6 +320,115 @@ derived_public = Crypto.x25519_public_key(keypair["private"])
         </section>
     </section>
 
+    <!-- ID Generation (UUID, ULID, NanoID) -->
+    <section id="section-uuid" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+            </span>
+            ID Generation
+        </h2>
+        <p class="text-gray-400 mb-4">Four ID generators: UUID v4 / v7 (RFC 4122), ULID, and NanoID. Use <code class="text-indigo-400">uuid_v7()</code> or <code class="text-indigo-400">ulid()</code> for time-sortable DB primary keys, <code class="text-indigo-400">uuid_v4()</code> when you specifically <em>don&apos;t</em> want the timestamp leaking into the ID, and <code class="text-indigo-400">nanoid()</code> for compact URL-safe random IDs with custom length / alphabet.</p>
+
+        <section id="def-uuid-v4" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-uuid-v4" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">UUID.v4()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a random (version 4) UUID with 122 bits of OS-CSPRNG randomness. Also available as <code class="text-indigo-400">uuid_v4()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> &mdash; 36-character hyphenated UUID
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">id = uuid_v4()
+# "c74d395d-5b75-41c3-b873-ca597e1ccaac"
+
+token = UUID.v4()  # equivalent, via the UUID class</code></pre>
+            </div>
+        </section>
+
+        <section id="def-uuid-v7" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-uuid-v7" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">UUID.v7()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a time-ordered (version 7) UUID. The high 48 bits are a Unix millisecond timestamp; the remaining bits are random. UUIDs minted in different milliseconds sort by creation time as strings &mdash; ideal for B-tree primary keys. Also available as <code class="text-indigo-400">uuid_v7()</code>.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> &mdash; 36-character hyphenated UUID
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">id = uuid_v7()
+# "019e6ef2-ba58-7460-ad04-55e291a8c28b"
+# Lexicographic order == creation order.
+
+record_id = UUID.v7()</code></pre>
+            </div>
+        </section>
+
+        <section id="def-ulid" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-ulid" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">ULID.generate()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a ULID &mdash; a 128-bit identifier encoded as 26 Crockford Base32 chars (high 48 bits are a millisecond timestamp, low 80 bits are random). Sorts by creation time as a string, no dashes, shorter than a UUID. Also available as <code class="text-indigo-400">ulid()</code>, and <code class="text-indigo-400">ULID.new()</code> as an alias.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> &mdash; 26-character Crockford Base32 ULID
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">id = ulid()
+# "01KSQG6MAN1B4S05KRV29NWZPT"
+
+record_id = ULID.generate()</code></pre>
+            </div>
+        </section>
+
+        <section id="def-nanoid" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-nanoid" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">NanoID.generate(size?, alphabet?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Generate a NanoID &mdash; a short, URL-safe, cryptographically random ID. Defaults to 21 characters from the 64-char URL-safe alphabet (<code>A-Z a-z 0-9 _ -</code>), giving ~126 bits of entropy &mdash; comparable to a v4 UUID. Also available as <code class="text-indigo-400">nanoid()</code>, and <code class="text-indigo-400">NanoID.new(...)</code> as an alias.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">size</code> : <code class="text-purple-400">Int?</code> &mdash; Length of the generated ID (1&ndash;1024). Default: <code>21</code>.</div>
+                    <div><code class="text-amber-400">alphabet</code> : <code class="text-purple-400">String?</code> &mdash; Character set to draw from (1&ndash;255 chars). Default: URL-safe 64-char alphabet.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-purple-400">String</code> &mdash; <code>size</code>-character random ID
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">id = nanoid()
+# "XBwf0cjEQmwsx8YSQRCws"
+
+short = nanoid(10)
+# "hBbpwcRh4j"
+
+# Human-friendly short codes (Crockford-style, no 0/O/1/I/L)
+code = nanoid(8, "23456789ABCDEFGHJKMNPQRSTVWXYZ")
+# "K7M3PQ2N"
+
+slug = NanoID.generate(12)</code></pre>
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 mt-4">
+                    <p class="text-sm text-gray-300"><strong class="text-amber-400">Sizing tip.</strong> 21 chars at the default alphabet ≈ 126 bits of entropy. Drop to ~12 chars only when per-table uniqueness is enough; never go below 10 for anything security-sensitive.</p>
+                </div>
+            </div>
+        </section>
+    </section>
+
     <!-- TOTP (Time-based One-Time Password) -->
     <section id="section-totp" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

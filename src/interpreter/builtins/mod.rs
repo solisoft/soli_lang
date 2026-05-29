@@ -40,6 +40,7 @@ pub mod math;
 pub mod mock_http;
 pub mod model;
 pub mod named_routes;
+pub mod nanoid;
 pub mod primitives;
 pub mod rate_limit;
 pub mod regex;
@@ -68,7 +69,9 @@ pub mod test_dsl;
 pub mod test_server;
 pub mod trust_proxy;
 pub mod types;
+pub mod ulid;
 pub mod uploads;
+pub mod uuid;
 pub mod validation;
 pub mod vapid;
 
@@ -331,6 +334,15 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register cryptographic functions
     crypto::register_crypto_builtins(env);
+
+    // Register UUID generators (uuid_v4, uuid_v7, UUID class)
+    uuid::register_uuid_builtins(env);
+
+    // Register ULID generator (ulid(), ULID class)
+    ulid::register_ulid_builtins(env);
+
+    // Register NanoID generator (nanoid(size?, alphabet?), NanoID class)
+    nanoid::register_nanoid_builtins(env);
 
     // Register SoliDB functions
     solidb::register_solidb_builtins(env);

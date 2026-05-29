@@ -1313,6 +1313,109 @@ Generates a new Ed25519 signing key pair.
 
 **Returns:** Hash - `{ "public": String, "private": String }` (hex-encoded, 64 chars each)
 
+### ID Generation
+
+Four ID generators are available: UUID v4 / v7 (RFC 4122), ULID, and NanoID.
+
+> **Which one?**
+> - **`uuid_v7()` / `ulid()`** — time-sortable, ideal for DB primary keys. UUID v7
+>   stays in the standard 36-char UUID shape; ULID is shorter (26 chars,
+>   Crockford Base32) and case-insensitive.
+> - **`uuid_v4()`** — fully random UUID. Use when you don't want creation time
+>   leaking into the ID (public tokens, share links, anti-enumeration).
+> - **`nanoid()`** — compact, URL-safe random IDs (default 21 chars). Customize
+>   size and alphabet for short codes, slugs, or invite tokens.
+
+#### UUID.v4() / uuid_v4()
+
+Generates a random (version 4) UUID. 122 bits of randomness from the OS CSPRNG.
+
+**Returns:** String — 36-character hyphenated UUID
+
+**Example:**
+```soli
+id = uuid_v4()
+# "c74d395d-5b75-41c3-b873-ca597e1ccaac"
+
+token = UUID.v4()  # equivalent, via the UUID class
+```
+
+#### UUID.v7() / uuid_v7()
+
+Generates a time-ordered (version 7) UUID. The high 48 bits are a Unix
+millisecond timestamp; the remaining bits are random. Two UUIDs minted in the
+same millisecond stay distinct, and any two UUIDs minted in different
+milliseconds sort by creation time as strings.
+
+**Returns:** String — 36-character hyphenated UUID
+
+**Example:**
+```soli
+id = uuid_v7()
+# "019e6ef2-ba58-7460-ad04-55e291a8c28b"
+# Lexicographic order == creation order — great for DB primary keys.
+
+# Using the UUID class
+record_id = UUID.v7()
+```
+
+#### ULID.generate() / ulid()
+
+Generates a ULID — a 128-bit identifier encoded as 26 Crockford Base32 chars
+(`0-9 A-Z` minus `I L O U`). The high 48 bits are a Unix millisecond timestamp,
+the remaining 80 bits are CSPRNG random. Sorts by creation time as a string and
+is case-insensitive by spec. Shorter than a UUID, no dashes — friendly for URLs
+and DB keys.
+
+`ULID.new()` is provided as an alias for `ULID.generate()`.
+
+**Returns:** String — 26-character ULID
+
+**Example:**
+```soli
+id = ulid()
+# "01KSQG6MAN1B4S05KRV29NWZPT"
+
+record_id = ULID.generate()
+```
+
+#### NanoID.generate(size?, alphabet?) / nanoid(size?, alphabet?)
+
+Generates a NanoID — a short, URL-safe, cryptographically random ID. Defaults
+to 21 characters from the 64-char URL-safe alphabet (`A-Z a-z 0-9 _ -`), which
+matches the original NanoID spec and is collision-resistant enough to replace
+UUIDs in most contexts.
+
+`NanoID.new(...)` is provided as an alias for `NanoID.generate(...)`.
+
+**Parameters:**
+- `size` (Int, optional) — Length of the generated ID. Must be 1-1024. Default: 21.
+- `alphabet` (String, optional) — Character set to draw from. Must be 1-255
+  unique characters. Default: URL-safe 64-char alphabet.
+
+**Returns:** String — `size`-character random ID
+
+**Example:**
+```soli
+id = nanoid()
+# "XBwf0cjEQmwsx8YSQRCws"
+
+short = nanoid(10)
+# "hBbpwcRh4j"
+
+# Custom alphabet for human-friendly short codes
+# (Crockford-style, no easily-confused 0/O/1/I/L)
+code = nanoid(8, "23456789ABCDEFGHJKMNPQRSTVWXYZ")
+# "K7M3PQ2N"
+
+slug = NanoID.generate(12)
+```
+
+> **Sizing tip:** with the default 64-char alphabet, 21 chars ≈ 126 bits of
+> entropy — comparable to a v4 UUID. Drop to 12 chars (~71 bits) only when
+> per-table uniqueness is enough; never go below 10 chars for anything
+> security-sensitive.
+
 ---
 
 ## JWT Functions

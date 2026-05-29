@@ -76,7 +76,9 @@ tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
 bytes = "1.11.1"
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+ulid = "1"
+nanoid = "0.4"
 tungstenite = "0.24"
 lazy_static = "1.4"
 lru = "0.12"
