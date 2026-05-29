@@ -97,6 +97,42 @@ pub fn inject_prefetch_tag(html: &str) -> String {
     }
 }
 
+/// True when the request headers indicate a browser-issued *speculative*
+/// prefetch rather than a real navigation. Chrome/Edge send
+/// `Sec-Purpose: prefetch` (sometimes `prefetch;prerender`), older Chrome
+/// `Purpose: prefetch`, Firefox `X-Moz: prefetch`. `get_header` is invoked
+/// with lowercased header names and returns the raw value if present.
+pub fn is_prefetch_request<'a, F>(get_header: F) -> bool
+where
+    F: Fn(&str) -> Option<&'a str>,
+{
+    let signals_prefetch = |name: &str| {
+        get_header(name)
+            .map(|v| v.to_ascii_lowercase().contains("prefetch"))
+            .unwrap_or(false)
+    };
+    signals_prefetch("sec-purpose") || signals_prefetch("purpose") || signals_prefetch("x-moz")
+}
+
+/// `Cache-Control` to emit for an HTML response to a *speculative prefetch*
+/// request. A short `private, max-age=N` lets the browser reuse the prefetched
+/// body on the eventual click directly from its own cache — no conditional GET,
+/// so a CDN in front of the app (Cloudflare et al.) that won't relay a `304`
+/// can't break "instant navigation". `private` keeps the prefetched HTML out of
+/// shared/edge caches. Normal navigations still get `private, no-cache` (set in
+/// `html_response`) because they don't carry the prefetch headers.
+///
+/// Default window: 30s — long enough to bridge hover→click, short enough to
+/// bound staleness. Override with `SOLI_PREFETCH_TTL` (seconds, clamped 1..=300).
+pub fn prefetch_cache_control() -> String {
+    let ttl = std::env::var("SOLI_PREFETCH_TTL")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|secs| secs.clamp(1, 300))
+        .unwrap_or(30);
+    format!("private, max-age={}", ttl)
+}
+
 /// HTTP handler for `GET /__soli/prefetch.js`. Returns the bundled script with
 /// long cache (safe: content is compiled into the binary, so it only changes
 /// when the soli version changes and the old cached file keeps working).
@@ -135,6 +171,28 @@ mod tests {
             match &self.prior {
                 Some(v) => std::env::set_var("SOLI_PREFETCH", v),
                 None => std::env::remove_var("SOLI_PREFETCH"),
+            }
+        }
+    }
+
+    struct TtlEnvGuard {
+        prior: Option<String>,
+    }
+    impl TtlEnvGuard {
+        fn set(value: Option<&str>) -> Self {
+            let prior = std::env::var("SOLI_PREFETCH_TTL").ok();
+            match value {
+                Some(v) => std::env::set_var("SOLI_PREFETCH_TTL", v),
+                None => std::env::remove_var("SOLI_PREFETCH_TTL"),
+            }
+            Self { prior }
+        }
+    }
+    impl Drop for TtlEnvGuard {
+        fn drop(&mut self) {
+            match &self.prior {
+                Some(v) => std::env::set_var("SOLI_PREFETCH_TTL", v),
+                None => std::env::remove_var("SOLI_PREFETCH_TTL"),
             }
         }
     }
@@ -248,6 +306,70 @@ mod tests {
             PREFETCH_SCRIPT.contains("link.as = \"document\""),
             "must set `as=\"document\"` so navigations consume the prefetched body"
         );
+    }
+
+    #[test]
+    fn detects_prefetch_request_headers() {
+        // Chrome/Edge speculative prefetch.
+        let h = |n: &str| match n {
+            "sec-purpose" => Some("prefetch"),
+            _ => None,
+        };
+        assert!(is_prefetch_request(h));
+
+        // `prefetch;prerender` compound value still matches.
+        let h = |n: &str| match n {
+            "sec-purpose" => Some("prefetch;prerender"),
+            _ => None,
+        };
+        assert!(is_prefetch_request(h));
+
+        // Legacy Chrome + Firefox spellings.
+        assert!(is_prefetch_request(
+            |n| (n == "purpose").then_some("prefetch")
+        ));
+        assert!(is_prefetch_request(|n| (n == "x-moz").then_some("prefetch")));
+
+        // A real navigation carries none of these.
+        let h = |n: &str| match n {
+            "sec-purpose" => Some("prerender"),
+            "sec-fetch-mode" => Some("navigate"),
+            _ => None,
+        };
+        assert!(!is_prefetch_request(h));
+        assert!(!is_prefetch_request(|_| None));
+    }
+
+    #[test]
+    fn prefetch_cache_control_is_private_with_default_window() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _g = TtlEnvGuard::set(None);
+        let cc = prefetch_cache_control();
+        assert!(cc.starts_with("private,"), "must stay private: {cc}");
+        assert_eq!(cc, "private, max-age=30");
+    }
+
+    #[test]
+    fn prefetch_cache_control_honors_and_clamps_ttl() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        {
+            let _g = TtlEnvGuard::set(Some("5"));
+            assert_eq!(prefetch_cache_control(), "private, max-age=5");
+        }
+        {
+            // Above the ceiling clamps to 300, below the floor clamps to 1.
+            let _g = TtlEnvGuard::set(Some("100000"));
+            assert_eq!(prefetch_cache_control(), "private, max-age=300");
+        }
+        {
+            let _g = TtlEnvGuard::set(Some("0"));
+            assert_eq!(prefetch_cache_control(), "private, max-age=1");
+        }
+        {
+            // Garbage falls back to the default.
+            let _g = TtlEnvGuard::set(Some("soon"));
+            assert_eq!(prefetch_cache_control(), "private, max-age=30");
+        }
     }
 
     #[test]

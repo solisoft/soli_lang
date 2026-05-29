@@ -463,7 +463,7 @@
 
     <h3 class="text-xl font-semibold text-white mb-4">Hover Preload</h3>
     <p class="text-gray-400 mb-4">
-        Soli auto-injects a small <code>&lt;script&gt;</code> tag into every HTML response that listens for <code>mouseover</code> on links and fires a same-origin <code>fetch()</code>, so the response is already in the browser's HTTP cache by the time the user clicks. The script is served at <code>/__soli/prefetch.js</code> &mdash; an external file, not inline, so strict-CSP apps work out of the box. The prefetch request carries a <code>Purpose: prefetch</code> header so your backend can log or differentiate it if needed.
+        Soli auto-injects a small <code>&lt;script&gt;</code> tag into every HTML response that listens for <code>mouseover</code> on links and adds a <code>&lt;link rel="prefetch" as="document"&gt;</code>, so the browser warms its document-prefetch cache before the user clicks. The script is served at <code>/__soli/prefetch.js</code> &mdash; an external file, not inline, so strict-CSP apps work out of the box. Browsers send these requests with a <code>Sec-Purpose: prefetch</code> header (older browsers <code>Purpose: prefetch</code>), so your backend can log or differentiate them.
     </p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -499,11 +499,20 @@
             <strong>Caching defaults:</strong> every response out of <code>render(...)</code> carries two headers automatically so the prefetch actually delivers instant navigation on click.
         </p>
         <ul class="text-emerald-200/80 text-sm space-y-1 list-disc list-inside">
-            <li><code>ETag: "&lt;16-hex&gt;"</code> &mdash; content-derived strong validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection).</li>
+            <li><code>ETag: W/"&lt;16-hex&gt;"</code> &mdash; content-derived <em>weak</em> validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection). Weak so it survives a CDN re-compressing the response (Cloudflare and friends strip strong ETags when they re-encode; weak ones pass through).</li>
             <li><code>Cache-Control: private, no-cache</code> &mdash; browser may cache, shared caches (CDN, reverse proxy) may not; the entry must be revalidated before reuse.</li>
         </ul>
         <p class="text-emerald-200/80 text-sm mt-2">
-            On click, the browser sends <code>If-None-Match: "&lt;etag&gt;"</code>. If the render would produce the same bytes, Soli short-circuits to <code>304 Not Modified</code> with just the validator headers &mdash; no body re-transmission. The prefetched body is consumed as the navigation response, so the click feels instant.
+            On click, the browser sends <code>If-None-Match: W/"&lt;etag&gt;"</code>. If the render would produce the same bytes, Soli short-circuits to <code>304 Not Modified</code> with just the validator headers &mdash; no body re-transmission. The prefetched body is consumed as the navigation response, so the click feels instant.
+        </p>
+    </div>
+
+    <div class="p-4 rounded-lg bg-sky-500/10 border border-sky-500/20 mb-4">
+        <p class="text-sky-200/80 text-sm mb-2">
+            <strong>Behind a CDN (Cloudflare, etc.):</strong> that <code>304</code> round-trip only works if the conditional <code>GET</code> reaches your origin. Some edge setups don't relay it &mdash; a &ldquo;Cache Everything&rdquo; rule, edge revalidation, or HTML-transform features (Rocket Loader, Email Obfuscation, Mirage) that need the full body &mdash; so the click re-downloads the whole page and the prefetch is wasted.
+        </p>
+        <p class="text-sky-200/80 text-sm mt-2">
+            To stay robust regardless of edge config, Soli detects the <code>Sec-Purpose: prefetch</code> request and answers it with <code>Cache-Control: private, max-age=30</code> instead of <code>no-cache</code>. The prefetched HTML is then <em>fresh</em> in the browser's own (private) cache for a short window, so the click reuses it directly &mdash; no conditional GET, so the CDN never gets a vote. Normal navigations don't carry the prefetch header, so they keep <code>private, no-cache</code>. Tune the window with <code>SOLI_PREFETCH_TTL</code> (seconds, clamped 1&ndash;300; default 30). If your CDN rewrites <code>Cache-Control</code> for the browser (Cloudflare's <strong>Browser Cache TTL</strong> set to anything but <em>Respect Existing Headers</em>), leave it on <em>Respect Existing Headers</em> for the app hostname so this <code>max-age</code> survives.
         </p>
     </div>
 

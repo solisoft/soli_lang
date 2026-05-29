@@ -2388,6 +2388,14 @@ async fn handle_hyper_request(
     // moved into `RequestData`.
     let if_none_match = headers.get("if-none-match").cloned();
 
+    // Is this a browser speculative prefetch (hover-preload)? If so the
+    // response-assembly block below relaxes the HTML `Cache-Control` so the
+    // eventual click reuses the prefetched bytes without a revalidation
+    // round-trip — see `prefetch::prefetch_cache_control`. `headers` keys are
+    // lowercased by the extraction loop above.
+    let is_prefetch =
+        crate::serve::prefetch::is_prefetch_request(|name| headers.get(name).map(|v| v.as_str()));
+
     // Read body - skip for GET/HEAD requests (usually empty). Cap the
     // read so a hostile client can't exhaust worker memory by streaming
     // an unbounded body. Content-Length lets us short-circuit before any
@@ -2548,7 +2556,30 @@ async fn handle_hyper_request(
                 .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK))
                 .header("Server", "soliMVC");
 
+            // For a speculative prefetch of an HTML page, swap the page's
+            // `private, no-cache` for a short `private, max-age=N` so the click
+            // serves the prefetched bytes straight from the browser cache — no
+            // conditional GET, so a CDN that won't relay a 304 (Cloudflare et
+            // al.) can't break instant navigation. The ETag still rides along
+            // for revalidation once the window lapses.
+            let prefetch_cache_control = if is_prefetch
+                && resp_data
+                    .headers
+                    .iter()
+                    .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"))
+            {
+                Some(crate::serve::prefetch::prefetch_cache_control())
+            } else {
+                None
+            };
+
             for (key, value) in &resp_data.headers {
+                if let Some(ref cache_control) = prefetch_cache_control {
+                    if key.eq_ignore_ascii_case("cache-control") {
+                        builder = builder.header(key.as_str(), cache_control.as_str());
+                        continue;
+                    }
+                }
                 builder = builder.header(key.as_str(), value.as_str());
             }
 

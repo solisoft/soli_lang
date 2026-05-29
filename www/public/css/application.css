@@ -4334,6 +4334,10 @@ video {
   color: rgb(186 230 253 / var(--tw-text-opacity, 1));
 }
 
+.text-sky-200\/80 {
+  color: rgb(186 230 253 / 0.8);
+}
+
 .text-sky-300 {
   --tw-text-opacity: 1;
   color: rgb(125 211 252 / var(--tw-text-opacity, 1));

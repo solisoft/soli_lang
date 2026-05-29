@@ -24,6 +24,7 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 |----------|---------|---------|
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. | `false` |
 | `SOLI_PREFETCH` | Controls hover prefetch injection. Set `off`, `false`, `0`, or `no` to disable. | enabled |
+| `SOLI_PREFETCH_TTL` | Freshness window (seconds, clamped 1–300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip — keeps prefetch working behind a CDN. | `30` |
 | `SOLI_DEFAULT_URL_HOST` | Host used by `*_url` route helpers outside an active request. | unset |
 | `SOLI_DEFAULT_URL_SCHEME` | Scheme used with `SOLI_DEFAULT_URL_HOST`. | `http` |
 | `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. Requires `SOLI_DEV_REPL_SECRET` (SEC-051) — the server refuses to start otherwise. | `false` |

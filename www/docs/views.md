@@ -185,7 +185,7 @@ For prefix matches (e.g. any path under `/users`), compose with `current_path().
 
 ### Hover Preload
 
-Soli auto-injects a small `<script>` tag into every HTML response that listens for `mouseover` on links and fires a same-origin `fetch()` so the response is already in the browser's HTTP cache by the time the user clicks. The script is served at `/__soli/prefetch.js` — an external file, not inline, so apps with strict CSP (no `unsafe-inline`) work out of the box. The prefetch request carries a `Purpose: prefetch` header so your backend can log or differentiate it if needed.
+Soli auto-injects a small `<script>` tag into every HTML response that listens for `mouseover` on links and adds a `<link rel="prefetch" as="document">` so the browser warms its document-prefetch cache before the user clicks. The script is served at `/__soli/prefetch.js` — an external file, not inline, so apps with strict CSP (no `unsafe-inline`) work out of the box. Browsers send these requests with a `Sec-Purpose: prefetch` header (older browsers `Purpose: prefetch`), so your backend can log or differentiate them.
 
 **What you get for free:**
 
@@ -217,12 +217,16 @@ SOLI_PREFETCH=off soli serve .
 
 `off`, `false`, `0`, and `no` all disable. Anything else (or unset) keeps it on.
 
-**Caching defaults:** every response out of `render(...)` now carries two headers automatically so the prefetch actually delivers instant navigation:
+**Caching defaults:** every response out of `render(...)` carries two headers automatically so the prefetch actually delivers instant navigation:
 
-- **`ETag: "<16-hex>"`** — a content-derived strong validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection so it reflects the exact bytes on the wire).
+- **`ETag: W/"<16-hex>"`** — a content-derived *weak* validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection so it reflects the exact bytes on the wire). Weak, not strong, so it survives the content-encoding transforms a CDN applies (Cloudflare and friends strip strong ETags when they re-compress; weak ones pass through).
 - **`Cache-Control: private, no-cache`** — the browser may cache, shared caches (CDN, reverse proxy) may not; the entry must be revalidated before reuse.
 
-On the actual click, the browser sends `If-None-Match: "<etag>"`. If the rendered body would be identical, the framework short-circuits to **`304 Not Modified`** with just the validator headers — no body re-transmission. Result: the prefetched body is consumed as the navigation response, so the click feels instant.
+On the actual click, the browser sends `If-None-Match: W/"<etag>"`. If the rendered body would be identical, the framework short-circuits to **`304 Not Modified`** with just the validator headers — no body re-transmission. Result: the prefetched body is consumed as the navigation response, so the click feels instant.
+
+**Behind a CDN (Cloudflare, etc.):** that `304` round-trip only works if the conditional `GET` reaches the origin. Some edge configurations don't relay it — a "Cache Everything" rule, edge revalidation, or HTML-transform features (Rocket Loader, Email Obfuscation, Mirage) that need the full body — so the click re-downloads the whole page and the prefetch is wasted. To make the feature robust regardless of edge config, Soli detects the `Sec-Purpose: prefetch` request and answers it with **`Cache-Control: private, max-age=30`** instead of `no-cache`. The prefetched HTML is then *fresh* in the browser's own (private) cache for a short window, so the click reuses it directly — **no conditional GET, so the CDN never gets a vote.** Normal navigations are unaffected: they don't carry the prefetch header, so they still get `private, no-cache`. Tune the window with `SOLI_PREFETCH_TTL` (seconds, clamped 1–300; default 30), or set it low if your pages change second-to-second.
+
+> If your CDN rewrites `Cache-Control` for the browser (Cloudflare's **Browser Cache TTL** set to anything other than *Respect Existing Headers*), it can override this `max-age`. Leave Browser Cache TTL on *Respect Existing Headers* for the app hostname.
 
 **Override per response** when the defaults don't fit. Set your own `Cache-Control` (and optionally `ETag`) in the response headers and the framework defaults step aside:
 
