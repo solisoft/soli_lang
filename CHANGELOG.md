@@ -4,6 +4,10 @@
 
 ### Features
 
+* **feat(lang):** add UUID (`uuid_v4`/`uuid_v7`, `UUID.v4`/`UUID.v7`), ULID (`ulid`, `ULID.generate`/`ULID.new`), and NanoID (`nanoid(size?, alphabet?)`, `NanoID.generate`/`NanoID.new`) ID generators
+* **feat(jobs):** add `Webhook` job class (`enqueue`/`enqueue_in`/`enqueue_at`/`cancel`/`list`) and adopt `SOLI_WEBHOOK_SECRET` with `X-Webhook-Signature` (keeping `SOLI_JOBS_SECRET`/`X-Job-Signature` as legacy aliases)
+* **feat(serve):** log production errors on the dev and OOP-controller paths too (breakpoints excluded)
+* **feat(test):** extend the `as_user` E2E session helper to accept an optional second argument
 * **feat(model):** accept Symbol arguments in DSL callbacks and relationships (`before_save :method`, `has_many :posts`, etc.) for Ruby-style shorthand ([#](https://github.com/solisoft/soli_lang/commit/436b4ff))
 * **feat(parser):** `~` shorthand for `implements`; Ruby-style classes-oop docs ([6d157bb](https://github.com/solisoft/soli_lang/commit/6d157bb))
 * **feat(dev-bar):** break down render time per middleware ([e2509af](https://github.com/solisoft/soli_lang/commit/e2509af))
