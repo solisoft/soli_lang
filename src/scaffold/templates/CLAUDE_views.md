@@ -108,6 +108,9 @@ attributes / JS / URLs.
 </script>
 
 <a href="/search?q=<%= url(params["q"]) %>">search</a>
+
+<%# user-authored rich text: sanitize, then emit as raw output %>
+<%- sanitize_html(post.body_html) %>
 ```
 
 ## Partials
@@ -118,9 +121,20 @@ mandatory. `render_partial(...)` is an alias for the same builtin.
 
 ```erb
 <% for post in @posts %>
-  <%= partial("posts/post", { "post": post }) %>
+  <%- partial("posts/post", { "post": post }) %>
 <% end %>
 ```
+
+`partial` returns HTML, so render it with `<%-` (raw output). `<%=` would
+HTML-escape the partial's own markup and show tags as text.
+
+> **`<%-` skips escaping — sanitize untrusted HTML first.** `<%-` is safe for
+> trusted, framework-produced HTML (like a `partial`). For any HTML that
+> originated from a user (rich-text fields, imported content, Markdown
+> rendered to HTML), pass it through `sanitize_html(value)` first — it keeps
+> safe tags (links, basic formatting) and strips scripts/event handlers/
+> `javascript:` URLs. Use `strip_html(value)` instead when you want plain text
+> with no tags at all. Never put raw user HTML straight into `<%-`.
 
 `app/views/posts/_post.html.slv`:
 

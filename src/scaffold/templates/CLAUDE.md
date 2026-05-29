@@ -71,7 +71,7 @@ Run `soli serve . --dev`. The dev bar shows the AQL queries (`dev_queries()`) is
 ### Add a partial
 
 - File: `app/views/<dir>/_name.html.slv` (leading underscore is mandatory).
-- Render: `<%= partial("dir/name", { "key": value }) %>`.
+- Render: `<%- partial("dir/name", { "key": value }) %>` — use `<%-` (raw output), not `<%=`, since the partial returns HTML that must not be re-escaped.
 - Inside the partial: read via `key` (or `locals["key"]` if it collides with a builtin/helper).
 
 ## Project Structure
