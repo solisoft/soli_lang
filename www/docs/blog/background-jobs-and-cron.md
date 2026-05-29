@@ -52,7 +52,9 @@ Controller
                  SolidB worker decides to fire the job
                      |
                      +--> POST https://yourapp.example.com/_jobs/run/WelcomeEmailJob
-                              Headers: X-Job-Signature: <hmac-of-body>
+                              Headers: X-Webhook-Signature: <hmac-of-body>     # legacy: X-Job-Signature
+                                       X-Webhook-Event: job
+                                       X-Webhook-Delivery: <job_id>
                               Body: {"args": {"user_id": 123}, "job_id": "...", "attempt": 1}
                      |
                      v
@@ -250,7 +252,35 @@ Important details that the tests explicitly protect:
 - A missing class returns 503 (SolidB will retry later — useful during deploys).
 - Any exception inside `perform` becomes a 500 → SolidB retries.
 
-SolidB (or any client you write yourself for testing) must compute the identical HMAC-SHA256 hex digest of the exact bytes it sends and place it in the `X-Job-Signature` header. Soli's `Job.enqueue` family does this for you automatically when talking to SolidB.
+SolidB (or any client you write yourself for testing) must compute the identical HMAC-SHA256 hex digest of the exact bytes it sends and place it in the `X-Webhook-Signature` header (the canonical name). The legacy `X-Job-Signature` header is still accepted for backward compatibility, as is the legacy `SOLI_JOBS_SECRET` env var alongside the canonical `SOLI_WEBHOOK_SECRET`. Soli's `Job.enqueue` family does this for you automatically when talking to SolidB.
+
+## When the Target is a URL Instead of a Class — `Webhook.*`
+
+Not every async job needs to dispatch to a Soli handler. Sometimes you want to fire an HTTP request to a third-party service on a delay — a Slack notification five minutes after an order is placed, a daily summary POSTed to a partner API at 08:00 UTC, a webhook to a downstream system after a multi-step workflow finishes. The `Webhook` class is the right tool for that, and it skips the class-dispatcher round-trip entirely.
+
+```soli
+# Fire immediately, no handler needed
+Webhook.enqueue("https://hooks.slack.com/services/T00/B00/abc", {
+    "text": "Order #" + str(order.id) + " shipped"
+})
+
+# Delay 5 minutes
+Webhook.enqueue_in(
+    "https://api.partner.test/event",
+    "5 minutes",
+    { "kind": "user.created", "user_id": user.id },
+    {
+        "queue": "external",
+        "max_retries": 5,
+        "secret": getenv("PARTNER_HMAC_SECRET"),
+        "headers": { "Authorization": "Bearer " + getenv("PARTNER_TOKEN") }
+    }
+)
+```
+
+When the job fires, SolidB POSTs the payload as JSON with `X-Webhook-Event: job`, `X-Webhook-Delivery: <job-id>`, the HMAC-SHA256 signature in `X-Webhook-Signature` (when a secret is set), plus any custom headers from the `opts` hash. Non-2xx responses count as failure and re-enter the same exponential-backoff retry path as class-target jobs.
+
+The mental model: `Job.*` is for code you wrote that lives inside this Soli app. `Webhook.*` is for code you didn't write that lives somewhere else. Both share the same `_jobs` collection, the same retry semantics, the same `cancel`/`list` operations — the difference is only what happens at dispatch time.
 
 ## Delayed Execution and the Duration Parser
 
@@ -375,7 +405,8 @@ Editing any file under `app/jobs/` while the server is running with `--dev` caus
 | `SOLI_JOBS_DATABASE`        | SolidB database used for queues and cron                                | `SOLIDB_DATABASE` or `default`       |
 | `SOLI_JOBS_DEFAULT_QUEUE`   | Queue name when none supplied                                           | `default`                            |
 | `SOLI_JOBS_CALLBACK_URL`    | Base URL SolidB will POST to (must be reachable from the SolidB host)   | `http://127.0.0.1:3000/_jobs/run`    |
-| `SOLI_JOBS_SECRET`          | **Required in production.** Long random value used for HMAC signatures. | unset (the route is not registered)  |
+| `SOLI_WEBHOOK_SECRET`       | **Required in production.** Long random value used for HMAC signatures. | unset (the route is not registered)  |
+| `SOLI_JOBS_SECRET`          | Legacy alias for `SOLI_WEBHOOK_SECRET`; still accepted.                 | unset                                |
 
 In development the localhost default is usually fine. In production set the callback URL to a publicly (or SolidB-reachable) address and ensure the secret is strong and rotated like any other signing key.
 

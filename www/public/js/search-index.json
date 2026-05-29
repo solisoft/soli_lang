@@ -1294,6 +1294,156 @@
       ]
     },
     {
+      "title": "UUID.v4",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-uuid-v4",
+      "signature": "UUID.v4()",
+      "description": "Generate a random (version 4) UUID",
+      "keywords": [
+        "uuid",
+        "v4",
+        "random",
+        "id",
+        "identifier",
+        "token",
+        "rfc4122"
+      ]
+    },
+    {
+      "title": "uuid_v4",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-uuid-v4",
+      "signature": "uuid_v4()",
+      "description": "Generate a random (version 4) UUID (alias for UUID.v4)",
+      "keywords": [
+        "uuid",
+        "v4",
+        "random",
+        "id",
+        "identifier",
+        "token",
+        "rfc4122"
+      ]
+    },
+    {
+      "title": "UUID.v7",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-uuid-v7",
+      "signature": "UUID.v7()",
+      "description": "Generate a time-ordered (version 7) UUID, sortable by creation time",
+      "keywords": [
+        "uuid",
+        "v7",
+        "time",
+        "sortable",
+        "id",
+        "identifier",
+        "primary",
+        "key",
+        "rfc4122"
+      ]
+    },
+    {
+      "title": "uuid_v7",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-uuid-v7",
+      "signature": "uuid_v7()",
+      "description": "Generate a time-ordered (version 7) UUID (alias for UUID.v7)",
+      "keywords": [
+        "uuid",
+        "v7",
+        "time",
+        "sortable",
+        "id",
+        "identifier",
+        "primary",
+        "key",
+        "rfc4122"
+      ]
+    },
+    {
+      "title": "ULID.generate",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-ulid",
+      "signature": "ULID.generate()",
+      "description": "Generate a 26-character ULID (lexicographically sortable, Crockford Base32)",
+      "keywords": [
+        "ulid",
+        "id",
+        "identifier",
+        "sortable",
+        "time",
+        "crockford",
+        "base32",
+        "primary",
+        "key"
+      ]
+    },
+    {
+      "title": "ulid",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-ulid",
+      "signature": "ulid()",
+      "description": "Generate a 26-character ULID (alias for ULID.generate)",
+      "keywords": [
+        "ulid",
+        "id",
+        "identifier",
+        "sortable",
+        "time",
+        "crockford",
+        "base32",
+        "primary",
+        "key"
+      ]
+    },
+    {
+      "title": "NanoID.generate",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-nanoid",
+      "signature": "NanoID.generate(size?, alphabet?)",
+      "description": "Generate a short, URL-safe, random ID (default 21 chars, ~126 bits)",
+      "keywords": [
+        "nanoid",
+        "id",
+        "identifier",
+        "random",
+        "short",
+        "url",
+        "safe",
+        "slug",
+        "token",
+        "alphabet"
+      ]
+    },
+    {
+      "title": "nanoid",
+      "type": "function",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-nanoid",
+      "signature": "nanoid(size?, alphabet?)",
+      "description": "Generate a short, URL-safe, random ID (alias for NanoID.generate)",
+      "keywords": [
+        "nanoid",
+        "id",
+        "identifier",
+        "random",
+        "short",
+        "url",
+        "safe",
+        "slug",
+        "token",
+        "alphabet"
+      ]
+    },
+    {
       "title": "Crypto.totp_generate",
       "type": "method",
       "category": "Crypto",

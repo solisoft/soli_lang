@@ -20,15 +20,15 @@
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">To disable request logging, set the environment variable:</p>
+    <p class="text-gray-400 mb-6">Request logging is <strong>always on in <code class="text-indigo-400">--dev</code></strong> so every route shows up in the terminal as you work. In production it's opt-in via <code class="text-indigo-400">SOLI_REQUEST_LOG=1</code>:</p>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Disable request logging
-SOLI_REQUEST_LOG=false soli serve myapp
+<pre><code class="language-bash text-sm"># Enable request logging in production
+SOLI_REQUEST_LOG=1 soli serve myapp
 
 # Or
-SOLI_REQUEST_LOG=0 soli serve myapp</code></pre>
+SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
         </div>
     </div>
 

@@ -7,10 +7,38 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
-<a href="/docs/blog/background-jobs-and-cron"><img src="/images/blog/background-jobs-cron.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Background Jobs & Cron"></a>
+<a href="/docs/blog/e2e-testing"><img src="/images/blog/e2e-testing.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="E2E Testing"></a>
 <br>
-<strong><a href="/docs/blog/background-jobs-and-cron">Background Jobs & Cron in Soli</a></strong><br>
-<small>SolidB-backed queues, signed callbacks, declarative cron, and zero extra daemons.</small>
+<strong><a href="/docs/blog/e2e-testing">Full End-to-End Tests in Pure Soli</a></strong><br>
+<small>Realistic integration tests with a built-in test server, BDD DSL, and coverage — zero external tools required.</small>
+</div>
+
+<div>
+<a href="/docs/blog/scaffolds"><img src="/images/blog/scaffolds.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Scaffolds"></a>
+<br>
+<strong><a href="/docs/blog/scaffolds">Scaffolds That Don’t Suck</a></strong><br>
+<small>One command from zero to a full, production-ready, tested resource — with intelligent pauses for human judgment.</small>
+</div>
+
+<div>
+<a href="/docs/blog/pattern-matching"><img src="/images/blog/pattern-matching.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Pattern Matching"></a>
+<br>
+<strong><a href="/docs/blog/pattern-matching">Destructuring Done Right</a></strong><br>
+<small>Rich pattern matching with guards, rest patterns, and hash/array destructuring as everyday control flow.</small>
+</div>
+
+<div>
+<a href="/docs/blog/advanced-modeling"><img src="/images/blog/advanced-modeling.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Advanced Modeling"></a>
+<br>
+<strong><a href="/docs/blog/advanced-modeling">Real Domain Modeling with Soli</a></strong><br>
+<small>Scopes, soft deletes, and transactions — the model features that keep complex applications maintainable.</small>
+</div>
+
+<div>
+<a href="/docs/blog/ai-coding-agents"><img src="/images/blog/ai-coding-agents.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="AI Coding Agents"></a>
+<br>
+<strong><a href="/docs/blog/ai-coding-agents">Soli Projects Are Designed for AI Coding Agents</a></strong><br>
+<small>How `soli new` produces projects that Claude Code, Cursor, and Aider can work in safely and effectively from day one.</small>
 </div>
 
 <div>
@@ -73,6 +101,11 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [Full End-to-End Tests in Pure Soli](/docs/blog/e2e-testing) - Realistic integration tests using a built-in test server, BDD DSL (`describe`/`test`), session helpers, and coverage gates — no external tools.
+- [Scaffolds That Don’t Suck](/docs/blog/scaffolds) - One command (`/soli-resource`) from idea to complete, tested, production-shaped resource with an intelligent pause for human input.
+- [Destructuring Done Right](/docs/blog/pattern-matching) - Rich pattern matching with guards, array/hash destructuring, and rest patterns as everyday, reliable control flow.
+- [Real Domain Modeling with Soli](/docs/blog/advanced-modeling) - Named scopes, soft deletes, and transactions — the model layer tools that keep growing systems maintainable.
+- [Soli Projects Are Designed for AI Coding Agents](/docs/blog/ai-coding-agents) - How `soli new` produces projects that Claude Code, Cursor, Aider and other agents can work in safely and effectively from the first commit.
 - [Background Jobs & Cron in Soli](/docs/blog/background-jobs-and-cron) - SolidB-backed queues, signed webhook callbacks, `perform_later` / `perform_in`, declarative cron on the class, idempotency patterns, hot reload in dev, and zero extra daemons.
 - [Event Streaming from Soli with `es`](/docs/blog/event-streaming-with-es) - Wire es — a single-binary, HTTP+JSON, Kafka-shaped broker — to a Soli app end-to-end: produce events from a controller, drain them with a consumer-group-backed background job, and resume cleanly after a restart
 - [Building a CRUD Datatable with HTMx, Alpine, and Soli](/docs/blog/htmx-datatable) - Search, sort, pagination, inline edit, role select, status toggle, modal add, and toast on save — one model, one controller, two partials, zero hand-written JavaScript
