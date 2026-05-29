@@ -766,6 +766,41 @@ impl SoliDBClient {
         Ok(extract_array(&response, &["jobs", "result", "data"]))
     }
 
+    /// Enqueue a job whose target is a webhook URL — when the worker fires it,
+    /// SolidB itself POSTs `args` to `webhook_url` with `X-Webhook-Signature`
+    /// (HMAC-SHA256 of the body, keyed with `webhook_secret`) and
+    /// `X-Webhook-Event: job` / `X-Webhook-Delivery: <job_id>`.
+    ///
+    /// `opts` is forwarded as-is and may include `priority`, `max_retries`,
+    /// `webhook_secret`, `webhook_headers`, and `run_at` (Unix seconds or
+    /// RFC-3339 string).
+    pub fn enqueue_webhook(
+        &self,
+        queue: &str,
+        webhook_url: &str,
+        args: Value,
+        opts: Option<Value>,
+    ) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        let mut payload = serde_json::json!({
+            "webhook_url": webhook_url,
+            "args": args,
+        });
+        if let Some(Value::Object(map)) = opts {
+            if let Some(o) = payload.as_object_mut() {
+                for (k, v) in map {
+                    o.insert(k, v);
+                }
+            }
+        }
+        let response: Value = self.request(
+            reqwest::Method::POST,
+            &format!("/_api/database/{}/queues/{}/enqueue", db, queue),
+            Some(&payload),
+        )?;
+        Ok(extract_id(&response))
+    }
+
     /// Enqueue a job. `run_at` is an optional ISO-8601 timestamp for delayed
     /// execution; when `None`, the job is run as soon as a worker picks it up.
     pub fn enqueue_job(

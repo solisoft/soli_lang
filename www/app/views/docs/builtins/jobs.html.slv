@@ -31,10 +31,10 @@
             <p class="text-gray-400 mb-3">SolidB owns the queue, scheduling, and retries. Soli provides:</p>
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
                 <li>A file-based handler convention (<code class="text-amber-400">app/jobs/email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>).</li>
-                <li>A small language-side API (<code class="text-amber-400">Job</code>, <code class="text-amber-400">Cron</code>) plus per-class facade methods.</li>
-                <li>A built-in callback route (<code class="text-amber-400">POST /_jobs/run/:name</code>) that SolidB hits when a job fires.</li>
+                <li>A small language-side API (<code class="text-amber-400">Job</code>, <code class="text-amber-400">Webhook</code>, <code class="text-amber-400">Cron</code>) plus per-class facade methods.</li>
+                <li>A built-in callback route (<code class="text-amber-400">POST /_jobs/run/:name</code>) that SolidB hits when a class-target job fires.</li>
             </ul>
-            <p class="text-gray-400 mt-3 text-sm">When you enqueue a job, Soli sends it to SolidB along with a callback URL. When SolidB is ready to run it, it calls back into your app, which dispatches to <code class="text-amber-400">XJob.perform(args)</code>.</p>
+            <p class="text-gray-400 mt-3 text-sm">When you enqueue a class-target job, Soli sends it to SolidB along with a callback URL. When SolidB is ready to run it, it POSTs back into your app with an HMAC-signed payload, which dispatches to <code class="text-amber-400">XJob.perform(args)</code>. When you enqueue via <code class="text-amber-400">Webhook</code>, SolidB POSTs straight to the URL you supplied — no Soli-side dispatcher in the loop.</p>
         </div>
     </section>
 
@@ -163,6 +163,125 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
                 </a>
                 <p class="text-gray-400 mb-3">Return all queues defined in the SolidB database.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">names = Job.queues()</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Webhook API -->
+    <section id="section-webhook-api" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+            </span>
+            Webhook Class API
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-300 mb-3">For work that targets a URL rather than a Soli handler class. SolidB itself fires the HTTP request when the job runs — no Soli-side dispatcher involved.</p>
+            <p class="text-gray-400 text-sm">When the job fires, SolidB POSTs the payload as JSON with <code class="text-amber-400">X-Webhook-Event: job</code>, <code class="text-amber-400">X-Webhook-Delivery: &lt;job-id&gt;</code>, and (when a secret is set) <code class="text-amber-400">X-Webhook-Signature</code> (lowercase hex HMAC-SHA256 of the body). Non-2xx responses count as failure and are retried with the same exponential backoff as script jobs.</p>
+        </div>
+
+        <section id="def-webhook-enqueue" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webhook-enqueue" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue(url, payload, opts?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue an HTTP POST to <code class="text-purple-400">url</code> with <code class="text-purple-400">payload</code> as the JSON body. Returns the SolidB-issued job id.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue(
+  "https://hooks.slack.com/services/T00/B00/abc",
+  { "text": "Order #1234 shipped" }
+)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-webhook-enqueue-in" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webhook-enqueue-in" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue_in(url, duration, payload, opts?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-purple-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue_in(
+  "https://api.example.com/order-completed",
+  "5 minutes",
+  { "order_id": 1234 }
+)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-webhook-enqueue-at" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webhook-enqueue-at" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue_at(url, datetime, payload, opts?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Enqueue to fire at a specific ISO-8601 timestamp.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue_at(
+  "https://api.example.com/daily-summary",
+  "2026-05-01T08:00:00Z",
+  { "report": "daily" }
+)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-webhook-opts" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Options Hash</h3>
+                <p class="text-gray-400 mb-4 text-sm">The optional last argument controls queue placement, retries, signing, and outgoing headers.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-400 border-b border-white/10">
+                                <th class="pb-3 pr-4">Key</th>
+                                <th class="pb-3 pr-4">Type</th>
+                                <th class="pb-3">Purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-300">
+                            <tr class="border-b border-white/5">
+                                <td class="py-3 pr-4"><code class="text-amber-400">queue</code></td>
+                                <td class="py-3 pr-4 text-purple-400">String</td>
+                                <td class="py-3">Queue name (defaults to <code class="text-amber-400">SOLI_JOBS_DEFAULT_QUEUE</code>).</td>
+                            </tr>
+                            <tr class="border-b border-white/5">
+                                <td class="py-3 pr-4"><code class="text-amber-400">priority</code></td>
+                                <td class="py-3 pr-4 text-purple-400">Int</td>
+                                <td class="py-3">Higher executes first.</td>
+                            </tr>
+                            <tr class="border-b border-white/5">
+                                <td class="py-3 pr-4"><code class="text-amber-400">max_retries</code></td>
+                                <td class="py-3 pr-4 text-purple-400">Int</td>
+                                <td class="py-3">Retry budget.</td>
+                            </tr>
+                            <tr class="border-b border-white/5">
+                                <td class="py-3 pr-4"><code class="text-amber-400">secret</code></td>
+                                <td class="py-3 pr-4 text-purple-400">String</td>
+                                <td class="py-3">Per-job HMAC key (overrides <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>).</td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 pr-4"><code class="text-amber-400">headers</code></td>
+                                <td class="py-3 pr-4 text-purple-400">Hash</td>
+                                <td class="py-3">Extra HTTP headers attached to the outgoing request.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <pre data-filename="Example" class="mt-4"><code class="language-soli text-sm">Webhook.enqueue(
+  "https://api.partner.test/event",
+  { "kind": "user.created", "user_id": user.id },
+  {
+    "queue": "external",
+    "priority": 10,
+    "secret": getenv("PARTNER_HMAC_SECRET"),
+    "headers": { "Authorization": "Bearer " + getenv("PARTNER_TOKEN") }
+  }
+)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-webhook-cancel-list" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <p class="text-gray-400 mb-3"><code class="text-lg font-mono text-indigo-400">Webhook.cancel(job_id)</code> and <code class="text-lg font-mono text-indigo-400">Webhook.list(queue?)</code> operate on the same underlying <code class="text-amber-400">_jobs</code> collection as <code class="text-amber-400">Job</code> — webhook and class jobs share a queue.</p>
             </div>
         </section>
     </section>
@@ -307,12 +426,17 @@ end</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code></td>
-                            <td class="py-3 pr-4">URL SolidB POSTs to when a job fires</td>
+                            <td class="py-3 pr-4">URL SolidB POSTs to when a Soli <code class="text-amber-400">Job</code> fires</td>
                             <td class="py-3"><code class="text-purple-400">http://127.0.0.1:3000/_jobs/run</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_WEBHOOK_SECRET</code></td>
+                            <td class="py-3 pr-4"><span class="text-fuchsia-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify callbacks</td>
+                            <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_SECRET</code></td>
-                            <td class="py-3 pr-4"><span class="text-fuchsia-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify job callbacks</td>
+                            <td class="py-3 pr-4">Legacy alias for <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>; still accepted</td>
                             <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
                     </tbody>
@@ -336,8 +460,8 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
             <p class="text-gray-300 mb-3">The <code class="text-amber-400">POST /_jobs/run/:name</code> route dispatches to <code class="text-amber-400">XJob.perform(args)</code> on whichever class the URL names — it can call any loaded class with a static <code class="text-amber-400">perform</code>. To stop a passing client from invoking arbitrary code, every callback must carry a valid signature.</p>
             <ul class="list-disc list-inside text-gray-300 space-y-2 text-sm">
-                <li><code class="text-amber-400">SOLI_JOBS_SECRET</code> is <strong>required</strong>. If it isn't set, Soli does not register <code class="text-amber-400">/_jobs/run/:name</code> at all — workers log a warning at boot and SolidB callbacks will get 404s until a secret is configured.</li>
-                <li>SolidB must include an <code class="text-amber-400">X-Job-Signature</code> header whose value is the lowercase hex HMAC-SHA256 of the raw request body, keyed with <code class="text-amber-400">SOLI_JOBS_SECRET</code>.</li>
+                <li>A webhook secret is <strong>required</strong>. If neither <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code> nor <code class="text-amber-400">SOLI_JOBS_SECRET</code> is set, Soli does not register <code class="text-amber-400">/_jobs/run/:name</code> at all — workers log a warning at boot and SolidB callbacks will get 404s until a secret is configured.</li>
+                <li>SolidB sends <code class="text-amber-400">X-Webhook-Signature</code> (canonical) whose value is the lowercase hex HMAC-SHA256 of the raw request body, keyed with the configured secret. The legacy <code class="text-amber-400">X-Job-Signature</code> header is also accepted by the dispatcher.</li>
                 <li>Soli verifies the signature with <code class="text-amber-400">secure_compare()</code> (constant-time), so callers can't probe the secret by timing 401 responses.</li>
                 <li>Bad signature &rarr; <code class="text-amber-400">401</code>, missing class &rarr; <code class="text-amber-400">503</code>, handler error &rarr; <code class="text-amber-400">500</code>. Only a valid signature lets the request reach <code class="text-amber-400">cls.perform(args)</code>.</li>
             </ul>
@@ -346,9 +470,9 @@ end</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3 text-sm">Computing the signature yourself (e.g. for an integration test):</p>
             <pre class="bg-black/30 rounded-lg p-4 overflow-x-auto"><code class="text-sm text-gray-300">let body = json_stringify({ "args": { "user_id": 42 } });
-let sig  = hmac(body, getenv("SOLI_JOBS_SECRET"));   <span class="text-gray-500"># hex HMAC-SHA256</span>
-<span class="text-gray-500"># POST /_jobs/run/WelcomeEmailJob with body and X-Job-Signature: &lt;sig&gt;</span></code></pre>
-            <p class="text-gray-400 mt-3 text-sm">Use a long, random value for <code class="text-amber-400">SOLI_JOBS_SECRET</code> (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.</p>
+let sig  = hmac(body, getenv("SOLI_WEBHOOK_SECRET"));   <span class="text-gray-500"># hex HMAC-SHA256</span>
+<span class="text-gray-500"># POST /_jobs/run/WelcomeEmailJob with body and X-Webhook-Signature: &lt;sig&gt;</span></code></pre>
+            <p class="text-gray-400 mt-3 text-sm">Use a long, random value for the secret (32+ bytes from a CSPRNG). Rotate it the same way you'd rotate any HMAC key — both Soli and the SolidB sender need to flip together.</p>
         </div>
     </section>
 
@@ -380,6 +504,20 @@ end</code></pre>
     Report.generate()
     AdminMailer.send_summary()
   end
+end</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Fire-and-forget webhook to a third party</h3>
+            <p class="text-gray-400 text-sm mb-3">No handler class needed — SolidB POSTs the payload directly to the URL when the job is due. Retries on non-2xx with exponential backoff.</p>
+            <pre data-filename="app/controllers/orders_controller.sl"><code class="language-soli text-sm">fn create
+  order = Order.create(req["json"])
+  Webhook.enqueue(
+    "https://hooks.slack.com/services/T00/B00/abc",
+    { "text": "Order #" + str(order.id) + " placed" },
+    { "queue": "external", "max_retries": 5 }
+  )
+  return redirect("/orders/" + str(order.id))
 end</code></pre>
         </div>
 

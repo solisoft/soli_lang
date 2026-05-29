@@ -327,6 +327,115 @@ fn job_queues(_args: Vec<Value>) -> Result<Value, String> {
     Ok(json_to_value_or_null(serde_json::Value::Array(queues)))
 }
 
+// ===== Webhook class methods =====
+//
+// `Webhook.enqueue(url, payload, opts?)` enqueues a job whose target is the
+// given URL rather than a Soli job class. SolidB's queue worker POSTs the
+// payload to the URL with `X-Webhook-Signature` (HMAC-SHA256 of the body
+// keyed with `opts["secret"]` or the `SOLI_WEBHOOK_SECRET` env var) and
+// `X-Webhook-Event: job` / `X-Webhook-Delivery: <job_id>`.
+//
+// `opts` may include:
+//   - queue:        String  — queue name (defaults to the jobs config default)
+//   - priority:     Int     — higher first
+//   - max_retries:  Int
+//   - secret:       String  — per-job HMAC key
+//   - headers:      Hash    — extra outgoing HTTP headers
+//   - run_at:       Int     — Unix seconds (used only by enqueue_in / enqueue_at internally)
+
+fn webhook_build_opts(opts_arg: Option<&Value>) -> Result<(String, serde_json::Value), String> {
+    let mut queue = jobs_config().default_queue.clone();
+    let mut out = serde_json::Map::new();
+
+    if let Some(Value::Hash(_)) = opts_arg {
+        let json = value_to_json(opts_arg.unwrap())?;
+        if let serde_json::Value::Object(map) = json {
+            for (k, v) in map {
+                match k.as_str() {
+                    "queue" => {
+                        if let Some(s) = v.as_str() {
+                            queue = s.to_string();
+                        }
+                    }
+                    "secret" => {
+                        out.insert("webhook_secret".to_string(), v);
+                    }
+                    "headers" => {
+                        out.insert("webhook_headers".to_string(), v);
+                    }
+                    // priority, max_retries, run_at pass through unchanged
+                    _ => {
+                        out.insert(k, v);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((queue, serde_json::Value::Object(out)))
+}
+
+fn webhook_enqueue(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() < 2 {
+        return Err(
+            "Webhook.enqueue(url, payload, opts?) requires at least 2 arguments".to_string(),
+        );
+    }
+    let url = arg_string(&args, 0, "Webhook.enqueue")?;
+    let payload = arg_hash_as_json(&args, 1)?;
+    let (queue, opts_json) = webhook_build_opts(args.get(2))?;
+    let client = make_client()?;
+    let id = client
+        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
+        .map_err(|e| format!("Webhook.enqueue failed: {}", e))?;
+    Ok(Value::String(id))
+}
+
+fn webhook_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() < 3 {
+        return Err(
+            "Webhook.enqueue_in(url, duration, payload, opts?) requires at least 3 arguments"
+                .to_string(),
+        );
+    }
+    let url = arg_string(&args, 0, "Webhook.enqueue_in")?;
+    let secs = parse_duration(&args[1])?;
+    let payload = arg_hash_as_json(&args, 2)?;
+    let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
+    if let serde_json::Value::Object(ref mut map) = opts_json {
+        map.insert(
+            "run_at".to_string(),
+            serde_json::Value::String(iso_now_plus_seconds(secs)),
+        );
+    }
+    let client = make_client()?;
+    let id = client
+        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
+        .map_err(|e| format!("Webhook.enqueue_in failed: {}", e))?;
+    Ok(Value::String(id))
+}
+
+fn webhook_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
+    if args.len() < 3 {
+        return Err(
+            "Webhook.enqueue_at(url, datetime, payload, opts?) requires at least 3 arguments"
+                .to_string(),
+        );
+    }
+    let url = arg_string(&args, 0, "Webhook.enqueue_at")?;
+    let when = arg_string(&args, 1, "Webhook.enqueue_at")?;
+    let payload = arg_hash_as_json(&args, 2)?;
+    let (queue, mut opts_json) = webhook_build_opts(args.get(3))?;
+    if let serde_json::Value::Object(ref mut map) = opts_json {
+        map.insert("run_at".to_string(), serde_json::Value::String(when));
+    }
+    let client = make_client()?;
+    let id = client
+        .enqueue_webhook(&queue, &url, payload, Some(opts_json))
+        .map_err(|e| format!("Webhook.enqueue_at failed: {}", e))?;
+    Ok(Value::String(id))
+}
+
 // ===== Cron class methods =====
 
 fn cron_schedule(args: Vec<Value>) -> Result<Value, String> {
@@ -422,6 +531,7 @@ fn cron_delete(args: Vec<Value>) -> Result<Value, String> {
 
 pub fn register_jobs_builtins(env: &mut Environment) {
     register_job_class(env);
+    register_webhook_class(env);
     register_cron_class(env);
 
     // Internal: look up a class by name from the current execution env.
@@ -478,6 +588,49 @@ fn register_job_class(env: &mut Environment) {
         ..Default::default()
     };
     env.define("Job".to_string(), Value::Class(Rc::new(class)));
+}
+
+fn register_webhook_class(env: &mut Environment) {
+    let mut statics: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+    statics.insert(
+        "enqueue".to_string(),
+        Rc::new(NativeFunction::new(
+            "Webhook.enqueue",
+            None,
+            webhook_enqueue,
+        )),
+    );
+    statics.insert(
+        "enqueue_in".to_string(),
+        Rc::new(NativeFunction::new(
+            "Webhook.enqueue_in",
+            None,
+            webhook_enqueue_in,
+        )),
+    );
+    statics.insert(
+        "enqueue_at".to_string(),
+        Rc::new(NativeFunction::new(
+            "Webhook.enqueue_at",
+            None,
+            webhook_enqueue_at,
+        )),
+    );
+    statics.insert(
+        "cancel".to_string(),
+        Rc::new(NativeFunction::new("Webhook.cancel", Some(1), job_cancel)),
+    );
+    statics.insert(
+        "list".to_string(),
+        Rc::new(NativeFunction::new("Webhook.list", None, job_list)),
+    );
+
+    let class = Class {
+        name: "Webhook".to_string(),
+        native_static_methods: statics,
+        ..Default::default()
+    };
+    env.define("Webhook".to_string(), Value::Class(Rc::new(class)));
 }
 
 fn register_cron_class(env: &mut Environment) {
@@ -694,22 +847,26 @@ pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<Str
 /// per worker. Looks up the matching XJob class by name, calls its `perform`
 /// method with the supplied args, and returns 200/503/500.
 ///
-/// Security: every request must carry an `X-Job-Signature` header whose value
-/// is the HMAC-SHA256 (hex) of the raw request body, keyed with the value of
-/// `SOLI_JOBS_SECRET`. Comparison is constant-time. The route is only
-/// registered when `SOLI_JOBS_SECRET` is set (see `app_loader.rs`); the
-/// belt-and-suspenders check below also rejects requests if the secret was
-/// somehow cleared after boot.
+/// Security: every request must carry either `X-Webhook-Signature` (the
+/// canonical name SolidB emits) or `X-Job-Signature` (legacy alias) whose
+/// value is the HMAC-SHA256 (hex) of the raw request body, keyed with
+/// `SOLI_WEBHOOK_SECRET` (preferred) or `SOLI_JOBS_SECRET` (legacy). Comparison
+/// is constant-time. The route is only registered when at least one of the two
+/// secret env vars is set (see `app_loader.rs`); the belt-and-suspenders check
+/// below also rejects requests if the secret was somehow cleared after boot.
 ///
 /// Header keys are stored lowercase in `req["headers"]` (hyper normalizes
-/// them), so the lookup uses `"x-job-signature"`, not the canonical case.
+/// them), so the lookup uses lowercase names.
 pub const JOBS_CALLBACK_PRELUDE: &str = r#"
 fn __soli_jobs_run(req) {
-    let secret = getenv("SOLI_JOBS_SECRET");
+    let secret = getenv("SOLI_WEBHOOK_SECRET");
     if secret == null or secret == "" {
-        return {"status": 503, "body": "Job dispatcher disabled: SOLI_JOBS_SECRET not set"};
+        secret = getenv("SOLI_JOBS_SECRET");
     }
-    let provided_sig = req["headers"]["x-job-signature"] ?? "";
+    if secret == null or secret == "" {
+        return {"status": 503, "body": "Job dispatcher disabled: SOLI_WEBHOOK_SECRET / SOLI_JOBS_SECRET not set"};
+    }
+    let provided_sig = req["headers"]["x-webhook-signature"] ?? req["headers"]["x-job-signature"] ?? "";
     let raw_body = req["body"] ?? "";
     let expected_sig = hmac(raw_body, secret);
     if !secure_compare(provided_sig, expected_sig) {
@@ -723,9 +880,14 @@ fn __soli_jobs_run(req) {
     let payload = req["json"];
     let job_args = {};
     if payload != null {
+        // SolidB POSTs the raw `params` value (no wrapper), but older
+        // releases — and any caller that forwards the enqueue body verbatim
+        // — wrap it as `{ "args": {...} }`. Accept either shape.
         let candidate = payload["args"];
         if candidate != null {
             job_args = candidate;
+        } else {
+            job_args = payload;
         }
     }
     try {
