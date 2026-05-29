@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, HashKey, Instance, Value, ValueMethod};
+use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -54,9 +54,26 @@ impl Vm {
                 if let Some(method) = inst.class.find_method(name) {
                     return Ok(Value::Function(method));
                 }
-                // Check native methods
+                // Native methods expect the receiver as `args[0]`. Wrap the
+                // native so the instance is prepended before dispatch, mirroring
+                // the executor's wrapper in `access/member.rs`. Without this the
+                // VM called natives like `Model#delete` with empty args and
+                // panicked on `args[0]`.
                 if let Some(native) = inst.class.find_native_method(name) {
-                    return Ok(Value::NativeFunction((*native).clone()));
+                    let label = format!("{}.{}", inst.class.name, name);
+                    let receiver = object.clone();
+                    let native_fn = native.clone();
+                    return Ok(Value::NativeFunction(NativeFunction {
+                        name: label,
+                        arity: native.arity,
+                        func: Rc::new(move |args| {
+                            let mut full_args = Vec::with_capacity(args.len() + 1);
+                            full_args.push(receiver.clone());
+                            full_args.extend(args);
+                            (native_fn.func)(full_args)
+                        }),
+                        is_auto_invocable: native.is_auto_invocable,
+                    }));
                 }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: inst.class.name.clone(),
@@ -73,8 +90,27 @@ impl Vm {
                 if let Some(method) = class.find_static_method(name) {
                     return Ok(Value::Function(method));
                 }
-                // Native static method
+                // Native static method. Model statics (create/find/update/
+                // delete/...) expect the class as `args[0]`; prepend it and use
+                // a variadic arity so the VM doesn't reject the user's arg count
+                // before the class is injected — mirroring the executor wrapper.
                 if let Some(native) = class.find_native_static_method(name) {
+                    if class.is_model_subclass() {
+                        let label = format!("bound_{}", name);
+                        let class_val = object.clone();
+                        let native_fn = native.clone();
+                        return Ok(Value::NativeFunction(NativeFunction {
+                            name: label,
+                            arity: None,
+                            func: Rc::new(move |args| {
+                                let mut full_args = Vec::with_capacity(args.len() + 1);
+                                full_args.push(class_val.clone());
+                                full_args.extend(args);
+                                (native_fn.func)(full_args)
+                            }),
+                            is_auto_invocable: native.is_auto_invocable,
+                        }));
+                    }
                     return Ok(Value::NativeFunction((*native).clone()));
                 }
                 // Nested class

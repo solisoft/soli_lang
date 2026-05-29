@@ -439,6 +439,8 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
+> **`instance.delete()` runs callbacks; `Model.delete(id)` does not.** Like Rails' `destroy` vs `delete`, the instance method (`record.delete()`) is the callback-aware path — use it when you rely on a `before_delete` cascade or `after_delete` cleanup. The class-level `Model.delete(id)` is a direct, callback-skipping delete by key.
+
 ### Vetoing persistence from a `before_*` callback
 
 Returning `false` from any `before_*` callback aborts the operation. The native DB write is skipped, after-callbacks don't run, and the instance picks up an `_errors` entry of the form `[{"message": "before_<event> callback returned false; persistence aborted"}]`. Callers receive `false` (or, for `Model.create` / `Model.update`, the instance with `_errors` populated) so they can branch on the result identically to a validation failure.

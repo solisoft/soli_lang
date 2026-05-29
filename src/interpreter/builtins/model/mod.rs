@@ -261,7 +261,10 @@ pub mod scopes;
 pub mod uploaders;
 pub mod validation;
 
-pub use callbacks::{register_callback, ModelCallbacks};
+pub use callbacks::{
+    has_lifecycle_callbacks, register_callback, run_lifecycle_callbacks,
+    set_callback_aborted_error, ModelCallbacks,
+};
 pub use core::{
     build_safe_filter_from_hash, class_name_to_collection, ensure_scalar_bind_value,
     ensure_string_form_bind_value, get_model_engine_context, get_or_create_metadata,

@@ -1527,6 +1527,27 @@ impl Model {
                 )));
                 apply_hash_to_instance(&instance, &data)?;
 
+                // before_save / before_create run with `this` bound to this
+                // instance (so they can normalize fields) ahead of validation.
+                // A `false` return vetoes the insert and surfaces `_errors`.
+                let before_events: &[&str] = &["before_save", "before_create"];
+                if !super::callbacks::run_lifecycle_callbacks(&class, &instance, before_events)? {
+                    super::callbacks::set_callback_aborted_error(
+                        &instance,
+                        "before_create / before_save",
+                    );
+                    return Ok(Value::Instance(instance));
+                }
+                // When callbacks exist, re-derive the persisted data from the
+                // (possibly mutated) instance. Skipped otherwise so raw input
+                // — including a user-supplied `_key` — passes through verbatim.
+                let data = if super::callbacks::has_lifecycle_callbacks(&class_name, before_events)
+                {
+                    instance_fields_to_hash(&instance.borrow())
+                } else {
+                    data
+                };
+
                 // Run validations against the filtered input — non-permitted
                 // fields are gone, so callers can't satisfy a validation
                 // (or trigger one) by smuggling fields the model never
@@ -1570,6 +1591,11 @@ impl Model {
                         }
                         inst_mut.set("id".to_string(), json_to_value(&id));
                         drop(inst_mut);
+                        super::callbacks::run_lifecycle_callbacks(
+                            &class,
+                            &instance,
+                            &["after_create", "after_save"],
+                        )?;
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => {
@@ -1839,7 +1865,8 @@ impl Model {
         native_static_methods.insert(
             "update".to_string(),
             Rc::new(NativeFunction::new("Model.update", Some(3), |args| {
-                let class_name = get_class_name_from_class(&args)?;
+                let class = get_class_rc_from_args(&args)?;
+                let class_name = class.name.clone();
                 let collection = class_name_to_collection(&class_name);
 
                 let id = match args.get(1) {
@@ -1863,7 +1890,40 @@ impl Model {
                         // legitimate persistence rather than block an
                         // attacker.
                         let filtered = filter_mass_assign(&class_name, hash_val);
-                        let pairs = match &filtered {
+
+                        // before_save / before_update run on a temp instance
+                        // built from the update hash (Rails: callbacks see the
+                        // assigned attributes, not a fresh DB fetch). A `false`
+                        // return vetoes the write and surfaces `_errors`. Only
+                        // round-trips through the instance when callbacks exist.
+                        let before_events: &[&str] = &["before_save", "before_update"];
+                        let source = if super::callbacks::has_lifecycle_callbacks(
+                            &class_name,
+                            before_events,
+                        ) {
+                            let inst = Rc::new(RefCell::new(
+                                crate::interpreter::value::Instance::new(class.clone()),
+                            ));
+                            apply_hash_to_instance(&inst, &filtered)?;
+                            if !super::callbacks::run_lifecycle_callbacks(
+                                &class,
+                                &inst,
+                                before_events,
+                            )? {
+                                super::callbacks::set_callback_aborted_error(
+                                    &inst,
+                                    "before_update / before_save",
+                                );
+                                return Ok(Value::Instance(inst));
+                            }
+                            let inst_ref = inst.borrow();
+                            let derived = instance_fields_to_hash(&inst_ref);
+                            drop(inst_ref);
+                            derived
+                        } else {
+                            filtered
+                        };
+                        let pairs = match &source {
                             Value::Hash(p) => p,
                             _ => unreachable!(),
                         };
@@ -2610,6 +2670,21 @@ impl Model {
                         }
                     }
 
+                    // before_save / before_update — a callback returning false
+                    // vetoes the persist (skip the DB write, stamp _errors).
+                    let class = instance.borrow().class.clone();
+                    if !super::callbacks::run_lifecycle_callbacks(
+                        &class,
+                        &instance,
+                        &["before_save", "before_update"],
+                    )? {
+                        super::callbacks::set_callback_aborted_error(
+                            &instance,
+                            "before_update / before_save",
+                        );
+                        return Ok(Value::Bool(false));
+                    }
+
                     let inst_ref = instance.borrow();
                     let class_name = inst_ref.class.name.clone();
                     let collection = class_name_to_collection(&class_name);
@@ -2716,6 +2791,12 @@ impl Model {
                                 "_errors".to_string(),
                                 Value::Array(Rc::new(RefCell::new(vec![]))),
                             );
+                            drop(inst_mut);
+                            super::callbacks::run_lifecycle_callbacks(
+                                &class,
+                                &instance,
+                                &["after_update", "after_save"],
+                            )?;
                             Ok(Value::Bool(true))
                         }
                         Err(e) => {
@@ -2765,6 +2846,38 @@ impl Model {
                                 n - 1
                             ))
                         }
+                    }
+
+                    // save() runs the create chain for a brand-new instance and
+                    // the update chain for a persisted one (Rails-style), so the
+                    // callback events branch on whether `_key` is set. before_*
+                    // runs ahead of validation so a callback can normalize fields
+                    // into a valid state; a `false` return vetoes the persist.
+                    let class = instance.borrow().class.clone();
+                    let is_persisted =
+                        matches!(instance.borrow().get("_key"), Some(Value::String(_)));
+                    let (before_events, after_events): (&[&str], &[&str]) = if is_persisted {
+                        (
+                            &["before_save", "before_update"],
+                            &["after_update", "after_save"],
+                        )
+                    } else {
+                        (
+                            &["before_save", "before_create"],
+                            &["after_create", "after_save"],
+                        )
+                    };
+                    if !super::callbacks::run_lifecycle_callbacks(&class, &instance, before_events)?
+                    {
+                        super::callbacks::set_callback_aborted_error(
+                            &instance,
+                            if is_persisted {
+                                "before_update / before_save"
+                            } else {
+                                "before_create / before_save"
+                            },
+                        );
+                        return Ok(Value::Bool(false));
                     }
 
                     let inst_ref = instance.borrow();
@@ -2888,6 +3001,12 @@ impl Model {
                                     "_errors".to_string(),
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
+                                drop(inst_mut);
+                                super::callbacks::run_lifecycle_callbacks(
+                                    &class,
+                                    &instance,
+                                    after_events,
+                                )?;
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -2917,6 +3036,12 @@ impl Model {
                                     "_errors".to_string(),
                                     Value::Array(Rc::new(RefCell::new(vec![]))),
                                 );
+                                drop(inst_mut);
+                                super::callbacks::run_lifecycle_callbacks(
+                                    &class,
+                                    &instance,
+                                    after_events,
+                                )?;
                                 Ok(Value::Bool(true))
                             }
                             Err(e) => {
@@ -2933,9 +3058,12 @@ impl Model {
             )),
         );
 
+        use super::callbacks::{run_lifecycle_callbacks, set_callback_aborted_error};
         // instance.delete() - Delete (or soft-delete) the document from DB.
-        // before_delete/after_delete run in the executor interceptor so user
-        // methods and closures can execute with `this` bound to the instance.
+        // before_delete/after_delete run here (via run_lifecycle_callbacks) so
+        // user methods and closures fire with `this` bound to the instance,
+        // identically whether dispatched by the tree-walking executor or the
+        // bytecode VM (both reach this same native).
         native_methods.insert(
             "delete".to_string(),
             Rc::new(NativeFunction::new("Model#delete", Some(0), |args| {
@@ -2943,6 +3071,16 @@ impl Model {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
                 };
+                let class = instance.borrow().class.clone();
+
+                // A before_delete callback returning `false` vetoes the delete:
+                // skip the DB write and the after-callbacks, stamp `_errors`, and
+                // return `false` so callers can branch on the result.
+                if !run_lifecycle_callbacks(&class, &instance, &["before_delete"])? {
+                    set_callback_aborted_error(&instance, "before_delete");
+                    return Ok(Value::Bool(false));
+                }
+
                 let inst_ref = instance.borrow();
                 let class_name = inst_ref.class.name.clone();
                 let collection = class_name_to_collection(&class_name);
@@ -2955,7 +3093,7 @@ impl Model {
                 };
                 drop(inst_ref);
 
-                if is_soft_delete(&class_name) {
+                let result = if is_soft_delete(&class_name) {
                     // Soft delete: set deleted_at timestamp
                     let now = chrono::Utc::now().to_rfc3339();
                     let mut map = serde_json::Map::new();
@@ -2968,17 +3106,25 @@ impl Model {
                             instance
                                 .borrow_mut()
                                 .set("deleted_at".to_string(), Value::String(now));
-                            Ok(Value::Bool(true))
+                            Value::Bool(true)
                         }
-                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                        Err(e) => Value::String(format!("Error: {}", e)),
                     }
                 } else {
                     // Hard delete: remove document
                     match exec_delete(&collection, &key_str) {
-                        Ok(result) => Ok(json_to_value(&result)),
-                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                        Ok(result) => json_to_value(&result),
+                        Err(e) => Value::String(format!("Error: {}", e)),
                     }
+                };
+
+                // after_delete fires only when the delete actually succeeded.
+                let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
+                    || matches!(&result, Value::Bool(false));
+                if !failed {
+                    run_lifecycle_callbacks(&class, &instance, &["after_delete"])?;
                 }
+                Ok(result)
             })),
         );
 
@@ -2990,6 +3136,12 @@ impl Model {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
                 };
+                let class = instance.borrow().class.clone();
+                if !run_lifecycle_callbacks(&class, &instance, &["before_save", "before_update"])? {
+                    set_callback_aborted_error(&instance, "before_update / before_save");
+                    return Ok(Value::Bool(false));
+                }
+
                 let inst_ref = instance.borrow();
                 let collection = class_name_to_collection(&inst_ref.class.name);
                 let key = match inst_ref.get("_key") {
@@ -3009,6 +3161,11 @@ impl Model {
                         instance
                             .borrow_mut()
                             .set("deleted_at".to_string(), Value::Null);
+                        run_lifecycle_callbacks(
+                            &class,
+                            &instance,
+                            &["after_update", "after_save"],
+                        )?;
                         Ok(Value::Bool(true))
                     }
                     Err(e) => Err(format!("restore failed: {}", e)),
@@ -3042,6 +3199,12 @@ impl Model {
                     Value::Instance(inst) => inst.clone(),
                     _ => return Err("Expected instance".to_string()),
                 };
+                let class = instance.borrow().class.clone();
+                if !run_lifecycle_callbacks(&class, &instance, &["before_save", "before_update"])? {
+                    set_callback_aborted_error(&instance, "before_update / before_save");
+                    return Ok(Value::Bool(false));
+                }
+
                 let inst_ref = instance.borrow();
                 let collection = class_name_to_collection(&inst_ref.class.name);
                 let key = match inst_ref.get("_key") {
@@ -3065,6 +3228,11 @@ impl Model {
                         instance
                             .borrow_mut()
                             .set("_updated_at".to_string(), Value::String(now));
+                        run_lifecycle_callbacks(
+                            &class,
+                            &instance,
+                            &["after_update", "after_save"],
+                        )?;
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("touch failed: {}", e)),
@@ -3159,6 +3327,18 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
         _ => return Err(format!("{}() amount must be a number", op_name)),
     };
 
+    // increment/decrement persist a field change, so they run the update
+    // callback chain like save/update/touch (Rails-style).
+    let class = instance.borrow().class.clone();
+    if !super::callbacks::run_lifecycle_callbacks(
+        &class,
+        &instance,
+        &["before_save", "before_update"],
+    )? {
+        super::callbacks::set_callback_aborted_error(&instance, "before_update / before_save");
+        return Ok(Value::Bool(false));
+    }
+
     let inst_ref = instance.borrow();
     let collection = class_name_to_collection(&inst_ref.class.name);
     let key_str = match inst_ref.get("_key") {
@@ -3175,6 +3355,11 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
             inst_mut.set(field, Value::Int(new_value));
             inst_mut.set("_rev".to_string(), Value::String(new_rev));
             drop(inst_mut);
+            super::callbacks::run_lifecycle_callbacks(
+                &class,
+                &instance,
+                &["after_update", "after_save"],
+            )?;
             Ok(Value::Instance(instance))
         }
         Err(e) => Err(format!("{} failed: {}", op_name, e)),

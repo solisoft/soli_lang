@@ -22,6 +22,9 @@ pub mod vm_exceptions;
 pub mod vm_hash_methods;
 pub mod vm_string_methods;
 
+#[cfg(test)]
+mod model_dispatch_tests;
+
 pub use chunk::{CompiledModule, FunctionProto};
 pub use compiler::Compiler;
 pub use disassembler::disassemble;
