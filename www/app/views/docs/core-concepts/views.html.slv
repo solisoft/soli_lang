@@ -496,7 +496,7 @@
 
     <div class="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
         <p class="text-emerald-200/80 text-sm mb-2">
-            <strong>Caching defaults:</strong> every response out of <code>render(...)</code> carries two headers automatically so the prefetch actually delivers instant navigation on click.
+            <strong>Caching defaults:</strong> every HTML response from a controller &mdash; whether you call <code>render(...)</code> explicitly or let an OOP controller action auto-render its matching view &mdash; carries two headers automatically so the prefetch actually delivers instant navigation on click.
         </p>
         <ul class="text-emerald-200/80 text-sm space-y-1 list-disc list-inside">
             <li><code>ETag: W/"&lt;16-hex&gt;"</code> &mdash; content-derived <em>weak</em> validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection). Weak so it survives a CDN re-compressing the response (Cloudflare and friends strip strong ETags when they re-encode; weak ones pass through).</li>

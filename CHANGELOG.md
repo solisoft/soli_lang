@@ -45,6 +45,7 @@
 
 ### Bug Fixes
 
+* **fix(serve):** route OOP-controller **auto-render** (set `@vars`, let the matching view render with no explicit `render()` call) through `html_response`. It was hand-building the response with only `Content-Type`, silently dropping the `ETag`, `Cache-Control`, and the injected hover-prefetch `<script>` — so apps that rely on auto-render (the idiomatic MVC flow) got no prefetch and no conditional-GET caching on any page, while explicit `render()` calls did. Both paths now behave identically.
 * **fix(prefetch):** serve speculative prefetch requests (`Sec-Purpose: prefetch`) a short `private, max-age` (default 30s, `SOLI_PREFETCH_TTL`) instead of `no-cache`, so the click reuses the prefetched HTML straight from the browser cache — no conditional GET, so a CDN (Cloudflare et al.) that won't relay a `304` can no longer turn hover-prefetch into a wasted full re-download. Normal navigations keep `private, no-cache`.
 * **fix(prefetch):** emit weak ETag (`W/"..."`) so CDNs that re-encode (Brotli/gzip) don't strip it — strong ETags were being dropped at Cloudflare, breaking 304 reuse and turning the hover-prefetch feature into a cosmetic load
 * **fix(metrics):** wire lexing/parsing/VM execution counters — they were defined but never incremented, always showing 0 ([#](https://github.com/solisoft/soli_lang/commit/436b4ff))

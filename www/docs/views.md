@@ -217,7 +217,7 @@ SOLI_PREFETCH=off soli serve .
 
 `off`, `false`, `0`, and `no` all disable. Anything else (or unset) keeps it on.
 
-**Caching defaults:** every response out of `render(...)` carries two headers automatically so the prefetch actually delivers instant navigation:
+**Caching defaults:** every HTML response from a controller — whether you call `render(...)` explicitly or let an OOP controller action auto-render its matching view — carries two headers automatically so the prefetch actually delivers instant navigation:
 
 - **`ETag: W/"<16-hex>"`** — a content-derived *weak* validator (FNV-1a over the rendered body, computed after live-reload/prefetch script injection so it reflects the exact bytes on the wire). Weak, not strong, so it survives the content-encoding transforms a CDN applies (Cloudflare and friends strip strong ETags when they re-compress; weak ones pass through).
 - **`Cache-Control: private, no-cache`** — the browser may cache, shared caches (CDN, reverse proxy) may not; the entry must be revalidated before reuse.

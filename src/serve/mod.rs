@@ -4889,23 +4889,14 @@ fn try_render_template(
         }
     };
 
-    // Build response hash
-    let mut response_pairs: HashPairs = HashPairs::default();
-    response_pairs.insert(HashKey::String("status".to_string()), Value::Int(200));
-    response_pairs.insert(
-        HashKey::String("headers".to_string()),
-        Value::Hash(Rc::new(RefCell::new({
-            let mut h: HashPairs = HashPairs::default();
-            h.insert(
-                HashKey::String("Content-Type".to_string()),
-                Value::String("text/html; charset=utf-8".to_string()),
-            );
-            h
-        }))),
-    );
-    response_pairs.insert(HashKey::String("body".to_string()), Value::String(body));
-
-    Ok(Some(Value::Hash(Rc::new(RefCell::new(response_pairs)))))
+    // Route the auto-rendered body through `html_response` so it gets the same
+    // treatment as an explicit `render(...)` call: Content-Type, content-derived
+    // ETag, `Cache-Control`, and the hover-prefetch / live-reload script
+    // injection. Building the response hash inline here (Content-Type only) used
+    // to silently strip all of that — so OOP controllers that rely on auto-render
+    // (set `@vars`, let the matching view render) never got prefetch or
+    // conditional-GET caching, while explicit `render()` calls did.
+    Ok(Some(crate::template::html_response(body, 200)))
 }
 
 /// Extract response from a value returned by after action.
