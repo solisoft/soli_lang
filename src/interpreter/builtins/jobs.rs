@@ -16,6 +16,37 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{empty_hash, value_to_json, Class, NativeFunction, Value};
 use crate::solidb_http::SoliDBClient;
 
+use std::cell::RefCell;
+
+thread_local! {
+    /// Per-worker registry of loaded `app/jobs/*_job.sl` classes, keyed by
+    /// class name. Populated by `load_jobs_in_worker` after facade injection.
+    ///
+    /// The `/_jobs/run/:name` callback dispatcher resolves the target class
+    /// through this registry. It exists because the prod execution path runs
+    /// requests through the bytecode VM, which never populates the thread-local
+    /// `CURRENT_ENV` that `current_env_lookup` reads — so an env-only lookup
+    /// returns Null in prod and the callback 503s ("Job class not loaded"),
+    /// even though the class loaded fine at boot. This registry is populated in
+    /// both modes on the worker thread, so dispatch works regardless of whether
+    /// the interpreter or the VM is serving the request.
+    static JOB_CLASSES: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
+}
+
+/// Register a loaded job class so the `/_jobs/run/:name` dispatcher can find it
+/// independently of the (interpreter-only) `CURRENT_ENV` thread-local.
+pub fn register_job_class_in_registry(name: &str, class: Value) {
+    JOB_CLASSES.with(|registry| {
+        registry.borrow_mut().insert(name.to_string(), class);
+    });
+}
+
+/// Look up a job class previously registered via
+/// `register_job_class_in_registry`. Returns `None` if unknown.
+pub fn lookup_job_class(name: &str) -> Option<Value> {
+    JOB_CLASSES.with(|registry| registry.borrow().get(name).cloned())
+}
+
 /// Static configuration for the jobs system, sourced from env vars on first use.
 struct JobsConfig {
     database: String,
@@ -550,7 +581,11 @@ pub fn register_jobs_builtins(env: &mut Environment) {
                 }
             };
             use crate::interpreter::executor::current_env_lookup;
-            Ok(current_env_lookup(&name).unwrap_or(Value::Null))
+            // Prefer the mode-independent job registry (populated for both the
+            // interpreter and VM paths); fall back to the interpreter's
+            // CURRENT_ENV for any non-job class the caller might request.
+            let resolved = lookup_job_class(&name).or_else(|| current_env_lookup(&name));
+            Ok(resolved.unwrap_or(Value::Null))
         })),
     );
 }

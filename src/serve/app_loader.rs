@@ -344,9 +344,18 @@ pub(crate) fn load_jobs_in_worker(
 
         // Inject facade methods (perform_now, perform_later, perform_in, ...).
         let new_class = crate::interpreter::builtins::jobs::inject_facade_methods(&class_rc);
-        interpreter.environment.borrow_mut().define(
-            expected_class.clone(),
-            Value::Class(std::rc::Rc::new(new_class)),
+        let class_value = Value::Class(std::rc::Rc::new(new_class));
+        interpreter
+            .environment
+            .borrow_mut()
+            .define(expected_class.clone(), class_value.clone());
+
+        // Register in the mode-independent job registry so the
+        // `/_jobs/run/:name` dispatcher can resolve it under the prod VM,
+        // which never populates the interpreter's `CURRENT_ENV`.
+        crate::interpreter::builtins::jobs::register_job_class_in_registry(
+            &expected_class,
+            class_value,
         );
 
         // Worker 0 only: upsert `static cron` schedules to SolidB.
