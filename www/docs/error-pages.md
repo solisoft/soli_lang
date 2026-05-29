@@ -39,9 +39,9 @@ In production mode, error pages keep the clean, branded look but **also surface 
 
 Custom error pages can override the defaults — see [Custom Error Pages](#custom-error-pages). When a custom template is installed it takes precedence and the appended details block is **not** rendered.
 
-#### Production stderr logging
+#### Error logging to stderr
 
-Production mode also writes a multi-line block to stderr for every 500 — useful when you only have access to the container / journald logs:
+For every 500 the server writes a multi-line block to stderr — useful when you only have access to the container / journald logs. This fires in **both `--dev` and `--no-dev`** so failures show up in your terminal during development the same way they do in production:
 
 ```
 [ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13

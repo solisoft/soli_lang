@@ -110,11 +110,11 @@
             </div>
         </div>
 
-        <!-- Production stderr block -->
+        <!-- stderr logging block -->
         <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
-            <h3 class="font-semibold text-white mb-3">Production stderr logging</h3>
+            <h3 class="font-semibold text-white mb-3">Error logging to stderr</h3>
             <p class="text-gray-400 text-sm mb-4">
-                Every 500 in production also writes a multi-line block to stderr — useful when you only have access to container / journald logs. The first <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
+                For every 500 the server writes a multi-line block to stderr — useful when you only have access to container / journald logs. This fires in <strong>both <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">--dev</code> and <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">--no-dev</code></strong> so failures show up in your terminal during development the same way they do in production. The first <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
             </p>
             <pre class="text-xs text-gray-300 bg-gray-900 p-4 rounded overflow-x-auto"><code>[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
   stack:

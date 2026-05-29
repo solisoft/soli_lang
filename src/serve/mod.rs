@@ -3878,9 +3878,22 @@ fn call_handler(
                         .breakpoint_env_json()
                         .map(|s| s.to_string())
                         .or(captured_env);
+                    let request_id = Uuid::new_v4().to_string();
+                    let error_msg = e.to_string();
+                    // Breakpoints are intentional debug pauses, not failures,
+                    // so don't emit the stderr error block for them.
+                    if !e.is_breakpoint() {
+                        error_logging::log_production_error(
+                            &request_id,
+                            request_data,
+                            &error_msg,
+                            &stack_trace,
+                            env_json.as_deref(),
+                        );
+                    }
                     if dev_mode {
                         let error_html = error_pages::render_error_page(
-                            &e.to_string(),
+                            &error_msg,
                             interpreter,
                             request_data,
                             &stack_trace,
@@ -3895,15 +3908,6 @@ fn call_handler(
                             body: error_html.into_bytes(),
                         }
                     } else {
-                        let request_id = Uuid::new_v4().to_string();
-                        let error_msg = e.to_string();
-                        error_logging::log_production_error(
-                            &request_id,
-                            request_data,
-                            &error_msg,
-                            &stack_trace,
-                            env_json.as_deref(),
-                        );
                         let error_html = error_pages::render_production_error_page(
                             500,
                             &error_msg,
@@ -3932,9 +3936,18 @@ fn call_handler(
             // This error is a String from resolve_handler, no captured
             // stack trace — use whatever the interpreter still holds.
             let stack_trace = interpreter.get_stack_trace();
+            let request_id = Uuid::new_v4().to_string();
+            let error_msg = e.to_string();
+            error_logging::log_production_error(
+                &request_id,
+                request_data,
+                &error_msg,
+                &stack_trace,
+                captured_env.as_deref(),
+            );
             if dev_mode {
                 let error_html = error_pages::render_error_page(
-                    &e.to_string(),
+                    &error_msg,
                     interpreter,
                     request_data,
                     &stack_trace,
@@ -3949,15 +3962,6 @@ fn call_handler(
                     body: error_html.into_bytes(),
                 }
             } else {
-                let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                error_logging::log_production_error(
-                    &request_id,
-                    request_data,
-                    &error_msg,
-                    &stack_trace,
-                    captured_env.as_deref(),
-                );
                 let error_html = error_pages::render_production_error_page(
                     500,
                     &error_msg,
@@ -4079,9 +4083,18 @@ fn call_oop_controller_action(
         Err(e) => {
             let stack_trace = interpreter.get_stack_trace();
             let env_json = interpreter.serialize_environment_for_debug();
+            let request_id = Uuid::new_v4().to_string();
+            let error_msg = e.to_string();
+            error_logging::log_production_error(
+                &request_id,
+                request_data,
+                &error_msg,
+                &stack_trace,
+                Some(&env_json),
+            );
             return Some(if dev_mode {
                 let error_html = error_pages::render_error_page(
-                    &e,
+                    &error_msg,
                     interpreter,
                     request_data,
                     &stack_trace,
@@ -4096,15 +4109,6 @@ fn call_oop_controller_action(
                     body: error_html.into_bytes(),
                 }
             } else {
-                let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                error_logging::log_production_error(
-                    &request_id,
-                    request_data,
-                    &error_msg,
-                    &stack_trace,
-                    Some(&env_json),
-                );
                 let error_html = error_pages::render_production_error_page(
                     500,
                     &error_msg,
@@ -4218,9 +4222,22 @@ fn call_oop_controller_action(
                     .breakpoint_env_json()
                     .map(|s| s.to_string())
                     .or_else(|| Some(interpreter.serialize_environment_for_debug()));
+                let request_id = Uuid::new_v4().to_string();
+                let error_msg = e.to_string();
+                // Breakpoints are intentional debug pauses, not failures,
+                // so don't emit the stderr error block for them.
+                if !e.is_breakpoint() {
+                    error_logging::log_production_error(
+                        &request_id,
+                        request_data,
+                        &error_msg,
+                        &stack_trace,
+                        env_json.as_deref(),
+                    );
+                }
                 if dev_mode {
                     let error_html = error_pages::render_error_page(
-                        &e.to_string(),
+                        &error_msg,
                         interpreter,
                         request_data,
                         &stack_trace,
@@ -4235,15 +4252,6 @@ fn call_oop_controller_action(
                         body: error_html.into_bytes(),
                     }
                 } else {
-                    let request_id = Uuid::new_v4().to_string();
-                    let error_msg = e.to_string();
-                    error_logging::log_production_error(
-                        &request_id,
-                        request_data,
-                        &error_msg,
-                        &stack_trace,
-                        env_json.as_deref(),
-                    );
                     let error_html = error_pages::render_production_error_page(
                         500,
                         &error_msg,
@@ -5027,13 +5035,15 @@ fn handle_request(
     let method = &data.method;
     let path = &data.path;
 
-    // Check if request logging is enabled (cached per-thread to avoid env var lookup per request)
+    // Check if request logging is enabled (cached per-thread to avoid env var lookup per request).
+    // `--dev` implies access logging — operators expect every route to show up in the terminal
+    // without setting `SOLI_REQUEST_LOG=1` first.
     thread_local! {
         static LOG_REQUESTS: bool = std::env::var("SOLI_REQUEST_LOG")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
     }
-    let log_requests = LOG_REQUESTS.with(|v| *v);
+    let log_requests = dev_mode || LOG_REQUESTS.with(|v| *v);
 
     // Only create timer when logging is enabled (avoids clock_gettime syscall per request)
     let start_time = if log_requests {
@@ -5434,6 +5444,15 @@ fn handle_request(
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = middleware_fallback_stack(&mw_name, mw_source.as_deref());
+                        let request_id = Uuid::new_v4().to_string();
+                        let env_json = interpreter.serialize_environment_for_debug();
+                        error_logging::log_production_error(
+                            &request_id,
+                            data,
+                            &err,
+                            &stack_trace,
+                            Some(&env_json),
+                        );
                         let error_html = error_pages::render_error_page(
                             &err,
                             interpreter,
@@ -5470,6 +5489,24 @@ fn handle_request(
                         middleware_fallback_stack(&mw_name, mw_source.as_deref())
                     });
                     let breakpoint_env = e.breakpoint_env_json();
+                    let fallback_env: Option<String> = if breakpoint_env.is_none() {
+                        Some(interpreter.serialize_environment_for_debug())
+                    } else {
+                        None
+                    };
+                    let env_for_log = breakpoint_env.or(fallback_env.as_deref());
+                    // Breakpoints are intentional debug pauses, not failures,
+                    // so don't emit the stderr error block for them.
+                    if !e.is_breakpoint() {
+                        let request_id = Uuid::new_v4().to_string();
+                        error_logging::log_production_error(
+                            &request_id,
+                            data,
+                            &e.to_string(),
+                            &stack_trace,
+                            env_for_log,
+                        );
+                    }
                     let error_html = error_pages::render_error_page(
                         &e.to_string(),
                         interpreter,
@@ -5533,6 +5570,15 @@ fn handle_request(
                 MiddlewareResult::Error(err) => {
                     if dev_mode {
                         let stack_trace = middleware_fallback_stack(&mw_name, mw_source.as_deref());
+                        let request_id = Uuid::new_v4().to_string();
+                        let env_json = interpreter.serialize_environment_for_debug();
+                        error_logging::log_production_error(
+                            &request_id,
+                            data,
+                            &err,
+                            &stack_trace,
+                            Some(&env_json),
+                        );
                         let error_html = error_pages::render_error_page(
                             &err,
                             interpreter,
@@ -5565,6 +5611,24 @@ fn handle_request(
                         middleware_fallback_stack(&mw_name, mw_source.as_deref())
                     });
                     let breakpoint_env = e.breakpoint_env_json();
+                    let fallback_env: Option<String> = if breakpoint_env.is_none() {
+                        Some(interpreter.serialize_environment_for_debug())
+                    } else {
+                        None
+                    };
+                    let env_for_log = breakpoint_env.or(fallback_env.as_deref());
+                    // Breakpoints are intentional debug pauses, not failures,
+                    // so don't emit the stderr error block for them.
+                    if !e.is_breakpoint() {
+                        let request_id = Uuid::new_v4().to_string();
+                        error_logging::log_production_error(
+                            &request_id,
+                            data,
+                            &e.to_string(),
+                            &stack_trace,
+                            env_for_log,
+                        );
+                    }
                     let error_html = error_pages::render_error_page(
                         &e.to_string(),
                         interpreter,
