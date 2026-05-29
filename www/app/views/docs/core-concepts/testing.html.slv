@@ -249,13 +249,35 @@ assert_eq(location, "/expected/path")</code></pre>
                 <p class="text-sm text-gray-400 mt-1">Simulates logged-in user with given id</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">as_user(user_id, opts)</code>
+                <p class="text-sm text-gray-400 mt-1">User id + session opts (e.g. <code>{"role": "admin"}</code>)</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">as_role(role)</code>
+                <p class="text-sm text-gray-400 mt-1">First user with matching role (single-table)</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">sign_in(name, id?)</code>
+                <p class="text-sm text-gray-400 mt-1">Separate-collection auth (e.g. <code>Admin</code> model)</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">as_admin()</code>
-                <p class="text-sm text-gray-400 mt-1">Simulates authenticated admin</p>
+                <p class="text-sm text-gray-400 mt-1">Shortcut for <code class="text-emerald-300">as_user(1)</code></p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">with_token(token)</code>
                 <p class="text-sm text-gray-400 mt-1">Sets a Bearer authorization header</p>
             </div>
+        </div>
+
+        <div class="rounded-xl bg-indigo-500/5 border border-indigo-500/20 p-5 mb-8">
+            <p class="text-sm font-semibold text-indigo-300 mb-2">Which helper to use?</p>
+            <ul class="text-sm text-gray-300 space-y-1 list-disc list-inside">
+                <li><strong>Single-table role-column</strong> (one <code>users</code> collection, role string field): use <code class="text-emerald-300">as_role("admin")</code> or <code class="text-emerald-300">as_user(id, {"role": "admin"})</code>.</li>
+                <li><strong>Separate-collection</strong> (distinct <code>User</code>, <code>Admin</code>, ... models): use <code class="text-emerald-300">sign_in("admin", id)</code> / <code class="text-emerald-300">sign_in("admin")</code>.</li>
+                <li><strong>Just need a logged-in user</strong> (no role checks): <code class="text-emerald-300">as_user(id)</code> is the lightest path.</li>
+                <li><strong>Anything else</strong> (non-conventional session keys): fall back to <code class="text-emerald-300">with_session({...})</code>.</li>
+            </ul>
         </div>
 
         <section id="def-as-guest" class="scroll-mt-20 mb-6">
@@ -282,13 +304,53 @@ assert_eq(res_status(response), 200)</code></pre>
             </div>
         </section>
 
+        <section id="def-as-user-opts" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-as-user-opts" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">as_user(user_id, options)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Writes the user id <em>and</em> an options hash into the server-side session store. Use this when middleware reads more than <code>user_id</code> (e.g. a <code>role</code> field on the single-table users collection). Any keys work — extend as your auth needs grow.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_user(42, {"role": "admin"})
+response = get("/admin/dashboard")
+
+# Any keys work — extend as your auth needs grow:
+as_user(42, {"role": "admin", "tenant": "acme"})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-as-role" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-as-role" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">as_role(role)</code>
+                </a>
+                <p class="text-gray-400 mb-2">Looks up the first user with <code>role == &lt;value&gt;</code> in the <code>users</code> collection and signs in as that record. The role is also stored in the session so middleware reading <code>req.session["role"]</code> sees it on the next request. Errors if no matching user exists — seed one in <code>before_each</code>, or pass an explicit id with <code class="text-emerald-300">as_user(id, {"role": "admin"})</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_role("admin")
+response = get("/admin/dashboard")
+assert_eq(res_status(response), 200)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-sign-in" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-sign-in" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-indigo-400">sign_in(resource_name, id?)</code>
+                </a>
+                <p class="text-gray-400 mb-2">For <strong>separate-collection</strong> auth (Devise-style: distinct <code>User</code> / <code>Admin</code> models with their own session keys). Writes <code>session.{resource_name}_id</code>. Without an explicit id, looks up the first record of the matching model (<code>"admin"</code> → <code>Admin</code>, <code>"blog_post"</code> → <code>BlogPost</code>).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">sign_in("admin", 5)         # session.admin_id = 5
+sign_in("admin")            # session.admin_id = Admin.first.id
+sign_in("user", 42)         # session.user_id = 42
+sign_in("staff", 7)         # session.staff_id = 7</code></pre>
+                <p class="text-sm text-gray-400 mt-3">Apps with non-conventional session keys (e.g. <code>current_admin_id</code>) should keep using <code class="text-emerald-300">with_session({"current_admin_id": 5})</code>.</p>
+            </div>
+        </section>
+
         <section id="def-as-admin" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-as-admin" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-indigo-400">as_admin()</code>
                 </a>
-                <p class="text-gray-400 mb-2">Simulates an authenticated administrator.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">as_admin()
+                <p class="text-gray-400 mb-2">Zero-arg convenience equivalent to <code class="text-emerald-300">as_user(1)</code> — logs in as whichever record has <code>id = 1</code> in your <code>users</code> table. There is no built-in role or permission system: by convention, scaffolded apps seed user_id 1 as the administrator, but your controllers and middleware are still responsible for enforcing admin authorization.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">as_admin()   # same as as_user(1)
 response = get("/admin/dashboard")
 assert_eq(res_status(response), 200)</code></pre>
             </div>

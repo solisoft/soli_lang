@@ -163,16 +163,27 @@ work without coupling to the rendered HTML.
 ### Auth & session
 
 ```soli
-as_guest()                    # clear all auth (default state for before_each)
-as_user(user_id)              # log in as a given user
-as_admin()                    # convenience: log in as user 1
-login(email, password)        # run the real login flow
+as_guest()                          # clear all auth (default state for before_each)
+as_user(user_id)                    # log in as a given user
+as_user(user_id, { "role": "..." }) # user + session opts (writes to server-side store)
+as_role("admin")                    # first user with role == "admin" (single-table apps)
+sign_in("admin", id)                # separate-collection auth: writes session.admin_id
+sign_in("admin")                    # same, but uses Admin.first
+as_admin()                          # convenience: log in as user 1
+login(email, password)              # run the real login flow
 logout()
-current_user()                # the logged-in user, or nil
+current_user()                      # the logged-in user, or nil
 signed_in?()
-with_token("abc...")          # set a Bearer token header for the next request
-with_session({ "foo": "bar" })  # forge session keys (gated by SEC-040)
+with_token("abc...")                # set a Bearer token header for the next request
+with_session({ "foo": "bar" })      # forge arbitrary session keys (gated by SEC-040)
 ```
+
+Pick the helper that matches your auth shape:
+
+- **One `users` collection with a role string field** → `as_role("admin")` or `as_user(id, { "role": "admin" })`.
+- **Distinct `User` / `Admin` models with separate session keys** → `sign_in("admin", id)` / `sign_in("admin")`.
+- **Just need a logged-in user, no role checks** → `as_user(id)`.
+- **Non-conventional session keys, arbitrary seeding** → `with_session({ ... })`.
 
 ### Request modifiers
 

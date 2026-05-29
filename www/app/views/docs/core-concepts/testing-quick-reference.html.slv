@@ -219,8 +219,23 @@
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42)</td>
                 </tr>
                 <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(id, opts)</code></td>
+                    <td class="py-3 px-4 text-gray-400">User + session opts (e.g. role)</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42, {"role": "admin"})</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_role(role)</code></td>
+                    <td class="py-3 px-4 text-gray-400">First user with role</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_role("admin")</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">sign_in(name, id?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Separate-collection auth</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">sign_in("admin", 5)</td>
+                </tr>
+                <tr class="hover:bg-white/5">
                     <td class="py-3 px-4"><code class="text-emerald-300">as_admin()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Simulate admin</td>
+                    <td class="py-3 px-4 text-gray-400">Shortcut for <code class="text-emerald-300">as_user(1)</code></td>
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_admin()</td>
                 </tr>
                 <tr class="hover:bg-white/5">

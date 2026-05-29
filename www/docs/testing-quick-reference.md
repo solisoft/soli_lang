@@ -51,7 +51,10 @@ Quick lookup for E2E controller testing helpers.
 |----------|-------------|---------|
 | `as_guest()` | Clear auth | `as_guest()` |
 | `as_user(id)` | Simulate user | `as_user(42)` |
-| `as_admin()` | Simulate admin | `as_admin()` |
+| `as_user(id, opts)` | User + session opts | `as_user(42, {"role": "admin"})` |
+| `as_role(role)` | First user with role | `as_role("admin")` |
+| `sign_in(name, id?)` | Separate-collection auth | `sign_in("admin", 5)` |
+| `as_admin()` | Shortcut for `as_user(1)` | `as_admin()` |
 | `with_session(hash)` | Set session data | `with_session({...})` |
 | `with_token(token)` | Set JWT auth | `with_token("jwt...")` |
 | `login(email, password)` | Perform login | `login("user@test.com", "pass")` |

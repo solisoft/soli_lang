@@ -272,13 +272,51 @@ response = get("/profile");
 assert_eq(res_status(response), 200);
 ```
 
-**as_admin()** simulates an authenticated administrator:
+**as_user(user_id, options)** writes both the user id and an options hash into the server-side session store. Use this when middleware reads more than `user_id` (e.g. a `role` field on the single-table users collection):
 
 ```soli
-as_admin();
+as_user(42, {"role": "admin"});
+response = get("/admin/dashboard");
+
+# Any keys work — extend as your auth needs grow:
+as_user(42, {"role": "admin", "tenant": "acme"});
+```
+
+**as_role(role)** looks up the first user with `role == <value>` in the `users` collection and signs in as that record. The role is also stored in the session so middleware reading `req.session["role"]` sees it on the next request:
+
+```soli
+as_role("admin");
 response = get("/admin/dashboard");
 assert_eq(res_status(response), 200);
 ```
+
+Errors if no user with that role exists — seed one in `before_each`, or pass an explicit id with `as_user(id, {"role": "admin"})`.
+
+**sign_in(resource_name, id?)** is for **separate-collection** auth (Devise-style: distinct `User` / `Admin` models with their own session keys). It writes `session.{resource_name}_id`:
+
+```soli
+sign_in("admin", 5);         # session.admin_id = 5
+sign_in("admin");            # session.admin_id = Admin.first.id
+sign_in("user", 42);         # session.user_id = 42
+sign_in("staff", 7);         # session.staff_id = 7
+```
+
+Without an explicit id, `sign_in` looks up the first record of the matching model (`"admin"` → `Admin`, `"blog_post"` → `BlogPost`). Apps with non-conventional session keys (e.g. `current_admin_id`) should keep using `with_session({"current_admin_id": 5})`.
+
+**as_admin()** is a zero-arg convenience equivalent to `as_user(1)` — it logs in as whichever record has `id = 1` in your `users` table. There is no built-in role or permission system: by convention, scaffolded apps seed user_id 1 as the administrator, but your own controllers and middleware are still responsible for enforcing admin authorization.
+
+```soli
+as_admin();   # same as as_user(1)
+response = get("/admin/dashboard");
+assert_eq(res_status(response), 200);
+```
+
+#### Which helper to use?
+
+- **Single-table role-column auth** (one `users` collection, role string field): use `as_role("admin")` or `as_user(id, {"role": "admin"})`.
+- **Separate-collection auth** (distinct `User`, `Admin`, ... models): use `sign_in("admin", id)` / `sign_in("admin")`.
+- **Just need a logged-in user** (no role checks): `as_user(id)` is the lightest path.
+- **Anything else** (non-conventional session keys, arbitrary session seeding): fall back to `with_session({...})`.
 
 ### Login and Logout
 
