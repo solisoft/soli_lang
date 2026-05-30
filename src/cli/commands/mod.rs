@@ -1060,15 +1060,40 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     let current_exe = std::env::current_exe().expect("Failed to get current executable path");
     let backup_path = current_exe.parent().unwrap().join("soli.backup");
 
+    // Map a permission-denied error into a friendly "re-run with sudo" hint —
+    // soli is likely installed in a root-owned location (e.g. /usr/local/bin).
+    let permission_hint = |e: &std::io::Error| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            eprintln!();
+            eprintln!(
+                "  \x1b[31mError:\x1b[0m cannot write to {} (permission denied).",
+                current_exe.display()
+            );
+            eprintln!(
+                "  This soli is installed in a root-owned location. Re-run with: \x1b[1msudo soli update\x1b[0m"
+            );
+            eprintln!();
+            process::exit(1);
+        }
+    };
+
+    // Back up the current binary (rename if possible, else copy + remove).
     if std::fs::rename(&current_exe, &backup_path).is_err() {
-        std::fs::copy(&current_exe, &backup_path)
-            .map_err(|e| format!("Failed to backup current binary: {}", e))?;
-        std::fs::remove_file(&current_exe)
-            .map_err(|e| format!("Failed to remove old binary: {}", e))?;
+        if let Err(e) = std::fs::copy(&current_exe, &backup_path) {
+            permission_hint(&e);
+            return Err(format!("Failed to backup current binary: {}", e).into());
+        }
+        if let Err(e) = std::fs::remove_file(&current_exe) {
+            permission_hint(&e);
+            return Err(format!("Failed to remove old binary: {}", e).into());
+        }
     }
+    // Move the freshly downloaded binary into place.
     if std::fs::rename(&binary_path, &current_exe).is_err() {
-        std::fs::copy(&binary_path, &current_exe)
-            .map_err(|e| format!("Failed to install new binary: {}", e))?;
+        if let Err(e) = std::fs::copy(&binary_path, &current_exe) {
+            permission_hint(&e);
+            return Err(format!("Failed to install new binary: {}", e).into());
+        }
         std::fs::remove_file(&binary_path).ok();
     }
 

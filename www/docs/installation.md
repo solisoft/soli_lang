@@ -20,11 +20,40 @@ curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh |
 
 This detects your OS and architecture, downloads the latest release binary, and installs it to `~/.local/bin`.
 
-For system-wide installation:
+When run as **root** (e.g. through `sudo`, or inside a Docker image build), the installer
+automatically targets `/usr/local/bin` so every user on the machine can run `soli` — no
+`--system` flag needed:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sudo sh
+```
+
+A global install also removes any stale per-user copy (e.g. `/root/.local/bin/soli`) left by
+older installs, so PATH can't shadow the new binary with an outdated one.
+
+For system-wide installation as a non-root user (the script will use `sudo` for the copy step):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh -s -- --system
 ```
+
+To force a per-user install even when running as root, pass `--user`:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sudo sh -s -- --user
+```
+
+### Updating
+
+`soli update` replaces the binary in place, wherever it was installed. If Soli lives in a
+root-owned directory (such as `/usr/local/bin`), run the update with `sudo`:
+
+```bash
+sudo soli update
+```
+
+Running `soli update` without the needed permissions prints a hint telling you to re-run with
+`sudo`.
 
 ### Via Cargo
 

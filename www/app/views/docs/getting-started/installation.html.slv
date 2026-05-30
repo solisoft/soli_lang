@@ -48,11 +48,26 @@
         This detects your OS and architecture, downloads the latest release binary, and installs it to <code class="text-indigo-300">~/.local/bin</code>.
     </p>
 
-    <p class="text-gray-400 mb-8 text-sm">
-        For system-wide installation:
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
+        When run as <strong class="text-white">root</strong> (e.g. through <code class="text-indigo-300">sudo</code>, or inside a Docker image build),
+        the installer automatically targets <code class="text-indigo-300">/usr/local/bin</code> so every user can run <code class="text-indigo-300">soli</code> — no <code class="text-indigo-300">--system</code> flag needed:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sudo sh</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
+        A global install also removes any stale per-user copy (e.g. <code class="text-indigo-300">/root/.local/bin/soli</code>) left by older installs, so PATH can't shadow the new binary with an outdated one.
+    </p>
+
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
+        For system-wide installation as a non-root user (the script uses <code class="text-indigo-300">sudo</code> for the copy step):
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh -s -- --system</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-8 text-sm">
+        To force a per-user install even when running as root, pass <code class="text-indigo-300">--user</code>.
+    </p>
 
     <h3 class="text-xl font-semibold text-white mb-4 mt-8">Via Cargo</h3>
 
@@ -69,6 +84,19 @@ cargo install --path .
 
 # Verify installation
 soli --version</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4 mt-8">Updating</h3>
+
+    <p class="text-gray-400 mb-2 text-sm">
+        <code class="text-indigo-300">soli update</code> replaces the binary in place, wherever it was installed.
+        If Soli lives in a root-owned directory (such as <code class="text-indigo-300">/usr/local/bin</code>), run the update with <code class="text-indigo-300">sudo</code>:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">sudo soli update</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-8 text-sm">
+        Running <code class="text-indigo-300">soli update</code> without the needed permissions prints a hint telling you to re-run with <code class="text-indigo-300">sudo</code>.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
         <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">3</div>

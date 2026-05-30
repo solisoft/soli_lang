@@ -6,21 +6,45 @@
 set -e
 
 REPO="solisoft/soli_lang"
-INSTALL_DIR="$HOME/.local/bin"
+SYSTEM_DIR="/usr/local/bin"
 SYSTEM_INSTALL=0
+USER_INSTALL=0
 
 for arg in "$@"; do
   case "$arg" in
-    --system) SYSTEM_INSTALL=1; INSTALL_DIR="/usr/local/bin" ;;
+    --system) SYSTEM_INSTALL=1 ;;
+    --user)   USER_INSTALL=1 ;;
     --help|-h)
-      echo "Usage: install.sh [--system]"
-      echo "  --system  Install to /usr/local/bin (requires sudo)"
-      echo "  Default:  Install to ~/.local/bin"
+      echo "Usage: install.sh [--system | --user]"
+      echo "  --system  Install to ${SYSTEM_DIR} (requires sudo when not root)"
+      echo "  --user    Install to ~/.local/bin (even when running as root)"
+      echo "  Default:  ~/.local/bin, or ${SYSTEM_DIR} when running as root"
       exit 0
       ;;
     *) echo "Unknown option: $arg"; exit 1 ;;
   esac
 done
+
+# --- Decide install location ---
+# Running as root (e.g. `curl ... | sudo sh`, Docker build) installs globally
+# so every user can run `soli`. A normal user installs to ~/.local/bin. The
+# --system / --user flags force a choice explicitly.
+IS_ROOT=0
+[ "$(id -u)" = "0" ] && IS_ROOT=1
+
+if [ "$USER_INSTALL" = "1" ]; then
+  INSTALL_DIR="$HOME/.local/bin"
+elif [ "$SYSTEM_INSTALL" = "1" ] || [ "$IS_ROOT" = "1" ]; then
+  INSTALL_DIR="$SYSTEM_DIR"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+fi
+
+# Elevate with sudo only for a system dir when we are not already root.
+NEED_ELEVATION=0
+if [ "$INSTALL_DIR" = "$SYSTEM_DIR" ] && [ "$IS_ROOT" != "1" ]; then
+  NEED_ELEVATION=1
+fi
 
 # --- Detect OS ---
 OS="$(uname -s)"
@@ -77,12 +101,27 @@ fetch "$DOWNLOAD_URL" > "${TMP_DIR}/${TARBALL}"
 tar xzf "${TMP_DIR}/${TARBALL}" -C "$TMP_DIR"
 
 # --- Install binary ---
-if [ "$SYSTEM_INSTALL" = "1" ]; then
-  echo "Installing to ${INSTALL_DIR} (may require sudo) ..."
+if [ "$NEED_ELEVATION" = "1" ]; then
+  echo "Installing to ${INSTALL_DIR} (requires sudo) ..."
   sudo install -m 755 "${TMP_DIR}/soli" "${INSTALL_DIR}/soli"
 else
+  echo "Installing to ${INSTALL_DIR} ..."
   mkdir -p "$INSTALL_DIR"
   install -m 755 "${TMP_DIR}/soli" "${INSTALL_DIR}/soli"
+fi
+
+# --- Clean up stale per-user copies on a global install ---
+# Older versions of this script installed to ~/.local/bin even when run as
+# root, leaving /root/.local/bin/soli (or $HOME/.local/bin/soli) behind. When
+# we install globally, remove those stale copies so PATH can't shadow the new
+# binary with an outdated one.
+if [ "$INSTALL_DIR" = "$SYSTEM_DIR" ]; then
+  for stale in "/root/.local/bin/soli" "${HOME}/.local/bin/soli"; do
+    if [ "$stale" != "${INSTALL_DIR}/soli" ] && [ -e "$stale" ]; then
+      echo "Removing stale install: ${stale}"
+      rm -f "$stale"
+    fi
+  done
 fi
 
 # --- Check PATH ---

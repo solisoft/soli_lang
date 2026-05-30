@@ -77,6 +77,20 @@ fn index(req: Any) -> Any {
 ### Installation
 
 ```bash
+# Quick install (latest release binary)
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+```
+
+This installs to `~/.local/bin`. When run as **root** (e.g. `... | sudo sh`, or in a Docker
+build) it installs globally to `/usr/local/bin` so every user can run `soli`. Pass `--system`
+to force a global install as a non-root user, or `--user` to force a per-user install as root.
+
+Already installed? `soli update` upgrades in place — use `sudo soli update` if Soli lives in a
+root-owned directory like `/usr/local/bin`.
+
+From source:
+
+```bash
 # Clone the repository
 git clone https://github.com/solisoft/soli_lang.git
 cd soli_lang
