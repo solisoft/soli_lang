@@ -456,7 +456,12 @@ pub fn get_user_http_client() -> &'static Client {
     USER_HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            // Match get_http_client's 15s floor: a longer client idle than the
+            // peer's keep-alive window lets the pool hand back a connection the
+            // server already dropped, stalling the reuse for seconds (see
+            // get_http_client). External APIs commonly close idle keep-alives
+            // near 60s, so keep this well under it.
+            .pool_idle_timeout(std::time::Duration::from_secs(15))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
