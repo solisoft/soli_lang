@@ -1787,6 +1787,7 @@ async fn handle_hyper_request(
     };
     let uri = req.uri();
     let path = uri.path().to_string();
+    let request_start = std::time::Instant::now();
 
     // Increment total request counter before any routing decisions
     crate::metrics::Metrics::global()
@@ -2458,6 +2459,11 @@ async fn handle_hyper_request(
     // Create oneshot channel for response
     let (response_tx, response_rx) = oneshot::channel();
 
+    // Keep copies for the response-timeout log below (both fields are moved
+    // into RequestData). `method` is a Cow and `path` a String — cheap clones.
+    let log_method = method.clone();
+    let log_path = path.clone();
+
     // Send to interpreter thread
     let request_data = RequestData {
         method,
@@ -2505,9 +2511,35 @@ async fn handle_hyper_request(
             .unwrap());
     }
 
-    // Wait for response
-    match response_rx.await {
-        Ok(resp_data) => {
+    // Wait for response, bounded by RESPONSE_WAIT_TIMEOUT_SECS. The worker
+    // reply is otherwise awaited with no timeout: a worker parked in a
+    // blocking DB/HTTP call or a lock would hang this request forever
+    // ("pending" in the browser, system idle). On timeout we free the
+    // connection with a 504 and log which route stalled. Dropping
+    // `response_rx` here is safe — the worker's reply send is a discarded
+    // `let _ = ...send(...)`, so it won't panic on a closed receiver.
+    match tokio::time::timeout(
+        Duration::from_secs(server_constants::RESPONSE_WAIT_TIMEOUT_SECS),
+        response_rx,
+    )
+    .await
+    {
+        Err(_) => {
+            eprintln!(
+                "[WARN] layer=lang_serve method={} path={} timeout_secs={} elapsed_ms={} \
+                 worker response timed out; returning 504",
+                log_method,
+                log_path,
+                server_constants::RESPONSE_WAIT_TIMEOUT_SECS,
+                request_start.elapsed().as_millis(),
+            );
+            Ok(Response::builder()
+                .status(StatusCode::GATEWAY_TIMEOUT)
+                .header("Server", "soliMVC")
+                .body(Full::new(Bytes::from("Gateway Timeout")))
+                .unwrap())
+        }
+        Ok(Ok(resp_data)) => {
             // Conditional-GET short-circuit: if the controller produced an
             // ETag matching the browser's If-None-Match, return 304 with
             // just the validator headers. Enables the hover-prefetch feature
@@ -2604,7 +2636,7 @@ async fn handle_hyper_request(
 
             Ok(builder.body(Full::new(Bytes::from(body))).unwrap())
         }
-        Err(_) => Ok(Response::builder()
+        Ok(Err(_)) => Ok(Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body(Full::new(Bytes::from("Internal Server Error")))
             .unwrap()),

@@ -368,7 +368,13 @@ pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            // Keep this BELOW SoliDB's server-side keep-alive window so the
+            // client always retires an idle connection before the server
+            // would. A longer client idle (was 90s) let the pool hand back a
+            // connection the peer had already dropped, and the doomed reuse
+            // stalled the request for seconds with the system otherwise idle —
+            // the root of the intermittent "pending then displays" behavior.
+            .pool_idle_timeout(std::time::Duration::from_secs(15))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())

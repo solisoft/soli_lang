@@ -14,6 +14,15 @@ pub const BATCH_SIZE: usize = 64;
 /// Request timeout in seconds
 pub const REQUEST_TIMEOUT_SECS: u64 = 5;
 
+/// Maximum time the HTTP handler waits for a worker thread's response before
+/// giving up and returning 504. Bounds the otherwise-unbounded wait on the
+/// worker reply channel: if a worker parks in a blocking DB/HTTP call or a
+/// lock, the request would hang forever ("pending" in the browser) with the
+/// system idle. MUST exceed the 30s outbound HTTP/DB client timeouts so an
+/// inner timeout fires first with a precise error; this is the backstop for a
+/// genuinely wedged worker.
+pub const RESPONSE_WAIT_TIMEOUT_SECS: u64 = 40;
+
 /// Heartbeat acknowledgment timeout in seconds
 pub const HEARTBEAT_TIMEOUT_SECS: u64 = 5;
 
@@ -177,6 +186,23 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::time::Duration;
+
+    // ---------- response wait timeout ----------
+
+    #[test]
+    #[allow(clippy::assertions_on_constants)]
+    fn response_wait_timeout_exceeds_outbound_client_timeout() {
+        // The handler's response-wait timeout MUST be longer than the 30s
+        // outbound DB/HTTP client timeouts so an inner timeout fires first
+        // with a precise error, leaving this as the wedged-worker backstop.
+        // (Const assertion is intentional — it guards the invariant at the
+        // place a future edit to the constant would break it.)
+        const OUTBOUND_CLIENT_TIMEOUT_SECS: u64 = 30;
+        assert!(
+            RESPONSE_WAIT_TIMEOUT_SECS > OUTBOUND_CLIENT_TIMEOUT_SECS,
+            "RESPONSE_WAIT_TIMEOUT_SECS ({RESPONSE_WAIT_TIMEOUT_SECS}) must exceed the 30s client timeout"
+        );
+    }
 
     // ---------- get_mime_type ----------
 
