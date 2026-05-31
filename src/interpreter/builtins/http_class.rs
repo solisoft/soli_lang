@@ -368,14 +368,22 @@ pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            // Keep this BELOW SoliDB's server-side keep-alive window so the
-            // client always retires an idle connection before the server
-            // would. A longer client idle (was 90s) let the pool hand back a
-            // connection the peer had already dropped, and the doomed reuse
-            // stalled the request for seconds with the system otherwise idle —
-            // the root of the intermittent "pending then displays" behavior.
-            .pool_idle_timeout(std::time::Duration::from_secs(15))
-            .pool_max_idle_per_host(8)
+            // Fail fast on an unreachable/slow SoliDB host instead of letting a
+            // dead connect ride the full 30s total timeout.
+            .connect_timeout(std::time::Duration::from_secs(5))
+            // Disable idle connection reuse entirely. Pooled keep-alive
+            // connections are the root of the intermittent multi-second / 30s
+            // stalls: an idle connection silently dropped by the peer (SoliDB
+            // restart/GC) or an intermediary (LB/NAT/firewall idle-drop) stays
+            // in the pool as a half-open socket; the next request writes into it
+            // and then blocks reading a response that never comes, until the
+            // 30s timeout. Reuse can also cross tokio runtimes (a connection
+            // opened under the ephemeral block_on runtime, then reused under the
+            // server runtime), leaving its I/O undriven. Opening a fresh
+            // connection per request — cheap against a loopback/VPC SoliDB —
+            // removes both failure modes. Lowering pool_idle_timeout only
+            // shrank the window; this closes it.
+            .pool_max_idle_per_host(0)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
             // SEC-042: pin a hard floor of TLS 1.2. The `rustls-tls`

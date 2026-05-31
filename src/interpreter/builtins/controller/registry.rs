@@ -758,12 +758,6 @@ pub fn execute_handler_source(
     // polluting the controller's hit map with phantom hits on comment/blank
     // lines.
     let padding = "\n".repeat(source_line.saturating_sub(1));
-    eprintln!(
-        "[cov-debug] execute_handler_source: source_line={}, handler_src_len={}, wrap_len={}",
-        source_line,
-        handler_source.len(),
-        padding.len() + handler_source.len()
-    );
     let wrapped_source = format!(
         "{}let __handler = {}; let __result = __handler(req);",
         padding,

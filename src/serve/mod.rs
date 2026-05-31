@@ -739,10 +739,24 @@ fn run_hyper_server_worker_pool(
     let (runtime_handle_tx, runtime_handle_rx) =
         std::sync::mpsc::channel::<tokio::runtime::Handle>();
 
-    // Spawn tokio runtime for HTTP server
+    // Spawn tokio runtime for HTTP server.
+    //
+    // The runtime drives ALL async I/O: inbound HTTP serving *and* every
+    // outbound SoliDB/HTTP connection, which the Soli interpreter workers reach
+    // via `block_on` on this runtime's handle. Sizing it to `num_workers`
+    // starved it: with `--workers 1` the single I/O thread had to serve the
+    // inbound request *and* drive the outbound DB connection at the same time,
+    // so a worker blocked in `block_on` left no thread to advance its own DB
+    // call — it stalled to the 30s client timeout on every request. With more
+    // workers there was incidental slack, which is why the symptom looked
+    // intermittent / first-call-only. The runtime's thread pool must therefore
+    // be sized for I/O concurrency, not for the interpreter-worker count: give
+    // it room for every worker's outbound call plus inbound serving headroom,
+    // with a sane floor.
+    let tokio_worker_threads = (num_workers + 2).max(4);
     thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(num_workers)
+            .worker_threads(tokio_worker_threads)
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime");
