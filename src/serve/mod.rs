@@ -1323,6 +1323,23 @@ fn run_hyper_server_worker_pool(
     Ok(())
 }
 
+/// Pre-compile every top-level handler function in the VM's globals to bytecode,
+/// populating each `Function.jit_cache`. This is pure compilation (no handler
+/// bodies run, no side effects), so it is safe to call before the worker serves
+/// traffic. A function that fails to pre-compile is left cold — the normal
+/// JIT-on-first-call path still handles it — so warmup never fails the worker.
+fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
+    let mut warmed = 0usize;
+    for value in vm.globals.values() {
+        if let crate::interpreter::value::Value::Function(f) = value {
+            if crate::vm::vm_calls::jit_compile_function(f).is_ok() {
+                warmed += 1;
+            }
+        }
+    }
+    println!("Worker {}: warmed {} handlers", worker_id, warmed);
+}
+
 /// Worker loop - processes requests from dedicated per-worker queue
 #[allow(clippy::too_many_arguments)]
 fn worker_loop(
@@ -1446,6 +1463,12 @@ fn worker_loop(
         for (name, value) in all_globals {
             vm.globals.insert(name, value);
         }
+        // Warm the worker: pre-compile every handler function to bytecode now,
+        // before this worker accepts traffic. Otherwise each handler is
+        // JIT-compiled lazily on its FIRST request, so the first hit to every
+        // route pays a one-time compile cost — felt as a "cold start", and
+        // paid again per worker (round-robin) and after any worker restart.
+        warm_vm_handlers(worker_id, &vm);
         Some(vm)
     } else {
         None
@@ -1505,6 +1528,9 @@ fn worker_loop(
                 for (name, value) in all_globals {
                     vm.globals.insert(name, value);
                 }
+                // Re-warm so the reloaded handlers come back hot instead of
+                // cold on their next request.
+                warm_vm_handlers(worker_id, vm);
             }
         }
 

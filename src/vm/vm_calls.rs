@@ -9,10 +9,54 @@ use crate::error::RuntimeError;
 use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
 use crate::span::Span;
 
-use super::chunk::Constant;
+use super::chunk::{Constant, FunctionProto};
 use super::compiler::Compiler;
 use super::upvalue::VmClosure;
 use super::vm::{CallFrame, Vm};
+
+/// JIT-compile a tree-walking [`Function`] to a bytecode [`FunctionProto`] and
+/// cache it in `func.jit_cache`. Returns the cached proto on a hit, otherwise
+/// compiles, stores, and returns it. Pure compilation — no execution, no side
+/// effects — so it is safe to call ahead of time to warm a worker's handlers.
+pub(crate) fn jit_compile_function(func: &Function) -> Result<Arc<FunctionProto>, String> {
+    if let Some(proto) = func.jit_cache.borrow().clone() {
+        return Ok(proto);
+    }
+
+    let func_decl = FunctionDecl {
+        name: func.name.clone(),
+        params: func.params.clone(),
+        return_type: None,
+        body: func.body.clone(),
+        span: func.span.unwrap_or_default(),
+    };
+
+    let program = Program::new(vec![Stmt {
+        kind: StmtKind::Function(func_decl),
+        span: func.span.unwrap_or_default(),
+        source_path: None,
+    }]);
+
+    let module = Compiler::compile(&program).map_err(|e| e.to_string())?;
+
+    // Extract the compiled FunctionProto from the module's constant pool.
+    let proto = module
+        .main
+        .chunk
+        .constants
+        .iter()
+        .find_map(|c| {
+            if let Constant::Function(p) = c {
+                Some(p.clone())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "Failed to extract compiled function from JIT".to_string())?;
+
+    *func.jit_cache.borrow_mut() = Some(proto.clone());
+    Ok(proto)
+}
 
 impl Vm {
     /// Call a value with the given number of argument slots on the stack.
@@ -116,51 +160,11 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        // Check if JIT-compiled bytecode is already cached
-        if let Some(proto) = func.jit_cache.borrow().clone() {
-            let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-            let callee_idx = self.stack.len() - 1 - argc;
-            self.stack[callee_idx] = Value::VmClosure(closure.clone());
-            return self.call_closure(closure, argc, span);
-        }
-
-        // JIT-compile the tree-walking function to bytecode (first call only).
-        let func_decl = FunctionDecl {
-            name: func.name.clone(),
-            params: func.params.clone(),
-            return_type: None,
-            body: func.body.clone(),
-            span: func.span.unwrap_or_default(),
-        };
-
-        let program = Program::new(vec![Stmt {
-            kind: StmtKind::Function(func_decl),
-            span: func.span.unwrap_or_default(),
-            source_path: None,
-        }]);
-
-        let module = Compiler::compile(&program)
+        // JIT-compile (or reuse the cached bytecode for) the tree-walking
+        // function. `jit_compile_function` returns the cached proto on a hit
+        // and compiles+caches on the first call.
+        let proto = jit_compile_function(func)
             .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
-
-        // Extract the compiled FunctionProto from the module's constant pool
-        let proto = module
-            .main
-            .chunk
-            .constants
-            .iter()
-            .find_map(|c| {
-                if let Constant::Function(p) = c {
-                    Some(p.clone())
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                RuntimeError::new("Failed to extract compiled function from JIT", span)
-            })?;
-
-        // Cache the compiled bytecode for future calls
-        *func.jit_cache.borrow_mut() = Some(proto.clone());
 
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
@@ -529,4 +533,33 @@ impl Vm {
 pub struct CallableBatch {
     saved_depth: usize,
     frames_before: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jit_compile_function_caches_proto() {
+        // An empty-bodied function is enough to exercise the compile path.
+        let func = Function {
+            name: "warm_me".to_string(),
+            ..Function::default()
+        };
+        assert!(func.jit_cache.borrow().is_none());
+
+        let proto = jit_compile_function(&func);
+        assert!(
+            proto.is_ok(),
+            "warmup compile should succeed: {:?}",
+            proto.err()
+        );
+
+        // The proto is now cached on the function...
+        assert!(func.jit_cache.borrow().is_some());
+
+        // ...and a second call returns the same cached proto (no recompile).
+        let again = jit_compile_function(&func).expect("cached compile");
+        assert!(Arc::ptr_eq(&proto.unwrap(), &again));
+    }
 }
