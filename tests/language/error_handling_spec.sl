@@ -451,3 +451,74 @@ describe("Postfix Rescue", fn() {
         assert_eq(result, "default");
     });
 });
+
+// ============================================================================
+// Ruby-style aliases: `begin` -> try, `rescue` (block form) -> catch,
+// `ensure` -> finally. The postfix `rescue` modifier still works inline.
+// ============================================================================
+
+describe("Ruby-style begin/rescue/ensure", fn() {
+    test("begin/rescue/ensure runs catch then ensure", fn() {
+        let order = []
+        begin
+            throw "boom"
+        rescue e
+            order.push("rescue: " + e)
+        ensure
+            order.push("ensure")
+        end
+        assert_eq(len(order), 2)
+        assert_eq(order[0], "rescue: boom")
+        assert_eq(order[1], "ensure")
+    });
+
+    test("begin/rescue without ensure binds the error", fn() {
+        let caught = ""
+        begin
+            throw "kaboom"
+        rescue err
+            caught = err
+        end
+        assert_eq(caught, "kaboom")
+    });
+
+    test("begin/rescue with no binding", fn() {
+        let ran = false
+        begin
+            throw "anon"
+        rescue
+            ran = true
+        end
+        assert(ran)
+    });
+
+    test("begin/ensure without rescue still runs ensure", fn() {
+        let ran = false
+        begin
+            let x = 1
+        ensure
+            ran = true
+        end
+        assert(ran)
+    });
+
+    test("postfix rescue still works inside a begin body", fn() {
+        let value = 0
+        begin
+            value = (10 / 0) rescue 99
+        rescue e
+            value = -1
+        end
+        assert_eq(value, 99)
+    });
+
+    test("begin with no error skips rescue", fn() {
+        let result = 0
+        begin
+            result = 42
+        rescue e
+            result = -1
+        end
+        assert_eq(result, 42)
+    });
+});

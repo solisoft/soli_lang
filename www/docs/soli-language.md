@@ -717,7 +717,7 @@ end
 
 ### Try / Catch / Finally
 
-Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`). Ruby-style aliases are supported: `begin` for `try`, and `rescue` for `catch`.
+Soli provides `try`/`catch`/`finally` for exception handling, using `end`-delimited blocks (just like `if`, `while`, and `for`). Ruby-style aliases are supported: `begin` for `try`, `rescue` for `catch`, and `ensure` for `finally`. The aliases are interchangeable with the canonical keywords; `soli fmt` normalizes them to `try`/`catch`/`finally`.
 
 ```soli
 # Basic try/catch
@@ -744,11 +744,25 @@ finally
   close_connection();
 end
 
-# Ruby-style aliases: `begin` for `try`, `rescue` for `catch`
+# Ruby-style aliases: `begin` for `try`, `rescue` for `catch`, `ensure` for `finally`
 begin
   risky_operation();
 rescue e
   print("Error: " + str(e));
+ensure
+  print("Cleanup done");
+end
+```
+
+A `rescue` that opens a new line inside a `begin`/`try` body is always a catch
+clause. The postfix `rescue` modifier (`expr rescue fallback`) is unaffected — it
+still works inline, including inside a `begin` body:
+
+```soli
+begin
+  value = (10 / 0) rescue 99   # postfix modifier: value becomes 99
+rescue e
+  value = -1
 end
 ```
 

@@ -22,6 +22,18 @@ impl Parser {
                 break;
             }
 
+            // Postfix `rescue` is normally a newline-insensitive inline modifier
+            // (`expr rescue fallback`, possibly split across a continuation line).
+            // But directly inside a `try`/`begin` body, a `rescue` that opens a new
+            // line is a block-form catch clause, not a modifier on the preceding
+            // statement — hand it back to the statement parser. (Ruby's rule.)
+            if self.in_try_body
+                && self.peek().kind == TokenKind::Rescue
+                && self.peek().span.line != self.previous().span.line
+            {
+                break;
+            }
+
             left = self.parse_infix(left, precedence)?;
         }
 
@@ -512,10 +524,15 @@ impl Parser {
             // start_span is the span of the '{' token
             let _block_span = start_span.merge(&self.previous_span());
             // Current token should be either '}' (empty block) or the first statement
+            // A nested block is its own scope: don't let an enclosing `begin` body's
+            // newline-`rescue` rule bleed into it.
+            let outer_in_try_body = self.in_try_body;
+            self.in_try_body = false;
             let mut statements = Vec::new();
             while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
                 statements.push(self.statement()?);
             }
+            self.in_try_body = outer_in_try_body;
             self.expect(&TokenKind::RightBrace)?;
             let end_span = self.previous_span();
             let full_span = start_span.merge(&end_span);

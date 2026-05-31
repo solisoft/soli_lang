@@ -179,7 +179,7 @@ impl TokenKind {
             "null" | "nil" => Some(TokenKind::Null),
             "try" | "begin" => Some(TokenKind::Try),
             "catch" => Some(TokenKind::Catch),
-            "finally" => Some(TokenKind::Finally),
+            "finally" | "ensure" => Some(TokenKind::Finally),
             "throw" => Some(TokenKind::Throw),
             "rescue" => Some(TokenKind::Rescue),
             "not" => Some(TokenKind::Not),
@@ -386,6 +386,12 @@ mod tests {
     fn keyword_aliases_try_and_begin() {
         assert_eq!(TokenKind::keyword("try"), Some(TokenKind::Try));
         assert_eq!(TokenKind::keyword("begin"), Some(TokenKind::Try));
+    }
+
+    #[test]
+    fn keyword_aliases_finally_and_ensure() {
+        assert_eq!(TokenKind::keyword("finally"), Some(TokenKind::Finally));
+        assert_eq!(TokenKind::keyword("ensure"), Some(TokenKind::Finally));
     }
 
     #[test]

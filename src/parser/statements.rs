@@ -381,6 +381,10 @@ impl Parser {
             ))
         } else {
             // End syntax: try ... catch TypeName e ... finally ... end
+            // While collecting body statements, a `rescue` that opens a new line is a
+            // catch clause, not a postfix modifier on the trailing statement.
+            let outer_in_try_body = self.in_try_body;
+            self.in_try_body = true;
             let body_start = self.current_span();
             let mut try_stmts = Vec::new();
             while !self.check(&TokenKind::Catch)
@@ -437,6 +441,7 @@ impl Parser {
                 None
             };
 
+            self.in_try_body = outer_in_try_body;
             self.expect(&TokenKind::End)?;
             let span = start_span.merge(&self.previous_span());
             Ok(Stmt::new(
@@ -538,11 +543,17 @@ impl Parser {
     pub(crate) fn block_statements(&mut self) -> ParseResult<Vec<Stmt>> {
         self.expect(&TokenKind::LeftBrace)?;
 
+        // A braced block is its own statement scope; the enclosing `begin` body's
+        // newline-`rescue` rule must not leak into it (e.g. a nested fn literal).
+        let outer_in_try_body = self.in_try_body;
+        self.in_try_body = false;
+
         let mut statements = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             statements.push(self.statement()?);
         }
 
+        self.in_try_body = outer_in_try_body;
         self.expect(&TokenKind::RightBrace)?;
         Ok(statements)
     }

@@ -35,7 +35,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>. Ruby-style aliases are supported: <code class="text-indigo-400">begin</code> for <code class="text-indigo-400">try</code>, and <code class="text-indigo-400">rescue</code> for <code class="text-indigo-400">catch</code>.</p>
+                <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>. Ruby-style aliases are supported: <code class="text-indigo-400">begin</code> for <code class="text-indigo-400">try</code>, <code class="text-indigo-400">rescue</code> for <code class="text-indigo-400">catch</code>, and <code class="text-indigo-400">ensure</code> for <code class="text-indigo-400">finally</code>. They are interchangeable with the canonical keywords; <code class="text-indigo-400">soli fmt</code> normalizes them to <code class="text-indigo-400">try</code>/<code class="text-indigo-400">catch</code>/<code class="text-indigo-400">finally</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
   result = 10 / 0
@@ -60,11 +60,20 @@ finally
   close_connection()
 end
 
-# Ruby-style aliases: `begin` for `try`, `rescue` for `catch`
+# Ruby-style aliases: `begin` for `try`, `rescue` for `catch`, `ensure` for `finally`
 begin
   risky_operation()
 rescue e
   print("Error: " + str(e))
+ensure
+  print("Cleanup done")
+end
+
+# The postfix `rescue` modifier still works inline, even inside a begin body
+begin
+  value = (10 / 0) rescue 99   # value becomes 99
+rescue e
+  value = -1
 end</code></pre>
             </div>
         </section>
