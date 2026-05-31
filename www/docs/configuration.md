@@ -22,7 +22,8 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. | `false` |
+| `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
+| `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration), `http` (outgoing `HTTP.*` calls), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
 | `SOLI_PREFETCH` | Controls hover prefetch injection. Set `off`, `false`, `0`, or `no` to disable. | enabled |
 | `SOLI_PREFETCH_TTL` | Freshness window (seconds, clamped 1–300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip — keeps prefetch working behind a CDN. | `30` |
 | `SOLI_DEFAULT_URL_HOST` | Host used by `*_url` route helpers outside an active request. | unset |
@@ -30,6 +31,45 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 | `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. Requires `SOLI_DEV_REPL_SECRET` (SEC-051) — the server refuses to start otherwise. | `false` |
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
+
+### Production logging (`SOLI_LOG`)
+
+The AQL query log, the outgoing HTTP log, and the middleware/view/phase
+timing breakdown normally only feed the dev bar under `--dev`. `SOLI_LOG`
+turns those same channels on in production and prints them to stdout as an
+indented block under each request's access line — so you can debug a slow
+or failing route on a live server without redeploying in dev mode (which
+would also disable the VM, enable hot-reload, and inject the bar).
+
+```bash
+# Just the access line (same as SOLI_REQUEST_LOG=1)
+SOLI_LOG=access soli serve
+
+# Queries + outgoing HTTP for the whole app
+SOLI_LOG=query,http soli serve
+
+# Everything
+SOLI_LOG=all soli serve
+```
+
+A request with `SOLI_LOG=query,http,timing` prints:
+
+```text
+[LOG] GET /posts - 200 (12.480ms)
+  db: 2 queries (8.210ms)
+    (5.110ms) FOR p IN posts FILTER p.published == @v0 RETURN p binds={"v0":true}
+    (3.100ms) FOR c IN comments FILTER c.post_id == @v0 RETURN c binds={"v0":"abc"}
+  http: 1 call (2.000ms)
+    (2.000ms) GET https://api.example.com/feed -> 200
+  timing:
+    middleware auth (0.420ms)
+    view posts/index (3.050ms)
+      view posts/_card (1.200ms)
+```
+
+The whole block is written with a single `println!` so concurrent worker
+threads never interleave their output. Bind variables and HTTP URLs are
+scrubbed of secret-bearing values before they reach the log.
 
 ## Hardening
 

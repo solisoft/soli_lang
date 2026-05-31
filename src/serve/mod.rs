@@ -15,6 +15,7 @@ mod middleware;
 pub mod middleware_log;
 pub mod phase_log;
 pub mod prefetch;
+pub mod prod_log;
 mod router;
 mod server_constants;
 pub mod span_log;
@@ -1386,16 +1387,20 @@ fn worker_loop(
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
 
     // Capture every AQL query the request makes so the dev tool can show them.
-    // Off in production — the gate is a single relaxed atomic load.
-    crate::interpreter::builtins::model::query_log::set_enabled(dev_mode);
+    // Off in production unless an operator opts a channel in via SOLI_LOG;
+    // otherwise the gate is a single relaxed atomic load.
+    let log_channels = prod_log::channels();
+    crate::interpreter::builtins::model::query_log::set_enabled(dev_mode || log_channels.query);
 
     // Same for outgoing HTTP.* calls — feeds the dev bar's "http" panel.
-    crate::interpreter::builtins::http_log::set_enabled(dev_mode);
+    crate::interpreter::builtins::http_log::set_enabled(dev_mode || log_channels.http);
 
     // Phase timers (middleware/view) for the render-breakdown panel.
-    phase_log::set_enabled(dev_mode);
-    middleware_log::set_enabled(dev_mode);
-    view_log::set_enabled(dev_mode);
+    phase_log::set_enabled(dev_mode || log_channels.timing);
+    middleware_log::set_enabled(dev_mode || log_channels.timing);
+    view_log::set_enabled(dev_mode || log_channels.timing);
+    // The span flamegraph stays dev-only — it's a visualization the prod
+    // log block doesn't consume, and it's the heaviest of the gates.
     span_log::set_enabled(dev_mode);
 
     // Load middleware in this worker (needed for scoped middleware resolution by name)
@@ -5108,7 +5113,9 @@ fn handle_request(
 ) -> ResponseData {
     // Reset the per-request AQL log so `dev_queries()` only returns this
     // request's queries. Cheap when dev mode is off (early-out on the flag).
-    if dev_mode {
+    // Also clear when production logging is on, otherwise the thread-local
+    // buffers would accumulate across requests on the same worker thread.
+    if dev_mode || prod_log::channels().has_detail() {
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
         phase_log::clear();
@@ -5120,15 +5127,13 @@ fn handle_request(
     let method = &data.method;
     let path = &data.path;
 
-    // Check if request logging is enabled (cached per-thread to avoid env var lookup per request).
-    // `--dev` implies access logging — operators expect every route to show up in the terminal
-    // without setting `SOLI_REQUEST_LOG=1` first.
-    thread_local! {
-        static LOG_REQUESTS: bool = std::env::var("SOLI_REQUEST_LOG")
-            .map(|v| v == "1" || v == "true")
-            .unwrap_or(false);
-    }
-    let log_requests = dev_mode || LOG_REQUESTS.with(|v| *v);
+    // Check if request logging is enabled. `--dev` implies access logging —
+    // operators expect every route to show up in the terminal without setting
+    // anything first. In production the `SOLI_LOG` channels (parsed once,
+    // process-wide) decide; any detail channel folds in `access` so the block
+    // has a request line to hang off.
+    let log_channels = prod_log::channels();
+    let log_requests = dev_mode || log_channels.any();
 
     // Only create timer when logging is enabled (avoids clock_gettime syscall per request)
     let start_time = if log_requests {
@@ -5473,14 +5478,26 @@ fn handle_request(
         }
         // Log timing (skip health checks to avoid benchmark noise)
         if log_requests && path != "/health" {
-            let elapsed = start_time.unwrap().elapsed();
-            println!(
-                "[LOG] {} {} - {} ({:.3}ms)",
-                method,
-                path,
-                resp.status,
-                elapsed.as_secs_f64() * 1000.0
-            );
+            let elapsed_ms = start_time.unwrap().elapsed().as_secs_f64() * 1000.0;
+            if dev_mode {
+                // The injected dev bar already surfaces the per-request
+                // queries/http/timing detail; the terminal just gets the
+                // one-line access entry.
+                println!(
+                    "[LOG] {} {} - {} ({:.3}ms)",
+                    method, path, resp.status, elapsed_ms
+                );
+            } else {
+                // Production: emit the access line plus whatever detail
+                // channels the operator enabled via SOLI_LOG.
+                prod_log::emit(
+                    method.as_ref(),
+                    path.as_str(),
+                    resp.status,
+                    elapsed_ms,
+                    log_channels,
+                );
+            }
         }
         // Clear session context
         set_current_session_id(None);
