@@ -94,14 +94,71 @@ impl SolidbSessionStore {
     }
 
     fn create_client(&self) -> Result<SoliDBClient, SoliDBError> {
-        let mut client = SoliDBClient::connect(&self.host)?;
-        client.set_database(&self.database);
-        if let Some(key) = &self.api_key {
+        Self::build_client(
+            &self.host,
+            &self.database,
+            &self.api_key,
+            &self.username,
+            &self.password,
+        )
+    }
+
+    /// Build a client from owned config, so it can be called off the
+    /// request thread (where `&self` isn't available) — see `spawn_cleanup`.
+    fn build_client(
+        host: &str,
+        database: &str,
+        api_key: &Option<String>,
+        username: &Option<String>,
+        password: &Option<String>,
+    ) -> Result<SoliDBClient, SoliDBError> {
+        let mut client = SoliDBClient::connect(host)?;
+        client.set_database(database);
+        if let Some(key) = api_key {
             client = client.with_api_key(key);
-        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
+        } else if let (Some(u), Some(p)) = (username, password) {
             client = client.with_basic_auth(u, p);
         }
         Ok(client)
+    }
+
+    /// Delete every expired session in one server-side bulk `REMOVE`,
+    /// instead of listing up to 1000 docs and firing a separate blocking
+    /// HTTP DELETE per expired key. The collection name is operator-set
+    /// (never user input), so interpolating it is safe and matches how the
+    /// model layer builds SDBQL; the cutoff is a bind var.
+    fn purge_expired(client: &SoliDBClient, collection: &str, cutoff_ms: i64) {
+        let sdbql = format!(
+            "FOR doc IN {collection} FILTER doc.last_accessed < @cutoff REMOVE doc IN {collection}"
+        );
+        let mut bind_vars = HashMap::new();
+        bind_vars.insert("cutoff".to_string(), serde_json::json!(cutoff_ms));
+        if let Err(e) = client.query(&sdbql, Some(bind_vars)) {
+            eprintln!("Session cleanup failed: {}", e);
+        }
+    }
+
+    /// Run expired-session GC off the request path. Previously `cleanup`
+    /// ran synchronously inside `get_or_create` on every 1000th request,
+    /// firing up to 1000 sequential blocking SoliDB round-trips — which
+    /// stalled whichever request happened to be the 1000th for seconds
+    /// with the CPU otherwise idle. Now it's one bulk query on a detached
+    /// thread, so no user request ever waits on GC.
+    fn spawn_cleanup(&self) {
+        let host = self.host.clone();
+        let database = self.database.clone();
+        let collection = self.collection.clone();
+        let api_key = self.api_key.clone();
+        let username = self.username.clone();
+        let password = self.password.clone();
+        let cutoff_ms = chrono::Utc::now().timestamp_millis() - self.max_age.as_millis() as i64;
+
+        std::thread::spawn(move || {
+            match Self::build_client(&host, &database, &api_key, &username, &password) {
+                Ok(client) => Self::purge_expired(&client, &collection, cutoff_ms),
+                Err(e) => eprintln!("Session cleanup: failed to connect to SoliDB: {}", e),
+            }
+        });
     }
 
     fn load_session(&self, session_id: &str) -> Result<Option<SessionDocument>, String> {
@@ -147,7 +204,7 @@ impl SessionStore for SolidbSessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
         if count.is_multiple_of(1000) {
-            self.cleanup();
+            self.spawn_cleanup();
         }
 
         if let Ok(Some(session)) = self.load_session(session_id) {
@@ -236,19 +293,8 @@ impl SessionStore for SolidbSessionStore {
 
     fn cleanup(&self) {
         if let Ok(client) = self.create_client() {
-            let now = chrono::Utc::now().timestamp_millis();
-            let max_age_ms = self.max_age.as_millis() as i64;
-
-            if let Ok(docs) = client.list(&self.collection, 1000, 0) {
-                for doc in docs {
-                    if let Ok(session) = serde_json::from_value::<SessionDocument>(doc) {
-                        let age = now - session.last_accessed;
-                        if age > max_age_ms {
-                            let _ = client.delete(&self.collection, &session.key);
-                        }
-                    }
-                }
-            }
+            let cutoff_ms = chrono::Utc::now().timestamp_millis() - self.max_age.as_millis() as i64;
+            Self::purge_expired(&client, &self.collection, cutoff_ms);
         }
     }
 
