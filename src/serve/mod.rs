@@ -783,6 +783,11 @@ fn run_hyper_server_worker_pool(
                     Ok(conn) => conn,
                     Err(_) => continue,
                 };
+                // Disable Nagle's algorithm: without this, small responses
+                // written across multiple TCP segments stall ~40ms waiting on
+                // the peer's delayed-ACK, even when the CPU is idle. Matches the
+                // proxy/db convention which already set this on their sockets.
+                let _ = stream.set_nodelay(true);
                 let io = TokioIo::new(stream);
                 let request_tx = worker_queues_for_tokio.get_sender();
                 let reload_tx = reload_tx_for_tokio.clone();
