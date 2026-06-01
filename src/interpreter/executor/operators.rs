@@ -459,11 +459,11 @@ impl Interpreter {
                 // String comparison is now handled in `eval_string_compare`
                 // before we reach this numeric-only path; the function
                 // signature for `compare_values` requires f64 inputs.
-                return Err(RuntimeError::type_error(
+                Err(RuntimeError::type_error(
                     "internal error: string comparison reached compare_values; this is a bug"
                         .to_string(),
                     span,
-                ));
+                ))
             }
             _ => {
                 // DateTime ordering: compare the internal nanosecond timestamp.
