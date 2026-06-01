@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::executor::{ControlFlow, Interpreter, RuntimeResult};
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{Function, HashKey, Value};
 use crate::span::Span;
 
 use crate::interpreter::environment::Environment;
@@ -82,6 +82,66 @@ impl Interpreter {
         }
     }
 
+    /// Invoke a `(key, value)` hash closure, reusing `env` across entries to
+    /// avoid allocating a fresh `Environment` per iteration (matching the array
+    /// iterators). Binds two params when the closure declares >= 2, else a
+    /// single `[key, value]` pair. Maps control flow to a value
+    /// (`Continue` -> Null, `Throw` -> error).
+    #[inline]
+    fn invoke_hash_kv(
+        &mut self,
+        func: &Rc<Function>,
+        env: &Rc<RefCell<Environment>>,
+        key_value: Value,
+        value: Value,
+        span: Span,
+        ctx: &'static str,
+    ) -> RuntimeResult<Value> {
+        {
+            let mut e = env.borrow_mut();
+            if func.params.len() >= 2 {
+                e.define_or_update(&func.params[0].name, key_value);
+                e.define_or_update(&func.params[1].name, value);
+            } else if func.params.len() == 1 {
+                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value])));
+                e.define_or_update(&func.params[0].name, pair);
+            }
+        }
+        match self.execute_block_in(&func.body, env.clone())? {
+            ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
+            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Throw(_) => {
+                Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
+            }
+        }
+    }
+
+    /// Invoke a single-argument hash closure (`transform_values`/`transform_keys`/
+    /// `each_key`/`each_value`), reusing `env`. Binds the closure's first param
+    /// (or `it`) to `bound`.
+    #[inline]
+    fn invoke_hash_single(
+        &mut self,
+        func: &Rc<Function>,
+        env: &Rc<RefCell<Environment>>,
+        bound: Value,
+        span: Span,
+        ctx: &'static str,
+    ) -> RuntimeResult<Value> {
+        {
+            let mut e = env.borrow_mut();
+            let param = func.params.first().map(|p| p.name.as_str()).unwrap_or("it");
+            e.define_or_update(param, bound);
+        }
+        match self.execute_block_in(&func.body, env.clone())? {
+            ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
+            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Throw(_) => {
+                Err(RuntimeError::new(format!("Exception in hash {ctx}"), span))
+            }
+        }
+    }
+
     fn hash_map(
         &mut self,
         entries: &[(HashKey, Value)],
@@ -101,36 +161,20 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) | ControlFlow::Normal(v) => {
-                    if let Value::Array(arr) = v {
-                        let arr = arr.borrow();
-                        if arr.len() == 2 {
-                            let new_key = arr[0].clone();
-                            let new_val = arr[1].clone();
-                            let hash_key = new_key.to_hash_key().ok_or_else(|| {
-                                RuntimeError::type_error("hash key must be hashable", span)
-                            })?;
-                            result.insert(hash_key, new_val);
-                        }
-                    }
-                }
-                ControlFlow::Continue => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash map", span));
+            let v =
+                self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span, "map")?;
+            if let Value::Array(arr) = v {
+                let arr = arr.borrow();
+                if arr.len() == 2 {
+                    let hash_key = arr[0].to_hash_key().ok_or_else(|| {
+                        RuntimeError::type_error("hash key must be hashable", span)
+                    })?;
+                    result.insert(hash_key, arr[1].clone());
                 }
             }
         }
@@ -157,28 +201,19 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash filter", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "filter",
+            )?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -206,24 +241,18 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash each", span));
-                }
-            }
+            self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "each",
+            )?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -323,28 +352,13 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, value.clone());
-
-            let new_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new(
-                        "Exception in hash transform_values",
-                        span,
-                    ));
-                }
-            };
+            let new_value =
+                self.invoke_hash_single(&func, &call_env, value.clone(), span, "transform_values")?;
             result.insert(key.clone(), new_value);
         }
 
@@ -370,26 +384,13 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, key.to_value());
-
-            let new_key = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash transform_keys", span));
-                }
-            };
-
+            let new_key =
+                self.invoke_hash_single(&func, &call_env, key.to_value(), span, "transform_keys")?;
             let new_hash_key = new_key.to_hash_key().ok_or_else(|| {
                 RuntimeError::type_error("transformed key must be hashable", span)
             })?;
@@ -418,28 +419,19 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash select", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "select",
+            )?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -467,28 +459,19 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash reject", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "reject",
+            )?;
             if !result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -828,21 +811,11 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         for (key, _value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, key.to_value());
-
-            match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash each_key", span));
-                }
-            }
+            self.invoke_hash_single(&func, &call_env, key.to_value(), span, "each_key")?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -868,21 +841,11 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         for (_key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-            let param_name = func
-                .params
-                .first()
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| "it".to_string());
-            call_env.define(param_name, value.clone());
-
-            match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash each_value", span));
-                }
-            }
+            self.invoke_hash_single(&func, &call_env, value.clone(), span, "each_value")?;
         }
 
         let result: HashPairs = entries.iter().cloned().collect();
@@ -908,28 +871,19 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash keep_if", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "keep_if",
+            )?;
             if result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -957,28 +911,19 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash delete_if", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "delete_if",
+            )?;
             if !result_value.is_truthy() {
                 result.insert(key.clone(), value.clone());
             }
@@ -1006,27 +951,18 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash all?", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "all?",
+            )?;
             if !result_value.is_truthy() {
                 return Ok(Value::Bool(false));
             }
@@ -1054,27 +990,18 @@ impl Interpreter {
             }
         };
 
+        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            func.closure.clone(),
+        )));
         for (key, value) in entries {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
-
-            let key_value = key.to_value();
-            if func.params.len() >= 2 {
-                call_env.define(func.params[0].name.clone(), key_value.clone());
-                call_env.define(func.params[1].name.clone(), value.clone());
-            } else if func.params.len() == 1 {
-                let pair = Value::Array(Rc::new(RefCell::new(vec![key_value, value.clone()])));
-                call_env.define(func.params[0].name.clone(), pair);
-            }
-
-            let result_value = match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(v) => v,
-                ControlFlow::Normal(v) => v,
-                ControlFlow::Continue => Value::Null,
-                ControlFlow::Throw(_) => {
-                    return Err(RuntimeError::new("Exception in hash any?", span));
-                }
-            };
-
+            let result_value = self.invoke_hash_kv(
+                &func,
+                &call_env,
+                key.to_value(),
+                value.clone(),
+                span,
+                "any?",
+            )?;
             if result_value.is_truthy() {
                 return Ok(Value::Bool(true));
             }
