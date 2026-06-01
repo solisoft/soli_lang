@@ -44,14 +44,16 @@ impl Parser {
 
     /// Parse a complete program.
     pub fn parse(&mut self) -> ParseResult<Program> {
-        let start = Instant::now();
+        let start = crate::metrics::metrics_enabled().then(Instant::now);
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
             statements.push(self.declaration()?);
         }
 
-        Metrics::global().record_parsing(start.elapsed());
+        if let Some(start) = start {
+            Metrics::global().record_parsing(start.elapsed());
+        }
         Ok(Program::new(statements))
     }
 

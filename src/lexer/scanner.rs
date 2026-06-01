@@ -34,7 +34,7 @@ impl<'a> Scanner<'a> {
 
     /// Scan all tokens from the source.
     pub fn scan_tokens(&mut self) -> Result<Vec<Token>, LexerError> {
-        let start = Instant::now();
+        let start = crate::metrics::metrics_enabled().then(Instant::now);
         let mut tokens = Vec::new();
 
         loop {
@@ -46,7 +46,9 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        Metrics::global().record_lexing(start.elapsed());
+        if let Some(start) = start {
+            Metrics::global().record_lexing(start.elapsed());
+        }
         Ok(tokens)
     }
 

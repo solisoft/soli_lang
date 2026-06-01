@@ -113,9 +113,10 @@ impl TemplateCache {
             _span.set_render_id(id);
         }
 
-        // Unconditional timing for production Prometheus metrics (Phase A visibility).
+        // Timing for production Prometheus metrics (Phase A visibility), gated on
+        // `SOLI_METRICS` so the `Instant::now()` is skipped when nobody is scraping.
         // This captures the full cost of view + layout + all partials executed during render.
-        let render_start = Instant::now();
+        let render_start = crate::metrics::metrics_enabled().then(Instant::now);
 
         // Get the template file path
         let template_path = self.resolve_template_path(template_name)?;
@@ -188,8 +189,10 @@ impl TemplateCache {
         if let (Some(start), Some(id)) = (view_start, view_id) {
             crate::serve::view_log::record(id, template_name, start.elapsed().as_micros() as u64);
         }
-        // Record for production Prometheus metrics (unconditional, cheap).
-        crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
+        // Record for production Prometheus metrics (gated on SOLI_METRICS).
+        if let Some(render_start) = render_start {
+            crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
+        }
         result
     }
 
@@ -206,8 +209,8 @@ impl TemplateCache {
             _span.set_render_id(id);
         }
 
-        // Unconditional timing for production Prometheus metrics (Phase A).
-        let render_start = Instant::now();
+        // Timing for production Prometheus metrics (Phase A), gated on SOLI_METRICS.
+        let render_start = crate::metrics::metrics_enabled().then(Instant::now);
 
         // Partials start with underscore
         let partial_name = if name.contains('/') {
@@ -250,8 +253,10 @@ impl TemplateCache {
         if let (Some(start), Some(id)) = (view_start, view_id) {
             crate::serve::view_log::record(id, name, start.elapsed().as_micros() as u64);
         }
-        // Record for production Prometheus metrics (unconditional, cheap).
-        crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
+        // Record for production Prometheus metrics (gated on SOLI_METRICS).
+        if let Some(render_start) = render_start {
+            crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
+        }
         Ok(result)
     }
 

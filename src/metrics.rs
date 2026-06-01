@@ -1,5 +1,22 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+
+/// Whether metrics collection is enabled for this process.
+///
+/// Collection is opt-in: it is only worth the per-operation `Instant::now()`
+/// and atomic bookkeeping when someone actually scrapes the `/_metrics`
+/// Prometheus endpoint. Enable by setting `SOLI_METRICS=1` (or `true`).
+/// The value is read from the environment exactly once and cached.
+#[inline]
+pub fn metrics_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("SOLI_METRICS")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
 
 pub struct Metrics {
     pub http_requests_total: AtomicU64,
@@ -161,26 +178,37 @@ impl Metrics {
     }
 
     pub fn record_lexing(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.lexing_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.lexing_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_parsing(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.parsing_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.parsing_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn record_vm_execution(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.vm_execution_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.vm_execution_count.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Record one template render (view + layout + any partials executed during it).
-    /// Called unconditionally from the template engine; atomics are extremely cheap.
     pub fn record_template_render(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.template_render_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.template_render_count.fetch_add(1, Ordering::Relaxed);
@@ -188,6 +216,9 @@ impl Metrics {
 
     /// Record total time spent in middleware for one request (sum of all middleware durations).
     pub fn record_middleware(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.middleware_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.middleware_count.fetch_add(1, Ordering::Relaxed);
@@ -195,6 +226,9 @@ impl Metrics {
 
     /// Record total time spent in DB/SolidB queries for one request.
     pub fn record_db_queries(&self, elapsed: Duration) {
+        if !metrics_enabled() {
+            return;
+        }
         self.db_query_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.db_query_count.fetch_add(1, Ordering::Relaxed);
@@ -202,13 +236,16 @@ impl Metrics {
 }
 
 pub struct VmTimingGuard {
-    start: Instant,
+    /// `None` when metrics are disabled — avoids the `Instant::now()` syscall
+    /// on every `vm.run()`, which is on the hot path of every request handler.
+    start: Option<Instant>,
 }
 
 impl VmTimingGuard {
+    #[inline]
     pub fn new() -> Self {
         Self {
-            start: Instant::now(),
+            start: metrics_enabled().then(Instant::now),
         }
     }
 }
@@ -220,8 +257,11 @@ impl Default for VmTimingGuard {
 }
 
 impl Drop for VmTimingGuard {
+    #[inline]
     fn drop(&mut self) {
-        Metrics::global().record_vm_execution(self.start.elapsed());
+        if let Some(start) = self.start {
+            Metrics::global().record_vm_execution(start.elapsed());
+        }
     }
 }
 
