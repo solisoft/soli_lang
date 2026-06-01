@@ -4,6 +4,11 @@
 
 ### Features
 
+* **feat(vm):** list/hash comprehensions now execute on the bytecode VM at clean stack positions (a new compile-time stack-height gate) instead of always falling back to the interpreter; comprehensions used as a sub-expression still fall back
+* **feat(vm):** experimental `SOLI_VM_OPTIONAL_LET=1` opt-in to run bare-assignment (optional-`let`) handlers on the VM — off by default until the remaining VM gaps are closed
+* **perf(metrics):** Prometheus timing collection (lexing/parsing/VM/template) is now opt-in via `SOLI_METRICS=1`, removing per-dispatch `Instant::now()`/atomic overhead when unused. **Behavior change:** the `/_metrics` endpoint returns zeros until `SOLI_METRICS` is set
+* **perf(routing):** the dynamic-route fallback no longer re-tests static routes (static paths already resolve via the O(1) exact-match index)
+* **perf(lexer):** skip the keyword lookup for `?`/`!`-suffixed identifiers (`nil?`, `push!`, …), which can never be keywords
 * **feat(lang):** add UUID (`uuid_v4`/`uuid_v7`, `UUID.v4`/`UUID.v7`), ULID (`ulid`, `ULID.generate`/`ULID.new`), and NanoID (`nanoid(size?, alphabet?)`, `NanoID.generate`/`NanoID.new`) ID generators
 * **feat(jobs):** add `Webhook` job class (`enqueue`/`enqueue_in`/`enqueue_at`/`cancel`/`list`) and adopt `SOLI_WEBHOOK_SECRET` with `X-Webhook-Signature` (keeping `SOLI_JOBS_SECRET`/`X-Job-Signature` as legacy aliases)
 * **feat(serve):** log production errors on the dev and OOP-controller paths too (breakpoints excluded)
@@ -45,6 +50,9 @@
 
 ### Bug Fixes
 
+* **fix(vm):** correct a class of control-flow / local-assignment bugs on the bytecode VM, found via a new tree-walker-vs-VM differential harness: a peephole that **inverted** `if`/`while` on a bare local (ran the wrong branch), `for`-loop closures capturing the loop variable, the index in `for v, i in …`, `a..b` range bounds (now exclusive of `b`, matching the interpreter), assignment and `return` inside a `catch` block being dropped, and a crash on `let x = <local>` / `||=`
+* **fix(vm):** comprehensions and variable-binding `match` patterns no longer silently corrupt results or abort the worker when unsupported — they cleanly fall back to the tree-walking interpreter
+* **fix(interpreter):** closures created in different iterations of a `for`/`while` loop now capture distinct per-iteration bindings instead of sharing one
 * **fix(serve):** route OOP-controller **auto-render** (set `@vars`, let the matching view render with no explicit `render()` call) through `html_response`. It was hand-building the response with only `Content-Type`, silently dropping the `ETag`, `Cache-Control`, and the injected hover-prefetch `<script>` — so apps that rely on auto-render (the idiomatic MVC flow) got no prefetch and no conditional-GET caching on any page, while explicit `render()` calls did. Both paths now behave identically.
 * **fix(prefetch):** serve speculative prefetch requests (`Sec-Purpose: prefetch`) a short `private, max-age` (default 30s, `SOLI_PREFETCH_TTL`) instead of `no-cache`, so the click reuses the prefetched HTML straight from the browser cache — no conditional GET, so a CDN (Cloudflare et al.) that won't relay a `304` can no longer turn hover-prefetch into a wasted full re-download. Normal navigations keep `private, no-cache`.
 * **fix(prefetch):** emit weak ETag (`W/"..."`) so CDNs that re-encode (Brotli/gzip) don't strip it — strong ETags were being dropped at Cloudflare, breaking 304 reuse and turning the hover-prefetch feature into a cosmetic load
