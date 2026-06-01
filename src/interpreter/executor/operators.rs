@@ -12,6 +12,17 @@ use crate::span::Span;
 
 use super::{Interpreter, RuntimeResult};
 
+/// Ordering operator, used to dispatch string comparison explicitly so we
+/// don't need to probe a numeric cmp closure to figure out which operator
+/// was passed.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum OrdOp {
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+}
+
 impl Interpreter {
     pub(crate) fn evaluate_binary(
         &mut self,
@@ -109,10 +120,30 @@ impl Interpreter {
             BinaryOp::Modulo => self.eval_modulo(left_val, right_val, span),
             BinaryOp::Equal => Ok(Value::Bool(*left_val == *right_val)),
             BinaryOp::NotEqual => Ok(Value::Bool(*left_val != *right_val)),
-            BinaryOp::Less => self.compare_values(left_val, right_val, span, |a, b| a < b),
-            BinaryOp::LessEqual => self.compare_values(left_val, right_val, span, |a, b| a <= b),
-            BinaryOp::Greater => self.compare_values(left_val, right_val, span, |a, b| a > b),
-            BinaryOp::GreaterEqual => self.compare_values(left_val, right_val, span, |a, b| a >= b),
+            BinaryOp::Less => {
+                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
+                    return self.eval_string_compare(a, b, OrdOp::Less, span);
+                }
+                self.compare_values(left_val, right_val, span, |a, b| a < b)
+            }
+            BinaryOp::LessEqual => {
+                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
+                    return self.eval_string_compare(a, b, OrdOp::LessEqual, span);
+                }
+                self.compare_values(left_val, right_val, span, |a, b| a <= b)
+            }
+            BinaryOp::Greater => {
+                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
+                    return self.eval_string_compare(a, b, OrdOp::Greater, span);
+                }
+                self.compare_values(left_val, right_val, span, |a, b| a > b)
+            }
+            BinaryOp::GreaterEqual => {
+                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
+                    return self.eval_string_compare(a, b, OrdOp::GreaterEqual, span);
+                }
+                self.compare_values(left_val, right_val, span, |a, b| a >= b)
+            }
             BinaryOp::Range => self.eval_range(left_val, right_val, span),
             BinaryOp::Shovel => match left_val {
                 Value::Array(arr) => {
@@ -424,18 +455,15 @@ impl Interpreter {
                 let right_f64 = b.value().to_f64().unwrap_or(0.0);
                 Ok(Value::Bool(cmp(*a, right_f64)))
             }
-            (Value::String(a), Value::String(b)) => {
-                // Lexicographic comparison for strings
-                Ok(Value::Bool(
-                    match (a.cmp(b), cmp(1.0, 0.0), cmp(0.0, 0.0)) {
-                        (std::cmp::Ordering::Less, true, _) => true,     // <
-                        (std::cmp::Ordering::Less, false, true) => true, // <=
-                        (std::cmp::Ordering::Equal, _, true) => true,    // ==, <=, >=
-                        (std::cmp::Ordering::Greater, _, false) if cmp(1.0, 0.0) => false, // < or <=
-                        (std::cmp::Ordering::Greater, _, _) if cmp(2.0, 1.0) => true,      // >
-                        _ => false,
-                    },
-                ))
+            (Value::String(_a), Value::String(_b)) => {
+                // String comparison is now handled in `eval_string_compare`
+                // before we reach this numeric-only path; the function
+                // signature for `compare_values` requires f64 inputs.
+                return Err(RuntimeError::type_error(
+                    "internal error: string comparison reached compare_values; this is a bug"
+                        .to_string(),
+                    span,
+                ));
             }
             _ => {
                 // DateTime ordering: compare the internal nanosecond timestamp.
@@ -452,6 +480,28 @@ impl Interpreter {
                 ))
             }
         }
+    }
+
+    /// Lexicographic string comparison, dispatched on the actual operator
+    /// (rather than probing a numeric closure). Soli's old probe-based
+    /// implementation could not distinguish `==` from `>=` and returned
+    /// `false` for `"a" < "z"` — see operators.rs history.
+    pub(crate) fn eval_string_compare(
+        &self,
+        a: &str,
+        b: &str,
+        op: OrdOp,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let ord = a.cmp(b);
+        let result = match op {
+            OrdOp::Less => ord == std::cmp::Ordering::Less,
+            OrdOp::LessEqual => ord != std::cmp::Ordering::Greater,
+            OrdOp::Greater => ord == std::cmp::Ordering::Greater,
+            OrdOp::GreaterEqual => ord != std::cmp::Ordering::Less,
+        };
+        let _ = span;
+        Ok(Value::Bool(result))
     }
 
     pub(crate) fn evaluate_unary(
