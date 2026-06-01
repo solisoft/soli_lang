@@ -1095,18 +1095,26 @@ impl<'a> Scanner<'a> {
         }
 
         // Check for trailing ? (for predicate methods like empty?, include?, etc.)
+        // and trailing ! (for bang methods like insert!, delete!). No keyword
+        // carries such a suffix, so when present we skip the keyword lookup
+        // entirely — the token is unconditionally an identifier.
+        let mut has_suffix = false;
         if self.peek() == Some('?') {
             value.push('?');
             self.advance();
+            has_suffix = true;
         }
-
-        // Check for trailing ! (for methods that raise errors like insert!, delete!, etc.)
         if self.peek() == Some('!') {
             value.push('!');
             self.advance();
+            has_suffix = true;
         }
 
-        let kind = TokenKind::keyword(&value).unwrap_or(TokenKind::Identifier(value));
+        let kind = if has_suffix {
+            TokenKind::Identifier(value)
+        } else {
+            TokenKind::keyword(&value).unwrap_or(TokenKind::Identifier(value))
+        };
         Ok(self.make_token(kind))
     }
 
