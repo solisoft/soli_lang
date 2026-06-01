@@ -59,8 +59,12 @@ thread_local! {
 /// Groups routes by HTTP method and provides fast exact-match lookup.
 #[derive(Clone, Default)]
 pub struct RouteIndex {
-    /// Routes grouped by HTTP method
-    by_method: HashMap<String, Vec<usize>>, // method -> indices into ROUTES
+    /// Dynamic (`:param` / `*splat`) routes grouped by HTTP method.
+    /// Only the pattern-matching fallback uses this. Exact routes are
+    /// deliberately excluded: any static path is resolved by `exact_matches`,
+    /// so re-testing static routes here would be wasted `match_path` calls
+    /// (each allocating part vectors only to fail on a literal mismatch).
+    dynamic_by_method: HashMap<String, Vec<usize>>, // method -> indices into ROUTES
     /// Exact path matches for fast lookup: method -> (path -> route index).
     /// Two-level HashMap avoids format!("{}:{}", method, path) allocation per request.
     exact_matches: HashMap<String, HashMap<String, usize>>,
@@ -75,18 +79,19 @@ impl RouteIndex {
 
     /// Rebuild the index from the current routes.
     fn rebuild(&mut self, routes: &[Route]) {
-        self.by_method.clear();
+        self.dynamic_by_method.clear();
         self.exact_matches.clear();
 
         for (idx, route) in routes.iter().enumerate() {
-            // Add to method index
-            self.by_method
-                .entry(route.method.clone())
-                .or_default()
-                .push(idx);
-
-            // Add exact matches (routes without dynamic segments)
-            if !route.path_pattern.contains(':') && !route.path_pattern.contains('*') {
+            let is_dynamic = route.path_pattern.contains(':') || route.path_pattern.contains('*');
+            if is_dynamic {
+                // Only dynamic routes need the pattern-matching fallback.
+                self.dynamic_by_method
+                    .entry(route.method.clone())
+                    .or_default()
+                    .push(idx);
+            } else {
+                // Static route: O(1) exact lookup, no pattern matching needed.
                 self.exact_matches
                     .entry(route.method.clone())
                     .or_default()
@@ -257,7 +262,7 @@ pub fn find_route(
 
             // Get method-specific indices for requested method
             let method_exact_map = index.exact_matches.get(method);
-            let method_pattern_indices = index.by_method.get(method);
+            let method_pattern_indices = index.dynamic_by_method.get(method);
 
             // Try requested method first
             if let Some(result) = try_method(
@@ -272,7 +277,7 @@ pub fn find_route(
             // For HEAD requests, fallback to GET if no HEAD route found (HTTP spec compliance)
             if method == "HEAD" {
                 let get_exact_map = index.exact_matches.get("GET");
-                let get_pattern_indices = index.by_method.get("GET");
+                let get_pattern_indices = index.dynamic_by_method.get("GET");
                 if let Some(result) =
                     try_method(&routes, get_exact_map, get_pattern_indices, normalized_path)
                 {
