@@ -3,9 +3,12 @@
 //! Single-pass compilation: walks the AST once, emitting bytecode into a `Chunk`.
 //! Variable resolution happens at compile time — locals become stack slot indices.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::ast::stmt::{Parameter, Program};
+use crate::ast::stmt::{Parameter, Program, Stmt};
 use crate::error::CompileError;
 use crate::span::Span;
 
@@ -15,6 +18,27 @@ use super::upvalue::UpvalueDescriptor;
 
 /// Result type for compilation.
 pub type CompileResult<T> = Result<T, CompileError>;
+
+/// Whether the VM honors Soli's optional-`let` (bare assignment creates a
+/// binding) by hoisting function-locals and upserting globals.
+///
+/// **Off by default.** When disabled, a bare assignment to an undeclared name
+/// compiles to `SetGlobal`, which raises "undefined variable" at runtime —
+/// causing the server to fall back to the tree-walking interpreter for that
+/// handler (the long-standing behavior). Enabling it (`SOLI_VM_OPTIONAL_LET=1`)
+/// lets such handlers run on the VM, but that also widens the VM's exposure to
+/// a class of latent control-flow/local-assignment bugs (e.g. assignment inside
+/// `for`-with-index and `try`/`catch` blocks) that are otherwise masked by the
+/// fallback. Keep it off until those are fixed and differentially tested.
+pub fn optional_let_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("SOLI_VM_OPTIONAL_LET")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
 
 /// A local variable tracked during compilation.
 #[derive(Debug, Clone)]
@@ -53,6 +77,14 @@ pub struct Compiler {
     pub loop_context: Option<LoopContext>,
     /// Current class context for this/super.
     pub class_context: Option<ClassContext>,
+    /// Names known to be globals at compile time. Shared across every nested
+    /// compiler of one module. Used to decide, for a bare assignment inside a
+    /// function to a name that is neither a local nor an upvalue, whether to
+    /// assign the existing global (name is in this set) or declare a fresh
+    /// function-local (name is not). In `serve` this is seeded with the worker
+    /// VM's full global table, so the decision matches the tree-walker exactly;
+    /// for whole-program compiles it accumulates top-level names as they appear.
+    pub known_globals: Rc<RefCell<HashSet<String>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +110,7 @@ impl Compiler {
             function_type,
             loop_context: None,
             class_context: None,
+            known_globals: Rc::new(RefCell::new(HashSet::new())),
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -100,7 +133,19 @@ impl Compiler {
 
     /// Compile a full program.
     pub fn compile(program: &Program) -> CompileResult<CompiledModule> {
+        Self::compile_with_globals(program, std::iter::empty())
+    }
+
+    /// Compile a full program, seeding the set of names already known to be
+    /// globals (e.g. a worker VM's builtins + loaded app functions/classes).
+    /// This lets bare assignments inside functions resolve to the existing
+    /// global when one exists, matching the tree-walking interpreter.
+    pub fn compile_with_globals<I: IntoIterator<Item = String>>(
+        program: &Program,
+        globals: I,
+    ) -> CompileResult<CompiledModule> {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.known_globals.borrow_mut().extend(globals);
         for stmt in &program.statements {
             compiler.compile_stmt(stmt)?;
         }
@@ -122,10 +167,12 @@ impl Compiler {
     /// Compile a tree-walking method (e.g., a user-defined controller action)
     /// into a standalone `FunctionProto` with slot 0 reserved for `this`.
     /// Used by the VM's bound-method dispatch for class-based controllers.
-    pub fn compile_method_standalone(
+    pub fn compile_method_standalone<I: IntoIterator<Item = String>>(
         func: &crate::interpreter::value::Function,
+        globals: I,
     ) -> CompileResult<FunctionProto> {
         let mut compiler = Compiler::new(FunctionType::Method, func.name.clone());
+        compiler.known_globals.borrow_mut().extend(globals);
         compiler.class_context = Some(ClassContext {
             has_superclass: func.defining_superclass.is_some(),
         });
@@ -226,6 +273,20 @@ impl Compiler {
         }
     }
 
+    /// Discard the top local: `CloseUpvalue` if a closure captured it (so the
+    /// capturing closure keeps this binding's current value), else a plain
+    /// `Pop`. Used where locals are torn down outside of `end_scope` (e.g. the
+    /// per-iteration loop variables of a `for` loop).
+    pub fn emit_pop_or_close_top(&mut self, line: usize) {
+        let captured = self.locals.last().map(|l| l.is_captured).unwrap_or(false);
+        if captured {
+            self.emit(Op::CloseUpvalue, line);
+        } else {
+            self.emit(Op::Pop, line);
+        }
+        self.locals.pop();
+    }
+
     // --- Local variables ---
 
     pub fn add_local(&mut self, name: String, is_const: bool) {
@@ -235,6 +296,44 @@ impl Compiler {
             is_captured: false,
             is_const,
         });
+    }
+
+    /// Declare, at the start of a function body, the locals introduced by bare
+    /// assignment (Soli's optional-`let`). Must be called inside the body scope
+    /// after parameters have been added. A candidate is skipped when it is
+    /// already a parameter/local, is captured from an enclosing scope (so it
+    /// stays an upvalue), or is a known global (so the assignment targets the
+    /// existing global) — matching the tree-walking interpreter.
+    pub fn hoist_locals(&mut self, body: &[Stmt], line: usize) {
+        if !optional_let_enabled() {
+            return;
+        }
+        for name in super::compiler_hoist::collect_hoisted_locals(body) {
+            if self.resolve_local(&name).is_some() {
+                continue;
+            }
+            if self.known_globals.borrow().contains(&name) {
+                continue;
+            }
+            if self.enclosing_has_local(&name) {
+                continue;
+            }
+            self.emit(Op::Null, line);
+            self.add_local(name, false);
+        }
+    }
+
+    /// Whether `name` is a local in some enclosing compiler (i.e. it would be
+    /// captured as an upvalue rather than introduced as a new local here).
+    fn enclosing_has_local(&self, name: &str) -> bool {
+        let mut current = self.enclosing.as_deref();
+        while let Some(compiler) = current {
+            if compiler.resolve_local(name).is_some() {
+                return true;
+            }
+            current = compiler.enclosing.as_deref();
+        }
+        false
     }
 
     pub fn declare_variable(
@@ -320,6 +419,9 @@ impl Compiler {
     ) -> Box<Compiler> {
         let mut new_compiler = Compiler::new(function_type, name);
         new_compiler.class_context = self.class_context.clone();
+        // Nested functions share the module's known-globals set so they make
+        // the same local-vs-global decision for bare assignments.
+        new_compiler.known_globals = self.known_globals.clone();
 
         // Add parameters as locals
         for param in params {
@@ -901,11 +1003,14 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal, JumpIfFalse → IsFalsyLocal + jump (when truthy should NOT jump)
+        // Pattern: GetLocal, JumpIfFalse → IsTruthyLocal + JumpIfFalse.
+        // `JumpIfFalse` jumps when its operand is falsy, so to preserve "jump
+        // when the local is falsy" the fused op must push the local's
+        // *truthiness*. (Using IsFalsyLocal here would invert the branch.)
         if i + 1 < len {
             if let (Op::GetLocal(slot), Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
                 if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::IsFalsyLocal(slot);
+                    code[i] = Op::IsTruthyLocal(slot);
                     code[i + 1] = Op::JumpIfFalse(offset);
                     i += 2;
                     continue;
@@ -913,17 +1018,10 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal, JumpIfFalseNoPop → IsFalsyLocal + JumpIfFalseNoPop
-        if i + 1 < len {
-            if let (Op::GetLocal(slot), Op::JumpIfFalseNoPop(offset)) = (code[i], code[i + 1]) {
-                if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::IsFalsyLocal(slot);
-                    code[i + 1] = Op::JumpIfFalseNoPop(offset);
-                    i += 2;
-                    continue;
-                }
-            }
-        }
+        // NB: `GetLocal, JumpIfFalseNoPop` is deliberately NOT fused. The NoPop
+        // jump leaves the *tested value itself* on the stack for reuse (e.g.
+        // `a && b` evaluates to `a` when `a` is falsy); replacing the local with
+        // a derived boolean would corrupt that result.
 
         // Pattern: NullishJump (??) - could optimize but it's already specialized
 

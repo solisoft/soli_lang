@@ -7,6 +7,7 @@ pub mod chunk;
 pub mod compiler;
 pub mod compiler_classes;
 pub mod compiler_exprs;
+pub mod compiler_hoist;
 pub mod compiler_patterns;
 pub mod compiler_stmts;
 pub mod disassembler;

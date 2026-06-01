@@ -1350,9 +1350,13 @@ fn run_hyper_server_worker_pool(
 /// JIT-on-first-call path still handles it — so warmup never fails the worker.
 fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
     let mut warmed = 0usize;
+    // Seed the compiler with the worker's full set of global names so bare
+    // assignments inside handlers resolve local-vs-global exactly as the
+    // tree-walking interpreter would.
+    let global_names: Vec<String> = vm.globals.keys().cloned().collect();
     for value in vm.globals.values() {
         if let crate::interpreter::value::Value::Function(f) = value {
-            if crate::vm::vm_calls::jit_compile_function(f).is_ok() {
+            if crate::vm::vm_calls::jit_compile_function(f, global_names.iter().cloned()).is_ok() {
                 warmed += 1;
             }
         }

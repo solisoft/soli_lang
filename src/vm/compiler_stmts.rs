@@ -116,6 +116,7 @@ impl Compiler {
             // The value is already on the stack at the right slot
         } else {
             // Global variable
+            self.known_globals.borrow_mut().insert(name.to_string());
             let idx = self.add_string_constant(name);
             self.emit(Op::DefineGlobal(idx), line);
         }
@@ -216,15 +217,16 @@ impl Compiler {
 
         self.compile_stmt(body)?;
 
-        // Pop the index variable if present
+        // Pop the index variable if present. If a closure created in the body
+        // captured it, close the upvalue (snapshotting this iteration's value
+        // into the closure) instead of a plain pop — otherwise closures from
+        // different iterations would share a dangling binding.
         if index_variable.is_some() {
-            self.emit(Op::Pop, line);
-            self.locals.pop();
+            self.emit_pop_or_close_top(line);
         }
 
-        // Pop the loop variable
-        self.emit(Op::Pop, line);
-        self.locals.pop();
+        // Pop the loop variable (closing its upvalue if it was captured).
+        self.emit_pop_or_close_top(line);
 
         self.emit_loop(loop_start, line);
         self.patch_jump(exit_jump);
@@ -342,6 +344,13 @@ impl Compiler {
     fn compile_function_decl(&mut self, decl: &FunctionDecl, line: usize) -> CompileResult<()> {
         let name = decl.name.clone();
 
+        // A top-level function declaration defines a global of that name. Record
+        // it before compiling the body so the body (and any nested functions)
+        // resolve a bare assignment to this name as the global, not a new local.
+        if self.scope_depth == 0 {
+            self.known_globals.borrow_mut().insert(name.clone());
+        }
+
         // Start compiling the function body
         let _dummy = self.start_function(FunctionType::Function, name.clone(), &decl.params);
 
@@ -370,6 +379,9 @@ impl Compiler {
         if body.is_empty() {
             return Ok(());
         }
+
+        // Declare locals introduced by bare assignment (optional-`let`) up front.
+        self.hoist_locals(body, body[0].span.line);
 
         let last_idx = body.len() - 1;
         for (i, stmt) in body.iter().enumerate() {

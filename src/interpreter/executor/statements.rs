@@ -108,19 +108,27 @@ impl Interpreter {
                 // 2 HashMap allocations per iteration for the common case of
                 // `while cond { ... }`. Safe because StmtKind::Let now uses
                 // define_or_update (same-slot write on re-entry).
+                //
+                // Skipped when the body creates a closure: a reused environment
+                // would make closures captured in different iterations share the
+                // same loop-local bindings. Those bodies fall through to the
+                // normal path below, which executes the block in a fresh
+                // environment each iteration (so each closure captures its own).
                 if let StmtKind::Block(body_stmts) = &body.kind {
-                    let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-                        self.environment.clone(),
-                    )));
-                    while self.evaluate(condition)?.is_truthy() {
-                        match self.execute_block_in(body_stmts, loop_env_rc.clone())? {
-                            ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
-                            ControlFlow::Normal(_) => {}
-                            ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
-                            ControlFlow::Continue => {}
+                    if !super::loop_capture::body_creates_closures(body_stmts) {
+                        let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+                            self.environment.clone(),
+                        )));
+                        while self.evaluate(condition)?.is_truthy() {
+                            match self.execute_block_in(body_stmts, loop_env_rc.clone())? {
+                                ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                                ControlFlow::Normal(_) => {}
+                                ControlFlow::Throw(e) => return Ok(ControlFlow::Throw(e)),
+                                ControlFlow::Continue => {}
+                            }
                         }
+                        return Ok(ControlFlow::Normal(Value::Null));
                     }
-                    return Ok(ControlFlow::Normal(Value::Null));
                 }
 
                 while self.evaluate(condition)?.is_truthy() {
@@ -329,6 +337,34 @@ impl Interpreter {
             Value::Array(arr) => {
                 // Clone items once outside the loop to avoid holding borrow across loop body
                 let items: Vec<Value> = arr.borrow().iter().cloned().collect();
+
+                // If the body creates closures, give each iteration its own
+                // environment so closures capture distinct loop bindings (the
+                // reused-environment fast path below would make them share).
+                if super::loop_capture::stmt_creates_closures(body) {
+                    let outer = self.environment.clone();
+                    for (i, item) in items.into_iter().enumerate() {
+                        let iter_env =
+                            Rc::new(RefCell::new(Environment::with_enclosing(outer.clone())));
+                        {
+                            let mut env = iter_env.borrow_mut();
+                            env.define(variable.to_string(), item);
+                            if let Some(idx_var) = index_variable {
+                                env.define(idx_var.to_string(), Value::Int(i as i64));
+                            }
+                        }
+                        let prev_env = std::mem::replace(&mut self.environment, iter_env);
+                        let result = self.execute(body);
+                        self.environment = prev_env;
+                        match result {
+                            Err(e) => return Err(e),
+                            Ok(ControlFlow::Return(v)) => return Ok(ControlFlow::Return(v)),
+                            Ok(ControlFlow::Throw(e)) => return Ok(ControlFlow::Throw(e)),
+                            Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
+                        }
+                    }
+                    return Ok(ControlFlow::Normal(Value::Null));
+                }
 
                 // Allocate a single loop environment reused across iterations.
                 // The body's let-statements use define_or_update, so re-entry

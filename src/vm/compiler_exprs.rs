@@ -735,6 +735,15 @@ impl Compiler {
                         self.emit(Op::SetUpvalue(idx), line);
                     }
                     VariableAccess::Global(name) => {
+                        // A bare assignment to a name that is neither a local nor
+                        // an upvalue. New in-function locals are hoisted to
+                        // function entry by `hoist_function_locals` before the
+                        // body is compiled, so by the time we get here the name
+                        // is either a real global (top level, or one we know
+                        // exists) — define-or-update it. `SetGlobal` upserts.
+                        if self.scope_depth == 0 {
+                            self.known_globals.borrow_mut().insert(name.clone());
+                        }
                         let idx = self.add_string_constant(&name);
                         self.emit(Op::SetGlobal(idx), line);
                     }

@@ -223,24 +223,40 @@ impl Vm {
                     }
                 }
                 Op::SetGlobal(idx) => {
+                    // Bare assignment (`name = value`) creates the binding if it
+                    // doesn't exist yet — matching the tree-walker, where a
+                    // top-level assignment to a not-yet-defined name defines it.
+                    // The compiler only emits SetGlobal for top-level assignments
+                    // or for in-function assignments to names it knows are
+                    // globals; brand-new in-function names become locals instead.
                     let val = self.stack.last().unwrap().clone();
                     // Avoid cloning the string constant for lookup
-                    let found = {
+                    let updated = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[idx as usize] {
                             Constant::String(s) => s.as_str(),
                             _ => "",
                         };
                         if let Some(entry) = self.globals.get_mut(name) {
-                            *entry = val;
+                            *entry = val.clone();
                             true
                         } else {
                             false
                         }
                     };
-                    if !found {
+                    if !updated {
                         let name = self.read_string_constant_owned(idx);
-                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                        // Define-if-absent only when optional-`let` is enabled;
+                        // otherwise a bare assignment to an undefined name is a
+                        // runtime error (which triggers the interpreter fallback).
+                        if crate::vm::compiler::optional_let_enabled() {
+                            self.globals.insert(name, val);
+                        } else {
+                            return Err(RuntimeError::undefined_variable(
+                                name,
+                                self.current_span(),
+                            ));
+                        }
                     }
                 }
                 Op::DefineGlobal(idx) => {

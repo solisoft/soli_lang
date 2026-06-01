@@ -18,7 +18,10 @@ use super::vm::{CallFrame, Vm};
 /// cache it in `func.jit_cache`. Returns the cached proto on a hit, otherwise
 /// compiles, stores, and returns it. Pure compilation — no execution, no side
 /// effects — so it is safe to call ahead of time to warm a worker's handlers.
-pub(crate) fn jit_compile_function(func: &Function) -> Result<Arc<FunctionProto>, String> {
+pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
+    func: &Function,
+    globals: I,
+) -> Result<Arc<FunctionProto>, String> {
     if let Some(proto) = func.jit_cache.borrow().clone() {
         return Ok(proto);
     }
@@ -37,7 +40,7 @@ pub(crate) fn jit_compile_function(func: &Function) -> Result<Arc<FunctionProto>
         source_path: None,
     }]);
 
-    let module = Compiler::compile(&program).map_err(|e| e.to_string())?;
+    let module = Compiler::compile_with_globals(&program, globals).map_err(|e| e.to_string())?;
 
     // Extract the compiled FunctionProto from the module's constant pool.
     let proto = module
@@ -163,7 +166,7 @@ impl Vm {
         // JIT-compile (or reuse the cached bytecode for) the tree-walking
         // function. `jit_compile_function` returns the cached proto on a hit
         // and compiles+caches on the first call.
-        let proto = jit_compile_function(func)
+        let proto = jit_compile_function(func, self.globals.keys().cloned())
             .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
 
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
@@ -372,7 +375,7 @@ impl Vm {
         arg: Value,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let proto = Compiler::compile_method_standalone(method)
+        let proto = Compiler::compile_method_standalone(method, self.globals.keys().cloned())
             .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
         let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
 
@@ -548,7 +551,7 @@ mod tests {
         };
         assert!(func.jit_cache.borrow().is_none());
 
-        let proto = jit_compile_function(&func);
+        let proto = jit_compile_function(&func, std::iter::empty());
         assert!(
             proto.is_ok(),
             "warmup compile should succeed: {:?}",
@@ -559,7 +562,7 @@ mod tests {
         assert!(func.jit_cache.borrow().is_some());
 
         // ...and a second call returns the same cached proto (no recompile).
-        let again = jit_compile_function(&func).expect("cached compile");
+        let again = jit_compile_function(&func, std::iter::empty()).expect("cached compile");
         assert!(Arc::ptr_eq(&proto.unwrap(), &again));
     }
 }

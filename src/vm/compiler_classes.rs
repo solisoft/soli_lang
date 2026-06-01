@@ -11,6 +11,10 @@ use super::opcode::Op;
 impl Compiler {
     /// Compile a class declaration.
     pub fn compile_class_decl(&mut self, decl: &ClassDecl, line: usize) -> CompileResult<()> {
+        // A top-level class declaration defines a global of that name.
+        if self.scope_depth == 0 {
+            self.known_globals.borrow_mut().insert(decl.name.clone());
+        }
         let name_idx = self.add_string_constant(&decl.name);
 
         // Create the class
@@ -110,6 +114,7 @@ impl Compiler {
         let _dummy = self.start_function(func_type, method.name.clone(), &method.params);
 
         self.begin_scope();
+        self.hoist_locals(&method.body, line);
         for stmt in &method.body {
             self.compile_stmt(stmt)?;
         }
@@ -152,6 +157,7 @@ impl Compiler {
             }
         }
 
+        self.hoist_locals(&ctor.body, line);
         for stmt in &ctor.body {
             self.compile_stmt(stmt)?;
         }
