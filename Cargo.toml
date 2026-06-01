@@ -100,7 +100,7 @@ rmp-serde = "1"
 
 # Validation
 regex = "1"
-chrono = { version = "0.4", features = ["std"] }
+chrono = { version = "0.4", features = ["std", "clock"] }
 
 # Request body parsing
 multer = "3"

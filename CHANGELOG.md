@@ -50,6 +50,8 @@
 
 ### Bug Fixes
 
+* **fix(session):** the SoliDB session driver now pre-warms its backend connection at boot on the long-lived runtime, so `ensure_session` doesn't open the process's first SoliDB connection mid-request. The warmup is non-blocking (a slow or unreachable session DB never delays startup) and logs a classified outcome — `[timeout]` / `[connect]` / `[request]` with the full cause chain — to diagnose session-backend latency. No-op for the in-memory / disk drivers
+* **chore(serve):** request access logs and boot-trace lines are now prefixed with a local wall-clock timestamp (`2026-06-01 14:23:45.123`) to make latency easier to correlate
 * **fix(vm):** correct a class of control-flow / local-assignment bugs on the bytecode VM, found via a new tree-walker-vs-VM differential harness: a peephole that **inverted** `if`/`while` on a bare local (ran the wrong branch), `for`-loop closures capturing the loop variable, the index in `for v, i in …`, `a..b` range bounds (now exclusive of `b`, matching the interpreter), assignment and `return` inside a `catch` block being dropped, and a crash on `let x = <local>` / `||=`
 * **fix(vm):** comprehensions and variable-binding `match` patterns no longer silently corrupt results or abort the worker when unsupported — they cleanly fall back to the tree-walking interpreter
 * **fix(interpreter):** closures created in different iterations of a `for`/`while` loop now capture distinct per-iteration bindings instead of sharing one

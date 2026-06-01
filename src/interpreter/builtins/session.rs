@@ -93,6 +93,13 @@ pub trait SessionStore: Send + Sync {
     fn regenerate(&self, old_id: &str) -> String;
     fn cleanup(&self);
     fn driver_name(&self) -> &'static str;
+
+    /// Open a connection to the backing store ahead of the first request,
+    /// so request handlers don't pay a cold-start. Defaults to a no-op for
+    /// stores with no network backend (in-memory, disk); the SoliDB store
+    /// overrides it with a cheap read-only round-trip. Must never write or
+    /// mutate any session state — see `SolidbSessionStore::warm`.
+    fn warm(&self) {}
 }
 
 // SEC-038a: the previous `SessionStoreManager` cached one Arc<dyn SessionStore>

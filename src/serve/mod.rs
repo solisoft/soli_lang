@@ -173,7 +173,19 @@ fn boot_trace(phase: &str) {
         None => 0,
     };
     *last = Some(now);
-    eprintln!("[boot+{total_ms:>5}ms Δ{delta_ms:>4}ms] {phase}");
+    eprintln!(
+        "{} [boot+{total_ms:>5}ms Δ{delta_ms:>4}ms] {phase}",
+        log_timestamp()
+    );
+}
+
+/// Wall-clock timestamp (local time, millisecond precision) for log lines,
+/// e.g. `2026-06-01 14:23:45.123`. Used to correlate boot/request prints when
+/// debugging latency.
+pub fn log_timestamp() -> String {
+    chrono::Local::now()
+        .format("%Y-%m-%d %H:%M:%S%.3f")
+        .to_string()
 }
 
 use bytes::Bytes;
@@ -1244,6 +1256,19 @@ fn run_hyper_server_worker_pool(
     runtime_handle.block_on(async {
         crate::interpreter::builtins::http_class::get_http_client();
     });
+
+    // Make the long-lived runtime handle reachable from this boot thread so
+    // the session warmup below (and any other block_on helper) drives work on
+    // it rather than a transient fallback runtime.
+    set_tokio_handle(runtime_handle.clone());
+
+    // Pre-warm the session store's backend connection (no-op for in-memory /
+    // disk). Without this the SoliDB session driver opens the process's first
+    // connection inside `ensure_session` on the first request, which stalls to
+    // the HTTP client timeout (~10s) before recovering. Warming here, on the
+    // idle runtime, anchors a live pooled connection up front. Best-effort:
+    // a transiently-unreachable session DB is logged, never fatal.
+    crate::interpreter::builtins::session::get_current_store().warm();
 
     // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
     // Must be after .env loading and DB config init.
@@ -5206,7 +5231,8 @@ fn handle_request(
             if log_requests && path != "/health" {
                 let elapsed = start_time.unwrap().elapsed();
                 println!(
-                    "[LOG] {} {} - 404 ({:.3}ms)",
+                    "{} [LOG] {} {} - 404 ({:.3}ms)",
+                    log_timestamp(),
                     method,
                     path,
                     elapsed.as_secs_f64() * 1000.0
@@ -5502,8 +5528,12 @@ fn handle_request(
                 // queries/http/timing detail; the terminal just gets the
                 // one-line access entry.
                 println!(
-                    "[LOG] {} {} - {} ({:.3}ms)",
-                    method, path, resp.status, elapsed_ms
+                    "{} [LOG] {} {} - {} ({:.3}ms)",
+                    log_timestamp(),
+                    method,
+                    path,
+                    resp.status,
+                    elapsed_ms
                 );
             } else {
                 // Production: emit the access line plus whatever detail

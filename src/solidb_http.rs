@@ -157,6 +157,93 @@ impl SoliDBClient {
         })
     }
 
+    /// Attach the configured credentials to an outbound request.
+    /// Auth priority: JWT (fastest) > API key > Basic auth.
+    fn apply_auth(&self, mut request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(jwt) = &self.jwt_token {
+            request = request.header("Authorization", format!("Bearer {}", jwt));
+        } else if let Some(api_key) = &self.api_key {
+            request = request.header("x-api-key", api_key);
+        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
+            request = request.basic_auth(u, Some(p));
+        }
+        request
+    }
+
+    /// Build an owned, `'static` future that opens a connection to this host
+    /// and runs a read-only `RETURN 1` cursor query. Used to pre-warm the
+    /// connection pool at boot by spawning it on the server's long-lived
+    /// runtime (see `SolidbSessionStore::warm`), so the hyper background
+    /// driver task is anchored on an always-driven runtime rather than being
+    /// established mid-request under a worker's `block_on`. Returns an owned
+    /// future (captures only owned clones) so it satisfies `Handle::spawn`'s
+    /// `'static + Send` bound.
+    pub fn warmup_future(
+        &self,
+    ) -> impl std::future::Future<Output = Result<(), SoliDBError>> + Send {
+        let db = self
+            .database
+            .clone()
+            .unwrap_or_else(|| "solidb".to_string());
+        let url = format!("{}/_api/database/{}/cursor", self.base_url, db);
+        let request = self
+            .apply_auth(get_http_client().post(&url))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(br#"{"query":"RETURN 1"}"#.to_vec());
+
+        async move {
+            let response = request.send().await.map_err(|e| {
+                // Classify the failure so logs distinguish a transport stall
+                // (timeout / connect) from an auth/protocol reject. Walk the
+                // source chain so the underlying cause isn't hidden behind
+                // reqwest's terse top-level Display.
+                let mut kinds = Vec::new();
+                if e.is_timeout() {
+                    kinds.push("timeout");
+                }
+                if e.is_connect() {
+                    kinds.push("connect");
+                }
+                if e.is_request() {
+                    kinds.push("request");
+                }
+                if e.is_body() {
+                    kinds.push("body");
+                }
+                let mut chain = format!("{}", e);
+                let mut src = std::error::Error::source(&e);
+                while let Some(cause) = src {
+                    chain.push_str(" -> ");
+                    chain.push_str(&cause.to_string());
+                    src = cause.source();
+                }
+                SoliDBError {
+                    message: format!(
+                        "warmup request failed [{}]: {}",
+                        if kinds.is_empty() {
+                            "other".to_string()
+                        } else {
+                            kinds.join(",")
+                        },
+                        chain
+                    ),
+                    code: None,
+                }
+            })?;
+            let status = response.status();
+            // Drain the body so the connection is returned cleanly to the pool.
+            let _ = response.bytes().await;
+            if !status.is_success() {
+                return Err(SoliDBError {
+                    message: format!("warmup got HTTP {}", status),
+                    code: None,
+                });
+            }
+            Ok(())
+        }
+    }
+
     fn request(
         &self,
         method: reqwest::Method,
@@ -165,16 +252,7 @@ impl SoliDBClient {
     ) -> Result<Value, SoliDBError> {
         let url = format!("{}{}", self.base_url, path);
         let client = get_http_client().clone();
-        let mut request = client.request(method.clone(), &url);
-
-        // Auth priority: JWT (fastest) > API key > Basic auth
-        if let Some(jwt) = &self.jwt_token {
-            request = request.header("Authorization", format!("Bearer {}", jwt));
-        } else if let Some(api_key) = &self.api_key {
-            request = request.header("x-api-key", api_key);
-        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
-            request = request.basic_auth(u, Some(p));
-        }
+        let mut request = self.apply_auth(client.request(method.clone(), &url));
 
         request = request.header("Accept", "application/json");
 
