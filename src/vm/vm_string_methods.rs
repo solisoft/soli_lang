@@ -214,10 +214,16 @@ impl Vm {
                 let suffix = expect_string(&args[0], "ends_with", span)?;
                 Ok(Value::Bool(s.ends_with(suffix)))
             }
-            "include?" => {
+            "include?" | "includes?" => {
                 check_arity(1, args.len(), span)?;
                 let sub = expect_string(&args[0], "include?", span)?;
                 Ok(Value::Bool(s.contains(sub)))
+            }
+            "slugify" => {
+                check_arity(0, args.len(), span)?;
+                Ok(Value::String(
+                    crate::interpreter::executor::calls::string_methods::slugify_string(s),
+                ))
             }
             "split" => {
                 if args.len() > 1 {

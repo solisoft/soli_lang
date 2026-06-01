@@ -174,7 +174,7 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(s.is_empty())))
             }
-            "contains" | "includes?" => {
+            "contains" | "includes?" | "include?" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
@@ -346,7 +346,7 @@ impl Interpreter {
             "rpad" => self.string_rpad(s, arguments, span),
             "join" => Ok(Value::String(s.to_string())),
             "empty?" => self.string_empty(s, arguments, span),
-            "includes?" => self.string_include(s, arguments, span),
+            "includes?" | "include?" => self.string_include(s, arguments, span),
             "to_sym" => Ok(Value::Symbol(s.to_string())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),

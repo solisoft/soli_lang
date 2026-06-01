@@ -694,10 +694,11 @@ impl Vm {
                                     Value::Hash(h) => h.clone(),
                                     _ => unreachable!(),
                                 };
-                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let args: Vec<Value> =
+                                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                                 let span = self.current_span();
-                                let result = self.vm_call_hash_method(&hash, name, args, span)?;
                                 self.stack.truncate(receiver_idx);
+                                let result = self.vm_call_hash_method(&hash, name, &args, span)?;
                                 self.stack.push(result);
                             }
                         }
@@ -824,10 +825,11 @@ impl Vm {
                                 Value::Hash(h) => h.clone(),
                                 _ => unreachable!(),
                             };
-                            let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                             let span = self.current_span();
-                            let result = self.vm_call_hash_method(&hash, name, args, span)?;
                             self.stack.truncate(receiver_idx);
+                            let result = self.vm_call_hash_method(&hash, name, &args, span)?;
                             self.stack.push(result);
                         }
                         _ => {
@@ -1372,7 +1374,7 @@ impl Vm {
                     let name = self.read_string_constant_owned(idx);
                     let object = self.stack.pop().unwrap();
                     let span = self.current_span();
-                    let result = self.op_get_property(&object, &name, span)?;
+                    let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);
                 }
                 Op::SetProperty(idx) => {
@@ -2162,7 +2164,7 @@ impl Vm {
                     let object = self.stack[base + slot as usize].clone();
                     let name = self.read_string_constant_owned(idx);
                     let span = self.current_span();
-                    let result = self.op_get_property(&object, &name, span)?;
+                    let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);
                 }
                 Op::GetLocalIndex(slot, idx_slot) => {

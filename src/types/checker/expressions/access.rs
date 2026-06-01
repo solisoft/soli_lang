@@ -77,7 +77,7 @@ impl TypeChecker {
     /// Check array method access.
     fn check_array_method(&self, inner_type: &Type, name: &str, span: Span) -> TypeResult<Type> {
         match name {
-            "map" | "filter" | "each" => Ok(Type::Function {
+            "map" | "filter" | "select" | "each" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
@@ -85,7 +85,7 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
-            "reduce" | "find" => Ok(Type::Function {
+            "reduce" | "fold" | "find" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
@@ -93,28 +93,66 @@ impl TypeChecker {
                 params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Int),
             }),
-            "any?" | "all?" => Ok(Type::Function {
+            "any?" | "all?" | "none?" | "one?" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Bool),
             }),
-            "sort" | "reverse" | "uniq" | "compact" | "flatten" | "shuffle" => Ok(Type::Function {
-                params: vec![],
+            "sort" | "reverse" | "uniq" | "compact" | "compact_blank" | "flatten" | "shuffle"
+            | "reject" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
             "sort_by" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
-            "first" | "last" | "sample" | "min" | "max" => Ok(Type::Function {
+            "first" | "last" | "sample" | "min" | "max" | "shift" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(inner_type.clone()),
             }),
-            "empty?" | "include?" | "contains" => Ok(Type::Function {
+            // `delete(value)` / `delete_at(index)` return the removed element.
+            "delete" | "delete_at" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(inner_type.clone()),
+            }),
+            "empty?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
+            }),
+            "include?" | "contains" | "includes?" | "includes" => Ok(Type::Function {
                 params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Bool),
             }),
             "take" | "drop" | "slice" => Ok(Type::Function {
                 params: vec![Type::Int, Type::Int],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
+            // `dig`/`values_at` are variadic — `Type::Any` lifts the arity cap.
+            "dig" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            }),
+            "values_at" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
+            // `pluck`/`pick` accept one-or-more keys/indices (variadic).
+            "pluck" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            }),
+            "pick" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            }),
+            // `count` takes an optional value/predicate; `insert`/`unshift`/`rotate`
+            // are variadic mutators — all use `Type::Any` to stay arity-flexible.
+            "count" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Int),
+            }),
+            "insert" | "unshift" | "rotate" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
             "zip" => Ok(Type::Function {
@@ -129,7 +167,11 @@ impl TypeChecker {
                 params: vec![Type::String],
                 return_type: Box::new(Type::String),
             }),
-            "length" | "get" | "pop" | "clear" => Ok(Type::Function {
+            "length" | "len" | "size" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Int),
+            }),
+            "get" | "pop" | "clear" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
@@ -151,7 +193,11 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
-            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+            "is_a?" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            }),
+            "nil?" | "blank?" | "present?" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Bool),
             }),
@@ -172,9 +218,13 @@ impl TypeChecker {
         span: Span,
     ) -> TypeResult<Type> {
         match name {
-            "length" | "len" | "empty?" => Ok(Type::Function {
+            "length" | "len" | "size" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Int),
+            }),
+            "empty?" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Bool),
             }),
             "keys" => Ok(Type::Function {
                 params: vec![],
@@ -225,20 +275,63 @@ impl TypeChecker {
                     value_type: Box::new(key_type.clone()),
                 }),
             }),
-            "transform_values" | "transform_keys" | "select" | "reject" | "slice" | "except"
-            | "compact" => Ok(Type::Function {
+            // Closure-driven transforms/filters: take a single function argument.
+            "transform_values" | "transform_keys" | "select" | "reject" | "keep_if"
+            | "delete_if" | "each_key" | "each_value" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(key_type.clone()),
+                    value_type: Box::new(value_type.clone()),
+                }),
+            }),
+            // `slice`/`except` take an array of keys; `compact` takes nothing.
+            "slice" | "except" => Ok(Type::Function {
+                params: vec![Type::Array(Box::new(key_type.clone()))],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(key_type.clone()),
+                    value_type: Box::new(value_type.clone()),
+                }),
+            }),
+            "compact" | "to_h" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Hash {
                     key_type: Box::new(key_type.clone()),
                     value_type: Box::new(value_type.clone()),
                 }),
             }),
+            // Predicate iterators take a single function argument.
+            "all?" | "any?" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Bool),
+            }),
+            // `values_at`/`fetch_values` accept one-or-more keys (variadic);
+            // the `Type::Any` param signals the arity check to allow extra args.
+            "values_at" | "fetch_values" => Ok(Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Array(Box::new(value_type.clone()))),
+            }),
+            "has_value?" | "value?" => Ok(Type::Function {
+                params: vec![value_type.clone()],
+                return_type: Box::new(Type::Bool),
+            }),
+            "key" => Ok(Type::Function {
+                params: vec![value_type.clone()],
+                return_type: Box::new(key_type.clone()),
+            }),
+            "set" => Ok(Type::Function {
+                params: vec![key_type.clone(), value_type.clone()],
+                return_type: Box::new(value_type.clone()),
+            }),
             // Universal methods on all types
             "class" | "inspect" | "to_string" | "to_json" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
-            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+            "is_a?" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            }),
+            "nil?" | "blank?" | "present?" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Bool),
             }),
@@ -253,20 +346,38 @@ impl TypeChecker {
     /// Check string method access.
     fn check_string_method(&self, name: &str, span: Span) -> TypeResult<Type> {
         match name {
-            "length" | "len" | "count" | "ord" | "bytesize" | "index_of" => Ok(Type::Function {
-                params: vec![],
+            "length" | "len" | "size" | "count" | "ord" | "bytesize" | "index_of" => {
+                Ok(Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Int),
+                })
+            }
+            "casecmp" => Ok(Type::Function {
+                params: vec![Type::String],
                 return_type: Box::new(Type::Int),
             }),
-            "starts_with?" | "ends_with?" | "empty?" | "include?" | "contains" | "starts_with"
-            | "ends_with" => Ok(Type::Function {
+            "starts_with?" | "ends_with?" | "empty?" | "include?" | "includes?" | "contains"
+            | "starts_with" | "ends_with" => Ok(Type::Function {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Bool),
             }),
-            "chomp" | "lstrip" | "rstrip" | "squeeze" | "capitalize" | "swapcase" | "reverse"
-            | "delete_prefix" | "delete_suffix" | "to_string" | "upcase" | "downcase" | "trim"
-            | "join" => Ok(Type::Function {
-                params: vec![],
+            "chomp" | "chop" | "lstrip" | "rstrip" | "strip" | "squeeze" | "capitalize"
+            | "swapcase" | "reverse" | "delete_prefix" | "delete_suffix" | "to_string"
+            | "upcase" | "downcase" | "trim" | "join" | "slugify" | "succ" | "next" => {
+                Ok(Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::String),
+                })
+            }
+            // `camelize` takes an optional bool; `prepend` takes one-or-more
+            // strings — `Type::Any` keeps both arity-flexible.
+            "camelize" | "prepend" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::String),
+            }),
+            "to_sym" => Ok(Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
             }),
             "gsub" | "replace_all" | "sub" | "tr" | "replace" => Ok(Type::Function {
                 params: vec![Type::String, Type::String],
@@ -323,7 +434,11 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
-            "nil?" | "is_a?" | "blank?" | "present?" => Ok(Type::Function {
+            "is_a?" => Ok(Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            }),
+            "nil?" | "blank?" | "present?" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Bool),
             }),

@@ -392,7 +392,7 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(items.is_empty())))
             }
-            "includes?" | "contains" => {
+            "includes?" | "include?" | "contains" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
@@ -773,6 +773,121 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Array(Rc::new(RefCell::new(values)))))
             }
+            "to_json" => {
+                if !arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
+                }
+                Some(
+                    match crate::interpreter::value_stringify::stringify_hash_map_to_string(entries)
+                    {
+                        Ok(json) => Ok(Value::String(json)),
+                        Err(e) => Err(RuntimeError::General { message: e, span }),
+                    },
+                )
+            }
+            "is_a?" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let class_name = match &arguments[0] {
+                    Value::String(s) => s.as_str(),
+                    _ => {
+                        return Some(Err(RuntimeError::type_error(
+                            "is_a? expects a string argument",
+                            span,
+                        )))
+                    }
+                };
+                Some(Ok(Value::Bool(
+                    class_name == "hash" || class_name == "object",
+                )))
+            }
+            "slice" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let Value::Array(keys) = &arguments[0] else {
+                    return Some(Err(RuntimeError::type_error(
+                        "slice expects an array of keys",
+                        span,
+                    )));
+                };
+                let keys = keys.borrow();
+                let mut result =
+                    HashPairs::with_capacity_and_hasher(keys.len(), ahash::RandomState::default());
+                for key in keys.iter() {
+                    let Some(hash_key) = key.to_hash_key() else {
+                        return Some(Err(RuntimeError::type_error(
+                            format!("{} cannot be used as a hash key", key.type_name()),
+                            span,
+                        )));
+                    };
+                    if let Some(v) = hash_get_value(entries, key) {
+                        result.insert(hash_key, v.clone());
+                    }
+                }
+                Some(Ok(Value::Hash(Rc::new(RefCell::new(result)))))
+            }
+            "except" => {
+                if arguments.len() != 1 {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                let Value::Array(keys) = &arguments[0] else {
+                    return Some(Err(RuntimeError::type_error(
+                        "except expects an array of keys",
+                        span,
+                    )));
+                };
+                let exclude: std::collections::HashSet<HashKey> = keys
+                    .borrow()
+                    .iter()
+                    .filter_map(|k| k.to_hash_key())
+                    .collect();
+                let mut result = HashPairs::with_capacity_and_hasher(
+                    entries.len(),
+                    ahash::RandomState::default(),
+                );
+                for (k, v) in entries.iter() {
+                    if !exclude.contains(k) {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Some(Ok(Value::Hash(Rc::new(RefCell::new(result)))))
+            }
+            "dig" => {
+                if arguments.is_empty() {
+                    return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
+                }
+                // First level: look up directly in the borrowed map (no clone of
+                // the whole hash). Subsequent levels descend into nested Hash/Array
+                // values, which are independent Rc<RefCell<_>> and borrowed lazily.
+                let mut current = hash_get_value(entries, &arguments[0]).cloned();
+                for key in &arguments[1..] {
+                    current = match current.take() {
+                        Some(Value::Hash(hash)) => hash_get_value(&hash.borrow(), key).cloned(),
+                        Some(Value::Array(arr)) => {
+                            if let Value::Int(idx) = key {
+                                let arr_ref = arr.borrow();
+                                let idx = if *idx < 0 {
+                                    arr_ref.len() as i64 + idx
+                                } else {
+                                    *idx
+                                };
+                                usize::try_from(idx)
+                                    .ok()
+                                    .and_then(|i| arr_ref.get(i).cloned())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if current.is_none() {
+                        return Some(Ok(Value::Null));
+                    }
+                }
+                Some(Ok(current.unwrap_or(Value::Null)))
+            }
             _ => None,
         }
     }
@@ -787,7 +902,7 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         match method_name {
             "map" => self.array_map(items, arguments, span),
-            "filter" => self.array_filter(items, arguments, span),
+            "filter" | "select" => self.array_filter(items, arguments, span),
             "each" => self.array_each(items, arguments, span),
             "each_with_index" => self.array_each_with_index(items, arguments, span),
             "index_of" => {
@@ -801,7 +916,7 @@ impl Interpreter {
                     .unwrap_or(-1);
                 Ok(Value::Int(idx))
             }
-            "reduce" => self.array_reduce(items, arguments, span),
+            "reduce" | "fold" => self.array_reduce(items, arguments, span),
             "find" => self.array_find(items, arguments, span),
             "any?" => self.array_any(items, arguments, span),
             "all?" => self.array_all(items, arguments, span),
@@ -818,7 +933,7 @@ impl Interpreter {
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
             "empty?" => self.array_empty(items, arguments, span),
-            "includes?" | "contains" => self.array_include(items, arguments, span),
+            "includes?" | "include?" | "contains" => self.array_include(items, arguments, span),
             "sample" => self.array_sample(items, arguments, span),
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),

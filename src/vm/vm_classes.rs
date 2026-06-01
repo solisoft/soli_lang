@@ -163,6 +163,40 @@ impl Vm {
         }
     }
 
+    /// Resolve a bare (no-parens) member access. Auto-invokes zero-arg builtin
+    /// methods so `arr.empty?`, `s.blank?`, `h.keys`, `a.length` evaluate to
+    /// their result — matching the tree-walking interpreter — instead of
+    /// yielding an (always-truthy) bound-method value. `obj.method()` with parens
+    /// goes through CallMethod and is unaffected.
+    pub fn op_get_property_member(
+        &mut self,
+        object: &Value,
+        name: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let val = self.op_get_property(object, name, span)?;
+        let invoke = match &val {
+            Value::Method(m)
+                if crate::interpreter::executor::calls::method_registry::is_zero_arg_method(
+                    &m.method_name,
+                    &m.receiver,
+                ) =>
+            {
+                Some((m.method_name.clone(), (*m.receiver).clone()))
+            }
+            _ => None,
+        };
+        match invoke {
+            Some((method_name, receiver)) => match &receiver {
+                Value::Array(arr) => self.vm_call_array_method(arr, &method_name, &[], span),
+                Value::String(s) => self.vm_call_string_method(s, &method_name, &[], span),
+                Value::Hash(h) => self.vm_call_hash_method(h, &method_name, &[], span),
+                _ => Ok(val),
+            },
+            None => Ok(val),
+        }
+    }
+
     /// Set a property on a value.
     pub fn op_set_property(
         &self,

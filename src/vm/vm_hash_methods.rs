@@ -9,10 +9,28 @@ use crate::span::Span;
 
 use super::vm::Vm;
 
+/// Build an empty `HashPairs` pre-sized to `cap`.
+#[inline]
+fn new_hash(cap: usize) -> HashPairs {
+    indexmap::IndexMap::with_capacity_and_hasher(cap, ahash::RandomState::default())
+}
+
+/// Full parameter count of a callback value — decides whether a hash iterator
+/// passes `(key, value)` as two args (arity >= 2) or a single `[key, value]`
+/// pair (arity < 2), matching the tree-walking interpreter's semantics.
+#[inline]
+fn callback_wants_two_args(cb: &Value) -> bool {
+    match cb {
+        Value::VmClosure(c) => c.proto.arity as usize >= 2,
+        Value::Function(f) => f.full_arity() >= 2,
+        _ => false,
+    }
+}
+
 impl Vm {
     /// Dispatch a hash method call.
     pub fn vm_call_hash_method(
-        &self,
+        &mut self,
         hash: &Rc<RefCell<HashPairs>>,
         name: &str,
         args: &[Value],
@@ -337,6 +355,248 @@ impl Vm {
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(values))))
             }
+            "to_json" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                match crate::interpreter::value_stringify::stringify_hash_map_to_string(
+                    &hash.borrow(),
+                ) {
+                    Ok(json) => Ok(Value::String(json)),
+                    Err(e) => Err(RuntimeError::General { message: e, span }),
+                }
+            }
+            "slice" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let Value::Array(keys) = &args[0] else {
+                    return Err(RuntimeError::type_error(
+                        "slice expects an array of keys",
+                        span,
+                    ));
+                };
+                let keys = keys.borrow();
+                let src = hash.borrow();
+                let mut result = new_hash(keys.len());
+                for key in keys.iter() {
+                    let Some(hash_key) = key.to_hash_key() else {
+                        return Err(RuntimeError::type_error(
+                            format!("{} cannot be used as a hash key", key.type_name()),
+                            span,
+                        ));
+                    };
+                    if let Some(v) = hash_get_value(&src, key) {
+                        result.insert(hash_key, v.clone());
+                    }
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "except" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let Value::Array(keys) = &args[0] else {
+                    return Err(RuntimeError::type_error(
+                        "except expects an array of keys",
+                        span,
+                    ));
+                };
+                let exclude: std::collections::HashSet<HashKey> = keys
+                    .borrow()
+                    .iter()
+                    .filter_map(|k| k.to_hash_key())
+                    .collect();
+                let src = hash.borrow();
+                let mut result = new_hash(src.len());
+                for (k, v) in src.iter() {
+                    if !exclude.contains(k) {
+                        result.insert(k.clone(), v.clone());
+                    }
+                }
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "dig" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let mut current = hash_get_value(&hash.borrow(), &args[0]).cloned();
+                for key in &args[1..] {
+                    current = match current.take() {
+                        Some(Value::Hash(h)) => hash_get_value(&h.borrow(), key).cloned(),
+                        Some(Value::Array(arr)) => {
+                            if let Value::Int(idx) = key {
+                                let arr_ref = arr.borrow();
+                                let idx = if *idx < 0 {
+                                    arr_ref.len() as i64 + idx
+                                } else {
+                                    *idx
+                                };
+                                usize::try_from(idx)
+                                    .ok()
+                                    .and_then(|i| arr_ref.get(i).cloned())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if current.is_none() {
+                        return Ok(Value::Null);
+                    }
+                }
+                Ok(current.unwrap_or(Value::Null))
+            }
+            // --- Closure-taking methods ---
+            "map" => {
+                let cb = Self::single_callback(args, span)?;
+                let two = callback_wants_two_args(&cb);
+                let len = hash.borrow().len();
+                let mut result = new_hash(len);
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        let r = self.hash_invoke_kv(&batch, &cb, two, k.to_value(), v, span)?;
+                        if let Value::Array(arr) = r {
+                            let arr = arr.borrow();
+                            if arr.len() == 2 {
+                                let nk = arr[0].to_hash_key().ok_or_else(|| {
+                                    RuntimeError::type_error("hash key must be hashable", span)
+                                })?;
+                                result.insert(nk, arr[1].clone());
+                            }
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "filter" | "select" | "reject" | "keep_if" | "delete_if" => {
+                let cb = Self::single_callback(args, span)?;
+                let two = callback_wants_two_args(&cb);
+                let keep_when_truthy = !matches!(name, "reject" | "delete_if");
+                let len = hash.borrow().len();
+                let mut result = new_hash(len);
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        let r =
+                            self.hash_invoke_kv(&batch, &cb, two, k.to_value(), v.clone(), span)?;
+                        if r.is_truthy() == keep_when_truthy {
+                            result.insert(k, v);
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "transform_values" => {
+                let cb = Self::single_callback(args, span)?;
+                let len = hash.borrow().len();
+                let mut result = new_hash(len);
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        let nv = self.invoke_in_batch_one(&batch, &cb, v, span)?;
+                        result.insert(k, nv);
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "transform_keys" => {
+                let cb = Self::single_callback(args, span)?;
+                let len = hash.borrow().len();
+                let mut result = new_hash(len);
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        let nk = self.invoke_in_batch_one(&batch, &cb, k.to_value(), span)?;
+                        let nk = nk.to_hash_key().ok_or_else(|| {
+                            RuntimeError::type_error("transformed key must be hashable", span)
+                        })?;
+                        result.insert(nk, v);
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Hash(Rc::new(RefCell::new(result))))
+            }
+            "each" | "each_value" | "each_key" => {
+                let cb = Self::single_callback(args, span)?;
+                let two = name == "each" && callback_wants_two_args(&cb);
+                let len = hash.borrow().len();
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        match name {
+                            "each_key" => {
+                                self.invoke_in_batch_one(&batch, &cb, k.to_value(), span)?;
+                            }
+                            "each_value" => {
+                                self.invoke_in_batch_one(&batch, &cb, v, span)?;
+                            }
+                            _ => {
+                                self.hash_invoke_kv(&batch, &cb, two, k.to_value(), v, span)?;
+                            }
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Hash(hash.clone()))
+            }
+            "all?" | "any?" => {
+                let cb = Self::single_callback(args, span)?;
+                let two = callback_wants_two_args(&cb);
+                let want_any = name == "any?";
+                let len = hash.borrow().len();
+                let mut answer = !want_any; // all? starts true, any? starts false
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let Some((k, v)) = clone_entry(hash, i) else {
+                            break;
+                        };
+                        let r = self.hash_invoke_kv(&batch, &cb, two, k.to_value(), v, span)?;
+                        if want_any && r.is_truthy() {
+                            answer = true;
+                            break;
+                        }
+                        if !want_any && !r.is_truthy() {
+                            answer = false;
+                            break;
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Bool(answer))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Hash".to_string(),
                 property: name.to_string(),
@@ -344,6 +604,44 @@ impl Vm {
             }),
         }
     }
+
+    /// Extract the single closure argument shared by hash iterator methods.
+    #[inline]
+    fn single_callback(args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+        if args.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, args.len(), span));
+        }
+        Ok(args[0].clone())
+    }
+
+    /// Invoke a `(key, value)` callback, passing two args when the callback
+    /// declares >= 2 params, or a single `[key, value]` pair otherwise.
+    #[inline]
+    fn hash_invoke_kv(
+        &mut self,
+        batch: &super::vm_calls::CallableBatch,
+        cb: &Value,
+        two_args: bool,
+        key: Value,
+        value: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if two_args {
+            self.invoke_in_batch_two(batch, cb, key, value, span)
+        } else {
+            let pair = Value::Array(Rc::new(RefCell::new(vec![key, value])));
+            self.invoke_in_batch_one(batch, cb, pair, span)
+        }
+    }
+}
+
+/// Clone the `(key, value)` at position `i` from a live hash, re-borrowing each
+/// time so user callbacks can mutate the hash between iterations. Returns
+/// `None` when `i` is past the (possibly shrunk) end.
+#[inline]
+fn clone_entry(hash: &Rc<RefCell<HashPairs>>, i: usize) -> Option<(HashKey, Value)> {
+    let b = hash.borrow();
+    b.get_index(i).map(|(k, v)| (k.clone(), v.clone()))
 }
 
 fn value_to_hash_key(val: &Value, span: Span) -> Result<HashKey, RuntimeError> {

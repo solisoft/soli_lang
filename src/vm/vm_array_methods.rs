@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{hash_get_value, HashKey, Value};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -337,7 +337,7 @@ impl Vm {
                 arr.borrow_mut().extend(to_append);
                 Ok(Value::Array(arr.clone()))
             }
-            "contains" | "include?" => {
+            "contains" | "include?" | "includes?" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
@@ -568,6 +568,16 @@ impl Vm {
                     .cloned()
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "to_json" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                match crate::interpreter::value_stringify::stringify_array_to_string(&arr.borrow())
+                {
+                    Ok(json) => Ok(Value::String(json)),
+                    Err(e) => Err(RuntimeError::General { message: e, span }),
+                }
             }
             "to_string" | "to_s" => {
                 let items = arr.borrow();
@@ -891,12 +901,303 @@ impl Vm {
                 }
                 Err(RuntimeError::wrong_arity(1, args.len(), span))
             }
+            // --- Closure-taking search/predicate methods ---
+            "find" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let len = arr.borrow().len();
+                let mut found = Value::Null;
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        if self
+                            .invoke_in_batch_one(&batch, &cb, item.clone(), span)?
+                            .is_truthy()
+                        {
+                            found = item;
+                            break;
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(found)
+            }
+            "any?" | "all?" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let cb = args[0].clone();
+                let want_any = name == "any?";
+                let len = arr.borrow().len();
+                let mut answer = !want_any; // all? starts true, any? starts false
+                let batch = self.enter_callable_batch();
+                let outcome: Result<(), RuntimeError> = (|| {
+                    for i in 0..len {
+                        let b = arr.borrow();
+                        if i >= b.len() {
+                            break;
+                        }
+                        let item = b[i].clone();
+                        drop(b);
+                        let truthy = self
+                            .invoke_in_batch_one(&batch, &cb, item, span)?
+                            .is_truthy();
+                        if want_any && truthy {
+                            answer = true;
+                            break;
+                        }
+                        if !want_any && !truthy {
+                            answer = false;
+                            break;
+                        }
+                    }
+                    Ok(())
+                })();
+                self.exit_callable_batch(batch);
+                outcome?;
+                Ok(Value::Bool(answer))
+            }
+            "sort_by" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                match &args[0] {
+                    Value::String(key) => {
+                        let hash_key = HashKey::String(key.clone());
+                        let mut sorted = arr.borrow().clone();
+                        sorted.sort_by(|a, b| {
+                            compare_sort_values(
+                                &extract_hash_value(a, &hash_key),
+                                &extract_hash_value(b, &hash_key),
+                            )
+                        });
+                        Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+                    }
+                    cb @ (Value::Function(_) | Value::VmClosure(_)) => {
+                        let cb = cb.clone();
+                        let len = arr.borrow().len();
+                        let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(len);
+                        let batch = self.enter_callable_batch();
+                        let outcome: Result<(), RuntimeError> = (|| {
+                            for i in 0..len {
+                                let b = arr.borrow();
+                                if i >= b.len() {
+                                    break;
+                                }
+                                let item = b[i].clone();
+                                drop(b);
+                                let key =
+                                    self.invoke_in_batch_one(&batch, &cb, item.clone(), span)?;
+                                keyed.push((item, key));
+                            }
+                            Ok(())
+                        })();
+                        self.exit_callable_batch(batch);
+                        outcome?;
+                        keyed.sort_by(|a, b| compare_sort_values(&a.1, &b.1));
+                        let sorted: Vec<Value> = keyed.into_iter().map(|(item, _)| item).collect();
+                        Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+                    }
+                    _ => Err(RuntimeError::type_error(
+                        "sort_by expects a string key or a function argument",
+                        span,
+                    )),
+                }
+            }
+            // --- Pure transforms / lookups ---
+            "compact_blank" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                let result: Vec<Value> = arr
+                    .borrow()
+                    .iter()
+                    .filter(|v| !is_blank(v))
+                    .cloned()
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "sample" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                use rand::seq::SliceRandom;
+                let items = arr.borrow();
+                let mut rng = rand::thread_rng();
+                Ok(items.choose(&mut rng).cloned().unwrap_or(Value::Null))
+            }
+            "shuffle" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                }
+                use rand::seq::SliceRandom;
+                let mut result = arr.borrow().clone();
+                let mut rng = rand::thread_rng();
+                result.shuffle(&mut rng);
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "zip" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let other = extract_array_arg(&args[0], "zip", span)?;
+                let items = arr.borrow();
+                let result: Vec<Value> = items
+                    .iter()
+                    .zip(other.iter())
+                    .map(|(a, b)| Value::Array(Rc::new(RefCell::new(vec![a.clone(), b.clone()]))))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "dig" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
+                }
+                let mut current = match &args[0] {
+                    Value::Int(idx) => {
+                        let items = arr.borrow();
+                        let idx = if *idx < 0 {
+                            items.len() as i64 + idx
+                        } else {
+                            *idx
+                        };
+                        usize::try_from(idx)
+                            .ok()
+                            .and_then(|i| items.get(i).cloned())
+                    }
+                    _ => None,
+                };
+                for key in &args[1..] {
+                    current = match current.take() {
+                        Some(Value::Hash(h)) => hash_get_value(&h.borrow(), key).cloned(),
+                        Some(Value::Array(a)) => {
+                            if let Value::Int(idx) = key {
+                                let items = a.borrow();
+                                let idx = if *idx < 0 {
+                                    items.len() as i64 + idx
+                                } else {
+                                    *idx
+                                };
+                                usize::try_from(idx)
+                                    .ok()
+                                    .and_then(|i| items.get(i).cloned())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if current.is_none() {
+                        return Ok(Value::Null);
+                    }
+                }
+                Ok(current.unwrap_or(Value::Null))
+            }
+            "pluck" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::new(
+                        "pluck() requires at least one field name or index",
+                        span,
+                    ));
+                }
+                let items = arr.borrow();
+                let mut result = Vec::with_capacity(items.len());
+                for item in items.iter() {
+                    if args.len() == 1 {
+                        result.push(extract_pluck_field(item, &args[0]));
+                    } else {
+                        let row: Vec<Value> =
+                            args.iter().map(|k| extract_pluck_field(item, k)).collect();
+                        result.push(Value::Array(Rc::new(RefCell::new(row))));
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(result))))
+            }
+            "pick" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::new(
+                        "pick() requires at least one field name or index",
+                        span,
+                    ));
+                }
+                let items = arr.borrow();
+                let Some(first) = items.first() else {
+                    return Ok(Value::Null);
+                };
+                if args.len() == 1 {
+                    return Ok(extract_pluck_field(first, &args[0]));
+                }
+                let row: Vec<Value> = args.iter().map(|k| extract_pluck_field(first, k)).collect();
+                Ok(Value::Array(Rc::new(RefCell::new(row))))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
                 span,
             }),
         }
+    }
+}
+
+/// Ruby-style "blank": null, empty string, empty array, empty hash.
+fn is_blank(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::String(s) => s.is_empty(),
+        Value::Array(a) => a.borrow().is_empty(),
+        Value::Hash(h) => h.borrow().is_empty(),
+        _ => false,
+    }
+}
+
+/// Pull `key` out of a hash element (for `sort_by("field")`).
+fn extract_hash_value(value: &Value, key: &HashKey) -> Value {
+    match value {
+        Value::Hash(hash) => hash.borrow().get(key).cloned().unwrap_or(Value::Null),
+        _ => Value::Null,
+    }
+}
+
+/// Total order used by `sort`/`sort_by` (numeric cross-compare, strings, else equal).
+fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Int(a), Value::Int(b)) => a.cmp(b),
+        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::String(a), Value::String(b)) => a.cmp(b),
+        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(Ordering::Equal),
+        _ => Ordering::Equal,
+    }
+}
+
+/// Field/index extraction shared by `pluck`/`pick`.
+fn extract_pluck_field(value: &Value, key: &Value) -> Value {
+    match (value, key) {
+        (Value::Hash(h), Value::String(s)) => h
+            .borrow()
+            .get(&HashKey::String(s.clone()))
+            .cloned()
+            .unwrap_or(Value::Null),
+        (Value::Array(a), Value::Int(i)) => {
+            let arr = a.borrow();
+            let idx = if *i < 0 { arr.len() as i64 + *i } else { *i };
+            usize::try_from(idx)
+                .ok()
+                .and_then(|i| arr.get(i).cloned())
+                .unwrap_or(Value::Null)
+        }
+        _ => Value::Null,
     }
 }
 

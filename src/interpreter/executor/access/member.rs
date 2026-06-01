@@ -1669,18 +1669,20 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            "length" | "len" | "size" | "map" | "filter" | "each" | "each_with_index"
-            | "reduce" | "find" | "index_of" | "any?" | "all?" | "sort" | "sort_by" | "reverse"
-            | "uniq" | "compact" | "compact_blank" | "concat" | "flatten" | "first" | "last"
-            | "empty?" | "includes?" | "contains" | "sample" | "shuffle" | "take" | "drop"
-            | "slice" | "zip" | "sum" | "min" | "max" | "push" | "pop" | "clear" | "get"
-            | "dig" | "pluck" | "pick" | "to_string" | "to_json" | "join" | "is_a?" | "all"
-            | "includes" | "order" | "delete" | "delete_at" | "shift" | "unshift" | "insert"
-            | "rotate" | "reject" | "none?" | "one?" | "values_at" | "count" | "intersection"
-            | "union" | "difference" => Ok(Value::Method(ValueMethod {
-                receiver: Box::new(obj_val),
-                method_name: name.to_string(),
-            })),
+            "length" | "len" | "size" | "map" | "filter" | "select" | "each"
+            | "each_with_index" | "reduce" | "fold" | "find" | "index_of" | "any?" | "all?"
+            | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank" | "concat"
+            | "flatten" | "first" | "last" | "empty?" | "includes?" | "include?" | "contains"
+            | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum" | "min" | "max"
+            | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick" | "to_string"
+            | "to_json" | "join" | "is_a?" | "all" | "includes" | "order" | "delete"
+            | "delete_at" | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?"
+            | "one?" | "values_at" | "count" | "intersection" | "union" | "difference" => {
+                Ok(Value::Method(ValueMethod {
+                    receiver: Box::new(obj_val),
+                    method_name: name.to_string(),
+                }))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
@@ -1846,7 +1848,7 @@ impl Interpreter {
             | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
             | "rpad" | "join" | "empty?"
             // Ruby-style methods
-            | "starts_with?" | "ends_with?" | "includes?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
+            | "starts_with?" | "ends_with?" | "includes?" | "include?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
             | "count" | "gsub" | "replace_all" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
