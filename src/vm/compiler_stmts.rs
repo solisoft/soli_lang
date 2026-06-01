@@ -12,6 +12,11 @@ use super::opcode::Op;
 impl Compiler {
     /// Compile a statement.
     pub fn compile_stmt(&mut self, stmt: &Stmt) -> CompileResult<()> {
+        // Every statement begins at the locals baseline (the previous statement
+        // left the value stack holding exactly the live locals). Resync the
+        // tracked height here so the comprehension clean-position gate is
+        // correct regardless of any drift during the prior statement.
+        self.resync_stack_height();
         let line = stmt.span.line;
         match &stmt.kind {
             StmtKind::Expression(expr) => {

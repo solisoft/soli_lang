@@ -971,24 +971,88 @@ impl Compiler {
         variable: &str,
         iterable: &Expr,
         condition: Option<&Expr>,
-        _line: usize,
+        line: usize,
     ) -> CompileResult<()> {
-        // List comprehensions are not implemented on the bytecode VM. A correct
-        // implementation must append each element to the result array, which
-        // means addressing that array by stack slot inside the loop body — but
-        // the compiler tracks `locals.len()`, not the *runtime* stack depth, so
-        // the slot is wrong whenever the comprehension is a sub-expression (a
-        // call argument, an element of an enclosing array literal, ...), where
-        // untracked temporaries sit on the stack. A slot-based attempt silently
-        // corrupts a neighbouring array there. Until the compiler tracks stack
-        // depth, fail compilation so the server falls back to the tree-walking
-        // interpreter (which handles comprehensions correctly) rather than
-        // risk a silently-wrong result. Tracked in the differential harness.
-        let _ = (variable, iterable, condition);
-        Err(CompileError::new(
-            "list comprehensions are not yet supported by the bytecode VM",
-            element.span,
-        ))
+        // Clean-position gate: the result array is addressed by the slot
+        // `locals.len()`, which only equals its true stack position when no
+        // anonymous temporaries sit below it. If the comprehension is a
+        // sub-expression (a call argument, an element of an enclosing array
+        // literal, ...) there are temporaries on the stack — fall back to the
+        // interpreter (which handles comprehensions correctly) rather than risk
+        // a wrong slot. See `Compiler::stack_height`.
+        if self.stack_height != self.locals.len() {
+            return Err(CompileError::new(
+                "list comprehension not supported by the VM as a sub-expression",
+                element.span,
+            ));
+        }
+
+        let result_slot = self.locals.len() as u16;
+        self.emit(Op::Array(0), line); // empty result array, at result_slot
+        self.add_local(String::new(), false); // anonymous result-array local
+
+        // Iterator setup (mirrors compile_for's range optimization).
+        let is_range = matches!(
+            &iterable.kind,
+            crate::ast::ExprKind::Binary {
+                operator: crate::ast::BinaryOp::Range,
+                ..
+            }
+        );
+        if let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            self.compile_expr(left)?;
+            self.compile_expr(right)?;
+            self.emit(Op::GetIterRange, line);
+        } else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+        }
+        // The iterable/range now lives on the iter_stack; value stack is back at
+        // the result-array baseline.
+        self.resync_stack_height();
+
+        let loop_start = self.current_offset();
+        let exit_jump = if is_range {
+            self.emit_jump(Op::ForIterRange(0), line)
+        } else {
+            self.emit_jump(Op::ForIter(0), line)
+        };
+
+        self.begin_scope();
+        self.add_local(variable.to_string(), false); // loop var = yielded element
+        self.resync_stack_height(); // body entry: height == locals.len()
+
+        // Append `element` to the result array: GetLocal(result); element;
+        // ArrayPush (mutates in place, leaves the array copy); Pop.
+        if let Some(cond) = condition {
+            self.compile_expr(cond)?;
+            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            self.emit(Op::GetLocal(result_slot), line);
+            self.compile_expr(element)?;
+            self.emit(Op::ArrayPush, line);
+            self.emit(Op::Pop, line);
+            self.patch_jump(skip);
+        } else {
+            self.emit(Op::GetLocal(result_slot), line);
+            self.compile_expr(element)?;
+            self.emit(Op::ArrayPush, line);
+            self.emit(Op::Pop, line);
+        }
+
+        self.end_scope(line); // pop loop var (closes upvalue if a closure captured it)
+        self.emit_loop(loop_start, line);
+        self.patch_jump(exit_jump);
+
+        // The result array stays on the stack as the expression's value; drop
+        // only its compiler-side local bookkeeping (no Pop op).
+        self.locals.pop();
+        self.stack_height = result_slot as usize + 1;
+        Ok(())
     }
 
     fn compile_hash_comprehension(
@@ -998,16 +1062,79 @@ impl Compiler {
         variable: &str,
         iterable: &Expr,
         condition: Option<&Expr>,
-        _line: usize,
+        line: usize,
     ) -> CompileResult<()> {
-        // Not implemented on the bytecode VM — same reasoning as
-        // `compile_list_comprehension`. Fail compilation so the server falls
-        // back to the tree-walking interpreter rather than risk a silently
-        // wrong result from an incorrect result-hash stack slot.
-        let _ = (value, variable, iterable, condition);
-        Err(CompileError::new(
-            "hash comprehensions are not yet supported by the bytecode VM",
-            key.span,
-        ))
+        // Clean-position gate — same reasoning as compile_list_comprehension.
+        if self.stack_height != self.locals.len() {
+            return Err(CompileError::new(
+                "hash comprehension not supported by the VM as a sub-expression",
+                key.span,
+            ));
+        }
+
+        let result_slot = self.locals.len() as u16;
+        self.emit(Op::Hash(0), line); // empty result hash, at result_slot
+        self.add_local(String::new(), false); // anonymous result-hash local
+
+        let is_range = matches!(
+            &iterable.kind,
+            crate::ast::ExprKind::Binary {
+                operator: crate::ast::BinaryOp::Range,
+                ..
+            }
+        );
+        if let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            self.compile_expr(left)?;
+            self.compile_expr(right)?;
+            self.emit(Op::GetIterRange, line);
+        } else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+        }
+        self.resync_stack_height();
+
+        let loop_start = self.current_offset();
+        let exit_jump = if is_range {
+            self.emit_jump(Op::ForIterRange(0), line)
+        } else {
+            self.emit_jump(Op::ForIter(0), line)
+        };
+
+        self.begin_scope();
+        self.add_local(variable.to_string(), false);
+        self.resync_stack_height();
+
+        // Insert key=>value into the result hash: GetLocal(result); key; value;
+        // SetIndex (hash[key]=value, leaves the hash); Pop. SetIndex (not
+        // HashSetConst) because the key is a runtime value, not a constant.
+        if let Some(cond) = condition {
+            self.compile_expr(cond)?;
+            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            self.emit(Op::GetLocal(result_slot), line);
+            self.compile_expr(key)?;
+            self.compile_expr(value)?;
+            self.emit(Op::SetIndex, line);
+            self.emit(Op::Pop, line);
+            self.patch_jump(skip);
+        } else {
+            self.emit(Op::GetLocal(result_slot), line);
+            self.compile_expr(key)?;
+            self.compile_expr(value)?;
+            self.emit(Op::SetIndex, line);
+            self.emit(Op::Pop, line);
+        }
+
+        self.end_scope(line);
+        self.emit_loop(loop_start, line);
+        self.patch_jump(exit_jump);
+
+        self.locals.pop();
+        self.stack_height = result_slot as usize + 1;
+        Ok(())
     }
 }

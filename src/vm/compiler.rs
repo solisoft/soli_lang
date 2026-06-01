@@ -85,6 +85,16 @@ pub struct Compiler {
     /// VM's full global table, so the decision matches the tree-walker exactly;
     /// for whole-program compiles it accumulates top-level names as they appear.
     pub known_globals: Rc<RefCell<HashSet<String>>>,
+    /// Tracked value-stack height (relative to the frame base) at the current
+    /// emit point. Updated in `emit` by each op's `stack_effect`, reset to
+    /// `locals.len()` at every statement boundary (and a few known-clean points
+    /// like a loop body entry). Used ONLY as a boolean gate — "are we at the
+    /// locals baseline (no anonymous temporaries on the stack)?" — to decide
+    /// whether a comprehension can use slot == `locals.len()` safely or must
+    /// fall back to the interpreter. It is never used to assign slots, so an
+    /// over-count merely causes an extra (safe) fallback; the design must never
+    /// under-count (which would pick a wrong slot).
+    pub stack_height: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +121,7 @@ impl Compiler {
             loop_context: None,
             class_context: None,
             known_globals: Rc::new(RefCell::new(HashSet::new())),
+            stack_height: 0,
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -216,7 +227,19 @@ impl Compiler {
     }
 
     pub fn emit(&mut self, op: Op, line: usize) -> usize {
+        // Track value-stack height for the comprehension clean-position gate.
+        // Saturating so it never goes negative (resyncs at boundaries correct
+        // any drift anyway). See `stack_height` field docs.
+        let effect = stack_effect(op);
+        self.stack_height = (self.stack_height as i64 + effect as i64).max(0) as usize;
         self.proto.chunk.emit(op, line)
+    }
+
+    /// Resync the tracked stack height to the locals baseline. Called at points
+    /// the value stack is known to hold exactly the live locals (statement
+    /// boundary, loop body entry after the loop variable is bound, etc.).
+    pub fn resync_stack_height(&mut self) {
+        self.stack_height = self.locals.len();
     }
 
     pub fn emit_constant(&mut self, constant: Constant, line: usize) {
@@ -507,6 +530,116 @@ fn peephole_optimize_proto(proto: &mut FunctionProto) {
 
     // Now optimize this function's bytecode
     peephole_optimize_chunk(&mut proto.chunk);
+}
+
+/// Net value-stack effect (pushes − pops) of an opcode, used by the compiler's
+/// `stack_height` tracking for the comprehension clean-position gate.
+///
+/// Only opcodes the compiler emits during compilation need to be exact; the
+/// peephole super-instructions run after compilation (mutating the chunk
+/// directly, not via `emit`) so their values here are for completeness only.
+/// `ForIter`/`ForIterRange` use the continue-path effect (+1); loops resync the
+/// height explicitly so the exit-path mismatch never matters. The gate tolerates
+/// over-counting (an extra, safe fallback) but must never under-count, so when
+/// in doubt an op's effect should not be more negative than reality.
+fn stack_effect(op: Op) -> i32 {
+    use Op::*;
+    match op {
+        // Constants / literals push one value.
+        Constant(_) | Null | True | False | Symbol(_) => 1,
+        Dup => 1,
+        Pop => -1,
+        // Reads push; stores leave the value in place (net 0).
+        GetLocal(_) | GetGlobal(_) | GetUpvalue(_) | GetThis | GetSuper(_) => 1,
+        SetLocal(_) | SetGlobal(_) | SetUpvalue(_) => 0,
+        DefineGlobal(_) | CloseUpvalue => -1,
+        // Binary arithmetic / comparison: pop 2, push 1. Unary: pop 1, push 1.
+        Add | Subtract | Multiply | Divide | Modulo => -1,
+        Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual => -1,
+        Negate | Not => 0,
+        // Control flow.
+        Jump(_) | Loop(_) | JumpIfFalseNoPop(_) | JumpIfTrueNoPop(_) | NullishJump(_)
+        | JumpIfNull(_) | JumpIfNotNull(_) => 0,
+        JumpIfFalse(_) => -1,
+        // Calls: pop callee/receiver + argc args, push the result.
+        Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
+        CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,
+        Closure(_) => 1,
+        Return => 0,
+        // Collections.
+        Array(n) | BuildString(n) | HashWithKeys(_, n) => 1 - n as i32,
+        Hash(n) => 1 - 2 * n as i32,
+        ArrayPush => -1,
+        Range | GetIndex => -1,
+        SetIndex => -2,
+        Spread => 0,
+        // Objects.
+        GetProperty(_) => 0,
+        SetProperty(_) => -1,
+        // Classes (class value stays on the stack; method/field defs pop one).
+        Class(_) => 1,
+        Inherit | Method(_) | StaticMethod(_) | Field(_) | StaticField(_) | ConstField(_)
+        | StaticConstField(_) => -1,
+        New(argc) => -(argc as i32),
+        // Exceptions.
+        TryBegin(_, _) | TryEnd | CatchMatch(_, _) | PopHandler | RescueJump(_) => 0,
+        Throw | Rethrow => -1,
+        // Iterators (GetIter/GetIterRange consume from the value stack; ForIter
+        // pushes the element on the continue path — loops resync regardless).
+        GetIter => -1,
+        GetIterRange => -2,
+        ForIter(_) | ForIterRange(_) => 1,
+        // I/O: pop n, push the Null result.
+        Print(n) => 1 - n as i32,
+        NamedArg(_) | Import(_) => 0,
+        JsonParse | JsonStringify => 0,
+        // Peephole super-instructions (not emitted during the tracked pass; values
+        // for completeness). Hash*Const directly-emitted variants are exact.
+        HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) => 0,
+        HashSetConst(_) => -1,
+        HashGetLocalConst(_, _) | HashHasKeyLocalConst(_, _) | HashDeleteLocalConst(_, _) => 1,
+        HashSetLocalConst(_, _) => -1,
+        HashGetGlobalConst(_, _) | HashHasKeyGlobalConst(_, _) | HashDeleteGlobalConst(_, _) => 1,
+        HashSetGlobalConst(_, _) => -1,
+        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | SwapSetLocal(_) | IsNull | NotNull
+        | PopNull | Nop => 0,
+        AddLocalLocal(_, _)
+        | SubLocalLocal(_, _)
+        | MulLocalLocal(_, _)
+        | DivLocalLocal(_, _)
+        | ModLocalLocal(_, _)
+        | LessEqualLocalLocal(_, _)
+        | LessLocalLocal(_, _)
+        | GreaterLocalLocal(_, _)
+        | EqualLocalLocal(_, _)
+        | NotEqualLocalLocal(_, _)
+        | AddLocalConst(_, _)
+        | SubLocalConst(_, _)
+        | MulLocalConst(_, _)
+        | DivLocalConst(_, _)
+        | AddLocalInt(_, _)
+        | EqualLocalConst(_, _)
+        | NotEqualLocalConst(_, _)
+        | IsTruthyLocal(_)
+        | IsFalsyLocal(_)
+        | IsZeroLocal(_)
+        | NotZeroLocal(_)
+        | GetAndNullLocal(_)
+        | GetAndIncrLocal(_)
+        | GetAndDecrLocal(_)
+        | NotLocal(_)
+        | NegateLocal(_)
+        | GetGlobalNullCheck(_) => 1,
+        GetLocal2(_, _) => 2,
+        DupN(n) => n as i32,
+        SetLocalPop(_) => -1,
+        TestLessEqualJump(_)
+        | TestLessJump(_)
+        | TestGreaterJump(_)
+        | TestGreaterEqualJump(_)
+        | TestNotEqualJump(_) => -2,
+        GetLocalProperty(_, _) | GetLocalIndex(_, _) => 1,
+    }
 }
 
 /// NOP placeholder used during peephole optimization (reuses Pop as NOP since it's harmless).

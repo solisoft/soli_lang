@@ -128,11 +128,47 @@ const CASES: &[(&str, &str)] = &[
         "let r = [x * 2 for x in [1, 2, 3, 4] if x > 1]\nprint(r)",
     ),
     (
+        "list_comprehension_range",
+        "let r = [x * x for x in 1..5]\nprint(r)",
+    ),
+    (
+        "list_comprehension_empty",
+        "let r = [x for x in [1, 2, 3] if x > 99]\nprint(r)",
+    ),
+    (
+        "list_comprehension_return",
+        "fn f() { return [x for x in [1, 2, 3]] }\nprint(f())",
+    ),
+    (
+        "hash_comprehension",
+        "let h = {x: x * 10 for x in [1, 2, 3]}\nprint(h)",
+    ),
+    (
+        // Two comprehensions in one program — catches post-loop height desync.
+        "two_comprehensions",
+        "let a = [x for x in [1, 2]]\nlet b = [y * 10 for y in [3, 4]]\nprint(a)\nprint(b)",
+    ),
+    (
+        // Closure capturing the loop variable — each must capture its own value.
+        "comprehension_closure_capture",
+        "let fns = [fn() { return x } for x in [1, 2, 3]]\nprint(fns[0]())\nprint(fns[2]())",
+    ),
+    (
+        // Comprehension inside a for-loop body (clean per-iteration).
+        "comprehension_in_loop",
+        "let all = []\nfor n in [1, 2] { let r = [x for x in [n, n]]\n  all.push(r) }\nprint(all)",
+    ),
+    (
         // Comprehension as a sub-expression (inside an array literal). Used to
-        // silently corrupt a neighbouring array on the VM; now the VM refuses
-        // to compile comprehensions, so it errors and falls back instead.
+        // silently corrupt a neighbouring array on the VM; the clean-position
+        // gate now errors → interpreter fallback instead. KNOWN_DIVERGENT.
         "list_comprehension_nested",
         "let r = [[1, 2], [x for x in [3, 4]]]\nprint(r)",
+    ),
+    (
+        // Comprehension as a call argument — sub-expression, falls back. DIVERGENT.
+        "comprehension_call_arg",
+        "fn total(a) { let t = 0\n  for v in a { t = t + v }\n  return t }\nprint(total([x * 2 for x in [1, 2, 3]]))",
     ),
     // --- iteration method chains with closures ---
     (
@@ -259,14 +295,13 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // #9 — comprehensions are unsupported on the VM: it now refuses to compile
-    //      them (a correct impl needs compile-time stack-depth tracking), so
-    //      handlers using them fall back to the interpreter. Both a top-level
-    //      and a nested (sub-expression) comprehension stay divergent because
-    //      the VM errors where the interpreter succeeds — but neither is
-    //      silently wrong anymore.
-    "list_comprehension",
+    // #9 — comprehensions now run on the VM at a clean stack position (see
+    //      compile_list_comprehension), so `list_comprehension` AGREES and is no
+    //      longer listed. As a SUB-EXPRESSION the VM still falls back (the
+    //      clean-position gate errors → interpreter), so a nested/embedded
+    //      comprehension stays divergent — but is no longer silently wrong.
     "list_comprehension_nested",
+    "comprehension_call_arg",
     // #11/#12/#13 — match patterns that BIND a variable (`x`, `[a, b]`,
     //   `{k: v}`). The binding aliases the subject's stack slot, which the
     //   match epilogue then pops before the body — a body that uses the binding
