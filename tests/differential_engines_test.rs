@@ -127,6 +127,13 @@ const CASES: &[(&str, &str)] = &[
         "list_comprehension",
         "let r = [x * 2 for x in [1, 2, 3, 4] if x > 1]\nprint(r)",
     ),
+    (
+        // Comprehension as a sub-expression (inside an array literal). Used to
+        // silently corrupt a neighbouring array on the VM; now the VM refuses
+        // to compile comprehensions, so it errors and falls back instead.
+        "list_comprehension_nested",
+        "let r = [[1, 2], [x for x in [3, 4]]]\nprint(r)",
+    ),
     // --- iteration method chains with closures ---
     (
         "map_filter_chain",
@@ -178,11 +185,14 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // #9 — list comprehensions are unfinished on the VM compiler (the element is
-    //      never appended to the result array). Errors at runtime, so production
-    //      handlers fall back to the interpreter rather than getting a wrong
-    //      result. Fixing it is a feature-completion task, not a one-liner.
+    // #9 — comprehensions are unsupported on the VM: it now refuses to compile
+    //      them (a correct impl needs compile-time stack-depth tracking), so
+    //      handlers using them fall back to the interpreter. Both a top-level
+    //      and a nested (sub-expression) comprehension stay divergent because
+    //      the VM errors where the interpreter succeeds — but neither is
+    //      silently wrong anymore.
     "list_comprehension",
+    "list_comprehension_nested",
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
     //   #6  assignment inside catch          — TryBegin catch_ip off-by-one

@@ -971,69 +971,24 @@ impl Compiler {
         variable: &str,
         iterable: &Expr,
         condition: Option<&Expr>,
-        line: usize,
+        _line: usize,
     ) -> CompileResult<()> {
-        // [expr for x in iter if cond]
-        // Compiles to:
-        //   1. Create empty array
-        //   2. Get iterator
-        //   3. Loop: get next, check done, bind variable, check condition, eval element, push to array
-        self.emit(Op::Array(0), line); // empty result array
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
-
-        let loop_start = self.current_offset();
-        let exit_jump = if is_range {
-            self.emit_jump(Op::ForIterRange(0), line)
-        } else {
-            self.emit_jump(Op::ForIter(0), line)
-        };
-
-        self.begin_scope();
-        // Bind the loop variable
-        self.add_local(variable.to_string(), false);
-
-        if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
-
-            // Evaluate element and push to array
-            // Stack: [result_array, iter, loop_var, ...]
-            // We need to get the result array, push element, then put it back
-            self.compile_expr(element)?;
-            // We need a special approach: the result array is deep in the stack.
-            // Use GetLocal to access it.
-            // Actually, let's just use a global-like approach or restructure.
-            // Simpler: use the array that's on the stack before the iterator.
-
-            self.patch_jump(skip);
-        } else {
-            self.compile_expr(element)?;
-        }
-
-        self.end_scope(line);
-        self.emit_loop(loop_start, line);
-        self.patch_jump(exit_jump);
-        // Result array is on the stack
-        Ok(())
+        // List comprehensions are not implemented on the bytecode VM. A correct
+        // implementation must append each element to the result array, which
+        // means addressing that array by stack slot inside the loop body — but
+        // the compiler tracks `locals.len()`, not the *runtime* stack depth, so
+        // the slot is wrong whenever the comprehension is a sub-expression (a
+        // call argument, an element of an enclosing array literal, ...), where
+        // untracked temporaries sit on the stack. A slot-based attempt silently
+        // corrupts a neighbouring array there. Until the compiler tracks stack
+        // depth, fail compilation so the server falls back to the tree-walking
+        // interpreter (which handles comprehensions correctly) rather than
+        // risk a silently-wrong result. Tracked in the differential harness.
+        let _ = (variable, iterable, condition);
+        Err(CompileError::new(
+            "list comprehensions are not yet supported by the bytecode VM",
+            element.span,
+        ))
     }
 
     fn compile_hash_comprehension(
@@ -1043,55 +998,16 @@ impl Compiler {
         variable: &str,
         iterable: &Expr,
         condition: Option<&Expr>,
-        line: usize,
+        _line: usize,
     ) -> CompileResult<()> {
-        // Similar to list comprehension but builds a hash
-        self.emit(Op::Hash(0), line); // empty result hash
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
-
-        let loop_start = self.current_offset();
-        let exit_jump = if is_range {
-            self.emit_jump(Op::ForIterRange(0), line)
-        } else {
-            self.emit_jump(Op::ForIter(0), line)
-        };
-
-        self.begin_scope();
-        self.add_local(variable.to_string(), false);
-
-        if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
-            self.compile_expr(key)?;
-            self.compile_expr(value)?;
-            self.patch_jump(skip);
-        } else {
-            self.compile_expr(key)?;
-            self.compile_expr(value)?;
-        }
-
-        self.end_scope(line);
-        self.emit_loop(loop_start, line);
-        self.patch_jump(exit_jump);
-        Ok(())
+        // Not implemented on the bytecode VM — same reasoning as
+        // `compile_list_comprehension`. Fail compilation so the server falls
+        // back to the tree-walking interpreter rather than risk a silently
+        // wrong result from an incorrect result-hash stack slot.
+        let _ = (value, variable, iterable, condition);
+        Err(CompileError::new(
+            "hash comprehensions are not yet supported by the bytecode VM",
+            key.span,
+        ))
     }
 }
