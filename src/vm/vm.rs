@@ -1339,7 +1339,9 @@ impl Vm {
                     let (start, end) = self.pop2();
                     match (&start, &end) {
                         (Value::Int(a), Value::Int(b)) => {
-                            let arr: Vec<Value> = (*a..=*b).map(Value::Int).collect();
+                            // Exclusive of the end, matching the tree-walking
+                            // interpreter's `eval_range` (`start..end`).
+                            let arr: Vec<Value> = (*a..*b).map(Value::Int).collect();
                             self.stack.push(Value::Array(Rc::new(RefCell::new(arr))));
                         }
                         _ => {
@@ -1475,10 +1477,17 @@ impl Vm {
 
                 // --- Exceptions ---
                 Op::TryBegin(catch_offset, finally_offset) => {
+                    // `*_offset` is the distance from the instruction *after*
+                    // TryBegin to the catch/finally target; `frame.ip` already
+                    // points at that next instruction (it was advanced during
+                    // fetch), so the absolute target is `frame.ip + offset`.
+                    // (A spurious `- 1` here landed the catch on the Jump that
+                    // skips the catch block, so caught exceptions ran no catch
+                    // body — assignments and `return`s inside `catch` were lost.)
                     let frame = self.frames.last().unwrap();
                     let handler = ExceptionHandler {
-                        catch_ip: frame.ip + catch_offset as usize - 1,
-                        finally_ip: frame.ip + finally_offset as usize - 1,
+                        catch_ip: frame.ip + catch_offset as usize,
+                        finally_ip: frame.ip + finally_offset as usize,
                         stack_depth: self.stack.len(),
                         frame_depth: self.frames.len(),
                     };
@@ -1556,7 +1565,8 @@ impl Vm {
                     // Inlined range iteration — no method call, no enum match
                     let state = self.iter_stack.last_mut().unwrap();
                     if let IterState::Range { current, end } = state {
-                        if *current <= *end {
+                        // Exclusive of `end`, matching the tree-walker.
+                        if *current < *end {
                             let val = Value::Int(*current);
                             *current += 1;
                             self.stack.push(val);
@@ -2338,7 +2348,8 @@ impl Vm {
                 }
             }
             IterState::Range { current, end } => {
-                if *current <= *end {
+                // Exclusive of `end`, matching the tree-walker.
+                if *current < *end {
                     let val = Value::Int(*current);
                     *current += 1;
                     Some(val)

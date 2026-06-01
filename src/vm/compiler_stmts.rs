@@ -177,6 +177,21 @@ impl Compiler {
         // for x in iter { body } or for x, i in iter { body }
         self.begin_scope();
 
+        // The index variable is a counter maintained by the compiler: `ForIter`
+        // only yields the element value, never an index. Declare it *before* the
+        // loop (so it persists across iterations) initialized to 0, and bump it
+        // at the end of each iteration.
+        let index_slot = if let Some(idx_var) = index_variable {
+            self.emit_constant(Constant::Int(0), line);
+            self.add_local(idx_var.to_string(), false);
+            Some(
+                self.resolve_local(idx_var)
+                    .expect("index local just declared"),
+            )
+        } else {
+            None
+        };
+
         // Optimize: for x in a..b => GetIterRange + ForIterRange (zero allocation, inlined)
         let is_range = matches!(
             &iterable.kind,
@@ -207,31 +222,33 @@ impl Compiler {
             self.emit_jump(Op::ForIter(0), line)
         };
 
-        // Bind the loop variable
+        // Bind the loop variable to the freshly-yielded element value.
         self.add_local(variable.to_string(), false);
-
-        // Bind the index variable if present
-        if let Some(idx_var) = index_variable {
-            self.add_local(idx_var.to_string(), false);
-        }
 
         self.compile_stmt(body)?;
 
-        // Pop the index variable if present. If a closure created in the body
-        // captured it, close the upvalue (snapshotting this iteration's value
-        // into the closure) instead of a plain pop — otherwise closures from
-        // different iterations would share a dangling binding.
-        if index_variable.is_some() {
-            self.emit_pop_or_close_top(line);
-        }
-
-        // Pop the loop variable (closing its upvalue if it was captured).
+        // Pop the loop variable (closing its upvalue if a body closure captured
+        // it, so closures from different iterations don't share a binding).
         self.emit_pop_or_close_top(line);
+
+        // Bump the index counter for the next iteration: idx = idx + 1.
+        if let Some(slot) = index_slot {
+            self.emit(Op::GetLocal(slot), line);
+            self.emit_constant(Constant::Int(1), line);
+            self.emit(Op::Add, line);
+            self.emit(Op::SetLocal(slot), line);
+            self.emit(Op::Pop, line);
+        }
 
         self.emit_loop(loop_start, line);
         self.patch_jump(exit_jump);
 
         self.end_loop();
+
+        // Pop the index counter (closing its upvalue if it was captured).
+        if index_slot.is_some() {
+            self.emit_pop_or_close_top(line);
+        }
 
         // Note: no Pop needed for the iterator — GetIter moved it to iter_stack,
         // and ForIter pops it from iter_stack when exhausted.

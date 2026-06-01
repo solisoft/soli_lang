@@ -927,17 +927,12 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: Two consecutive GetLocal → GetLocal2
-        if i + 1 < len {
-            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b)) = (code[i], code[i + 1]) {
-                if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::GetLocal2(slot_a, slot_b);
-                    code[i + 1] = NOP;
-                    i += 2;
-                    continue;
-                }
-            }
-        }
+        // NB: `GetLocal(a), GetLocal(b)` is deliberately NOT fused into a single
+        // GetLocal2. A `let x = <some local>` compiles to a bare `GetLocal`
+        // whose pushed value *is* the new local `x`; if the next statement
+        // reads `x`, the two GetLocals are adjacent but the second reads a slot
+        // the first only just established. GetLocal2 reads both slots up front,
+        // so it would index past the stack top (panic) or read a stale value.
 
         // Pattern: GetLocal, Constant(1), Add → AddLocalInt(slot, 1)
         if i + 2 < len {

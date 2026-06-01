@@ -178,22 +178,17 @@ const CASES: &[(&str, &str)] = &[
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // #5 — `for v, i in ...`: ForIter never pushes the index, so the index slot
-    //      is unpopulated (wrong value / panic).
-    "for_index_sum",
-    "for_index_read",
-    // #6 — assignment inside a `catch` block is lost on the VM.
-    "try_catch_assign_outer",
-    // #7 — range bounds disagree: `a..b` iterates a..=b on the VM
-    //      (ForIterRange uses `<=`) but a..<b on the tree-walker.
-    "for_range_sum",
-    // #8 — `||=` / `&&=` / `??=` compound assignment is unsupported on the VM.
-    "or_assign_default",
-    // #9 — list comprehensions are unsupported on the VM.
+    // #9 — list comprehensions are unfinished on the VM compiler (the element is
+    //      never appended to the result array). Errors at runtime, so production
+    //      handlers fall back to the interpreter rather than getting a wrong
+    //      result. Fixing it is a feature-completion task, not a one-liner.
     "list_comprehension",
-    // #10 — `return` inside a `catch` block is ignored on the VM; control falls
-    //       through to the code after the try/catch.
-    "try_catch_recovers",
+    // Fixed and locked in by this harness:
+    //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
+    //   #6  assignment inside catch          — TryBegin catch_ip off-by-one
+    //   #7  range bounds (a..b exclusive)     — VM range ops now exclusive
+    //   #8  `||=` panic (let-from-local)      — removed unsafe GetLocal2 fusion
+    //   #10 return inside catch               — TryBegin catch_ip off-by-one
 ];
 
 /// Run `source` through the soli binary; `vm` selects the bytecode VM with
