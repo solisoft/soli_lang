@@ -2,10 +2,31 @@
 
 use crate::ast::expr::{ExprKind, MatchArm, MatchPattern};
 use crate::ast::Expr;
+use crate::error::CompileError;
 
 use super::chunk::Constant;
 use super::compiler::{CompileResult, Compiler};
 use super::opcode::Op;
+
+/// Whether a pattern introduces any variable binding (and therefore hits the
+/// VM's unfinished binding-pattern compilation). Literal and wildcard patterns
+/// bind nothing and compile correctly.
+fn pattern_binds(pattern: &MatchPattern) -> bool {
+    match pattern {
+        MatchPattern::Wildcard | MatchPattern::Literal(_) => false,
+        MatchPattern::Variable(_) | MatchPattern::Typed { .. } => true,
+        MatchPattern::Array { elements, rest } => {
+            rest.is_some() || elements.iter().any(pattern_binds)
+        }
+        MatchPattern::Hash { fields, rest } => {
+            rest.is_some() || fields.iter().any(|(_, p)| pattern_binds(p))
+        }
+        MatchPattern::Destructuring { fields, .. } => fields.iter().any(|(_, p)| pattern_binds(p)),
+        MatchPattern::And(patterns) | MatchPattern::Or(patterns) => {
+            patterns.iter().any(pattern_binds)
+        }
+    }
+}
 
 impl Compiler {
     /// Compile a match expression.
@@ -15,6 +36,22 @@ impl Compiler {
         arms: &[MatchArm],
         line: usize,
     ) -> CompileResult<()> {
+        // Patterns that bind a variable (`x`, `[a, b]`, `{k: v}`, ...) are not
+        // correctly compiled: the binding aliases the subject's stack slot, but
+        // `compile_match` pops the subject before the arm body, so a body that
+        // *uses* the binding reads a freed slot (panic). This is the same
+        // missing-stack-depth-tracking limitation behind list comprehensions.
+        // Until that's addressed, fail compilation for binding patterns so the
+        // server falls back to the tree-walking interpreter (which is correct)
+        // rather than abort the worker. Literal / wildcard arms still run on the
+        // VM. Tracked in the differential harness.
+        if let Some(arm) = arms.iter().find(|a| pattern_binds(&a.pattern)) {
+            return Err(CompileError::new(
+                "match patterns that bind variables are not yet supported by the bytecode VM",
+                arm.body.span,
+            ));
+        }
+
         // Evaluate the match subject
         self.compile_expr(expression)?;
 

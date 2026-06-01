@@ -179,6 +179,80 @@ const CASES: &[(&str, &str)] = &[
         "try_catch_assign_outer",
         "fn f() { let x = 0\n  try { x = 1\n    throw \"e\" } catch e { x = 2 }\n  return x }\nprint(f())",
     ),
+    // --- additional coverage (regression guards) ---
+    (
+        "match_literal",
+        "fn f(n) { return match n { 0 => \"z\", 1 => \"o\", _ => \"m\" } }\nprint(f(0))\nprint(f(1))\nprint(f(9))",
+    ),
+    (
+        "nested_try",
+        "fn f() { let r = 0\n  try { try { throw \"a\" } catch e { r = 1\n      throw \"b\" } } catch e { r = r + 10 }\n  return r }\nprint(f())",
+    ),
+    (
+        "return_in_finally_block",
+        "fn f() { try { return \"t\" } finally { } }\nprint(f())",
+    ),
+    (
+        "throw_across_call",
+        "fn boom() { throw \"x\" }\nfn f() { try { boom() } catch e { return \"caught\" } }\nprint(f())",
+    ),
+    (
+        "closure_captures_param",
+        "fn adder(n) { return fn(x) { return x + n } }\nlet add5 = adder(5)\nprint(add5(10))",
+    ),
+    (
+        "ternary",
+        "fn f(n) { return n > 0 ? \"pos\" : \"neg\" }\nprint(f(5))\nprint(f(-1))",
+    ),
+    (
+        "nullish_coalescing",
+        "fn f(v) { return v ?? \"default\" }\nprint(f(null))\nprint(f(\"x\"))",
+    ),
+    (
+        "compound_index_assign",
+        "let a = [10, 20, 30]\na[1] = a[1] + 5\nprint(a)",
+    ),
+    (
+        "hash_compound_assign",
+        "let h = {\"n\": 1}\nh[\"n\"] = h[\"n\"] + 10\nprint(h)",
+    ),
+    (
+        "early_return_in_loop",
+        "fn first_even(a) { for v in a { if v % 2 == 0 { return v } }\n  return -1 }\nprint(first_even([1, 3, 4, 7]))",
+    ),
+    (
+        "deep_recursion",
+        "fn sum_to(n) { if n == 0 { return 0 }\n  return n + sum_to(n - 1) }\nprint(sum_to(100))",
+    ),
+    (
+        "array_method_chain",
+        "let r = [1, 2, 3, 4, 5].filter(fn(x) x > 2).map(fn(x) x * 10)\nprint(r)",
+    ),
+    (
+        "pipeline",
+        "fn double(x) { return x * 2 }\nprint(5 |> double())",
+    ),
+    (
+        "string_interpolation",
+        "let name = \"world\"\nprint(\"hello \\(name)\")",
+    ),
+    // --- KNOWN-DIVERGENT (tracked VM gaps) ---
+    (
+        "match_var_binding",
+        "fn f(n) { return match n { x => x + 1 } }\nprint(f(5))",
+    ),
+    (
+        "match_array_pattern",
+        "fn f(a) { return match a { [x, y] => x + y, _ => 0 } }\nprint(f([3, 4]))",
+    ),
+    (
+        "match_hash_pattern",
+        "fn f(h) { return match h { {name: n} => n, _ => \"?\" } }\nprint(f({\"name\": \"bob\"}))",
+    ),
+    (
+        "instance_method_call",
+        "class C { x: Int\n  new(x) { this.x = x }\n  fn get() { return this.x } }\nlet c = C(42)\nprint(c.get())",
+    ),
 ];
 
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
@@ -193,6 +267,19 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //      silently wrong anymore.
     "list_comprehension",
     "list_comprehension_nested",
+    // #11/#12/#13 — match patterns that BIND a variable (`x`, `[a, b]`,
+    //   `{k: v}`). The binding aliases the subject's stack slot, which the
+    //   match epilogue then pops before the body — a body that uses the binding
+    //   read a freed slot (panic). The VM now refuses to compile binding
+    //   patterns (→ fallback); literal/wildcard arms still run on the VM.
+    "match_var_binding",
+    "match_array_pattern",
+    "match_hash_pattern",
+    // #14 — user-class instance method calls (`obj.method()`) are unsupported by
+    //   the VM's CallMethod (it errors → interpreter fallback). Production OOP
+    //   controller dispatch uses a separate bound-method path; this is the
+    //   generic in-handler method-call path.
+    "instance_method_call",
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
     //   #6  assignment inside catch          — TryBegin catch_ip off-by-one
