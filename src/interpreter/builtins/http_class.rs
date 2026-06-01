@@ -367,23 +367,23 @@ fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
 pub fn get_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            // Bound any residual stall (e.g. a stale-connection half-open read)
+            // to 10s instead of 30s. The real deadlock that produced 30s hangs
+            // was tokio-runtime starvation (the runtime was sized to --workers),
+            // fixed separately in `serve::mod`; this is just a backstop.
+            .timeout(std::time::Duration::from_secs(10))
             // Fail fast on an unreachable/slow SoliDB host instead of letting a
-            // dead connect ride the full 30s total timeout.
+            // dead connect ride the full timeout.
             .connect_timeout(std::time::Duration::from_secs(5))
-            // Disable idle connection reuse entirely. Pooled keep-alive
-            // connections are the root of the intermittent multi-second / 30s
-            // stalls: an idle connection silently dropped by the peer (SoliDB
-            // restart/GC) or an intermediary (LB/NAT/firewall idle-drop) stays
-            // in the pool as a half-open socket; the next request writes into it
-            // and then blocks reading a response that never comes, until the
-            // 30s timeout. Reuse can also cross tokio runtimes (a connection
-            // opened under the ephemeral block_on runtime, then reused under the
-            // server runtime), leaving its I/O undriven. Opening a fresh
-            // connection per request — cheap against a loopback/VPC SoliDB —
-            // removes both failure modes. Lowering pool_idle_timeout only
-            // shrank the window; this closes it.
-            .pool_max_idle_per_host(0)
+            // Keep-alive pooling IS worth it: a typical page fires several
+            // queries, and reusing one connection across them avoids a TCP
+            // setup (syscalls + CPU) per query — which matters on a small,
+            // CPU-bound VPS with a co-located (loopback) SoliDB. The idle
+            // timeout is kept short so a connection the peer/intermediary
+            // silently dropped is retired quickly rather than handed back as a
+            // half-open socket that stalls the next request.
+            .pool_idle_timeout(std::time::Duration::from_secs(5))
+            .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())
             // SEC-042: pin a hard floor of TLS 1.2. The `rustls-tls`
