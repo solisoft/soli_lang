@@ -1333,6 +1333,28 @@ impl TypeEnvironment {
         );
         self.classes.insert("HTTP".to_string(), http_class);
 
+        // Pop3 email-reading class: `Pop3.new(host, user, pass, opts?)` returns
+        // a client instance (typed Any, so its `.stat()/.list()/.fetch()/…`
+        // calls are permissive, matching the Solidb instance pattern).
+        let mut pop3_class = ClassType::new("Pop3".to_string());
+        pop3_class.methods.insert(
+            "new".to_string(),
+            MethodInfo {
+                name: "new".to_string(),
+                params: vec![
+                    ("host".to_string(), Type::String),
+                    ("user".to_string(), Type::String),
+                    ("password".to_string(), Type::String),
+                    // Optional opts hash; `Any` also makes the arg count lenient.
+                    ("opts".to_string(), Type::Any),
+                ],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("Pop3".to_string(), pop3_class);
+
         // System class
         let mut system_class = ClassType::new("System".to_string());
         system_class.methods.insert(

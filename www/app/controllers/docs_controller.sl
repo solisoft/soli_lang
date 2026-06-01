@@ -372,6 +372,10 @@ fn builtins_soap
     render_docs("docs/builtins/soap", "SOAP Class", "builtins", "soap")
 end
 
+fn builtins_pop3
+    render_docs("docs/builtins/pop3", "POP3 Email Class", "builtins", "pop3")
+end
+
 fn builtins_markdown
     render_docs("docs/builtins/markdown", "Markdown Class", "builtins", "markdown")
 end

@@ -1087,6 +1087,74 @@ Both bucket names must match `^[a-z0-9.-]{3,63}$` — lowercase letters, digits,
 S3.copy_object("source-bucket/file.txt", "dest-bucket/file.txt")
 ```
 
+## POP3 (Email Reading)
+
+The `Pop3` class reads email from a mailbox over POP3. It connects over implicit
+TLS by default (port `995`) and parses each message into a structured hash.
+
+### Pop3.new(host, user, password, opts?)
+
+Connect and authenticate, returning a client instance. The optional `opts` hash
+accepts `port` (default `995`) and `tls` (default `true`).
+
+```soli
+mail = Pop3.new("pop.gmail.com", "me@gmail.com", "app-password")
+
+# Plaintext on a custom port (e.g. a local test server)
+mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })
+```
+
+> **Gmail / 2FA accounts:** use an [App Password](https://support.google.com/accounts/answer/185833),
+> not your normal password, and enable POP in the account settings.
+
+### Instance methods
+
+| Method | Returns |
+|--------|---------|
+| `mail.stat()` | `{ "count": Int, "size": Int }` — message count and total octets |
+| `mail.list()` | `[ { "id": Int, "size": Int }, ... ]` — per-message sizes |
+| `mail.fetch(id)` | A parsed message hash (see below) |
+| `mail.fetch_all()` | An array of parsed message hashes |
+| `mail.delete(id)` | `true` — marks the message for deletion (applied on `quit`) |
+| `mail.quit()` | `true` — commits deletions and closes the connection |
+
+`fetch_all()` is capped at 200 messages by default; raise it with the
+`SOLI_POP3_MAX_MESSAGES` environment variable.
+
+### Message hash shape
+
+```soli
+{
+  "id":           1,
+  "size":         2048,
+  "subject":      "Hello from Alice",
+  "from":         { "name": "Alice", "address": "alice@example.com" },
+  "to":           [ { "name": "Bob", "address": "bob@example.com" } ],
+  "date":         "2026-06-01T10:00:00Z",
+  "text_body":    "Hi Bob, ...",
+  "html_body":    "<p>Hi Bob, ...</p>",
+  "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
+  "raw":          "From: Alice ..."   # full RFC822 source
+}
+```
+
+`from` is a single `{name, address}` hash (or `null`); `to` is an array of them.
+Missing headers/bodies are `null`. Attachment `content_type` is `type/subtype`.
+
+### Example
+
+```soli
+mail = Pop3.new("pop.gmail.com", "me@gmail.com", "app-password")
+
+print("You have #{mail.stat()["count"]} messages")
+
+for msg in mail.fetch_all()
+  print("#{msg["date"]} — #{msg["from"]["address"]}: #{msg["subject"]}")
+end
+
+mail.quit()
+```
+
 ## JSON Functions
 
 ### json_parse(string)

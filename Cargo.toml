@@ -184,6 +184,12 @@ ssh2 = "0.9"
 tower-lsp = "0.20"
 log = "0.4"
 env_logger = "0.11"
+# POP3 email reading: sync rustls over std TcpStream + MIME parsing.
+# `ring` provider matches the rest of the build (reqwest/jsonwebtoken use ring, not aws-lc-rs).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = "1"
+webpki-roots = "1.0.7"
+mail-parser = "0.11.3"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

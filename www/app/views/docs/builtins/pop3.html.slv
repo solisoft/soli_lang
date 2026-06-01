@@ -1,0 +1,131 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">POP3 (Email)</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Pop3 Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Read email from a mailbox over POP3, with TLS by default and structured message parsing.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-300">
+                <code class="text-amber-400">Pop3</code> connects to a POP3 server over implicit TLS (port <code class="text-cyan-400">995</code>) by default, authenticates, and parses each fetched message into a hash with <code class="text-cyan-400">subject</code>, <code class="text-cyan-400">from</code>, <code class="text-cyan-400">to</code>, <code class="text-cyan-400">date</code>, text/HTML bodies, and attachment metadata.
+            </p>
+        </div>
+    </section>
+
+    <!-- Pop3.new -->
+    <section id="pop3-new" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Pop3.new(host, user, password, opts?)
+        </h2>
+
+        <section id="pop3-new-method" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#pop3-new-method" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">Pop3.new(host, user, password, opts?)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Connects and authenticates, returning a client instance.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">host</code> : <code class="text-purple-400">String</code> &mdash; POP3 server hostname</div>
+                    <div><code class="text-amber-400">user</code> : <code class="text-purple-400">String</code> &mdash; Mailbox username</div>
+                    <div><code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> &mdash; Password or app password</div>
+                    <div><code class="text-amber-400">opts</code> : <code class="text-purple-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>995</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>)</div>
+                </div>
+                <pre data-filename="Connect"><code class="language-soli text-sm">mail = Pop3.new("pop.gmail.com", "me@gmail.com", "app-password")
+
+# Plaintext on a custom port (e.g. a local test server)
+mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })</code></pre>
+                <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
+                    <p class="text-sm text-amber-200"><strong>Gmail / 2FA accounts:</strong> use an <a class="underline" href="https://support.google.com/accounts/answer/185833">App Password</a>, not your normal password, and enable POP access in your account settings.</p>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Instance methods -->
+    <section id="pop3-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Instance Methods</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 space-y-3 text-sm text-gray-400">
+            <div><code class="text-indigo-400">mail.stat()</code> &mdash; returns <code class="text-cyan-400">{ "count": Int, "size": Int }</code> (message count and total octets).</div>
+            <div><code class="text-indigo-400">mail.list()</code> &mdash; returns an array of <code class="text-cyan-400">{ "id": Int, "size": Int }</code>.</div>
+            <div><code class="text-indigo-400">mail.fetch(id)</code> &mdash; returns a parsed message hash (see below).</div>
+            <div><code class="text-indigo-400">mail.fetch_all()</code> &mdash; returns an array of parsed message hashes (capped at 200; raise via <code class="text-amber-400">SOLI_POP3_MAX_MESSAGES</code>).</div>
+            <div><code class="text-indigo-400">mail.delete(id)</code> &mdash; marks a message for deletion; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-indigo-400">mail.quit()</code> &mdash; commits deletions and closes the connection; returns <code class="text-cyan-400">true</code>.</div>
+        </div>
+    </section>
+
+    <!-- Message hash shape -->
+    <section id="pop3-message" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Message Hash</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">Each fetched message is a hash. <code class="text-cyan-400">from</code> is a single <code class="text-cyan-400">{name, address}</code> hash (or <code>null</code>); <code class="text-cyan-400">to</code> is an array of them. Missing headers/bodies are <code>null</code>.</p>
+            <pre data-filename="Message"><code class="language-soli text-sm">{
+  "id":           1,
+  "size":         2048,
+  "subject":      "Hello from Alice",
+  "from":         { "name": "Alice", "address": "alice@example.com" },
+  "to":           [ { "name": "Bob", "address": "bob@example.com" } ],
+  "date":         "2026-06-01T10:00:00Z",
+  "text_body":    "Hi Bob, ...",
+  "html_body":    "&lt;p&gt;Hi Bob, ...&lt;/p&gt;",
+  "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
+  "raw":          "From: Alice ..."   # full RFC822 source
+}</code></pre>
+        </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section id="section-example" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="read_inbox.sl"><code class="language-soli text-sm">mail = Pop3.new("pop.gmail.com", "me@gmail.com", "app-password")
+
+print("You have #{mail.stat()["count"]} messages")
+
+for msg in mail.fetch_all()
+  print("#{msg["date"]} — #{msg["from"]["address"]}: #{msg["subject"]}")
+
+  for attachment in msg["attachments"]
+    print("  attachment: #{attachment["name"]} (#{attachment["content_type"]})")
+  end
+end
+
+mail.quit()</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/builtins/soap" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            SOAP Class
+        </a>
+        <a href="/docs/builtins/file" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            File Functions
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

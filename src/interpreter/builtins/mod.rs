@@ -41,6 +41,7 @@ pub mod mock_http;
 pub mod model;
 pub mod named_routes;
 pub mod nanoid;
+pub mod pop3;
 pub mod primitives;
 pub mod rate_limit;
 pub mod regex;
@@ -325,6 +326,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register SOAP class
     soap::register_soap_class(env);
+
+    // Register Pop3 email-reading class
+    pop3::register_pop3_class(env);
 
     // Register url_encode/url_decode
     server::register_server_builtins(env);
