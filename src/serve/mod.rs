@@ -4050,16 +4050,8 @@ fn call_handler(
                             body: error_html.into_bytes(),
                         }
                     } else {
-                        let error_html = error_pages::render_production_error_page(
-                            500,
-                            &error_msg,
-                            &request_id,
-                            Some(error_pages::ProductionErrorContext {
-                                stack_trace: &stack_trace,
-                                env_json: env_json.as_deref(),
-                                request_data,
-                            }),
-                        );
+                        let error_html =
+                            error_pages::render_production_error_page(500, &error_msg, &request_id);
                         ResponseData {
                             status: 500,
                             headers: vec![(
@@ -4104,16 +4096,8 @@ fn call_handler(
                     body: error_html.into_bytes(),
                 }
             } else {
-                let error_html = error_pages::render_production_error_page(
-                    500,
-                    &error_msg,
-                    &request_id,
-                    Some(error_pages::ProductionErrorContext {
-                        stack_trace: &stack_trace,
-                        env_json: captured_env.as_deref(),
-                        request_data,
-                    }),
-                );
+                let error_html =
+                    error_pages::render_production_error_page(500, &error_msg, &request_id);
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -4251,16 +4235,8 @@ fn call_oop_controller_action(
                     body: error_html.into_bytes(),
                 }
             } else {
-                let error_html = error_pages::render_production_error_page(
-                    500,
-                    &error_msg,
-                    &request_id,
-                    Some(error_pages::ProductionErrorContext {
-                        stack_trace: &stack_trace,
-                        env_json: Some(&env_json),
-                        request_data,
-                    }),
-                );
+                let error_html =
+                    error_pages::render_production_error_page(500, &error_msg, &request_id);
                 ResponseData {
                     status: 500,
                     headers: vec![(
@@ -4394,16 +4370,8 @@ fn call_oop_controller_action(
                         body: error_html.into_bytes(),
                     }
                 } else {
-                    let error_html = error_pages::render_production_error_page(
-                        500,
-                        &error_msg,
-                        &request_id,
-                        Some(error_pages::ProductionErrorContext {
-                            stack_trace: &stack_trace,
-                            env_json: env_json.as_deref(),
-                            request_data,
-                        }),
-                    );
+                    let error_html =
+                        error_pages::render_production_error_page(500, &error_msg, &request_id);
                     ResponseData {
                         status: 500,
                         headers: vec![(
@@ -4484,16 +4452,7 @@ fn middleware_prod_error_string(
     let stack_trace = middleware_fallback_stack(mw_name, mw_source);
     let env_json = interpreter.serialize_environment_for_debug();
     error_logging::log_production_error(&request_id, data, err, &stack_trace, Some(&env_json));
-    let error_html = error_pages::render_production_error_page(
-        500,
-        err,
-        &request_id,
-        Some(error_pages::ProductionErrorContext {
-            stack_trace: &stack_trace,
-            env_json: Some(&env_json),
-            request_data: data,
-        }),
-    );
+    let error_html = error_pages::render_production_error_page(500, err, &request_id);
     ResponseData {
         status: 500,
         headers: vec![(
@@ -4532,16 +4491,7 @@ fn middleware_prod_error_runtime(
         &stack_trace,
         Some(&env_json),
     );
-    let error_html = error_pages::render_production_error_page(
-        500,
-        &error_msg,
-        &request_id,
-        Some(error_pages::ProductionErrorContext {
-            stack_trace: &stack_trace,
-            env_json: Some(&env_json),
-            request_data: data,
-        }),
-    );
+    let error_html = error_pages::render_production_error_page(500, &error_msg, &request_id);
     ResponseData {
         status: 500,
         headers: vec![(
@@ -4846,7 +4796,7 @@ fn execute_after_actions(
 fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
     let message = err.record_not_found_message()?;
     let request_id = Uuid::new_v4().to_string();
-    let body = error_pages::render_production_error_page(404, &message, &request_id, None);
+    let body = error_pages::render_production_error_page(404, &message, &request_id);
     Some(ResponseData {
         status: 404,
         headers: vec![(
@@ -5244,7 +5194,6 @@ fn handle_request(
                 404,
                 "The page you're looking for doesn't exist.",
                 &request_id,
-                None,
             );
             let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
                 data.headers
@@ -5311,7 +5260,6 @@ fn handle_request(
                 404,
                 "Action not found for this route.",
                 &request_id,
-                None,
             );
             return ResponseData {
                 status: 404,

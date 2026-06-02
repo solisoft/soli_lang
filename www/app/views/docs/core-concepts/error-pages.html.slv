@@ -89,7 +89,7 @@
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                        Collapsed details block with stack, redacted request, and env
+                        No failure details leaked to the visitor
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
@@ -132,7 +132,7 @@
     }
   env: {"current_user": null, "user_id": null, ...}</code></pre>
             <p class="text-gray-500 text-xs mt-3">
-                The same redaction rules apply to both stderr and the on-page details block: <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted.
+                Secrets are redacted in the stderr snapshot: <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted. Failure context is written only to stderr — never to the production HTML page.
             </p>
             <p class="text-gray-500 text-xs mt-2">
                 Correlate a customer's <em>Error ID</em> to a stderr block by searching the logs for <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">request_id=&lt;that id&gt;</code>.

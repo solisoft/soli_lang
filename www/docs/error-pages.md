@@ -27,17 +27,12 @@ In loopback-only mode no extra setup is needed; the auto-generated token is embe
 
 ### Production Mode (`--no-dev`)
 
-In production mode, error pages keep the clean, branded look but **also surface the full failure context** so an operator can debug an incident without redeploying with `--dev`:
+In production mode, error pages keep the clean, branded look and **never leak failure details to the visitor**. The page shows only generic copy and an opaque error ID — the full failure context (error message, stack, request snapshot, environment) is written to stderr instead (see below), where an operator can correlate it by error ID without exposing internals to end users:
 
 - Clean, branded 500/404/etc. pages with the error ID for support reference
-- A collapsed **Error details** block appended to the page containing:
-  - The error message
-  - The Soli-side call stack (function names + file:line)
-  - The redacted request snapshot (method, path, query, params, headers, body — auth headers and password / token / api-key params are replaced with `[REDACTED]`, body is always redacted)
-  - The local environment at the point of failure (variables in scope)
 - Navigation options (Go Home, Go Back)
 
-Custom error pages can override the defaults — see [Custom Error Pages](#custom-error-pages). When a custom template is installed it takes precedence and the appended details block is **not** rendered.
+Custom error pages can override the defaults — see [Custom Error Pages](#custom-error-pages).
 
 #### Error logging to stderr
 
@@ -61,7 +56,7 @@ For every 500 the server writes a multi-line block to stderr — useful when you
   env: {"current_user": null, "user_id": null, ...}
 ```
 
-The first `[ERROR] request_id=… METHOD PATH - msg` line is preserved verbatim from earlier versions so any log parser keyed on that prefix keeps working. The same redaction rules apply to the stderr snapshot as to the HTML response.
+The first `[ERROR] request_id=… METHOD PATH - msg` line is preserved verbatim from earlier versions so any log parser keyed on that prefix keeps working. Secrets are redacted in the stderr snapshot: auth headers and password / token / api-key params are replaced with `[REDACTED]`, and the request body is always redacted.
 
 Correlate a customer's "Error ID" (shown on the error page) to the matching stderr block by searching the logs for `request_id=<that id>`.
 
