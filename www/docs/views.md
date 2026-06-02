@@ -32,6 +32,13 @@ SoliLang uses ERB-style templates. Tag types:
 
 For user-generated Markdown, render with `Markdown.to_safe_html(...)` before using raw output.
 
+Controller instance fields are exposed as bare locals, but you can also reference them with the same `@` prefix you used in the controller — in a view, `<%= @title %>` falls back to the `title` local, so both forms render the same value. This works through member access and method calls too (`<%= @user.name %>`, `<%= @comments.length %>`). An `@`-name with no matching local renders as empty (`nil`), like any other absent template local.
+
+```erb
+<h1><%= @title %></h1>   <!-- mirrors the controller -->
+<h1><%= title %></h1>    <!-- bare local, identical result -->
+```
+
 ### Control Flow
 
 ```erb

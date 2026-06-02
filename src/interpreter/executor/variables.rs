@@ -63,6 +63,13 @@ pub fn enter_template_lenient_vars() -> TemplateLenientVarsGuard {
     TemplateLenientVarsGuard { prev }
 }
 
+/// Whether template lenient-variable mode is currently active. Used by member
+/// access to let view `@ivar` references fall back to a bare local instead of
+/// erroring with "'this' outside of class".
+pub fn template_lenient_vars_enabled() -> bool {
+    TEMPLATE_LENIENT_VARS.with(|c| c.get())
+}
+
 pub struct TemplateLenientVarsGuard {
     prev: bool,
 }

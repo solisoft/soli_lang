@@ -366,16 +366,20 @@ class PostsController < Controller
 end
 ```
 
+In the view you can reference these either as a bare local or with the **same `@` prefix you used in the controller** — in views, `@post` falls back to the `post` local, so both forms render the same value:
+
 ```erb
 <%# app/views/posts/show.html.erb %>
-<h1><%= post.title %></h1>
-<%= post.body %>
+<h1><%= @post.title %></h1>   <%# @-form, mirrors the controller %>
+<%= post.body %>              <%# bare local, identical result %>
 
-<h2>Comments (<%= comments.length %>)</h2>
+<h2>Comments (<%= @comments.length %>)</h2>
 <% for c in comments %>
   <p><%= c.body %></p>
 <% end %>
 ```
+
+A view's `@foo` that has no matching local renders as empty (`nil`), the same as any other absent template local.
 
 Rules:
 

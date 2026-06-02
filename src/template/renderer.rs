@@ -494,6 +494,34 @@ mod tests {
     }
 
     #[test]
+    fn test_render_at_prefixed_var_falls_back_to_local() {
+        // `@title` in a view has no class context — it should resolve to the
+        // bare `title` local rather than erroring with "'this' outside of class".
+        // Mirrors the lenient-vars mode the real Renderer enters during render.
+        let _guard = crate::interpreter::executor::enter_template_lenient_vars();
+
+        let nodes = parse_template("<%= @title %>|<%= title %>").unwrap();
+        let data = make_hash(vec![("title", Value::String("Welcome".to_string()))]);
+        let result = render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(result, "Welcome|Welcome");
+
+        // Member access and method calls through an `@ivar` work too.
+        let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
+        let nodes = parse_template("<%= @user.name %>|<%= @title.upcase %>").unwrap();
+        let data = make_hash(vec![
+            ("user", user),
+            ("title", Value::String("hi".to_string())),
+        ]);
+        let result = render_nodes(&nodes, &data, None).unwrap();
+        assert_eq!(result, "Alice|HI");
+
+        // A missing `@ivar` yields Null (empty output), like any absent local.
+        let nodes = parse_template("[<%= @missing %>]").unwrap();
+        let result = render_nodes(&nodes, &make_hash(vec![]), None).unwrap();
+        assert_eq!(result, "[]");
+    }
+
+    #[test]
     fn test_render_if_true() {
         let nodes = parse_template("<% if show %>visible<% end %>").unwrap();
         let data = make_hash(vec![("show", Value::Bool(true))]);

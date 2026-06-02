@@ -10,7 +10,7 @@ mod variables;
 
 pub use variables::{
     clear_current_env, current_env_lookup, enter_template_lenient_vars, is_defined,
-    set_current_env, TemplateLenientVarsGuard,
+    set_current_env, template_lenient_vars_enabled, TemplateLenientVarsGuard,
 };
 
 pub mod access;

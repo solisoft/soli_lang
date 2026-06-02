@@ -167,6 +167,18 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
+        // In views, `@foo` parses to `this.foo`, but a template has no class
+        // context. Rather than erroring with "'this' outside of class", let it
+        // fall back to the bare `foo` local — controllers expose their `@ivars`
+        // as view locals of the same name (see inject_controller_instance_vars),
+        // so `<%= @title %>` resolves just like `<%= title %>`. A missing local
+        // yields Null, matching how templates treat other absent locals.
+        if matches!(object.kind, crate::ast::ExprKind::This)
+            && crate::interpreter::executor::template_lenient_vars_enabled()
+            && self.environment.borrow().get("this").is_none()
+        {
+            return Ok(self.environment.borrow().get(name).unwrap_or(Value::Null));
+        }
         let obj_val = self.evaluate(object)?;
         self.evaluate_member_on_value(obj_val, name, span)
     }
