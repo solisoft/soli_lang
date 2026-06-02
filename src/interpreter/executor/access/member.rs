@@ -1091,7 +1091,12 @@ impl Interpreter {
             let native_method_clone = native_method.clone();
             drop(inst_ref);
             let instance_clone = inst.clone();
-            return Ok(Value::NativeFunction(NativeFunction::new(
+            // Preserve the underlying method's auto-invoke flag so variadic
+            // zero-or-optional-arg methods (e.g. `save`, which is `None`-arity
+            // to allow `save({...})`) still fire on bare `inst.save`. Without
+            // this the wrapper defaults to non-auto-invocable and `c.save`
+            // returns the function value instead of calling it.
+            let mut wrapper = NativeFunction::new(
                 format!("{}.{}", class_name, name),
                 native_method.arity,
                 move |args| {
@@ -1099,7 +1104,9 @@ impl Interpreter {
                     new_args.extend(args.iter().cloned());
                     (native_method_clone.func)(new_args)
                 },
-            )));
+            );
+            wrapper.is_auto_invocable = native_method.is_auto_invocable;
+            return Ok(Value::NativeFunction(wrapper));
         }
 
         // Then check for user-defined method

@@ -2579,7 +2579,7 @@ impl Model {
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "update".to_string(),
-            Rc::new(NativeFunction::new(
+            Rc::new(NativeFunction::new_auto_invocable(
                 "Model#update",
                 None,
                 #[allow(clippy::collapsible_match)]
@@ -2737,7 +2737,7 @@ impl Model {
         // Returns true on success, false on validation/DB error (errors stored in _errors)
         native_methods.insert(
             "save".to_string(),
-            Rc::new(NativeFunction::new(
+            Rc::new(NativeFunction::new_auto_invocable(
                 "Model#save",
                 None,
                 #[allow(clippy::collapsible_match)]
