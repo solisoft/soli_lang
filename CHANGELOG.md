@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixes
+
+* **fix(vm):** safe navigation (`&.`) in a handler no longer aborts the whole server at warmup — the VM compiler now returns a compile error (handler falls back to the tree-walking interpreter) instead of hitting an `unimplemented!()` panic, which core-dumped the process under the release profile's `panic="abort"`
+
 ### Performance
 
 * **perf(value):** Soli strings now use `SoliStr = ecow::EcoString` in `Value::String`/`Value::Symbol`/`HashKey`/VM constants — strings ≤15 bytes are stored inline (constructing them no longer touches the heap) and longer strings are refcounted with O(1) clone. Passing/reading large strings (rendered partials, request bodies, template data) no longer deep-copies: ~5× faster on a 64KB-string passing benchmark; ~+17% server throughput on realistic browser-header requests

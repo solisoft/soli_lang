@@ -72,7 +72,15 @@ impl Compiler {
                 self.emit(Op::GetProperty(idx), line);
             }
             ExprKind::SafeMember { .. } => {
-                unimplemented!("SafeMember not supported in VM yet");
+                // Not implemented in the VM — return a compile error so the
+                // handler falls back to the tree-walking interpreter. This
+                // used to be `unimplemented!()`, which panicked (and with
+                // panic="abort" in release, core-dumped the whole server)
+                // the moment any handler used `&.` safe navigation.
+                return Err(CompileError::new(
+                    "Safe navigation (&.) is not supported in compiled mode",
+                    expr.span,
+                ));
             }
             ExprKind::QualifiedName { qualifier, name } => {
                 self.compile_expr(qualifier)?;
