@@ -1386,7 +1386,28 @@ fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
             }
         }
     }
-    println!("Worker {}: warmed {} handlers", worker_id, warmed);
+
+    // Pre-compile OOP class methods too. Without this, every `call_method_bound`
+    // for a class-based controller action would JIT-compile its AST to bytecode
+    // on the first request, and `call_method_bound` does not consult the
+    // worker-global `known_globals` hint, so the work would re-run on every
+    // request. Mirrors the function-handler pass above.
+    let mut warmed_methods = 0usize;
+    for value in vm.globals.values() {
+        if let crate::interpreter::value::Value::Class(class) = value {
+            for (_name, method) in class.methods.borrow().iter() {
+                if crate::vm::vm_calls::jit_compile_method(method, global_names.iter().cloned())
+                    .is_ok()
+                {
+                    warmed_methods += 1;
+                }
+            }
+        }
+    }
+    println!(
+        "Worker {}: warmed {} handlers and {} class methods",
+        worker_id, warmed, warmed_methods
+    );
 }
 
 /// Worker loop - processes requests from dedicated per-worker queue

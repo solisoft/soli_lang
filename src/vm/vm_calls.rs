@@ -61,6 +61,25 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
     Ok(proto)
 }
 
+/// JIT-compile a class method (`FunctionType::Method`, slot 0 reserved for
+/// `this`) to a bytecode [`FunctionProto`] and cache it in `func.jit_cache`.
+///
+/// Sibling of [`jit_compile_function`], used by the worker warmup pass for
+/// OOP controller actions so the first request to a method is a cache hit
+/// instead of paying the full AST-to-bytecode walk in [`Vm::call_method_bound`].
+pub(crate) fn jit_compile_method<I: IntoIterator<Item = String>>(
+    func: &Function,
+    globals: I,
+) -> Result<Arc<FunctionProto>, String> {
+    if let Some(proto) = func.jit_cache.borrow().clone() {
+        return Ok(proto);
+    }
+    let proto = Compiler::compile_method_standalone(func, globals).map_err(|e| e.to_string())?;
+    let arc = std::sync::Arc::new(proto);
+    *func.jit_cache.borrow_mut() = Some(arc.clone());
+    Ok(arc)
+}
+
 impl Vm {
     /// Call a value with the given number of argument slots on the stack.
     /// The callee is below the arguments on the stack.
@@ -368,6 +387,13 @@ impl Vm {
     /// Used by the server's class-based controller dispatch: JIT-compiles the
     /// method as `FunctionType::Method` so slot 0 is reserved for `this`, then
     /// seeds the call frame with `instance` at slot 0 and `arg` at slot 1.
+    ///
+    /// The compiled `FunctionProto` is cached on `method.jit_cache` so the AST
+    /// walk in `Compiler::compile_method_standalone` only runs once per worker
+    /// per method. (Each worker loads its own `Rc<Function>` instances in
+    /// `load_controllers_in_worker`, so the `RefCell` cache is per-worker and
+    /// has no cross-thread aliasing.) `warm_vm_handlers` pre-fills the cache at
+    /// boot so the first request to a method is a cache hit, not a compile.
     pub fn call_method_bound(
         &mut self,
         method: &Function,
@@ -375,9 +401,16 @@ impl Vm {
         arg: Value,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let proto = Compiler::compile_method_standalone(method, self.globals.keys().cloned())
-            .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
-        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        let proto = if let Some(cached) = method.jit_cache.borrow().clone() {
+            cached
+        } else {
+            let compiled = Compiler::compile_method_standalone(method, self.globals.keys().cloned())
+                .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+            let arc = Arc::new(compiled);
+            *method.jit_cache.borrow_mut() = Some(arc.clone());
+            arc
+        };
+        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
         // Stack layout after these pushes: [..., instance, arg]. call_closure
         // derives stack_base = len - total_params - 1, placing `instance` at
