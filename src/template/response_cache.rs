@@ -66,8 +66,11 @@ impl std::hash::Hash for CacheKey {
 }
 
 /// Cached `(body, etag)` for a given `(template, layout, data)`. The
-/// `etag` is pre-formatted so a hit returns both without re-running
-/// `etag_for_body`.
+/// `etag` field is currently unused by `render` — we keep it on the
+/// struct so a future change can store the pre-computed ETag without
+/// a cache-format break. Callers that pass `etag: ""` to `put` are
+/// saying "don't bother computing the ETag now; `html_response` will
+/// derive it on every request".
 #[derive(Clone)]
 pub struct CachedResponse {
     pub body: String,

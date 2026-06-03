@@ -97,34 +97,27 @@ impl TemplateCache {
         data: &Value,
         layout: Option<Option<&str>>,
     ) -> Result<String, String> {
-        // Static-page response cache: for routes whose output depends only
-        // on `data` (the default `soli new` `HomeController#index` is the
-        // canonical example), every request would otherwise re-walk the
-        // template AST and re-derive the same ETag. Compute a signature
-        // over `data` and look up `(template_path, layout, data_sig)` in
-        // the per-thread LRU. Builtins that mutate request-visible state
-        // (`set_cookie`, `session_set`, `clock`, ...) trip dirty flags in
-        // `response_cache` so the lookup is skipped for those requests.
+        // Cached path: if `(template, layout, data_sig)` is in the
+        // response cache and the request isn't dirty, return the cached
+        // body directly. The cached body is the raw (pre-ETag) body
+        // produced by the template AST walk; the FNV-1a ETag is
+        // recomputed in `html_response` on every request.
         let data_sig = response_cache::data_signature(data);
         let layout_name: Option<&str> = match layout {
             Some(Some(name)) => Some(name),
             _ => None,
         };
-        // Resolve the template path once and use it as the cache key
-        // prefix; `resolve_template_path` already returns `Arc<PathBuf>`,
-        // so a cache hit is a refcount bump, not a heap clone.
         let template_path = self.resolve_template_path(template_name)?;
         if let Some(cached) =
             response_cache::get(template_path.clone(), layout_name, data_sig)
         {
             return Ok(cached.body);
         }
-        let result =
-            self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
+        let body = self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
         // Store the freshly-rendered body. On the next identical
         // request the cache lookup above short-circuits to this body.
-        response_cache::put(template_path, layout_name, data_sig, result.clone(), String::new());
-        Ok(result)
+        response_cache::put(template_path, layout_name, data_sig, body.clone(), String::new());
+        Ok(body)
     }
 
     /// Internal: do the actual template render. Wrapped by `render`
@@ -617,7 +610,24 @@ pub fn html_response(body: String, status: i64) -> Value {
 /// receives no longer matches what the origin hashed. Weak validators assert
 /// semantic equivalence rather than byte-identity, which is exactly what we
 /// need: the same render is "the same response" whether compressed or not.
-fn etag_for_body(body: &str) -> String {
+/// Compute a deterministic ETag for an HTML response body using FNV-1a 64-bit.
+///
+/// Deterministic within AND across processes — no random seed — so a prefetch
+/// stored by one worker can be revalidated against another worker's render
+/// without unnecessary body re-delivery. FNV is not cryptographically strong;
+/// that's fine: the ETag is a cache validator, not an auth token. Collision
+/// probability between two different bodies is ~2^-32, which means one false
+/// 304 per ~4 billion distinct renders — far below anything that matters for
+/// navigation caching.
+///
+/// Format: `W/` weak validator with quoted 16-hex-digit body (RFC 7232 §2.3).
+/// Weak (not strong) so the header survives content-encoding transformations
+/// applied by CDNs in front of the app — Cloudflare and friends strip strong
+/// ETags when they re-encode (Brotli/gzip) because the byte stream the client
+/// receives no longer matches what the origin hashed. Weak validators assert
+/// semantic equivalence rather than byte-identity, which is exactly what we
+/// need: the same render is "the same response" whether compressed or not.
+pub fn etag_for_body(body: &str) -> String {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
     let mut hash = FNV_OFFSET;
