@@ -412,11 +412,11 @@ impl Vm {
             if let Some(cached) = cached {
                 cached
             } else {
-                let compiled = Compiler::compile_method_standalone(
-                    method,
-                    self.globals.keys().cloned(),
-                )
-                .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+                let compiled =
+                    Compiler::compile_method_standalone(method, self.globals.keys().cloned())
+                        .map_err(|e| {
+                            RuntimeError::new(format!("VM JIT compile error: {}", e), span)
+                        })?;
                 let arc = Arc::new(compiled);
                 *method.jit_cache.borrow_mut() = Some(arc.clone());
                 arc

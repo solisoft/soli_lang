@@ -130,7 +130,11 @@ pub fn clear_cache() {
 
 /// Look up a cached response. Returns `None` if the request is
 /// marked dirty or the entry is missing.
-pub fn get(template_path: Arc<PathBuf>, layout: Option<&str>, data_sig: u64) -> Option<CachedResponse> {
+pub fn get(
+    template_path: Arc<PathBuf>,
+    layout: Option<&str>,
+    data_sig: u64,
+) -> Option<CachedResponse> {
     if is_response_dirty() || is_data_dirty() {
         return None;
     }

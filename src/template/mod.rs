@@ -108,15 +108,20 @@ impl TemplateCache {
             _ => None,
         };
         let template_path = self.resolve_template_path(template_name)?;
-        if let Some(cached) =
-            response_cache::get(template_path.clone(), layout_name, data_sig)
-        {
+        if let Some(cached) = response_cache::get(template_path.clone(), layout_name, data_sig) {
             return Ok(cached.body);
         }
-        let body = self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
+        let body =
+            self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
         // Store the freshly-rendered body. On the next identical
         // request the cache lookup above short-circuits to this body.
-        response_cache::put(template_path, layout_name, data_sig, body.clone(), String::new());
+        response_cache::put(
+            template_path,
+            layout_name,
+            data_sig,
+            body.clone(),
+            String::new(),
+        );
         Ok(body)
     }
 
