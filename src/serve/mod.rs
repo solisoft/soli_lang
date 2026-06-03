@@ -196,10 +196,10 @@ use http_body_util::BodyExt;
 use http_body_util::Full;
 use http_body_util::Limited;
 use hyper::body::Incoming;
-use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{header, Request, Response, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
+use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
 use tokio_tungstenite::WebSocketStream;
@@ -859,23 +859,26 @@ fn run_hyper_server_worker_pool(
                         }
                     });
 
-                    // SEC-045: bound the time hyper will wait for a client
-                    // to finish sending request headers, closing slow-header
-                    // (slowloris) attackers before they pin an accept slot.
-                    // Hyper's default is 30 s but only fires when a `Timer`
-                    // is wired up — without `.timer(TokioTimer::new())` the
-                    // default is effectively unenforced. 10 s is well above
-                    // any legitimate browser/proxy and far short of what an
-                    // attacker needs to drip-feed a request. Hyper has no
-                    // HTTP/1 keep-alive idle timeout; wrapping the whole
-                    // connection future in `tokio::time::timeout` would
-                    // truncate legitimate long-poll endpoints (SSE, LiveView)
-                    // so that's intentionally not added here.
-                    let mut builder = http1::Builder::new();
+                    // `hyper_util::server::conn::auto::Builder` auto-detects
+                    // HTTP/1.1 vs HTTP/2 (h2c prior knowledge) from the first
+                    // bytes the client sends. h1 connections go through the
+                    // same `http1::Builder` as before; h2c connections get a
+                    // multiplexed stream handler with one TCP connection
+                    // carrying N concurrent requests. SEC-045's 10 s header
+                    // read timeout still applies on the h1 path.
+                    //
+                    // `Builder::new` takes an executor (used by h2 to spawn
+                    // stream tasks), not the IO — the IO goes into
+                    // `serve_connection` below.
+                    let mut builder = auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                    // Configure h1: bound the header read timeout so slowloris
+                    // attackers don't pin accept slots. h2c has its own
+                    // header-equivalent timeouts inside hyper.
                     builder
+                        .http1()
                         .timer(TokioTimer::new())
                         .header_read_timeout(Duration::from_secs(10));
-                    if let Err(_e) = builder.serve_connection(io, service).with_upgrades().await {
+                    if let Err(_e) = builder.serve_connection(io, service).await {
                         // Silently ignore connection errors
                     }
                 });

@@ -67,8 +67,10 @@ sonic-rs = "0.3"
 itoa = "1"
 ryu = "1"
 
-# High-performance async HTTP server
-hyper = { version = "1.4", features = ["server", "http1"] }
+# High-performance async HTTP server. `server-auto` on hyper-util pulls in
+# http2 so the same accept loop can auto-detect h1 vs h2c from the first
+# bytes (HTTP/2 prior knowledge) — no separate port, no separate config.
+hyper = { version = "1.4", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
 http-body-util = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "process", "io-std", "io-util"] }
