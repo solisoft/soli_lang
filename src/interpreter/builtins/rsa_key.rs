@@ -10,15 +10,20 @@
 //! key = RsaKey.private_from_pem(sp_private_key_pem)
 //! sig = Crypto.modexp(padded_digest_info, key["d"], key["n"])
 //! ```
+//!
+//! We deliberately parse with the lightweight RustCrypto ASN.1 crates
+//! (`der` / `pkcs1` / `pkcs8`) instead of the `rsa` crate, whose Marvin-attack
+//! advisory (RUSTSEC-2023-0071) has no fixed release. We only read key
+//! material here — none of `rsa`'s timing-sensitive operations are used.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::pkcs8::DecodePrivateKey;
-use rsa::traits::{PrivateKeyParts, PublicKeyParts};
-use rsa::RsaPrivateKey;
+use base64::Engine;
+use der::Decode;
+use pkcs1::RsaPrivateKey as Pkcs1PrivateKey;
+use pkcs8::PrivateKeyInfo;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
@@ -27,16 +32,53 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-/// Parse a PEM RSA private key, trying PKCS#8 first then PKCS#1.
-fn parse_private_key(pem: &str) -> Result<RsaPrivateKey, String> {
-    RsaPrivateKey::from_pkcs8_pem(pem)
-        .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem))
-        .map_err(|e| {
-            format!(
-                "could not parse RSA private key (PKCS#8 or PKCS#1 PEM): {}",
-                e
-            )
-        })
+/// Decode a PEM document into its label and DER bytes.
+fn pem_to_der(pem: &str) -> Result<(String, Vec<u8>), String> {
+    let begin = "-----BEGIN ";
+    let start = pem.find(begin).ok_or("missing PEM header")?;
+    let after = &pem[start + begin.len()..];
+    let label_end = after.find("-----").ok_or("malformed PEM header")?;
+    let label = after[..label_end].trim().to_string();
+
+    let body: String = pem
+        .lines()
+        .skip_while(|l| !l.contains("-----BEGIN"))
+        .skip(1)
+        .take_while(|l| !l.contains("-----END"))
+        .flat_map(|l| l.chars())
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let der = base64::engine::general_purpose::STANDARD
+        .decode(body.as_bytes())
+        .map_err(|e| format!("invalid PEM base64: {}", e))?;
+    Ok((label, der))
+}
+
+/// RSA components `(n, e, d)` as big-endian octets.
+type RsaComponents = (Vec<u8>, Vec<u8>, Vec<u8>);
+
+/// Parse a PEM RSA private key (PKCS#8 or PKCS#1) and return `(n, e, d)` as
+/// big-endian octets.
+fn parse_components(pem: &str) -> Result<RsaComponents, String> {
+    let (label, der) = pem_to_der(pem)?;
+
+    // PKCS#8 wraps the PKCS#1 RSAPrivateKey in a PrivateKeyInfo; unwrap it.
+    // Otherwise the DER is the RSAPrivateKey directly.
+    let inner_der: Vec<u8> = if label.contains("RSA PRIVATE KEY") {
+        der.clone()
+    } else {
+        let pki =
+            PrivateKeyInfo::from_der(&der).map_err(|e| format!("PKCS#8 parse error: {}", e))?;
+        pki.private_key.to_vec()
+    };
+
+    let key = Pkcs1PrivateKey::from_der(&inner_der)
+        .map_err(|e| format!("RSA private key (PKCS#1) parse error: {}", e))?;
+    Ok((
+        key.modulus.as_bytes().to_vec(),
+        key.public_exponent.as_bytes().to_vec(),
+        key.private_exponent.as_bytes().to_vec(),
+    ))
 }
 
 pub fn register_rsa_key_builtins(env: &mut Environment) {
@@ -58,11 +100,8 @@ pub fn register_rsa_key_builtins(env: &mut Environment) {
                         ))
                     }
                 };
-                let key = parse_private_key(&pem)
-                    .map_err(|e| format!("RsaKey.private_from_pem(): {}", e))?;
-                let n = key.n().to_bytes_be();
-                let e = key.e().to_bytes_be();
-                let d = key.d().to_bytes_be();
+                let (n, e, d) = parse_components(&pem)
+                    .map_err(|err| format!("RsaKey.private_from_pem(): {}", err))?;
                 Ok(hash_from_pairs([
                     ("algorithm".to_string(), Value::String("RSA".to_string())),
                     ("n".to_string(), Value::String(bytes_to_hex(&n))),
@@ -94,15 +133,12 @@ pub fn register_rsa_key_builtins(env: &mut Environment) {
 mod tests {
     use super::*;
 
-    // A 512-bit PKCS#8 RSA key (test-only) generated with OpenSSL.
-    const PKCS8_PEM: &str = "-----BEGIN PRIVATE KEY-----\n\
-MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAtsQsHV8r6V8s0nE6\n\
-3p1Rk8m9pVQ0o0o0 K0\n\
------END PRIVATE KEY-----\n";
-
     #[test]
     fn rejects_garbage_pem() {
-        assert!(parse_private_key("not a key").is_err());
-        assert!(parse_private_key(PKCS8_PEM).is_err()); // truncated/invalid body
+        assert!(parse_components("not a key").is_err());
+        assert!(
+            parse_components("-----BEGIN PRIVATE KEY-----\nZm9v\n-----END PRIVATE KEY-----")
+                .is_err()
+        );
     }
 }

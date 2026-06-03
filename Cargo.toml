@@ -104,8 +104,13 @@ num-bigint = "0.4"
 x509-parser = "0.16"
 
 # RSA private-key (PKCS#8 / PKCS#1 PEM) parsing for RsaKey.private_from_pem —
-# extracts (n, d, e) so an SP can *sign* envelopes via Crypto.modexp.
-rsa = "0.9"
+# extracts (n, d, e) so an SP can *sign* envelopes via Crypto.modexp. We use the
+# lightweight RustCrypto ASN.1 crates (already in-tree via p256) rather than the
+# `rsa` crate, which carries the unfixable Marvin-attack advisory RUSTSEC-2023-0071
+# — we only parse key material, never run rsa's timing-sensitive sign/decrypt.
+der = "0.7"
+pkcs1 = "0.7"
+pkcs8 = "0.10"
 
 # Data encoding
 base64 = "0.22"
