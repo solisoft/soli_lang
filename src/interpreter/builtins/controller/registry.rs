@@ -1029,7 +1029,7 @@ mod tests {
         let mut interp = crate::interpreter::Interpreter::new();
         let req_hash = Rc::new(RefCell::new({
             let mut h = HashPairs::default();
-            h.insert(HashKey::String("uid".to_string()), Value::Int(7));
+            h.insert(HashKey::String("uid".into()), Value::Int(7));
             h
         }));
         let req = Value::Hash(req_hash);

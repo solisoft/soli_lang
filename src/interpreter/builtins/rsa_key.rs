@@ -103,10 +103,10 @@ pub fn register_rsa_key_builtins(env: &mut Environment) {
                 let (n, e, d) = parse_components(&pem)
                     .map_err(|err| format!("RsaKey.private_from_pem(): {}", err))?;
                 Ok(hash_from_pairs([
-                    ("algorithm".to_string(), Value::String("RSA".to_string())),
-                    ("n".to_string(), Value::String(bytes_to_hex(&n))),
-                    ("e".to_string(), Value::String(bytes_to_hex(&e))),
-                    ("d".to_string(), Value::String(bytes_to_hex(&d))),
+                    ("algorithm".to_string(), Value::String("RSA".into())),
+                    ("n".to_string(), Value::String(bytes_to_hex(&n).into())),
+                    ("e".to_string(), Value::String(bytes_to_hex(&e).into())),
+                    ("d".to_string(), Value::String(bytes_to_hex(&d).into())),
                     ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
                 ]))
             },

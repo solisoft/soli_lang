@@ -256,7 +256,7 @@ where
 {
     match f() {
         Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -322,7 +322,7 @@ pub fn exec_auto_collection_as_instances(
                 .collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -341,7 +341,7 @@ pub fn exec_auto_collection_as_instances_with_binds(
                 .collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -439,7 +439,7 @@ pub fn exec_async_query(sdbql: String) -> Value {
             let values: Vec<Value> = results.iter().map(json_to_value).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -454,7 +454,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     // SDBQL and let a `"` in the input inject sibling fields into the body.
     let body = match serde_json::to_string(&serde_json::json!({ "query": sdbql })) {
         Ok(b) => b,
-        Err(e) => return Value::String(format!("Error: {}", e)),
+        Err(e) => return Value::String(format!("Error: {}", e).into()),
     };
 
     let log_enabled = super::query_log::is_enabled();
@@ -492,8 +492,8 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
             .await
             .map_err(|e| format!("Read error: {}", e))
     }) {
-        Ok(text) => Value::String(text),
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Ok(text) => Value::String(text.into()),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     };
 
     let db_duration = if let (Some(q), Some(t0)) = (log_query, started) {
@@ -533,7 +533,7 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
     // unicode in the SDBQL are escaped correctly.
     let body = match serde_json::to_string(&serde_json::json!({ "query": sdbql })) {
         Ok(b) => b,
-        Err(e) => return Value::String(format!("Error: {}", e)),
+        Err(e) => return Value::String(format!("Error: {}", e).into()),
     };
 
     let client = get_http_client().clone();
@@ -555,8 +555,8 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
             .await
             .map_err(|e| e.to_string())
     }) {
-        Ok(text) => Value::String(text),
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Ok(text) => Value::String(text.into()),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -647,7 +647,7 @@ pub fn exec_auto_collection(sdbql: String, collection_name: &str) -> Value {
             let values: Vec<Value> = results.iter().map(json_to_value).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -662,7 +662,7 @@ pub fn exec_auto_collection_with_binds(
             let values: Vec<Value> = results.iter().map(json_to_value).collect();
             Value::Array(Rc::new(RefCell::new(values)))
         }
-        Err(e) => Value::String(format!("Error: {}", e)),
+        Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
 
@@ -1027,14 +1027,8 @@ mod tests {
         match val {
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
-                assert_eq!(
-                    inst_ref.get("_key"),
-                    Some(Value::String("abc-xyz".to_string()))
-                );
-                assert_eq!(
-                    inst_ref.get("name"),
-                    Some(Value::String("Alice".to_string()))
-                );
+                assert_eq!(inst_ref.get("_key"), Some(Value::String("abc-xyz".into())));
+                assert_eq!(inst_ref.get("name"), Some(Value::String("Alice".into())));
                 assert_eq!(inst_ref.get("active"), Some(Value::Bool(true)));
             }
             _ => panic!("Expected Value::Instance"),
@@ -1131,11 +1125,11 @@ mod tests {
                 assert_eq!(inst.borrow().class.name, "Organisation");
                 assert_eq!(
                     inst.borrow().get("name"),
-                    Some(Value::String("solisoft".to_string()))
+                    Some(Value::String("solisoft".into()))
                 );
                 assert_eq!(
                     inst.borrow().get("email"),
-                    Some(Value::String("contact@solisoft.net".to_string()))
+                    Some(Value::String("contact@solisoft.net".into()))
                 );
             }
             _ => panic!("Expected Value::Instance, got {:?}", val),

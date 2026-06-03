@@ -76,7 +76,7 @@ pub fn get_uploader_field_value_as_string(
     field: &str,
 ) -> Option<String> {
     match inst.get(field)? {
-        crate::interpreter::value::Value::String(s) => Some(s),
+        crate::interpreter::value::Value::String(s) => Some(s.to_string()),
         _ => None,
     }
 }

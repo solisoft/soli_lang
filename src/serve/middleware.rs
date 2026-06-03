@@ -217,7 +217,7 @@ pub fn extract_middleware_result(result: &Value) -> MiddlewareResult {
 
         for (k, v) in hash.iter() {
             if let HashKey::String(key) = k {
-                match key.as_str() {
+                match key.as_ref() {
                     "continue" => {
                         if let Value::Bool(b) = v {
                             should_continue = *b;
@@ -451,14 +451,14 @@ end
     fn test_middleware_result_continue() {
         let mut request_map: HashPairs = HashPairs::default();
         request_map.insert(
-            HashKey::String("path".to_string()),
-            Value::String("/test".to_string()),
+            HashKey::String("path".into()),
+            Value::String("/test".into()),
         );
         let request = Value::Hash(Rc::new(RefCell::new(request_map)));
 
         let mut result_map: HashPairs = HashPairs::default();
-        result_map.insert(HashKey::String("continue".to_string()), Value::Bool(true));
-        result_map.insert(HashKey::String("request".to_string()), request.clone());
+        result_map.insert(HashKey::String("continue".into()), Value::Bool(true));
+        result_map.insert(HashKey::String("request".into()), request.clone());
         let result = Value::Hash(Rc::new(RefCell::new(result_map)));
 
         match extract_middleware_result(&result) {
@@ -470,16 +470,16 @@ end
     #[test]
     fn test_middleware_result_response() {
         let mut response_map: HashPairs = HashPairs::default();
-        response_map.insert(HashKey::String("status".to_string()), Value::Int(401));
+        response_map.insert(HashKey::String("status".into()), Value::Int(401));
         response_map.insert(
-            HashKey::String("body".to_string()),
-            Value::String("Unauthorized".to_string()),
+            HashKey::String("body".into()),
+            Value::String("Unauthorized".into()),
         );
         let response = Value::Hash(Rc::new(RefCell::new(response_map)));
 
         let mut result_map: HashPairs = HashPairs::default();
-        result_map.insert(HashKey::String("continue".to_string()), Value::Bool(false));
-        result_map.insert(HashKey::String("response".to_string()), response);
+        result_map.insert(HashKey::String("continue".into()), Value::Bool(false));
+        result_map.insert(HashKey::String("response".into()), response);
         let result = Value::Hash(Rc::new(RefCell::new(result_map)));
 
         match extract_middleware_result(&result) {

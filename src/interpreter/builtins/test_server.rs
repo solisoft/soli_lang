@@ -57,7 +57,7 @@ pub fn register_test_server_builtins(env: &mut Environment) {
         "test_server_url".to_string(),
         Value::NativeFunction(NativeFunction::new("test_server_url", Some(0), |_args| {
             let url = get_test_server_url();
-            Ok(Value::String(url))
+            Ok(Value::String(url.into()))
         })),
     );
 

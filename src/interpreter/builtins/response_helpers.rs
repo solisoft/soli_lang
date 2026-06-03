@@ -182,7 +182,7 @@ pub fn register_response_helpers(env: &mut Environment) {
     env.define(
         "view_path".to_string(),
         Value::NativeFunction(NativeFunction::new("view_path", Some(0), |_args| {
-            Ok(Value::String(String::new()))
+            Ok(Value::String(String::new().into()))
         })),
     );
 }
@@ -193,7 +193,7 @@ fn extract_status(response: &Value) -> Result<Value, String> {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
-                    if key == "status" {
+                    if **key == *"status" {
                         return Ok(v.clone());
                     }
                 }
@@ -210,7 +210,7 @@ fn extract_body(response: &Value) -> Result<Value, String> {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
-                    if key == "body" {
+                    if **key == *"body" {
                         return Ok(v.clone());
                     }
                 }
@@ -238,7 +238,7 @@ fn extract_header(response: &Value, name: &str) -> Result<Value, String> {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
-                    if key == "headers" {
+                    if **key == *"headers" {
                         if let Value::Hash(headers) = v {
                             let headers_hash = headers.borrow();
                             for (hk, hv) in headers_hash.iter() {
@@ -266,7 +266,7 @@ fn extract_all_headers(response: &Value) -> Result<Value, String> {
             let hash = h.borrow();
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
-                    if key == "headers" {
+                    if **key == *"headers" {
                         return Ok(v.clone());
                     }
                 }
@@ -315,7 +315,7 @@ fn extract_location(response: &Value) -> Result<Value, String> {
 
 fn extract_string(value: &Value, context: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         _ => Err(format!("{} expects string argument", context)),
     }
 }

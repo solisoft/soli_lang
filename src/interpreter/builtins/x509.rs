@@ -112,9 +112,9 @@ pub fn register_x509_builtins(env: &mut Environment) {
                     let n = strip_leading_zeros(rsa.modulus);
                     let e = strip_leading_zeros(rsa.exponent);
                     Ok(hash_from_pairs([
-                        ("algorithm".to_string(), Value::String("RSA".to_string())),
-                        ("n".to_string(), Value::String(bytes_to_hex(n))),
-                        ("e".to_string(), Value::String(bytes_to_hex(e))),
+                        ("algorithm".to_string(), Value::String("RSA".into())),
+                        ("n".to_string(), Value::String(bytes_to_hex(n).into())),
+                        ("e".to_string(), Value::String(bytes_to_hex(e).into())),
                         ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
                     ]))
                 }
@@ -142,7 +142,7 @@ pub fn register_x509_builtins(env: &mut Environment) {
             let der = to_der(&args[0]).map_err(|e| format!("X509.fingerprint(): {}", e))?;
             let algo = if args.len() == 2 {
                 match &args[1] {
-                    Value::String(s) => s.to_lowercase(),
+                    Value::String(s) => s.to_lowercase().to_string(),
                     other => {
                         return Err(format!(
                             "X509.fingerprint() expects string algorithm, got {}",
@@ -163,7 +163,7 @@ pub fn register_x509_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(hex))
+            Ok(Value::String(hex.into()))
         })),
     );
 

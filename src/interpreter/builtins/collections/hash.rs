@@ -42,7 +42,7 @@ pub fn register_hash_class(env: &mut Environment) {
                         .iter()
                         .map(|(k, v)| format!("{} => {}", k, v))
                         .collect();
-                    Ok(Value::String(format!("{{{}}}", parts.join(", "))))
+                    Ok(Value::String(format!("{{{}}}", parts.join(", ")).into()))
                 }
                 _ => Err("Hash missing internal value".to_string()),
             }

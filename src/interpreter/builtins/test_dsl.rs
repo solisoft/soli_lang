@@ -73,7 +73,7 @@ fn get_actual(args: &[Value]) -> Result<Value, String> {
     if let Value::Hash(hash) = this {
         let borrowed = hash.borrow();
 
-        if let Some(actual) = borrowed.get(&HashKey::String("actual".to_string())) {
+        if let Some(actual) = borrowed.get(&HashKey::String("actual".into())) {
             return Ok(actual.clone());
         }
     }
@@ -352,7 +352,7 @@ pub fn register_expectation_class(env: &mut Environment) {
                 let contains = match &actual {
                     Value::String(s) => {
                         if let Value::String(sub) = expected {
-                            s.contains(sub)
+                            s.contains(&**(sub))
                         } else {
                             return Err("to_contain expects string argument".to_string());
                         }
@@ -384,7 +384,7 @@ pub fn register_expectation_class(env: &mut Environment) {
                 let actual = get_actual(&args)?;
                 let expected = &args[1];
                 let matches = match (&actual, expected) {
-                    (Value::String(s), Value::String(pat)) => s.contains(pat.as_str()),
+                    (Value::String(s), Value::String(pat)) => s.contains(pat.as_ref()),
                     _ => {
                         return Err("to_match expects string actual and string pattern".to_string())
                     }
@@ -411,7 +411,7 @@ pub fn register_expectation_class(env: &mut Environment) {
             |args| {
                 let actual = get_actual(&args)?;
                 if let Value::String(ref s) = actual {
-                    if serde_json::from_str::<serde_json::Value>(s.as_str()).is_ok() {
+                    if serde_json::from_str::<serde_json::Value>(s.as_ref()).is_ok() {
                         crate::interpreter::builtins::assertions::increment_assertion_count();
                         Ok(Value::Bool(true))
                     } else {
@@ -471,7 +471,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                     let mut suites = suites.borrow_mut();
                     if let Some(current) = suites.last_mut() {
                         current.tests.push(TestDefinition {
-                            name: test_name,
+                            name: test_name.to_string(),
                             body: test_body,
                         });
                     }
@@ -491,7 +491,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                 };
 
                 let new_suite = TestSuite {
-                    name: suite_name.clone(),
+                    name: suite_name.clone().to_string(),
                     tests: Vec::new(),
                     before_each: None,
                     after_each: None,
@@ -518,7 +518,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                 };
 
                 let new_suite = TestSuite {
-                    name: suite_name.clone(),
+                    name: suite_name.clone().to_string(),
                     tests: Vec::new(),
                     before_each: None,
                     after_each: None,
@@ -623,7 +623,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                     let mut suites = suites.borrow_mut();
                     if let Some(current) = suites.last_mut() {
                         current.tests.push(TestDefinition {
-                            name: test_name,
+                            name: test_name.to_string(),
                             body: test_body,
                         });
                     }
@@ -647,7 +647,7 @@ pub fn register_test_builtins(env: &mut Environment) {
                     let mut suites = suites.borrow_mut();
                     if let Some(current) = suites.last_mut() {
                         current.tests.push(TestDefinition {
-                            name: test_name,
+                            name: test_name.to_string(),
                             body: test_body,
                         });
                     }

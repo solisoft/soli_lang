@@ -271,7 +271,7 @@ impl Compiler {
     pub fn add_string_constant(&mut self, s: &str) -> u16 {
         self.proto
             .chunk
-            .add_constant(Constant::String(s.to_string()))
+            .add_constant(Constant::String(s.to_string().into()))
     }
 
     // --- Scope management ---

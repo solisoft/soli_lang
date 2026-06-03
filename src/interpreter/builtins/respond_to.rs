@@ -53,7 +53,7 @@ pub fn make_format_hash() -> Value {
             Ok(Value::Null)
         });
         pairs.insert(
-            HashKey::String(token.to_string()),
+            HashKey::String(token.to_string().into()),
             Value::NativeFunction(recorder),
         );
     }
@@ -153,7 +153,7 @@ fn nested_string(req: &Value, outer: &str, inner: &str) -> Option<String> {
     drop(h);
     let inner_h = inner_hash_rc.borrow();
     match inner_h.get(&StrKey(inner))? {
-        Value::String(s) => Some(s.clone()),
+        Value::String(s) => Some(s.clone().to_string()),
         _ => None,
     }
 }
@@ -163,7 +163,7 @@ fn top_string(req: &Value, key: &str) -> Option<String> {
     let Value::Hash(h) = req else { return None };
     let h = h.borrow();
     match h.get(&StrKey(key))? {
-        Value::String(s) => Some(s.clone()),
+        Value::String(s) => Some(s.clone().to_string()),
         _ => None,
     }
 }
@@ -249,18 +249,18 @@ pub fn pick_handler(
 pub fn not_acceptable_response() -> Value {
     let mut headers = HashPairs::default();
     headers.insert(
-        HashKey::String("Content-Type".to_string()),
-        Value::String("text/plain; charset=utf-8".to_string()),
+        HashKey::String("Content-Type".into()),
+        Value::String("text/plain; charset=utf-8".into()),
     );
     let mut body = HashPairs::default();
-    body.insert(HashKey::String("status".to_string()), Value::Int(406));
+    body.insert(HashKey::String("status".into()), Value::Int(406));
     body.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers))),
     );
     body.insert(
-        HashKey::String("body".to_string()),
-        Value::String("Not Acceptable".to_string()),
+        HashKey::String("body".into()),
+        Value::String("Not Acceptable".into()),
     );
     Value::Hash(Rc::new(RefCell::new(body)))
 }
@@ -275,29 +275,29 @@ mod tests {
             let mut hm = HashPairs::default();
             for (k, v) in headers {
                 hm.insert(
-                    HashKey::String((*k).to_string()),
-                    Value::String((*v).to_string()),
+                    HashKey::String((*k).to_string().into()),
+                    Value::String((*v).to_string().into()),
                 );
             }
             h.insert(
-                HashKey::String("headers".to_string()),
+                HashKey::String("headers".into()),
                 Value::Hash(Rc::new(RefCell::new(hm))),
             );
         }
         h.insert(
-            HashKey::String("path".to_string()),
-            Value::String(path.to_string()),
+            HashKey::String("path".into()),
+            Value::String(path.to_string().into()),
         );
         if !query.is_empty() {
             let mut q = HashPairs::default();
             for (k, v) in query {
                 q.insert(
-                    HashKey::String((*k).to_string()),
-                    Value::String((*v).to_string()),
+                    HashKey::String((*k).to_string().into()),
+                    Value::String((*v).to_string().into()),
                 );
             }
             h.insert(
-                HashKey::String("query".to_string()),
+                HashKey::String("query".into()),
                 Value::Hash(Rc::new(RefCell::new(q))),
             );
         }
@@ -440,7 +440,7 @@ mod tests {
         };
         let h = h.borrow();
         assert!(matches!(
-            h.get(&HashKey::String("status".to_string())),
+            h.get(&HashKey::String("status".into())),
             Some(Value::Int(406))
         ));
     }

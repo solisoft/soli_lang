@@ -10,7 +10,9 @@ use super::upvalue::UpvalueDescriptor;
 pub enum Constant {
     Int(i64),
     Float(f64),
-    String(String),
+    /// Shares its buffer with every runtime `Value::String` loaded from it
+    /// (zero-copy literal loading — the load is a refcount bump).
+    String(crate::interpreter::value::SoliStr),
     Bool(bool),
     Null,
     /// Decimal value stored as string (parsed at runtime)
@@ -197,8 +199,8 @@ mod tests {
         // Identical String constants share a slot — saves space and
         // makes `Op::GetGlobal` lookup hit the same index.
         let mut c = Chunk::new();
-        let a = c.add_constant(Constant::String("name".to_string()));
-        let b = c.add_constant(Constant::String("name".to_string()));
+        let a = c.add_constant(Constant::String("name".into()));
+        let b = c.add_constant(Constant::String("name".into()));
         assert_eq!(a, b);
         assert_eq!(c.constants.len(), 1);
     }
@@ -218,8 +220,8 @@ mod tests {
     #[test]
     fn add_constant_distinct_strings_get_distinct_slots() {
         let mut c = Chunk::new();
-        let a = c.add_constant(Constant::String("foo".to_string()));
-        let b = c.add_constant(Constant::String("bar".to_string()));
+        let a = c.add_constant(Constant::String("foo".into()));
+        let b = c.add_constant(Constant::String("bar".into()));
         assert_ne!(a, b);
         assert_eq!(c.constants.len(), 2);
     }

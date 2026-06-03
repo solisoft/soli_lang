@@ -99,7 +99,7 @@ pub fn register_vapid_builtins(env: &mut Environment) {
             } else {
                 DEFAULT_EXP_SECONDS
             };
-            sign_jwt(&private_key, &audience, &subject, exp).map(Value::String)
+            sign_jwt(&private_key, &audience, &subject, exp).map(|s| Value::String(s.into()))
         })),
     );
 
@@ -168,12 +168,12 @@ fn generate_keys() -> Value {
 
     let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(
-        HashKey::String("public_key".to_string()),
-        Value::String(public_b64),
+        HashKey::String("public_key".into()),
+        Value::String(public_b64.into()),
     );
     pairs.insert(
-        HashKey::String("private_key".to_string()),
-        Value::String(private_b64),
+        HashKey::String("private_key".into()),
+        Value::String(private_b64.into()),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
@@ -239,16 +239,16 @@ fn encrypted_to_hash(enc: EncryptedPayload) -> Value {
     // keyid || encrypted-record). Callers POST this directly with
     // `Content-Encoding: aes128gcm`.
     pairs.insert(
-        HashKey::String("ciphertext".to_string()),
-        Value::String(URL_SAFE_NO_PAD.encode(&enc.body)),
+        HashKey::String("ciphertext".into()),
+        Value::String(URL_SAFE_NO_PAD.encode(&enc.body).into()),
     );
     pairs.insert(
-        HashKey::String("salt".to_string()),
-        Value::String(URL_SAFE_NO_PAD.encode(enc.salt)),
+        HashKey::String("salt".into()),
+        Value::String(URL_SAFE_NO_PAD.encode(enc.salt).into()),
     );
     pairs.insert(
-        HashKey::String("server_public_key".to_string()),
-        Value::String(URL_SAFE_NO_PAD.encode(&enc.server_public)),
+        HashKey::String("server_public_key".into()),
+        Value::String(URL_SAFE_NO_PAD.encode(&enc.server_public).into()),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
@@ -380,7 +380,7 @@ fn send_push(
     if let Some(Value::Hash(opts)) = options {
         for (k, v) in opts.borrow().iter() {
             if let HashKey::String(key) = k {
-                match key.as_str() {
+                match key.as_ref() {
                     "ttl" => {
                         if let Value::Int(n) = v {
                             ttl = *n;
@@ -388,12 +388,12 @@ fn send_push(
                     }
                     "urgency" => {
                         if let Value::String(s) = v {
-                            urgency = Some(s.clone());
+                            urgency = Some(s.clone().to_string());
                         }
                     }
                     "topic" => {
                         if let Value::String(s) = v {
-                            topic = Some(s.clone());
+                            topic = Some(s.clone().to_string());
                         }
                     }
                     "expiry_seconds" => {
@@ -456,8 +456,8 @@ fn send_push(
     let body = resp.text().unwrap_or_default();
 
     let mut pairs: HashPairs = HashPairs::default();
-    pairs.insert(HashKey::String("status".to_string()), Value::Int(status));
-    pairs.insert(HashKey::String("body".to_string()), Value::String(body));
+    pairs.insert(HashKey::String("status".into()), Value::Int(status));
+    pairs.insert(HashKey::String("body".into()), Value::String(body.into()));
     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
 }
 
@@ -465,7 +465,7 @@ fn send_push(
 
 fn arg_string(value: &Value, fn_name: &str, arg_name: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         other => Err(format!(
             "{}(): expects string {}, got {}",
             fn_name,
@@ -485,9 +485,9 @@ fn arg_subscription_endpoint(value: &Value, fn_name: &str) -> Result<String, Str
         Value::Hash(hash) => {
             for (k, v) in hash.borrow().iter() {
                 if let HashKey::String(key) = k {
-                    if key == "endpoint" {
+                    if **key == *"endpoint" {
                         if let Value::String(s) = v {
-                            return Ok(s.clone());
+                            return Ok(s.clone().to_string());
                         }
                     }
                 }
@@ -517,14 +517,12 @@ fn arg_subscription_keys(value: &Value, fn_name: &str) -> Result<SubscriptionKey
         }
     };
     let borrow = hash.borrow();
-    let keys = borrow
-        .get(&HashKey::String("keys".to_string()))
-        .ok_or_else(|| {
-            format!(
-                "{}(): subscription is missing 'keys' hash with p256dh/auth",
-                fn_name
-            )
-        })?;
+    let keys = borrow.get(&HashKey::String("keys".into())).ok_or_else(|| {
+        format!(
+            "{}(): subscription is missing 'keys' hash with p256dh/auth",
+            fn_name
+        )
+    })?;
     let keys_hash = match keys {
         Value::Hash(h) => h.borrow(),
         other => {
@@ -535,7 +533,7 @@ fn arg_subscription_keys(value: &Value, fn_name: &str) -> Result<SubscriptionKey
             ))
         }
     };
-    let p256dh = match keys_hash.get(&HashKey::String("p256dh".to_string())) {
+    let p256dh = match keys_hash.get(&HashKey::String("p256dh".into())) {
         Some(Value::String(s)) => s.clone(),
         _ => {
             return Err(format!(
@@ -544,7 +542,7 @@ fn arg_subscription_keys(value: &Value, fn_name: &str) -> Result<SubscriptionKey
             ))
         }
     };
-    let auth = match keys_hash.get(&HashKey::String("auth".to_string())) {
+    let auth = match keys_hash.get(&HashKey::String("auth".into())) {
         Some(Value::String(s)) => s.clone(),
         _ => {
             return Err(format!(
@@ -553,7 +551,10 @@ fn arg_subscription_keys(value: &Value, fn_name: &str) -> Result<SubscriptionKey
             ))
         }
     };
-    Ok(SubscriptionKeys { p256dh, auth })
+    Ok(SubscriptionKeys {
+        p256dh: p256dh.to_string(),
+        auth: auth.to_string(),
+    })
 }
 
 fn current_timestamp() -> u64 {
@@ -641,7 +642,7 @@ mod tests {
     }
 
     fn hash_get<'a>(hash: &'a HashPairs, key: &str) -> Option<&'a Value> {
-        hash.get(&HashKey::String(key.to_string()))
+        hash.get(&HashKey::String(key.to_string().into()))
     }
 
     #[test]
@@ -663,8 +664,8 @@ mod tests {
             other => panic!("expected private_key string, got {other:?}"),
         };
         // 32-byte scalar → 43 chars, 65-byte point → 87 chars (no padding).
-        assert_eq!(URL_SAFE_NO_PAD.decode(&priv_b64).unwrap().len(), 32);
-        assert_eq!(URL_SAFE_NO_PAD.decode(&pub_b64).unwrap().len(), 65);
+        assert_eq!(URL_SAFE_NO_PAD.decode(&*priv_b64).unwrap().len(), 32);
+        assert_eq!(URL_SAFE_NO_PAD.decode(&*pub_b64).unwrap().len(), 65);
     }
 
     #[test]
@@ -683,8 +684,8 @@ mod tests {
         };
         let token = (sign.func)(vec![
             Value::String(priv_key),
-            Value::String("https://fcm.googleapis.com".to_string()),
-            Value::String("mailto:dev@example.com".to_string()),
+            Value::String("https://fcm.googleapis.com".into()),
+            Value::String("mailto:dev@example.com".into()),
         ])
         .unwrap();
         let token_str = match token {
@@ -715,8 +716,8 @@ mod tests {
         };
         let err = (sign.func)(vec![
             Value::String(priv_key),
-            Value::String("fcm.googleapis.com".to_string()),
-            Value::String("mailto:dev@example.com".to_string()),
+            Value::String("fcm.googleapis.com".into()),
+            Value::String("mailto:dev@example.com".into()),
         ])
         .unwrap_err();
         assert!(err.contains("audience"), "got: {err}");
@@ -738,17 +739,20 @@ mod tests {
 
         let mut sub_keys: HashPairs = HashPairs::default();
         sub_keys.insert(
-            HashKey::String("p256dh".to_string()),
-            Value::String(ua_pub_b64),
+            HashKey::String("p256dh".into()),
+            Value::String(ua_pub_b64.into()),
         );
-        sub_keys.insert(HashKey::String("auth".to_string()), Value::String(auth_b64));
+        sub_keys.insert(
+            HashKey::String("auth".into()),
+            Value::String(auth_b64.into()),
+        );
         let mut sub: HashPairs = HashPairs::default();
         sub.insert(
-            HashKey::String("endpoint".to_string()),
-            Value::String("https://example.invalid/push/abc".to_string()),
+            HashKey::String("endpoint".into()),
+            Value::String("https://example.invalid/push/abc".into()),
         );
         sub.insert(
-            HashKey::String("keys".to_string()),
+            HashKey::String("keys".into()),
             Value::Hash(Rc::new(RefCell::new(sub_keys))),
         );
 
@@ -771,7 +775,7 @@ mod tests {
         };
 
         let result = (encrypt.func)(vec![
-            Value::String("{\"title\":\"Hi\"}".to_string()),
+            Value::String("{\"title\":\"Hi\"}".into()),
             Value::Hash(Rc::new(RefCell::new(sub))),
             Value::String(pub_key),
             Value::String(priv_key),
@@ -795,8 +799,8 @@ mod tests {
             other => panic!("expected server_public_key string, got {other:?}"),
         };
         assert!(!ciphertext.is_empty());
-        assert_eq!(URL_SAFE_NO_PAD.decode(&salt).unwrap().len(), 16);
-        assert_eq!(URL_SAFE_NO_PAD.decode(&server_pub).unwrap().len(), 65);
+        assert_eq!(URL_SAFE_NO_PAD.decode(&*salt).unwrap().len(), 16);
+        assert_eq!(URL_SAFE_NO_PAD.decode(&*server_pub).unwrap().len(), 65);
     }
 
     #[test]

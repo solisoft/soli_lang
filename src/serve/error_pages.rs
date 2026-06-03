@@ -915,6 +915,26 @@ where
     serde_json::Value::Object(out)
 }
 
+/// Same as `redact_map`, but over hyper's `HeaderMap` (RequestData carries
+/// the wire headers directly — they're only converted to a Soli hash on the
+/// worker, once, when the request hash is built).
+fn redact_header_map<F>(headers: &hyper::header::HeaderMap, should_redact: F) -> serde_json::Value
+where
+    F: Fn(&str) -> bool,
+{
+    let mut out = serde_json::Map::with_capacity(headers.keys_len());
+    for (name, value) in headers {
+        let name = name.as_str();
+        let value = if should_redact(name) {
+            serde_json::Value::String("[REDACTED]".to_string())
+        } else {
+            serde_json::Value::String(String::from_utf8_lossy(value.as_bytes()).into_owned())
+        };
+        out.insert(name.to_string(), value);
+    }
+    serde_json::Value::Object(out)
+}
+
 /// Build the redacted JSON view of a request used by both the dev error
 /// page and the production error logger / response. SEC-083 redaction
 /// is applied to headers and params. `redact_body` controls whether the
@@ -926,7 +946,7 @@ pub(super) fn redacted_request_snapshot(
     redact_body: bool,
 ) -> serde_json::Value {
     let query = redact_map(&request_data.query, param_should_redact);
-    let headers = redact_map(&request_data.headers, header_should_redact);
+    let headers = redact_header_map(&request_data.headers, header_should_redact);
     let body = if redact_body {
         serde_json::Value::String("[REDACTED]".to_string())
     } else {
@@ -1327,14 +1347,11 @@ mod tests {
 
     fn make_request_data() -> RequestData {
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut headers = HashMap::new();
-        headers.insert("authorization".to_string(), "Bearer leaked-jwt".to_string());
-        headers.insert(
-            "cookie".to_string(),
-            "session_id=abc; theme=dark".to_string(),
-        );
-        headers.insert("content-type".to_string(), "application/json".to_string());
-        headers.insert("user-agent".to_string(), "tests/1.0".to_string());
+        let mut headers = hyper::header::HeaderMap::new();
+        headers.insert("authorization", "Bearer leaked-jwt".parse().unwrap());
+        headers.insert("cookie", "session_id=abc; theme=dark".parse().unwrap());
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("user-agent", "tests/1.0".parse().unwrap());
 
         let mut query = HashMap::new();
         query.insert("page".to_string(), "2".to_string());
@@ -1436,10 +1453,10 @@ mod tests {
         // values with embedded quotes used to break JSON parsing on the
         // page. serde_json escapes them properly.
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        let mut headers = HashMap::new();
+        let mut headers = hyper::header::HeaderMap::new();
         headers.insert(
-            "x-test".to_string(),
-            r#"value with "quotes" and \backslash"#.to_string(),
+            "x-test",
+            r#"value with "quotes" and \backslash"#.parse().unwrap(),
         );
         let req = RequestData {
             method: std::borrow::Cow::Borrowed("GET"),

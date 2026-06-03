@@ -142,7 +142,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
         .iter()
         .filter_map(|(k, v)| {
             if let HashKey::String(key) = k {
-                Some((key.clone(), v.clone()))
+                Some((key.to_string(), v.clone()))
             } else {
                 None
             }
@@ -156,7 +156,7 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
             _ => continue,
         };
 
-        let field_value = data_map.get(&field_name).cloned();
+        let field_value = data_map.get(&*field_name).cloned();
 
         match validate_field(&field_name, field_value, validator_value, &data_map) {
             Ok(Some(validated_value)) => {
@@ -174,13 +174,13 @@ fn validate_data(data: &Value, schema: &Value) -> Result<Value, String> {
     // Build result hash
     let is_valid = errors.is_empty();
     let mut result_pairs: HashPairs = HashPairs::default();
-    result_pairs.insert(HashKey::String("valid".to_string()), Value::Bool(is_valid));
+    result_pairs.insert(HashKey::String("valid".into()), Value::Bool(is_valid));
     result_pairs.insert(
-        HashKey::String("data".to_string()),
+        HashKey::String("data".into()),
         Value::Hash(Rc::new(RefCell::new(validated_data))),
     );
     result_pairs.insert(
-        HashKey::String("errors".to_string()),
+        HashKey::String("errors".into()),
         Value::Array(Rc::new(RefCell::new(errors))),
     );
 
@@ -244,11 +244,11 @@ fn validate_field(
                 if let Value::Hash(h) = &result {
                     for (k, v) in h.borrow().iter() {
                         if let HashKey::String(key) = k {
-                            if key == "valid" {
+                            if **key == *"valid" {
                                 if let Value::Bool(false) = v {
                                     // Extract nested errors
                                     if let Some((_, Value::Array(errors))) = h.borrow().iter().find(|(k2, _)| {
-                                        matches!(k2, HashKey::String(key2) if key2 == "errors")
+                                        matches!(k2, HashKey::String(key2) if **key2 == *"errors")
                                     }) {
                                         if let Some(err) = errors.borrow().first() {
                                             return Err(prefix_error(field_name, err));
@@ -256,7 +256,7 @@ fn validate_field(
                                     }
                                 }
                             }
-                            if key == "data" {
+                            if **key == *"data" {
                                 return Ok(Some(v.clone()));
                             }
                         }
@@ -300,16 +300,16 @@ fn validate_array_elements(array: &Value, element_schema: &Value) -> Result<Valu
 fn create_error(field: &str, message: &str, code: &str) -> Value {
     let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(
-        HashKey::String("field".to_string()),
-        Value::String(field.to_string()),
+        HashKey::String("field".into()),
+        Value::String(field.to_string().into()),
     );
     pairs.insert(
-        HashKey::String("message".to_string()),
-        Value::String(message.to_string()),
+        HashKey::String("message".into()),
+        Value::String(message.to_string().into()),
     );
     pairs.insert(
-        HashKey::String("code".to_string()),
-        Value::String(code.to_string()),
+        HashKey::String("code".into()),
+        Value::String(code.to_string().into()),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
@@ -320,9 +320,12 @@ fn prefix_error(prefix: &str, error: &Value) -> Value {
         let mut pairs: HashPairs = HashPairs::default();
         for (k, v) in h.borrow().iter() {
             if let HashKey::String(key) = k {
-                if key == "field" {
+                if **key == *"field" {
                     if let Value::String(field) = v {
-                        pairs.insert(k.clone(), Value::String(format!("{}.{}", prefix, field)));
+                        pairs.insert(
+                            k.clone(),
+                            Value::String(format!("{}.{}", prefix, field).into()),
+                        );
                     } else {
                         pairs.insert(k.clone(), v.clone());
                     }

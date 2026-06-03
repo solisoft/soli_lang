@@ -222,7 +222,7 @@ impl Interpreter {
                         ControlFlow::Throw(error) => Some(error),
                     },
                     Err(e) => {
-                        let error_value = Value::String(format!("{}", e));
+                        let error_value = Value::String(format!("{}", e).into());
                         Some(error_value)
                     }
                 };
@@ -325,6 +325,45 @@ impl Interpreter {
         iterable: &Expr,
         body: &Stmt,
     ) -> RuntimeResult<ControlFlow> {
+        // Range fast path: `for i in a..b` iterates directly instead of
+        // materializing the range into an array first (eval_range collects
+        // the whole range into a Vec, which is wasteful for large ranges).
+        if let ExprKind::Binary {
+            left,
+            operator: BinaryOp::Range,
+            right,
+        } = &iterable.kind
+        {
+            let left_val = self.evaluate(left)?;
+            let right_val = self.evaluate(right)?;
+            match (&left_val, &right_val) {
+                (Value::Int(start), Value::Int(end)) => {
+                    let mut current = *start;
+                    let end = *end;
+                    return self.run_for_loop(variable, index_variable, body, || {
+                        if current < end {
+                            let val = Value::Int(current);
+                            current += 1;
+                            Some(val)
+                        } else {
+                            None
+                        }
+                    });
+                }
+                _ => {
+                    // Same error eval_range would produce for non-int operands.
+                    return Err(RuntimeError::type_error(
+                        format!(
+                            "range (..) expects two integers, got {} and {}",
+                            left_val.type_name(),
+                            right_val.type_name()
+                        ),
+                        iterable.span,
+                    ));
+                }
+            }
+        }
+
         let iter_value = self.evaluate(iterable)?;
         // QueryBuilder is iterable: materialize it into an Array up front.
         let iter_value = match iter_value {
@@ -335,82 +374,22 @@ impl Interpreter {
         };
         match iter_value {
             Value::Array(arr) => {
-                // Clone items once outside the loop to avoid holding borrow across loop body
-                let items: Vec<Value> = arr.borrow().iter().cloned().collect();
-
-                // If the body creates closures, give each iteration its own
-                // environment so closures capture distinct loop bindings (the
-                // reused-environment fast path below would make them share).
-                if super::loop_capture::stmt_creates_closures(body) {
-                    let outer = self.environment.clone();
-                    for (i, item) in items.into_iter().enumerate() {
-                        let iter_env =
-                            Rc::new(RefCell::new(Environment::with_enclosing(outer.clone())));
-                        {
-                            let mut env = iter_env.borrow_mut();
-                            env.define(variable.to_string(), item);
-                            if let Some(idx_var) = index_variable {
-                                env.define(idx_var.to_string(), Value::Int(i as i64));
-                            }
-                        }
-                        let prev_env = std::mem::replace(&mut self.environment, iter_env);
-                        let result = self.execute(body);
-                        self.environment = prev_env;
-                        match result {
-                            Err(e) => return Err(e),
-                            Ok(ControlFlow::Return(v)) => return Ok(ControlFlow::Return(v)),
-                            Ok(ControlFlow::Throw(e)) => return Ok(ControlFlow::Throw(e)),
-                            Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
-                        }
+                // Live bounds-checked indexing: no upfront snapshot clone of
+                // the whole array. The borrow is taken only long enough to
+                // clone the current item, then released before the body runs,
+                // so a body that mutates the array is safe (and observed
+                // live, matching the VM's iterator).
+                let mut i = 0usize;
+                self.run_for_loop(variable, index_variable, body, || {
+                    let items = arr.borrow();
+                    if i < items.len() {
+                        let item = items[i].clone();
+                        i += 1;
+                        Some(item)
+                    } else {
+                        None
                     }
-                    return Ok(ControlFlow::Normal(Value::Null));
-                }
-
-                // Allocate a single loop environment reused across iterations.
-                // The body's let-statements use define_or_update, so re-entry
-                // is safe — same-slot updates instead of fresh HashMap allocs.
-                let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-                    self.environment.clone(),
-                )));
-                loop_env_rc
-                    .borrow_mut()
-                    .define(variable.to_string(), Value::Null);
-                if let Some(idx_var) = index_variable {
-                    loop_env_rc
-                        .borrow_mut()
-                        .define(idx_var.to_string(), Value::Int(0));
-                }
-
-                let prev_env = std::mem::replace(&mut self.environment, loop_env_rc.clone());
-
-                for (i, item) in items.into_iter().enumerate() {
-                    {
-                        let mut env = loop_env_rc.borrow_mut();
-                        env.define_or_update(variable, item);
-                        if let Some(idx_var) = index_variable {
-                            env.define_or_update(idx_var, Value::Int(i as i64));
-                        }
-                    }
-                    let result = self.execute(body);
-                    match result {
-                        Err(e) => {
-                            self.environment = prev_env;
-                            return Err(e);
-                        }
-                        Ok(ControlFlow::Return(v)) => {
-                            self.environment = prev_env;
-                            return Ok(ControlFlow::Return(v));
-                        }
-                        Ok(ControlFlow::Throw(e)) => {
-                            self.environment = prev_env;
-                            return Ok(ControlFlow::Throw(e));
-                        }
-                        Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
-                    }
-                }
-
-                self.environment = prev_env;
-                Ok(ControlFlow::Normal(Value::Null))
+                })
             }
             _ => {
                 // Include the offending value in the message so the user can
@@ -426,7 +405,7 @@ impl Interpreter {
                             p.push('…');
                             p
                         } else {
-                            s.clone()
+                            s.clone().to_string()
                         };
                         format!("cannot iterate over string {:?}", preview)
                     }
@@ -439,6 +418,92 @@ impl Interpreter {
                 Err(RuntimeError::type_error(message, iterable.span))
             }
         }
+    }
+
+    /// Drive a for-loop body over the values produced by `next`.
+    ///
+    /// Handles both execution strategies:
+    /// - closure-capturing bodies get a fresh environment per iteration so
+    ///   each closure captures a distinct loop binding;
+    /// - other bodies reuse a single loop environment (define_or_update
+    ///   same-slot writes instead of fresh HashMap allocations).
+    fn run_for_loop(
+        &mut self,
+        variable: &str,
+        index_variable: Option<&str>,
+        body: &Stmt,
+        mut next: impl FnMut() -> Option<Value>,
+    ) -> RuntimeResult<ControlFlow> {
+        if super::loop_capture::stmt_creates_closures(body) {
+            let outer = self.environment.clone();
+            let mut i: i64 = 0;
+            while let Some(item) = next() {
+                let iter_env = Rc::new(RefCell::new(Environment::with_enclosing(outer.clone())));
+                {
+                    let mut env = iter_env.borrow_mut();
+                    env.define(variable.to_string(), item);
+                    if let Some(idx_var) = index_variable {
+                        env.define(idx_var.to_string(), Value::Int(i));
+                    }
+                }
+                let prev_env = std::mem::replace(&mut self.environment, iter_env);
+                let result = self.execute(body);
+                self.environment = prev_env;
+                match result {
+                    Err(e) => return Err(e),
+                    Ok(ControlFlow::Return(v)) => return Ok(ControlFlow::Return(v)),
+                    Ok(ControlFlow::Throw(e)) => return Ok(ControlFlow::Throw(e)),
+                    Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
+                }
+                i += 1;
+            }
+            return Ok(ControlFlow::Normal(Value::Null));
+        }
+
+        let loop_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
+            self.environment.clone(),
+        )));
+        loop_env_rc
+            .borrow_mut()
+            .define(variable.to_string(), Value::Null);
+        if let Some(idx_var) = index_variable {
+            loop_env_rc
+                .borrow_mut()
+                .define(idx_var.to_string(), Value::Int(0));
+        }
+
+        let prev_env = std::mem::replace(&mut self.environment, loop_env_rc.clone());
+
+        let mut i: i64 = 0;
+        while let Some(item) = next() {
+            {
+                let mut env = loop_env_rc.borrow_mut();
+                env.define_or_update(variable, item);
+                if let Some(idx_var) = index_variable {
+                    env.define_or_update(idx_var, Value::Int(i));
+                }
+            }
+            let result = self.execute(body);
+            match result {
+                Err(e) => {
+                    self.environment = prev_env;
+                    return Err(e);
+                }
+                Ok(ControlFlow::Return(v)) => {
+                    self.environment = prev_env;
+                    return Ok(ControlFlow::Return(v));
+                }
+                Ok(ControlFlow::Throw(e)) => {
+                    self.environment = prev_env;
+                    return Ok(ControlFlow::Throw(e));
+                }
+                Ok(ControlFlow::Normal(_)) | Ok(ControlFlow::Continue) => {}
+            }
+            i += 1;
+        }
+
+        self.environment = prev_env;
+        Ok(ControlFlow::Normal(Value::Null))
     }
 
     pub(super) fn execute_class(&mut self, decl: &ClassDecl) -> RuntimeResult<()> {
@@ -637,7 +702,10 @@ impl Interpreter {
                                     }
                                     Argument::Named(named) => {
                                         let val = self.evaluate(&named.value)?;
-                                        hash_pairs.insert(HashKey::String(named.name.clone()), val);
+                                        hash_pairs.insert(
+                                            HashKey::String(named.name.clone().into()),
+                                            val,
+                                        );
                                     }
                                     Argument::Block(_) => {
                                         return Err(RuntimeError::type_error(

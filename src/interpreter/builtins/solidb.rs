@@ -25,7 +25,7 @@ where
     let json_str = f()?;
     match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(json) => Ok(crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)),
-        Err(_) => Ok(Value::String(json_str)),
+        Err(_) => Ok(Value::String(json_str.into())),
     }
 }
 
@@ -219,7 +219,7 @@ fn register_global_solidb_functions(env: &mut Environment) {
                         let mut map = std::collections::HashMap::new();
                         for (k, v) in hash.borrow().iter() {
                             if let HashKey::String(key) = k {
-                                map.insert(key.clone(), value_to_json(v)?);
+                                map.insert(key.to_string(), value_to_json(v)?);
                             }
                         }
                         Some(map)
@@ -360,8 +360,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let state = states
                             .get_mut(&instance_id)
                             .ok_or_else(|| "Solidb instance not found".to_string())?;
-                        state.auth_username = Some(username.clone());
-                        state.auth_password = Some(password.clone());
+                        state.auth_username = Some(username.clone().to_string());
+                        state.auth_password = Some(password.clone().to_string());
                         state.connected = true;
                         drop(states);
 
@@ -394,7 +394,7 @@ fn register_solidb_class(env: &mut Environment) {
                                     let mut map = std::collections::HashMap::new();
                                     for (k, v) in hash.borrow().iter() {
                                         if let HashKey::String(key) = k {
-                                            map.insert(key.clone(), value_to_json(v)?);
+                                            map.insert(key.to_string(), value_to_json(v)?);
                                         }
                                     }
                                     Some(map)
@@ -617,7 +617,7 @@ fn register_solidb_class(env: &mut Environment) {
                                     let mut map = std::collections::HashMap::new();
                                     for (k, v) in hash.borrow().iter() {
                                         if let HashKey::String(key) = k {
-                                            map.insert(key.clone(), value_to_json(v)?);
+                                            map.insert(key.to_string(), value_to_json(v)?);
                                         }
                                     }
                                     Some(map)
@@ -811,14 +811,14 @@ fn register_solidb_class(env: &mut Environment) {
                                     .iter()
                                     .filter_map(|v| {
                                         if let Value::String(s) = v {
-                                            Some(s.clone())
+                                            Some(s.to_string())
                                         } else {
                                             None
                                         }
                                     })
                                     .collect()
                             }
-                            Value::String(s) => vec![s.clone()],
+                            Value::String(s) => vec![s.clone().to_string()],
                             other => {
                                 return Err(format!(
                                     "create_index() expects array or string fields, got {}",
@@ -833,12 +833,12 @@ fn register_solidb_class(env: &mut Environment) {
                                     let borrowed = hash.borrow();
                                     let unique = borrowed
                                             .iter()
-                                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "unique"))
+                                            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"unique"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
                                     let sparse = borrowed
                                             .iter()
-                                            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "sparse"))
+                                            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"sparse"))
                                             .and_then(|(_, v)| if let Value::Bool(b) = v { Some(*b) } else { None })
                                             .unwrap_or(false);
                                     (unique, sparse)
@@ -907,19 +907,19 @@ fn register_solidb_class(env: &mut Environment) {
                                 Value::Hash(hash) => {
                                     let borrowed = hash.borrow();
                                     let metric = borrowed.iter()
-                                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "metric"))
+                                        .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"metric"))
                                         .and_then(|(_, v)| if let Value::String(s) = v { Some(s.clone()) } else { None })
-                                        .unwrap_or_else(|| "cosine".to_string());
+                                        .unwrap_or_else(|| "cosine".into());
                                     let quantization = borrowed.iter()
-                                        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "quantization"))
+                                        .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"quantization"))
                                         .and_then(|(_, v)| if let Value::String(s) = v { Some(s.clone()) } else { None });
                                     (metric, quantization)
                                 }
                                 Value::String(s) => (s.clone(), None),
-                                _ => ("cosine".to_string(), None),
+                                _ => ("cosine".into(), None),
                             }
                         } else {
-                            ("cosine".to_string(), None)
+                            ("cosine".into(), None)
                         };
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
@@ -1085,7 +1085,7 @@ fn register_solidb_class(env: &mut Environment) {
                             }
                         };
                         let data = STANDARD
-                            .decode(&data_base64)
+                            .decode(&*data_base64)
                             .map_err(|e| format!("Failed to decode base64: {}", e))?;
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
@@ -1276,7 +1276,10 @@ fn register_solidb_class(env: &mut Environment) {
             let instance_id = SOLIDB_NEXT_ID.fetch_add(1, Ordering::SeqCst);
 
             let mut states = SOLIDB_STATES.write().map_err(|e| e.to_string())?;
-            states.insert(instance_id, SolidbState::new(host, database));
+            states.insert(
+                instance_id,
+                SolidbState::new(host.to_string(), database.to_string()),
+            );
             drop(states);
 
             let mut inner = Instance::new(solidb_class.clone());

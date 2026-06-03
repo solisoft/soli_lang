@@ -58,7 +58,7 @@ fn value_to_raw_bytes(value: &Value, what: &str) -> Result<Vec<u8>, String> {
 /// — the same shape `Base64.decode` uses.
 fn bytes_to_text_value(bytes: Vec<u8>) -> Value {
     match String::from_utf8(bytes) {
-        Ok(s) => Value::String(s),
+        Ok(s) => Value::String(s.into()),
         Err(e) => {
             let values: Vec<Value> = e
                 .into_bytes()

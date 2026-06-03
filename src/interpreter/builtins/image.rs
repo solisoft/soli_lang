@@ -658,10 +658,10 @@ fn build_image_class() -> Rc<Class> {
             with_image_data(&args, |data| {
                 let format = data.format.unwrap_or(ImageFormat::Png);
                 let buffer = encode_image(data, format)?;
-                Ok(Value::String(base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    &buffer,
-                )))
+                Ok(Value::String(
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &buffer)
+                        .into(),
+                ))
             })
         })),
     );
@@ -677,14 +677,14 @@ fn build_image_class() -> Rc<Class> {
             with_image_data(&args, |data| {
                 let format = data
                     .format
-                    .unwrap_or_else(|| ImageFormat::from_path(&path).unwrap_or(ImageFormat::Png));
+                    .unwrap_or_else(|| ImageFormat::from_path(&*path).unwrap_or(ImageFormat::Png));
                 if format == ImageFormat::Jpeg {
                     let buffer = encode_image(data, format)?;
-                    std::fs::write(&path, buffer)
+                    std::fs::write(&*path, buffer)
                         .map_err(|e| format!("Failed to write file: {}", e))?;
                 } else {
                     data.image
-                        .save(&path)
+                        .save(&*path)
                         .map_err(|e| format!("Failed to save image: {}", e))?;
                 }
                 Ok(Value::Bool(true))
@@ -704,7 +704,7 @@ fn build_image_class() -> Rc<Class> {
             };
             validate_image_path(&path, "Image.new")?;
             let mut reader =
-                ImageReader::open(&path).map_err(|e| format!("Failed to open image: {}", e))?;
+                ImageReader::open(&*path).map_err(|e| format!("Failed to open image: {}", e))?;
             let format = reader.format();
             // SEC-019: decompression-bomb defense.
             reader.limits(safe_image_limits());
@@ -728,7 +728,7 @@ fn build_image_class() -> Rc<Class> {
                 _ => return Err("Image.plan requires string path".to_string()),
             };
             Ok(plan_to_value(ImagePlan {
-                src: path,
+                src: path.to_string(),
                 ops: Vec::new(),
                 format: None,
                 quality: 85,
@@ -785,10 +785,10 @@ fn build_image_class() -> Rc<Class> {
                     results.push(match h.join() {
                         Ok(Ok(PlanResult::Saved)) => Value::Bool(true),
                         Ok(Ok(PlanResult::Image(data))) => image_data_to_value(data),
-                        Ok(Err(e)) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                        Ok(Err(e)) => hash_from_pairs([("error".to_string(), Value::String(e.into()))]),
                         Err(_) => hash_from_pairs([(
                             "error".to_string(),
-                            Value::String("Thread panicked".to_string()),
+                            Value::String("Thread panicked".into()),
                         )]),
                     });
                 }
@@ -1023,7 +1023,7 @@ fn build_image_plan_class() -> Rc<Class> {
                 Value::String(s) => s.clone(),
                 _ => return Err("ImagePlan.save_to requires string path".to_string()),
             };
-            extend_plan(&args, |p| p.dst = Some(path))
+            extend_plan(&args, |p| p.dst = Some(path.to_string()))
         })),
     );
     native_methods.insert(
@@ -1039,7 +1039,7 @@ fn build_image_plan_class() -> Rc<Class> {
     native_methods.insert(
         "src".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.src", Some(0), |args| {
-            with_plan(&args, |p| Ok(Value::String(p.src.clone())))
+            with_plan(&args, |p| Ok(Value::String(p.src.clone().into())))
         })),
     );
     native_methods.insert(

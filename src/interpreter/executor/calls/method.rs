@@ -312,7 +312,7 @@ impl Interpreter {
 
         let mut forwarded: Vec<Value> = Vec::with_capacity(arguments.len() + 2);
         forwarded.push(Value::Instance(inst));
-        forwarded.push(Value::String(field.to_string()));
+        forwarded.push(Value::String(field.to_string().into()));
         match kind {
             UploaderMethod::Attach => {
                 if arguments.len() != 1 {
@@ -464,14 +464,14 @@ impl Interpreter {
                     value.write_to_string(&mut result);
                 }
                 result.push(']');
-                Some(Ok(Value::String(result)))
+                Some(Ok(Value::String(result.into())))
             }
             "join" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
                 let delim = match &arguments[0] {
-                    Value::String(d) => d.as_str(),
+                    Value::String(d) => d.as_ref(),
                     _ => {
                         return Some(Err(RuntimeError::type_error(
                             "join expects a string delimiter",
@@ -490,7 +490,7 @@ impl Interpreter {
                     }
                     value.write_to_string(&mut result);
                 }
-                Some(Ok(Value::String(result)))
+                Some(Ok(Value::String(result.into())))
             }
             _ => None,
         }
@@ -651,7 +651,7 @@ impl Interpreter {
                     v.write_to_string(&mut result);
                 }
                 result.push('}');
-                Some(Ok(Value::String(result)))
+                Some(Ok(Value::String(result.into())))
             }
             "flatten" => {
                 if !arguments.is_empty() {
@@ -780,7 +780,7 @@ impl Interpreter {
                 Some(
                     match crate::interpreter::value_stringify::stringify_hash_map_to_string(entries)
                     {
-                        Ok(json) => Ok(Value::String(json)),
+                        Ok(json) => Ok(Value::String(json.into())),
                         Err(e) => Err(RuntimeError::General { message: e, span }),
                     },
                 )
@@ -790,7 +790,7 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
                 let class_name = match &arguments[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Some(Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -964,7 +964,7 @@ impl Interpreter {
             "length" | "len" | "size" => self.array_length(items, arguments, span),
             "to_string" => self.array_to_string(items, arguments, span),
             "to_json" => match crate::interpreter::value::stringify_array_to_string(items) {
-                Ok(json) => Ok(Value::String(json)),
+                Ok(json) => Ok(Value::String(json.into())),
                 Err(e) => Err(RuntimeError::General { message: e, span }),
             },
             "join" => self.array_join(items, arguments, span),
@@ -1013,7 +1013,7 @@ impl Interpreter {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let class_name = match &arguments[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -2310,7 +2310,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-        Ok(Value::String(format!("[{}]", parts.join(", "))))
+        Ok(Value::String(format!("[{}]", parts.join(", ")).into()))
     }
 
     fn array_join(
@@ -2332,7 +2332,7 @@ impl Interpreter {
             }
         };
         let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-        Ok(Value::String(parts.join(&delim)))
+        Ok(Value::String(parts.join(&delim).into()))
     }
 
     fn array_delete(
@@ -2775,7 +2775,7 @@ fn extract_field_for_sort(
         Value::Instance(inst) => inst.borrow().get(field).unwrap_or(Value::Null),
         Value::Hash(h) => h
             .borrow()
-            .get(&HashKey::String(field.to_string()))
+            .get(&HashKey::String(field.to_string().into()))
             .cloned()
             .unwrap_or(Value::Null),
         _ => Value::Null,

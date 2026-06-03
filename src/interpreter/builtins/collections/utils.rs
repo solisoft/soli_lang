@@ -99,7 +99,7 @@ fn register_string_class(env: &mut Environment) {
                 match this.borrow().fields.get("__value").cloned() {
                     Some(Value::String(s)) => {
                         let mut inst = Instance::new(class_ref.clone());
-                        inst.set("__value".to_string(), Value::String(s.to_uppercase()));
+                        inst.set("__value".to_string(), Value::String(s));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("String missing internal value".to_string()),
@@ -120,7 +120,7 @@ fn register_string_class(env: &mut Environment) {
                 match this.borrow().fields.get("__value").cloned() {
                     Some(Value::String(s)) => {
                         let mut inst = Instance::new(class_ref.clone());
-                        inst.set("__value".to_string(), Value::String(s.to_lowercase()));
+                        inst.set("__value".to_string(), Value::String(s));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("String missing internal value".to_string()),
@@ -141,7 +141,10 @@ fn register_string_class(env: &mut Environment) {
                 match this.borrow().fields.get("__value").cloned() {
                     Some(Value::String(s)) => {
                         let mut inst = Instance::new(class_ref.clone());
-                        inst.set("__value".to_string(), Value::String(s.trim().to_string()));
+                        inst.set(
+                            "__value".to_string(),
+                            Value::String(s.trim().to_string().into()),
+                        );
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
                     _ => Err("String missing internal value".to_string()),
@@ -166,7 +169,7 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.contains() requires string argument".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => Ok(Value::Bool(s.contains(&substr))),
+                Some(Value::String(s)) => Ok(Value::Bool(s.contains(&*substr))),
                 _ => Err("String missing internal value".to_string()),
             }
         })),
@@ -188,7 +191,7 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.starts_with() requires string argument".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => Ok(Value::Bool(s.starts_with(&prefix))),
+                Some(Value::String(s)) => Ok(Value::Bool(s.starts_with(&*prefix))),
                 _ => Err("String missing internal value".to_string()),
             }
         })),
@@ -210,7 +213,7 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.ends_with() requires string argument".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => Ok(Value::Bool(s.ends_with(&suffix))),
+                Some(Value::String(s)) => Ok(Value::Bool(s.ends_with(&*suffix))),
                 _ => Err("String missing internal value".to_string()),
             }
         })),
@@ -238,10 +241,13 @@ fn register_string_class(env: &mut Environment) {
                 match this.borrow().fields.get("__value").cloned() {
                     Some(Value::String(s)) => {
                         let parts: Vec<Value> = s
-                            .split(&delim)
+                            .split(&*delim)
                             .map(|p| {
                                 let mut inst = Instance::new(class_ref.clone());
-                                inst.set("__value".to_string(), Value::String(p.to_string()));
+                                inst.set(
+                                    "__value".to_string(),
+                                    Value::String(p.to_string().into()),
+                                );
                                 Value::Instance(Rc::new(RefCell::new(inst)))
                             })
                             .collect();
@@ -270,7 +276,7 @@ fn register_string_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::String(s)) => {
-                    if let Some(idx) = s.find(&substr) {
+                    if let Some(idx) = s.find(&*substr) {
                         Ok(Value::Int(idx as i64))
                     } else {
                         Ok(Value::Int(-1))
@@ -302,13 +308,16 @@ fn register_string_class(env: &mut Environment) {
                                 } as usize;
                                 if start_usize >= end_usize || start_usize >= s.len() {
                                     let mut inst = Instance::new(class_ref.clone());
-                                    inst.set("__value".to_string(), Value::String(String::new()));
+                                    inst.set(
+                                        "__value".to_string(),
+                                        Value::String(String::new().into()),
+                                    );
                                     return Ok(Value::Instance(Rc::new(RefCell::new(inst))));
                                 }
                                 let mut inst = Instance::new(class_ref.clone());
                                 inst.set(
                                     "__value".to_string(),
-                                    Value::String(s[start_usize..end_usize].to_string()),
+                                    Value::String(s[start_usize..end_usize].to_string().into()),
                                 );
                                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                             }
@@ -337,7 +346,7 @@ fn register_string_class(env: &mut Environment) {
                                 let mut inst = Instance::new(class_ref.clone());
                                 inst.set(
                                     "__value".to_string(),
-                                    Value::String(s.replace(from.as_str(), to.as_str())),
+                                    Value::String(s.replace(from.as_ref(), to.as_ref())),
                                 );
                                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                             }
@@ -383,7 +392,7 @@ fn register_string_class(env: &mut Environment) {
                             let padding = width - s.len();
                             inst.set(
                                 "__value".to_string(),
-                                Value::String(pad_char.to_string().repeat(padding) + &s),
+                                Value::String((pad_char.to_string().repeat(padding) + &s).into()),
                             );
                         }
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -427,7 +436,9 @@ fn register_string_class(env: &mut Environment) {
                             let padding = width - s.len();
                             inst.set(
                                 "__value".to_string(),
-                                Value::String(s + &pad_char.to_string().repeat(padding)),
+                                Value::String(
+                                    format!("{}{}", s, pad_char.to_string().repeat(padding)).into(),
+                                ),
                             );
                         }
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
@@ -455,8 +466,8 @@ fn register_string_class(env: &mut Environment) {
             };
             match this.borrow().fields.get("__value").cloned() {
                 Some(Value::String(s)) => {
-                    let parts: Vec<String> = s.split(&delim).map(|p| p.to_string()).collect();
-                    Ok(Value::String(parts.join(&delim)))
+                    let parts: Vec<String> = s.split(&*delim).map(|p| p.to_string()).collect();
+                    Ok(Value::String(parts.join(&delim).into()))
                 }
                 _ => Err("String missing internal value".to_string()),
             }
@@ -472,11 +483,11 @@ fn register_string_class(env: &mut Environment) {
             move |args| {
                 let value = match args.first() {
                     Some(Value::String(s)) => s.clone(),
-                    Some(Value::Int(i)) => i.to_string(),
-                    Some(Value::Float(f)) => f.to_string(),
-                    Some(Value::Bool(b)) => b.to_string(),
-                    Some(Value::Null) => "null".to_string(),
-                    Some(other) => other.to_string(),
+                    Some(Value::Int(i)) => i.to_string().into(),
+                    Some(Value::Float(f)) => f.to_string().into(),
+                    Some(Value::Bool(b)) => b.to_string().into(),
+                    Some(Value::Null) => "null".into(),
+                    Some(other) => other.to_string().into(),
                     None => return Err("String.new() requires an argument".to_string()),
                 };
                 let mut inst = Instance::new(class_ref.clone());
@@ -533,7 +544,9 @@ pub fn register_base64_class(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(general_purpose::STANDARD.encode(&data)))
+            Ok(Value::String(
+                general_purpose::STANDARD.encode(&data).into(),
+            ))
         })),
     );
 
@@ -550,10 +563,10 @@ pub fn register_base64_class(env: &mut Environment) {
                     ))
                 }
             };
-            match general_purpose::STANDARD.decode(&data) {
+            match general_purpose::STANDARD.decode(&*data) {
                 Ok(bytes) => {
                     match String::from_utf8(bytes.clone()) {
-                        Ok(string) => Ok(Value::String(string)),
+                        Ok(string) => Ok(Value::String(string.into())),
                         Err(_) => {
                             // If not valid UTF-8, return as byte array
                             let values: Vec<Value> =
@@ -589,10 +602,10 @@ pub fn wrap_string(value: String, env: &Environment) -> Value {
     match env.get("String") {
         Some(Value::Class(class)) => {
             let mut inst = Instance::new(class.clone());
-            inst.set("__value".to_string(), Value::String(value));
+            inst.set("__value".to_string(), Value::String(value.into()));
             Value::Instance(Rc::new(RefCell::new(inst)))
         }
-        _ => Value::String(value),
+        _ => Value::String(value.into()),
     }
 }
 

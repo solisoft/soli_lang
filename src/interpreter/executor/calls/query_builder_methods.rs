@@ -112,7 +112,7 @@ impl Interpreter {
                                             message: e,
                                             span,
                                         })?;
-                                    map.insert(key.clone(), json_val);
+                                    map.insert(key.to_string(), json_val);
                                 }
                             }
                             map
@@ -125,7 +125,7 @@ impl Interpreter {
                         }
                         None => std::collections::HashMap::new(),
                     };
-                    (filter, binds)
+                    (filter.to_string(), binds)
                 }
                 _ => {
                     return Err(RuntimeError::type_error(
@@ -186,7 +186,7 @@ impl Interpreter {
                 }
             }
         } else {
-            "asc".to_string()
+            "asc".into()
         };
         // Same direction whitelist as `Model.order(...)` (SEC-004a) — the
         // QueryBuilder chain (`User.where(...).order(field, dir)`) lands
@@ -196,7 +196,7 @@ impl Interpreter {
             .map_err(|e| RuntimeError::type_error(e, span))?;
 
         let mut new_qb = qb.borrow().clone();
-        new_qb.set_order(field, direction);
+        new_qb.set_order(field.to_string(), direction.to_string());
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
@@ -290,7 +290,7 @@ impl Interpreter {
                                 .iter()
                                 .filter_map(|v| {
                                     if let Value::String(s) = v {
-                                        Some(s.clone())
+                                        Some(s.to_string())
                                     } else {
                                         None
                                     }
@@ -305,7 +305,7 @@ impl Interpreter {
                         _ => None,
                     };
                     new_qb.add_include(
-                        rel_name,
+                        rel_name.to_string(),
                         rel,
                         None,
                         std::collections::HashMap::new(),
@@ -332,7 +332,7 @@ impl Interpreter {
 
             let filter = if arguments.len() >= 3 {
                 match &arguments[1] {
-                    Value::String(s) => Some(s.clone()),
+                    Value::String(s) => Some(s.to_string()),
                     _ => None,
                 }
             } else {
@@ -349,14 +349,14 @@ impl Interpreter {
 
             for (k, v) in options_hash.iter() {
                 if let crate::interpreter::value::HashKey::String(key) = k {
-                    if key == "fields" {
+                    if **key == *"fields" {
                         if let Value::Array(arr) = v {
                             let field_names: Vec<String> = arr
                                 .borrow()
                                 .iter()
                                 .filter_map(|v| {
                                     if let Value::String(s) = v {
-                                        Some(s.clone())
+                                        Some(s.to_string())
                                     } else {
                                         None
                                     }
@@ -368,7 +368,7 @@ impl Interpreter {
                         }
                     } else {
                         bind_vars.insert(
-                            key.clone(),
+                            key.to_string(),
                             crate::interpreter::builtins::model::value_to_json(v)
                                 .map_err(|e| RuntimeError::General { message: e, span })?,
                         );
@@ -376,7 +376,7 @@ impl Interpreter {
                 }
             }
 
-            new_qb.add_include(rel_name, rel, filter, bind_vars, fields);
+            new_qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
         } else {
             // Pattern A: all strings → multi-relation unfiltered
             for arg in &arguments {
@@ -394,7 +394,13 @@ impl Interpreter {
                         message: format!("No relation '{}' defined on {}", rel_name, class_name),
                         span,
                     })?;
-                new_qb.add_include(rel_name, rel, None, std::collections::HashMap::new(), None);
+                new_qb.add_include(
+                    rel_name.to_string(),
+                    rel,
+                    None,
+                    std::collections::HashMap::new(),
+                    None,
+                );
             }
         }
 
@@ -435,7 +441,7 @@ impl Interpreter {
                     span,
                 })?;
             new_qb
-                .add_include_count(rel_name, rel)
+                .add_include_count(rel_name.to_string(), rel)
                 .map_err(|e| RuntimeError::General { message: e, span })?;
         }
 
@@ -461,7 +467,7 @@ impl Interpreter {
                 Value::String(s) => {
                     crate::interpreter::builtins::model::validate_field_name(s, "select")
                         .map_err(|e| RuntimeError::type_error(e, span))?;
-                    fields.push(s.clone());
+                    fields.push(s.to_string());
                 }
                 _ => {
                     return Err(RuntimeError::type_error(
@@ -512,7 +518,7 @@ impl Interpreter {
             })?;
 
         let filter = match arguments.get(1) {
-            Some(Value::String(s)) => Some(s.clone()),
+            Some(Value::String(s)) => Some(s.to_string()),
             _ => None,
         };
 
@@ -522,7 +528,7 @@ impl Interpreter {
                 for (k, v) in hash.borrow().iter() {
                     if let crate::interpreter::value::HashKey::String(key) = k {
                         map.insert(
-                            key.clone(),
+                            key.to_string(),
                             crate::interpreter::builtins::model::value_to_json(v)
                                 .map_err(|e| RuntimeError::General { message: e, span })?,
                         );
@@ -533,7 +539,7 @@ impl Interpreter {
             _ => std::collections::HashMap::new(),
         };
 
-        new_qb.add_join(rel_name, rel, filter, bind_vars);
+        new_qb.add_join(rel_name.to_string(), rel, filter, bind_vars);
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
@@ -626,11 +632,11 @@ impl Interpreter {
         };
 
         use crate::interpreter::value::HashKey;
-        let page = match params.get(&HashKey::String("page".to_string())) {
+        let page = match params.get(&HashKey::String("page".into())) {
             Some(Value::Int(n)) if *n > 0 => *n as usize,
             _ => 1,
         };
-        let per = match params.get(&HashKey::String("per".to_string())) {
+        let per = match params.get(&HashKey::String("per".into())) {
             Some(Value::Int(n)) if *n > 0 => *n as usize,
             _ => 25,
         };
@@ -657,21 +663,18 @@ impl Interpreter {
         let records = crate::interpreter::builtins::model::execute_query_builder(&new_qb);
 
         let mut pagination = crate::interpreter::value::HashPairs::default();
-        pagination.insert(HashKey::String("page".to_string()), Value::Int(page as i64));
-        pagination.insert(HashKey::String("per".to_string()), Value::Int(per as i64));
+        pagination.insert(HashKey::String("page".into()), Value::Int(page as i64));
+        pagination.insert(HashKey::String("per".into()), Value::Int(per as i64));
+        pagination.insert(HashKey::String("total".into()), Value::Int(total as i64));
         pagination.insert(
-            HashKey::String("total".to_string()),
-            Value::Int(total as i64),
-        );
-        pagination.insert(
-            HashKey::String("total_pages".to_string()),
+            HashKey::String("total_pages".into()),
             Value::Int(total_pages as i64),
         );
 
         let mut result = crate::interpreter::value::HashPairs::default();
-        result.insert(HashKey::String("records".to_string()), records);
+        result.insert(HashKey::String("records".into()), records);
         result.insert(
-            HashKey::String("pagination".to_string()),
+            HashKey::String("pagination".into()),
             Value::Hash(Rc::new(RefCell::new(pagination))),
         );
 
@@ -724,7 +727,7 @@ impl Interpreter {
                 Value::String(s) => {
                     crate::interpreter::builtins::model::validate_field_name(s, "pluck")
                         .map_err(|e| RuntimeError::type_error(e, span))?;
-                    fields.push(s.clone());
+                    fields.push(s.to_string());
                 }
                 _other => {
                     return Err(RuntimeError::type_error(
@@ -763,7 +766,7 @@ impl Interpreter {
         crate::interpreter::builtins::model::validate_field_name(&field, "aggregate")
             .map_err(|e| RuntimeError::type_error(e, span))?;
         let mut new_qb = qb.borrow().clone();
-        new_qb.aggregation = Some((func, field));
+        new_qb.aggregation = Some((func, field.to_string()));
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
@@ -821,7 +824,7 @@ impl Interpreter {
             }
         };
         let mut new_qb = qb.borrow().clone();
-        new_qb.group_by_info = Some((group_field, func, agg_field));
+        new_qb.group_by_info = Some((group_field.to_string(), func, agg_field.to_string()));
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
@@ -852,12 +855,11 @@ impl Interpreter {
         };
 
         if bind_vars.is_empty() {
-            Ok(Value::String(query))
+            Ok(Value::String(query.into()))
         } else {
-            Ok(Value::String(format!(
-                "{} | bind_vars: {:?}",
-                query, bind_vars
-            )))
+            Ok(Value::String(
+                format!("{} | bind_vars: {:?}", query, bind_vars).into(),
+            ))
         }
     }
 
@@ -881,7 +883,7 @@ impl Interpreter {
         };
         let field = match arguments.get(1) {
             Some(Value::String(s)) => s.clone(),
-            _ => "embedding".to_string(),
+            _ => "embedding".into(),
         };
         let top_k = match arguments.get(2) {
             Some(Value::Int(n)) if *n > 0 => *n as usize,
@@ -889,7 +891,7 @@ impl Interpreter {
         };
 
         let mut new_qb = qb.borrow().clone();
-        new_qb.set_similar(query_text, field, top_k);
+        new_qb.set_similar(query_text.to_string(), field.to_string(), top_k);
         // Similar search results always need a limit (top_k)
         if new_qb.limit_val.is_none() || new_qb.limit_val.unwrap() > top_k {
             new_qb.limit_val = Some(top_k);

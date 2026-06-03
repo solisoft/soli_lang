@@ -58,6 +58,18 @@ const CASES: &[(&str, &str)] = &[
         "let c = 0\nfor v in [1, 2, 3, 4, 5] { if v > 2 { c = c + 1 } }\nprint(c)",
     ),
     ("for_range_sum", "let s = 0\nfor v in 1..5 { s = s + v }\nprint(s)"),
+    (
+        // Mutating the iterated array inside the body: both engines iterate
+        // LIVE (bounds-checked indexing, appended items are visited) — pinned
+        // when the tree-walker dropped its upfront snapshot clone.
+        "for_array_mutation_live",
+        "let a = [1, 2, 3]\nfor x in a { if x < 3 { a.push(x + 10) } }\nprint(a)",
+    ),
+    (
+        // Range with a negative/empty span must not iterate.
+        "for_range_empty",
+        "let s = 0\nfor v in 5..5 { s = s + 1 }\nfor v in 5..2 { s = s + 1 }\nprint(s)",
+    ),
     // --- closures capturing loop variables / locals ---
     (
         "while_closure_capture",

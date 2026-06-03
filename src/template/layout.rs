@@ -391,7 +391,7 @@ mod tests {
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let hash: HashPairs = pairs
             .into_iter()
-            .map(|(k, v)| (HashKey::String(k.to_string()), v))
+            .map(|(k, v)| (HashKey::String(k.to_string().into()), v))
             .collect();
         Value::Hash(Rc::new(RefCell::new(hash)))
     }
@@ -413,7 +413,7 @@ mod tests {
     fn test_layout_with_variables() {
         let layout = "<!DOCTYPE html><title><%= title %></title><body><%= yield %></body>";
         let content = "Page content";
-        let data = make_hash(vec![("title", Value::String("My Page".to_string()))]);
+        let data = make_hash(vec![("title", Value::String("My Page".into()))]);
 
         let result = render_with_layout(layout, content, &data, None).unwrap();
         assert_eq!(

@@ -31,8 +31,8 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            match env::var(&name) {
-                Ok(value) => Ok(Value::String(value)),
+            match env::var(&*name) {
+                Ok(value) => Ok(Value::String(value.into())),
                 Err(_) => Ok(Value::Null),
             }
         })),
@@ -82,7 +82,7 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            Ok(Value::Bool(env::var(&name).is_ok()))
+            Ok(Value::Bool(env::var(&*name).is_ok()))
         })),
     );
 }
@@ -109,8 +109,8 @@ mod tests {
 
         let setenv = fetch(&env, "setenv");
         let err = (setenv.func)(vec![
-            Value::String("PATH".to_string()),
-            Value::String("/tmp".to_string()),
+            Value::String("PATH".into()),
+            Value::String("/tmp".into()),
         ])
         .unwrap_err();
         assert!(
@@ -120,7 +120,7 @@ mod tests {
         );
 
         let unsetenv = fetch(&env, "unsetenv");
-        let err = (unsetenv.func)(vec![Value::String("PATH".to_string())]).unwrap_err();
+        let err = (unsetenv.func)(vec![Value::String("PATH".into())]).unwrap_err();
         assert!(
             err.contains("SEC-033"),
             "expected SEC-033 migration error, got: {}",
@@ -129,8 +129,8 @@ mod tests {
 
         // The read-only helpers are unchanged.
         let getenv = fetch(&env, "getenv");
-        let _ = (getenv.func)(vec![Value::String("PATH".to_string())]).unwrap();
+        let _ = (getenv.func)(vec![Value::String("PATH".into())]).unwrap();
         let hasenv = fetch(&env, "hasenv");
-        let _ = (hasenv.func)(vec![Value::String("PATH".to_string())]).unwrap();
+        let _ = (hasenv.func)(vec![Value::String("PATH".into())]).unwrap();
     }
 }

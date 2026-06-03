@@ -55,7 +55,7 @@ impl Interpreter {
                 };
                 s.chars()
                     .nth(idx_usize)
-                    .map(|c| Value::String(c.to_string()))
+                    .map(|c| Value::String(c.to_string().into()))
                     .ok_or(RuntimeError::IndexOutOfBounds {
                         index: original_idx,
                         length: s.len(),

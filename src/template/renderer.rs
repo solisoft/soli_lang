@@ -456,7 +456,7 @@ mod tests {
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let hash: HashPairs = pairs
             .into_iter()
-            .map(|(k, v)| (HashKey::String(k.to_string()), v))
+            .map(|(k, v)| (HashKey::String(k.to_string().into()), v))
             .collect();
         Value::Hash(Rc::new(RefCell::new(hash)))
     }
@@ -476,7 +476,7 @@ mod tests {
             escaped: true,
             line: 1,
         }];
-        let data = make_hash(vec![("name", Value::String("<script>".to_string()))]);
+        let data = make_hash(vec![("name", Value::String("<script>".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "&lt;script&gt;");
     }
@@ -488,7 +488,7 @@ mod tests {
             escaped: false,
             line: 1,
         }];
-        let data = make_hash(vec![("html", Value::String("<b>bold</b>".to_string()))]);
+        let data = make_hash(vec![("html", Value::String("<b>bold</b>".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "<b>bold</b>");
     }
@@ -501,17 +501,14 @@ mod tests {
         let _guard = crate::interpreter::executor::enter_template_lenient_vars();
 
         let nodes = parse_template("<%= @title %>|<%= title %>").unwrap();
-        let data = make_hash(vec![("title", Value::String("Welcome".to_string()))]);
+        let data = make_hash(vec![("title", Value::String("Welcome".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "Welcome|Welcome");
 
         // Member access and method calls through an `@ivar` work too.
-        let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
+        let user = make_hash(vec![("name", Value::String("Alice".into()))]);
         let nodes = parse_template("<%= @user.name %>|<%= @title.upcase %>").unwrap();
-        let data = make_hash(vec![
-            ("user", user),
-            ("title", Value::String("hi".to_string())),
-        ]);
+        let data = make_hash(vec![("user", user), ("title", Value::String("hi".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "Alice|HI");
 
@@ -541,9 +538,9 @@ mod tests {
     fn test_render_for_loop() {
         let nodes = parse_template("<% for item in items %><%= item %><% end %>").unwrap();
         let items = Value::Array(Rc::new(RefCell::new(vec![
-            Value::String("a".to_string()),
-            Value::String("b".to_string()),
-            Value::String("c".to_string()),
+            Value::String("a".into()),
+            Value::String("b".into()),
+            Value::String("c".into()),
         ])));
         let data = make_hash(vec![("items", items)]);
         let result = render_nodes(&nodes, &data, None).unwrap();
@@ -553,7 +550,7 @@ mod tests {
     #[test]
     fn test_hash_access() {
         let nodes = parse_template("<%= user[\"name\"] %>").unwrap();
-        let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
+        let user = make_hash(vec![("name", Value::String("Alice".into()))]);
         let data = make_hash(vec![("user", user)]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "Alice");
@@ -605,9 +602,9 @@ mod tests {
     fn test_render_for_loop_with_index() {
         let nodes = parse_template("<% for item, i in items %><%= i %><% end %>").unwrap();
         let items = Value::Array(Rc::new(RefCell::new(vec![
-            Value::String("a".to_string()),
-            Value::String("b".to_string()),
-            Value::String("c".to_string()),
+            Value::String("a".into()),
+            Value::String("b".into()),
+            Value::String("c".into()),
         ])));
         let data = make_hash(vec![("items", items)]);
         let result = render_nodes(&nodes, &data, None).unwrap();

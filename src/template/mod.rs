@@ -575,25 +575,25 @@ pub fn html_response(body: String, status: i64) -> Value {
 
     let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
     headers.insert(
-        HashKey::String("Content-Type".to_string()),
-        Value::String("text/html; charset=utf-8".to_string()),
+        HashKey::String("Content-Type".into()),
+        Value::String("text/html; charset=utf-8".into()),
     );
-    headers.insert(HashKey::String("ETag".to_string()), Value::String(etag));
+    headers.insert(HashKey::String("ETag".into()), Value::String(etag.into()));
     // `private`: browser may cache, shared caches (CDN, reverse proxy) may not.
     // `no-cache`: cache entry must be revalidated with If-None-Match before
     // reuse — so any prefetched response survives, but a stale one doesn't.
     headers.insert(
-        HashKey::String("Cache-Control".to_string()),
-        Value::String("private, no-cache".to_string()),
+        HashKey::String("Cache-Control".into()),
+        Value::String("private, no-cache".into()),
     );
 
     let mut result: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
-    result.insert(HashKey::String("status".to_string()), Value::Int(status));
+    result.insert(HashKey::String("status".into()), Value::Int(status));
     result.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers))),
     );
-    result.insert(HashKey::String("body".to_string()), Value::String(body));
+    result.insert(HashKey::String("body".into()), Value::String(body.into()));
 
     Value::Hash(Rc::new(RefCell::new(result)))
 }
@@ -1051,8 +1051,8 @@ mod tests {
 
         let mut data = HashPairs::default();
         data.insert(
-            HashKey::String("name".to_string()),
-            Value::String("World".to_string()),
+            HashKey::String("name".into()),
+            Value::String("World".into()),
         );
         let data = Value::Hash(Rc::new(RefCell::new(data)));
 
@@ -1218,7 +1218,9 @@ mod tests {
             "__spec_partial_shout".to_string(),
             Value::NativeFunction(NativeFunction::new("__spec_partial_shout", None, |args| {
                 match args.first() {
-                    Some(Value::String(s)) => Ok(Value::String(format!("{}!", s.to_uppercase()))),
+                    Some(Value::String(s)) => {
+                        Ok(Value::String(format!("{}!", s.to_uppercase()).into()))
+                    }
                     _ => Ok(Value::Null),
                 }
             })),
@@ -1237,7 +1239,7 @@ mod tests {
         // real-world `<%= render 'card', user %>` case where the partial
         // used to lose access to user helpers.
         let mut ctx = HashPairs::default();
-        ctx.insert(HashKey::String("item_id".to_string()), Value::Int(42));
+        ctx.insert(HashKey::String("item_id".into()), Value::Int(42));
         let ctx = Value::Hash(Rc::new(RefCell::new(ctx)));
 
         let cache = TemplateCache::new(&views);
@@ -1272,14 +1274,8 @@ mod tests {
         .unwrap();
 
         let mut ctx = HashPairs::default();
-        ctx.insert(
-            HashKey::String("title".to_string()),
-            Value::String("hi".to_string()),
-        );
-        ctx.insert(
-            HashKey::String("class".to_string()),
-            Value::String("red".to_string()),
-        );
+        ctx.insert(HashKey::String("title".into()), Value::String("hi".into()));
+        ctx.insert(HashKey::String("class".into()), Value::String("red".into()));
         let ctx = Value::Hash(Rc::new(RefCell::new(ctx)));
 
         let cache = TemplateCache::new(&views);
@@ -1314,12 +1310,12 @@ mod tests {
         let Value::Hash(ref map) = resp else {
             panic!("html_response must return a Hash, got {:?}", resp);
         };
-        let Value::Hash(ref hdrs) = map.borrow()[&HashKey::String("headers".to_string())] else {
+        let Value::Hash(ref hdrs) = map.borrow()[&HashKey::String("headers".into())] else {
             panic!("headers key must be a Hash");
         };
         let hdrs = hdrs.borrow();
 
-        let etag = match &hdrs[&HashKey::String("ETag".to_string())] {
+        let etag = match &hdrs[&HashKey::String("ETag".into())] {
             Value::String(s) => s.clone(),
             v => panic!("ETag must be a String, got {:?}", v),
         };
@@ -1339,11 +1335,11 @@ mod tests {
             etag
         );
 
-        let cc = match &hdrs[&HashKey::String("Cache-Control".to_string())] {
+        let cc = match &hdrs[&HashKey::String("Cache-Control".into())] {
             Value::String(s) => s.clone(),
             v => panic!("Cache-Control must be a String, got {:?}", v),
         };
-        assert_eq!(cc, "private, no-cache");
+        assert_eq!(cc.as_str(), "private, no-cache");
     }
 
     #[test]
@@ -1358,13 +1354,13 @@ mod tests {
             let Value::Hash(ref m) = v else {
                 unreachable!()
             };
-            let Value::Hash(ref h) = m.borrow()[&HashKey::String("headers".to_string())] else {
+            let Value::Hash(ref h) = m.borrow()[&HashKey::String("headers".into())] else {
                 unreachable!()
             };
-            let Value::String(s) = h.borrow()[&HashKey::String("ETag".to_string())].clone() else {
+            let Value::String(s) = h.borrow()[&HashKey::String("ETag".into())].clone() else {
                 unreachable!()
             };
-            s
+            s.to_string()
         }
 
         assert_eq!(etag_of(&a), etag_of(&b), "same body must produce same ETag");

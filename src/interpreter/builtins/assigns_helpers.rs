@@ -94,15 +94,15 @@ fn get_view_path() -> Result<Value, String> {
     LAST_VIEW_PATH.with(|cell| {
         let path = cell.borrow();
         match &*path {
-            Some(p) => Ok(Value::String(p.clone())),
-            None => Ok(Value::String(String::new())),
+            Some(p) => Ok(Value::String(p.clone().into())),
+            None => Ok(Value::String(String::new().into())),
         }
     })
 }
 
 fn extract_string(value: &Value, context: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         _ => Err(format!("{} expects string argument", context)),
     }
 }

@@ -107,7 +107,7 @@ fn cache_keys_impl() -> Result<Value, String> {
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(|s| Value::String(strip_prefix(s))))
+                .filter_map(|v| v.as_str().map(|s| Value::String(strip_prefix(s).into())))
                 .collect()
         })
         .unwrap_or_default();
@@ -143,7 +143,7 @@ fn cache_touch_impl(key: &str, ttl: u64) -> Result<Value, String> {
 
 fn extract_string_key(args: &[Value], fn_name: &str) -> Result<String, String> {
     match &args[0] {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         other => Err(format!(
             "{}() expects string key, got {}",
             fn_name,
@@ -278,7 +278,7 @@ pub fn register_cache_builtins(env: &mut Environment) {
                 Value::String(s) => Some(s.clone()),
                 _ => None,
             });
-            solikv_configure(&host, token);
+            solikv_configure(&host, token.map(|s| s.to_string()));
             Ok(Value::Null)
         })),
     );

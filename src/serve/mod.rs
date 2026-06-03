@@ -238,9 +238,9 @@ static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    clear_response_cookies, create_session_cookie, ensure_session, extract_session_id_from_cookie,
-    get_current_session_id, session_cookie_if_changed, set_current_session_id,
-    take_response_cookies,
+    clear_response_cookies, create_session_cookie, ensure_session, get_current_session_id,
+    parse_cookie_pairs, session_cookie_if_changed, session_id_from_cookie_pairs,
+    set_current_session_id, take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs};
@@ -268,7 +268,11 @@ pub(crate) struct RequestData {
     pub(crate) method: Cow<'static, str>,
     pub(crate) path: String,
     pub(crate) query: HashMap<String, String>,
-    pub(crate) headers: HashMap<String, String>,
+    /// The wire headers, moved straight out of hyper (names are lowercase).
+    /// `HeaderMap` is `Send`, so no per-header String copies happen on the
+    /// async side; the worker converts to Soli `HashPairs` exactly once when
+    /// it builds `req["headers"]`.
+    pub(crate) headers: hyper::header::HeaderMap,
     pub(crate) body: String,
     /// Raw body bytes (for multipart parsing)
     #[allow(dead_code)]
@@ -284,6 +288,14 @@ pub(crate) struct RequestData {
     /// rate-limit bucket each time and bypass the limiter entirely.
     pub(crate) peer_ip: String,
     pub(crate) response_tx: oneshot::Sender<ResponseData>,
+}
+
+/// Borrow a header value from the wire `HeaderMap` by its lowercase name.
+/// Non-UTF-8 header values read as absent (same as the previous
+/// `HashMap<String, String>` extraction, which skipped them).
+#[inline]
+fn header_str<'a>(headers: &'a hyper::header::HeaderMap, name: &str) -> Option<&'a str> {
+    headers.get(name).and_then(|v| v.to_str().ok())
 }
 
 /// Response data from interpreter thread
@@ -2478,27 +2490,29 @@ async fn handle_hyper_request(
     // Parse query string
     let query = parse_query_string(query_str);
 
-    // Extract headers (pre-allocate, use as_str to avoid Display formatting overhead)
-    let mut headers = HashMap::with_capacity(req.headers().keys_len());
-    for (name, value) in req.headers() {
-        if let Ok(v) = value.to_str() {
-            headers.insert(name.as_str().to_owned(), v.to_owned());
-        }
-    }
+    // Split the request: take ownership of the wire headers (moved into
+    // RequestData as-is — `HeaderMap` is Send) and the body stream. No
+    // per-header String copies happen here; the worker converts the map to
+    // Soli HashPairs exactly once when it builds `req["headers"]`.
+    let (parts, req_body) = req.into_parts();
+    let headers = parts.headers;
 
     // Keep the conditional-GET validator around so the response-assembly
     // block below can short-circuit to 304 when the controller's rendered
-    // ETag matches the browser's cached copy. `headers` is about to be
-    // moved into `RequestData`.
-    let if_none_match = headers.get("if-none-match").cloned();
+    // ETag matches the browser's cached copy.
+    let if_none_match = header_str(&headers, "if-none-match").map(|v| v.to_owned());
 
     // Is this a browser speculative prefetch (hover-preload)? If so the
     // response-assembly block below relaxes the HTML `Cache-Control` so the
     // eventual click reuses the prefetched bytes without a revalidation
-    // round-trip — see `prefetch::prefetch_cache_control`. `headers` keys are
-    // lowercased by the extraction loop above.
+    // round-trip — see `prefetch::prefetch_cache_control`.
     let is_prefetch =
-        crate::serve::prefetch::is_prefetch_request(|name| headers.get(name).map(|v| v.as_str()));
+        crate::serve::prefetch::is_prefetch_request(|name| header_str(&headers, name));
+
+    // Content headers used by the body-reading block below.
+    let declared_content_length =
+        header_str(&headers, "content-length").and_then(|v| v.parse::<usize>().ok());
+    let req_content_type = header_str(&headers, "content-type").map(|v| v.to_owned());
 
     // Read body - skip for GET/HEAD requests (usually empty). Cap the
     // read so a hostile client can't exhaust worker memory by streaming
@@ -2507,10 +2521,7 @@ async fn handle_hyper_request(
     // mid-stream by `Limited`.
     let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
     if method != "GET" && method != "HEAD" {
-        if let Some(declared) = headers
-            .get("content-length")
-            .and_then(|v| v.parse::<usize>().ok())
-        {
+        if let Some(declared) = declared_content_length {
             if declared > max_body {
                 return Ok(Response::builder()
                     .status(StatusCode::PAYLOAD_TOO_LARGE)
@@ -2524,7 +2535,7 @@ async fn handle_hyper_request(
         if method == "GET" || method == "HEAD" {
             (String::new(), None, None, None)
         } else {
-            let collected = BodyExt::collect(Limited::new(req.into_body(), max_body)).await;
+            let collected = BodyExt::collect(Limited::new(req_body, max_body)).await;
             let body_bytes = match collected {
                 Ok(b) => b.to_bytes().to_vec(),
                 Err(_) => {
@@ -2542,7 +2553,7 @@ async fn handle_hyper_request(
             };
 
             // Check if this is a multipart form
-            let content_type = headers.get("content-type").map(|s| s.as_str());
+            let content_type = req_content_type.as_deref();
             if let Some(ct) = content_type {
                 if ct.starts_with("multipart/form-data") {
                     // Parse multipart form data
@@ -3381,25 +3392,25 @@ fn handle_websocket_event(
     // Build event hash: {type, connection_id, message, channel?}
     let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
-        HashKey::String("type".to_string()),
-        Value::String(data.event_type.clone()),
+        HashKey::String("type".into()),
+        Value::String(data.event_type.clone().into()),
     );
     event_map.insert(
-        HashKey::String("connection_id".to_string()),
-        Value::String(connection_id_str.clone()),
+        HashKey::String("connection_id".into()),
+        Value::String(connection_id_str.clone().into()),
     );
 
     if let Some(ref msg) = data.message {
         event_map.insert(
-            HashKey::String("message".to_string()),
-            Value::String(msg.clone()),
+            HashKey::String("message".into()),
+            Value::String(msg.clone().into()),
         );
     }
 
     if let Some(ref channel) = data.channel {
         event_map.insert(
-            HashKey::String("channel".to_string()),
-            Value::String(channel.clone()),
+            HashKey::String("channel".into()),
+            Value::String(channel.clone().into()),
         );
     }
 
@@ -3624,11 +3635,11 @@ fn handle_liveview_event(
 
     let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(
-        HashKey::String("event".to_string()),
-        Value::String(data.event.clone()),
+        HashKey::String("event".into()),
+        Value::String(data.event.clone().into()),
     );
-    event_map.insert(HashKey::String("params".to_string()), params_value);
-    event_map.insert(HashKey::String("state".to_string()), state_value);
+    event_map.insert(HashKey::String("params".into()), params_value);
+    event_map.insert(HashKey::String("state".into()), state_value);
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
     // If we have a registered handler, call it
@@ -4681,7 +4692,7 @@ fn call_class_method(
 fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
     match hash {
         Value::Hash(fields) => {
-            let key = HashKey::String(field.to_string());
+            let key = HashKey::String(field.to_string().into());
             fields.borrow().get(&key).cloned()
         }
         _ => None,
@@ -4747,21 +4758,26 @@ fn execute_after_actions(
     let headers_map: HashPairs = response
         .headers
         .iter()
-        .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
+        .map(|(k, v)| {
+            (
+                HashKey::String(k.clone().into()),
+                Value::String(v.clone().into()),
+            )
+        })
         .collect();
     let mut response_map: HashPairs = HashPairs::default();
     response_map.insert(
-        HashKey::String("status".to_string()),
+        HashKey::String("status".into()),
         Value::Int(response.status as i64),
     );
     response_map.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers_map))),
     );
     response_map.insert(
-        HashKey::String("body".to_string()),
+        HashKey::String("body".into()),
         match std::str::from_utf8(&response.body) {
-            Ok(s) => Value::String(s.to_string()),
+            Ok(s) => Value::String(s.to_string().into()),
             Err(_) => Value::Array(Rc::new(RefCell::new(
                 response
                     .body
@@ -4840,7 +4856,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         // Check if this is a response hash by looking for "status" field
         let has_status = fields
             .iter()
-            .any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"));
+            .any(|(k, _)| matches!(k, HashKey::String(s) if **s == *"status"));
 
         // If no status field, this is a modified request, not a response
         if !has_status {
@@ -4853,14 +4869,14 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
 
         for (key, val) in fields.iter() {
             if let HashKey::String(k) = key {
-                match k.as_str() {
+                match k.as_ref() {
                     "status" => {
                         if let Value::Int(s) = val {
                             status = *s;
                         }
                     }
                     "body" => match val {
-                        Value::String(b) => body = b.clone().into_bytes(),
+                        Value::String(b) => body = b.as_bytes().to_vec(),
                         Value::Array(arr) => {
                             let borrowed = arr.borrow();
                             let mut bytes = Vec::with_capacity(borrowed.len());
@@ -4884,7 +4900,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
                             for (hk, hv) in h.borrow().iter() {
                                 if let (HashKey::String(key_str), Value::String(val_str)) = (hk, hv)
                                 {
-                                    headers.push((key_str.clone(), val_str.clone()));
+                                    headers.push((key_str.to_string(), val_str.to_string()));
                                 }
                             }
                         }
@@ -4908,7 +4924,7 @@ fn is_response_hash(value: &Value) -> bool {
     if let Value::Hash(hash) = value {
         hash.borrow()
             .iter()
-            .any(|(k, _)| matches!(k, HashKey::String(s) if s == "status"))
+            .any(|(k, _)| matches!(k, HashKey::String(s) if **s == *"status"))
     } else {
         false
     }
@@ -4933,14 +4949,14 @@ fn try_render_template(
 
     // Add params (req["all"]) as available data
     if let Some(params_val) = interpreter.global_env().borrow().get("params") {
-        data_pairs.insert(HashKey::String("params".to_string()), params_val.clone());
+        data_pairs.insert(HashKey::String("params".into()), params_val.clone());
     }
 
     // Add all controller instance fields (@ variables) to data
     if let Value::Instance(inst) = controller_instance {
         for (k, v) in inst.borrow().fields.iter() {
             if !k.starts_with('_') {
-                data_pairs.insert(HashKey::String(k.clone()), v.clone());
+                data_pairs.insert(HashKey::String(k.clone().into()), v.clone());
             }
         }
     }
@@ -5086,7 +5102,12 @@ fn parse_request_body(
         if !form_fields.is_empty() {
             let form_map: HashPairs = form_fields
                 .iter()
-                .map(|(k, v)| (HashKey::String(k.clone()), Value::String(v.clone())))
+                .map(|(k, v)| {
+                    (
+                        HashKey::String(k.clone().into()),
+                        Value::String(v.clone().into()),
+                    )
+                })
                 .collect();
             parsed.form = Some(Value::Hash(Rc::new(RefCell::new(form_map))));
         }
@@ -5176,12 +5197,18 @@ fn handle_request(
         span_log::open_request_root(format!("{} {}", method, path));
     }
 
-    // Resolve the session ID from the Cookie header (if any). When no cookie is
-    // sent, we leave the thread-local unset — session_set / session_regenerate
+    // Parse the Cookie header ONCE: the same parse feeds both the session-ID
+    // resolution here and `req["cookies"]` in the request hash below (the
+    // header used to be scanned twice per request).
+    let cookie_pairs = parse_cookie_pairs(header_str(&data.headers, "cookie"));
+
+    // Resolve the session ID from the parsed cookies (if any). When no cookie
+    // is sent, we leave the thread-local unset — session_set / session_regenerate
     // will create one lazily on first use, and finalize_response emits
     // Set-Cookie whenever the post-handler session ID differs from the cookie's.
-    let cookie_header = data.headers.get("cookie").map(|s| s.as_str());
-    let cookie_session_id = extract_session_id_from_cookie(cookie_header);
+    // SEC-077 precedence (`__Host-session_id` over `session_id`) is preserved
+    // inside session_id_from_cookie_pairs.
+    let cookie_session_id = session_id_from_cookie_pairs(&cookie_pairs);
     let session_id = if let Some(ref id) = cookie_session_id {
         let resolved = ensure_session(Some(id.as_str()));
         set_current_session_id(Some(resolved.clone()));
@@ -5226,8 +5253,7 @@ fn handle_request(
                 &request_id,
             );
             let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
-                data.headers
-                    .get("x-forwarded-proto")
+                header_str(&data.headers, "x-forwarded-proto")
                     .map(|v| first_forwarded_token(v) == "https")
                     .unwrap_or(false)
             } else {
@@ -5306,7 +5332,7 @@ fn handle_request(
     let parsed_body = if data.method == "GET" || data.method == "HEAD" {
         ParsedBody::default()
     } else {
-        let content_type = data.headers.get("content-type").map(|s| s.as_str());
+        let content_type = header_str(&data.headers, "content-type");
         parse_request_body(
             &data.body,
             content_type,
@@ -5326,8 +5352,7 @@ fn handle_request(
     // session-cookie `Secure` flag and to build absolute URL helpers.
     let trust_proxy = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
     let is_https = if trust_proxy {
-        data.headers
-            .get("x-forwarded-proto")
+        header_str(&data.headers, "x-forwarded-proto")
             .map(|v| first_forwarded_token(v) == "https")
             .unwrap_or(false)
     } else {
@@ -5346,32 +5371,54 @@ fn handle_request(
         // leftmost token is the value the trusted proxy wrote, so use
         // that for cookie / *_url decisions instead of the verbatim
         // string.
-        data.headers
-            .get("x-forwarded-host")
+        header_str(&data.headers, "x-forwarded-host")
             .map(|v| first_forwarded_token(v).to_string())
-            .or_else(|| data.headers.get("host").cloned())
+            .or_else(|| header_str(&data.headers, "host").map(|v| v.to_string()))
             .unwrap_or_default()
     } else {
-        data.headers.get("host").cloned().unwrap_or_default()
+        header_str(&data.headers, "host")
+            .map(|v| v.to_string())
+            .unwrap_or_default()
     };
 
     // Capture whether this is an HTMx partial-swap request before `headers`
     // is moved into `RequestData`. HTMx returns the response fragment into
     // the live DOM, where the page-level dev bar already exists — injecting
     // a second one into the fragment produces stacked bars.
-    let is_htmx_request = dev_bar::is_htmx_request(&data.headers);
+    let is_htmx_request = dev_bar::is_htmx_request(header_str(&data.headers, "hx-request"));
 
-    // Take ownership of headers and query to avoid cloning individual keys/values
-    let headers = std::mem::take(&mut data.headers);
+    // Take ownership of headers and query to avoid cloning individual keys/values.
+    // This is the ONE place the wire headers become owned Strings: straight
+    // from hyper's HeaderMap into the Soli HashPairs handlers see as
+    // req["headers"] (non-UTF-8 values are skipped, as before).
+    let wire_headers = std::mem::take(&mut data.headers);
+    let mut headers =
+        HashPairs::with_capacity_and_hasher(wire_headers.keys_len(), ahash::RandomState::default());
+    for (name, value) in &wire_headers {
+        if let Ok(v) = value.to_str() {
+            headers.insert(
+                HashKey::String(name.as_str().into()),
+                Value::String(v.into()),
+            );
+        }
+    }
     let query = std::mem::take(&mut data.query);
 
-    // Build request hash with parsed body (owned headers/query avoid String clones)
-    let mut request_hash = build_request_hash_with_parsed(
+    // The single cookie parse from above becomes `req["cookies"]`; keep an
+    // Rc handle so the `cookies` global below reuses it without re-probing
+    // the request hash.
+    let cookies_value = Value::Hash(Rc::new(RefCell::new(cookie_pairs)));
+
+    // Build request hash with parsed body (owned headers/query avoid String
+    // clones). Also hands back the "all" params value so the `params` global
+    // below doesn't re-probe the hash by string key.
+    let (mut request_hash, all_params) = build_request_hash_with_parsed(
         &data.method,
         &data.path,
         matched_params,
         query,
         headers,
+        cookies_value.clone(),
         &data.body,
         parsed_body,
         &data.peer_ip,
@@ -5384,10 +5431,12 @@ fn handle_request(
     crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
 
     // Expose params and cookies as globals so middleware, handlers, and views
-    // can reference them directly. These are also re-set inside dispatch_request
-    // after middleware may have modified the request hash.
-    let middleware_params = get_hash_field(&request_hash, "all")
-        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
+    // can reference them directly. Both values are already in hand (returned
+    // by build_request_hash_with_parsed / created above) — no string-key
+    // re-probe of the request hash. They are also re-set inside
+    // dispatch_request after middleware may have modified the request hash.
+    let middleware_params =
+        all_params.unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
     interpreter
         .global_env()
         .borrow_mut()
@@ -5397,16 +5446,12 @@ fn handle_request(
             .globals
             .insert("params".to_string(), middleware_params);
     }
-    let middleware_cookies = get_hash_field(&request_hash, "cookies")
-        .unwrap_or_else(|| Value::Hash(Rc::new(RefCell::new(HashPairs::default()))));
     interpreter
         .global_env()
         .borrow_mut()
-        .define_or_update("cookies", middleware_cookies.clone());
+        .define_or_update("cookies", cookies_value.clone());
     if let Some(vm_ref) = vm.as_mut() {
-        vm_ref
-            .globals
-            .insert("cookies".to_string(), middleware_cookies);
+        vm_ref.globals.insert("cookies".to_string(), cookies_value);
     }
 
     // Helper to finalize response with session cookie and timing

@@ -453,7 +453,7 @@ impl Vm {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let sep = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "join expects a string separator",
@@ -463,7 +463,7 @@ impl Vm {
                 };
                 let items = arr.borrow();
                 if items.is_empty() {
-                    return Ok(Value::String(String::new()));
+                    return Ok(Value::String(String::new().into()));
                 }
                 let mut total_len = sep.len() * (items.len() - 1);
                 for v in items.iter() {
@@ -476,7 +476,7 @@ impl Vm {
                     }
                     v.write_to_string(&mut result);
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "get" => {
                 if args.len() != 1 {
@@ -575,14 +575,14 @@ impl Vm {
                 }
                 match crate::interpreter::value_stringify::stringify_array_to_string(&arr.borrow())
                 {
-                    Ok(json) => Ok(Value::String(json)),
+                    Ok(json) => Ok(Value::String(json.into())),
                     Err(e) => Err(RuntimeError::General { message: e, span }),
                 }
             }
             "to_string" | "to_s" => {
                 let items = arr.borrow();
                 if items.is_empty() {
-                    return Ok(Value::String("[]".to_string()));
+                    return Ok(Value::String("[]".into()));
                 }
                 let mut total_len = 2;
                 for (i, v) in items.iter().enumerate() {
@@ -600,17 +600,17 @@ impl Vm {
                     v.write_to_string(&mut result);
                 }
                 result.push(']');
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             // Universal methods
-            "class" => Ok(Value::String("array".to_string())),
+            "class" => Ok(Value::String("array".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(arr.borrow().is_empty())),
             "present?" => Ok(Value::Bool(!arr.borrow().is_empty())),
             "inspect" => {
                 let items = arr.borrow();
                 if items.is_empty() {
-                    return Ok(Value::String("[]".to_string()));
+                    return Ok(Value::String("[]".into()));
                 }
                 let mut total_len = 2;
                 for (i, v) in items.iter().enumerate() {
@@ -628,14 +628,14 @@ impl Vm {
                     v.write_to_string(&mut result);
                 }
                 result.push(']');
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "is_a?" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let class_name = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",

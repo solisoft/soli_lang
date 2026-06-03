@@ -250,7 +250,7 @@ fn extract_int(value: &Value, context: &str) -> Result<i64, String> {
 
 fn extract_string(value: &Value, context: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         _ => Err(format!("{} expects string argument", context)),
     }
 }
@@ -303,7 +303,7 @@ fn hash_to_field_pairs(
     let mut out = Vec::new();
     for (key, val) in hash.borrow().iter() {
         let key_str = match key {
-            HashKey::String(s) => s.clone(),
+            HashKey::String(s) => s.to_string(),
             other => {
                 return Err(format!(
                     "{} keys must be strings, got {:?}",
@@ -340,7 +340,7 @@ fn set_test_user_id(user_id: i64) {
     TEST_USER.with(|cell| {
         let mut user = cell.borrow_mut();
         let mut pairs: HashPairs = HashPairs::default();
-        pairs.insert(HashKey::String("id".to_string()), Value::Int(user_id));
+        pairs.insert(HashKey::String("id".into()), Value::Int(user_id));
         *user = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
     });
 }
@@ -405,11 +405,8 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     };
 
     let mut response_hash: HashPairs = HashPairs::default();
-    response_hash.insert(
-        HashKey::String("status".to_string()),
-        Value::Int(status as i64),
-    );
-    response_hash.insert(HashKey::String("body".to_string()), Value::String(body));
+    response_hash.insert(HashKey::String("status".into()), Value::Int(status as i64));
+    response_hash.insert(HashKey::String("body".into()), Value::String(body.into()));
 
     // Successful login is a redirect (typically 302 to the dashboard). A
     // 200 means the server re-rendered the login form — usually because
@@ -428,8 +425,8 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
         }
         let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
-            HashKey::String("email".to_string()),
-            Value::String(email.to_string()),
+            HashKey::String("email".into()),
+            Value::String(email.to_string().into()),
         );
         TEST_USER.with(|cell| {
             *cell.borrow_mut() = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
@@ -475,7 +472,7 @@ fn create_test_session(user_id: i64) -> Result<Value, String> {
     set_test_user_id(user_id);
     let session_id = format!("session_test_{}", user_id);
     set_cookie_inner("session_id".to_string(), session_id.clone());
-    Ok(Value::String(session_id))
+    Ok(Value::String(session_id.into()))
 }
 
 fn destroy_test_session() {
@@ -512,7 +509,7 @@ mod tests {
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let mut h: HashPairs = HashPairs::default();
         for (k, v) in pairs {
-            h.insert(HashKey::String(k.to_string()), v);
+            h.insert(HashKey::String(k.to_string().into()), v);
         }
         Value::Hash(Rc::new(RefCell::new(h)))
     }
@@ -591,7 +588,7 @@ mod tests {
         match user {
             Value::Hash(h) => {
                 let pairs = h.borrow();
-                let id = pairs.get(&HashKey::String("id".to_string())).cloned();
+                let id = pairs.get(&HashKey::String("id".into())).cloned();
                 assert!(matches!(id, Some(Value::Int(7))), "id should be 7");
             }
             other => panic!("expected hash, got {other:?}"),

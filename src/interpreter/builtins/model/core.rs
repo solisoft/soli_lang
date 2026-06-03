@@ -55,7 +55,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_get_tx, json_to_value};
                 match exec_get_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             }
         })),
@@ -74,7 +74,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_insert_tx, json_to_value};
                 match exec_insert_tx(&collection, None, doc) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             }
         })),
@@ -103,7 +103,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_update_tx, json_to_value};
                 match exec_update_tx(&collection, &key, doc) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             }
         })),
@@ -127,7 +127,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_delete_tx, json_to_value};
                 match exec_delete_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             }
         })),
@@ -142,7 +142,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::commit_transaction;
                 match commit_transaction() {
                     Ok(()) => Ok(Value::Bool(true)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             },
         )),
@@ -157,7 +157,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::rollback_transaction;
                 match rollback_transaction() {
                     Ok(()) => Ok(Value::Bool(true)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             },
         )),
@@ -446,7 +446,7 @@ pub fn build_safe_filter_from_hash(
         // colliding bind namespaces between the two forms.
         clauses.push(format!("doc.{0} == @{0}", key));
         let json_val = ensure_scalar_bind_value(v, &key, method)?;
-        binds.insert(key, json_val);
+        binds.insert(key.to_string(), json_val);
     }
     Ok((clauses.join(" AND "), binds))
 }
@@ -562,7 +562,7 @@ fn collect_accessible_fields(args: &[Value]) -> Result<Vec<String>, String> {
             let mut out = Vec::with_capacity(arr.len());
             for v in arr.iter() {
                 match v {
-                    Value::String(s) => out.push(s.clone()),
+                    Value::String(s) => out.push(s.to_string()),
                     other => {
                         return Err(format!(
                             "attr_accessible() expects string field names, got {} in array",
@@ -577,7 +577,7 @@ fn collect_accessible_fields(args: &[Value]) -> Result<Vec<String>, String> {
     let mut out = Vec::with_capacity(args.len());
     for v in args {
         match v {
-            Value::String(s) => out.push(s.clone()),
+            Value::String(s) => out.push(s.to_string()),
             other => {
                 return Err(format!(
                     "attr_accessible() expects string field names, got {}",
@@ -627,7 +627,7 @@ fn build_uploader_config_from_args(
 
     for (k, v) in options {
         if let HashKey::String(key) = k {
-            match key.as_str() {
+            match key.as_ref() {
                 "multiple" => {
                     if let Value::Bool(b) = v {
                         multiple = b;
@@ -637,7 +637,7 @@ fn build_uploader_config_from_args(
                     if let Value::Array(arr) = v {
                         for item in arr.borrow().iter() {
                             if let Value::String(s) = item {
-                                content_types.push(s.clone());
+                                content_types.push(s.clone().to_string());
                             }
                         }
                     }
@@ -651,7 +651,7 @@ fn build_uploader_config_from_args(
                 },
                 "collection" => {
                     if let Value::String(s) = v {
-                        collection = Some(s);
+                        collection = Some(s.to_string());
                     }
                 }
                 _ => {}
@@ -670,7 +670,7 @@ fn build_uploader_config_from_args(
     let collection = collection.unwrap_or_else(|| default_collection(class_name, &name));
 
     Ok(UploaderConfig {
-        name,
+        name: name.to_string(),
         multiple,
         content_types,
         max_size,
@@ -687,23 +687,24 @@ fn uploader_config_to_value(config: Option<UploaderConfig>) -> Value {
         return Value::Null;
     };
     let mut pairs: HashPairs = HashPairs::default();
-    pairs.insert(HashKey::String("name".to_string()), Value::String(c.name));
+    pairs.insert(HashKey::String("name".into()), Value::String(c.name.into()));
+    pairs.insert(HashKey::String("multiple".into()), Value::Bool(c.multiple));
+    let cts: Vec<Value> = c
+        .content_types
+        .into_iter()
+        .map(|s| Value::String(s.into()))
+        .collect();
     pairs.insert(
-        HashKey::String("multiple".to_string()),
-        Value::Bool(c.multiple),
-    );
-    let cts: Vec<Value> = c.content_types.into_iter().map(Value::String).collect();
-    pairs.insert(
-        HashKey::String("content_types".to_string()),
+        HashKey::String("content_types".into()),
         Value::Array(Rc::new(RefCell::new(cts))),
     );
     pairs.insert(
-        HashKey::String("max_size".to_string()),
+        HashKey::String("max_size".into()),
         Value::Int(c.max_size as i64),
     );
     pairs.insert(
-        HashKey::String("collection".to_string()),
-        Value::String(c.collection),
+        HashKey::String("collection".into()),
+        Value::String(c.collection.into()),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }
@@ -738,7 +739,7 @@ fn instance_fields_to_hash(
     let mut pairs = HashPairs::default();
     for (k, v) in &inst.fields {
         if !k.starts_with('_') {
-            pairs.insert(HashKey::String(k.clone()), v.clone());
+            pairs.insert(HashKey::String(k.clone().into()), v.clone());
         }
     }
     Value::Hash(Rc::new(RefCell::new(pairs)))
@@ -779,7 +780,7 @@ fn filter_mass_assign(class_name: &str, data: &Value) -> Value {
             if field.starts_with('_') {
                 continue;
             }
-            if whitelist.iter().any(|w| w == field) {
+            if whitelist.iter().any(|w| **w == **field) {
                 filtered.insert(k.clone(), v.clone());
             }
         }
@@ -824,7 +825,7 @@ fn apply_hash_to_instance(
             if field.starts_with('_') {
                 continue;
             }
-            inst_mut.set(field.clone(), v.clone());
+            inst_mut.set(field.clone().to_string(), v.clone());
         }
     }
     Ok(())
@@ -844,7 +845,7 @@ fn build_persistence_errors(class_name: &str, err: String) -> Vec<Value> {
             .map(|v| v.to_value())
             .collect()
     } else {
-        vec![Value::String(err)]
+        vec![Value::String(err.into())]
     }
 }
 
@@ -863,7 +864,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("db_query_raw requires a query string".to_string()),
                 };
-                Ok(exec_async_query_raw(query))
+                Ok(exec_async_query_raw(query.to_string()))
             })),
         );
 
@@ -871,7 +872,7 @@ impl Model {
         env.define(
             "db_cursor_url".to_string(),
             Value::NativeFunction(NativeFunction::new("db_cursor_url", Some(0), |_args| {
-                Ok(Value::String(get_cursor_url().to_string()))
+                Ok(Value::String(get_cursor_url().to_string().into()))
             })),
         );
 
@@ -882,7 +883,7 @@ impl Model {
         env.define(
             "db_name".to_string(),
             Value::NativeFunction(NativeFunction::new("db_name", Some(0), |_args| {
-                Ok(Value::String(get_database_name().to_string()))
+                Ok(Value::String(get_database_name().to_string().into()))
             })),
         );
 
@@ -895,7 +896,7 @@ impl Model {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("db_query_hardcoded requires a query string".to_string()),
                 };
-                Ok(exec_query_hardcoded(query))
+                Ok(exec_query_hardcoded(query.to_string()))
             })),
         );
     }
@@ -936,13 +937,13 @@ impl Model {
                     None => return Err("validates() requires options argument".to_string()),
                 };
 
-                let mut rule = ValidationRule::new(field);
+                let mut rule = ValidationRule::new(field.to_string());
 
                 // Parse options
                 use crate::interpreter::value::HashKey;
                 for (key, value) in options {
                     if let HashKey::String(key_str) = key {
-                        match key_str.as_str() {
+                        match key_str.as_ref() {
                             "presence" => {
                                 if let Value::Bool(b) = value {
                                     rule.presence = b;
@@ -965,7 +966,7 @@ impl Model {
                             }
                             "format" => {
                                 if let Value::String(s) = value {
-                                    rule.format = Some(s);
+                                    rule.format = Some(s.to_string());
                                 }
                             }
                             "numericality" => {
@@ -985,7 +986,7 @@ impl Model {
                             },
                             "custom" => {
                                 if let Value::String(s) = value {
-                                    rule.custom = Some(s);
+                                    rule.custom = Some(s.to_string());
                                 }
                             }
                             _ => {}
@@ -1091,15 +1092,15 @@ impl Model {
                         use crate::interpreter::value::HashKey;
                         for (k, v) in hash.borrow().iter() {
                             if let HashKey::String(key) = k {
-                                match key.as_str() {
+                                match key.as_ref() {
                                     "class_name" => {
                                         if let Value::String(s) = v {
-                                            class_override = Some(s.clone());
+                                            class_override = Some(s.clone().to_string());
                                         }
                                     }
                                     "foreign_key" => {
                                         if let Value::String(s) = v {
-                                            fk_override = Some(s.clone());
+                                            fk_override = Some(s.clone().to_string());
                                         }
                                     }
                                     _ => {}
@@ -1155,13 +1156,15 @@ impl Model {
                         use crate::interpreter::value::HashKey;
                         for (k, v) in hash.borrow().iter() {
                             if let (HashKey::String(key), Value::String(s)) = (k, v) {
-                                match key.as_str() {
-                                    "class_name" => class_override = Some(s.clone()),
-                                    "foreign_key" => fk_override = Some(s.clone()),
+                                match key.as_ref() {
+                                    "class_name" => class_override = Some(s.clone().to_string()),
+                                    "foreign_key" => fk_override = Some(s.clone().to_string()),
                                     "association_foreign_key" => {
-                                        assoc_fk_override = Some(s.clone())
+                                        assoc_fk_override = Some(s.clone().to_string())
                                     }
-                                    "join_table" => join_table_override = Some(s.clone()),
+                                    "join_table" => {
+                                        join_table_override = Some(s.clone().to_string())
+                                    }
                                     _ => {}
                                 }
                             }
@@ -1211,7 +1214,7 @@ impl Model {
                     .iter()
                     .filter_map(|arg| {
                         if let Value::String(s) = arg {
-                            Some(s.clone())
+                            Some(s.to_string())
                         } else {
                             None
                         }
@@ -1264,7 +1267,7 @@ impl Model {
                                         .iter()
                                         .filter_map(|v| {
                                             if let Value::String(s) = v {
-                                                Some(s.clone())
+                                                Some(s.to_string())
                                             } else {
                                                 None
                                             }
@@ -1279,7 +1282,7 @@ impl Model {
                                 _ => None,
                             };
                             qb.add_include(
-                                rel_name,
+                                rel_name.to_string(),
                                 rel,
                                 None,
                                 std::collections::HashMap::new(),
@@ -1304,7 +1307,7 @@ impl Model {
 
                     let filter = if arguments.len() >= 3 {
                         match &arguments[1] {
-                            Value::String(s) => Some(s.clone()),
+                            Value::String(s) => Some(s.to_string()),
                             _ => None,
                         }
                     } else {
@@ -1321,14 +1324,14 @@ impl Model {
 
                     for (k, v) in options_hash.iter() {
                         if let HashKey::String(key) = k {
-                            if key == "fields" {
+                            if **key == *"fields" {
                                 if let Value::Array(arr) = v {
                                     let names: Vec<String> = arr
                                         .borrow()
                                         .iter()
                                         .filter_map(|v| {
                                             if let Value::String(s) = v {
-                                                Some(s.clone())
+                                                Some(s.to_string())
                                             } else {
                                                 None
                                             }
@@ -1340,14 +1343,14 @@ impl Model {
                                 }
                             } else {
                                 bind_vars.insert(
-                                    key.clone(),
+                                    key.to_string(),
                                     crate::interpreter::value::value_to_json(v)?,
                                 );
                             }
                         }
                     }
 
-                    qb.add_include(rel_name, rel, filter, bind_vars, fields);
+                    qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
                 } else {
                     // Pattern A: all strings → multi-relation unfiltered
                     for arg in arguments {
@@ -1363,7 +1366,13 @@ impl Model {
                         let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                             format!("No relation '{}' defined on {}", rel_name, class_name)
                         })?;
-                        qb.add_include(rel_name, rel, None, std::collections::HashMap::new(), None);
+                        qb.add_include(
+                            rel_name.to_string(),
+                            rel,
+                            None,
+                            std::collections::HashMap::new(),
+                            None,
+                        );
                     }
                 }
 
@@ -1401,7 +1410,7 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
-                    qb.add_include_count(rel_name, rel)?;
+                    qb.add_include_count(rel_name.to_string(), rel)?;
                 }
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
@@ -1420,7 +1429,7 @@ impl Model {
                 match arg {
                     Value::String(s) => {
                         validate_field_name(s, "select")?;
-                        fields.push(s.clone());
+                        fields.push(s.to_string());
                     }
                     other => {
                         return Err(format!(
@@ -1460,7 +1469,7 @@ impl Model {
                 })?;
 
                 let filter = match args.get(2) {
-                    Some(Value::String(s)) => Some(s.clone()),
+                    Some(Value::String(s)) => Some(s.to_string()),
                     _ => None,
                 };
 
@@ -1471,7 +1480,7 @@ impl Model {
                         for (k, v) in hash.borrow().iter() {
                             if let HashKey::String(key) = k {
                                 map.insert(
-                                    key.clone(),
+                                    key.to_string(),
                                     crate::interpreter::value::value_to_json(v)?,
                                 );
                             }
@@ -1482,7 +1491,7 @@ impl Model {
                 };
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
-                qb.add_join(rel_name, rel, filter, bind_vars);
+                qb.add_join(rel_name.to_string(), rel, filter, bind_vars);
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
@@ -1546,7 +1555,7 @@ impl Model {
                         let mut map = serde_json::Map::new();
                         for (k, v) in hash.borrow().iter() {
                             if let HashKey::String(key) = k {
-                                map.insert(key.clone(), value_to_json(v)?);
+                                map.insert(key.clone().to_string(), value_to_json(v)?);
                             }
                         }
                         Ok(serde_json::Value::Object(map))
@@ -1664,7 +1673,7 @@ impl Model {
                                     for (k, v) in hash.borrow().iter() {
                                         if let HashKey::String(key) = k {
                                             map.insert(
-                                                key.clone(),
+                                                key.to_string(),
                                                 ensure_string_form_bind_value(v, key, "where")?,
                                             );
                                         }
@@ -1679,7 +1688,7 @@ impl Model {
                                 }
                                 None => StdHashMap::new(),
                             };
-                            (filter, binds)
+                            (filter.to_string(), binds)
                         }
                         Some(other) => {
                             return Err(format!(
@@ -1723,7 +1732,7 @@ impl Model {
                                 .to_string())
                         }
                     };
-                    register_query_mock(query, results_array);
+                    register_query_mock(query.to_string(), results_array);
                     Ok(Value::Null)
                 },
             )),
@@ -1796,12 +1805,12 @@ impl Model {
 
                 let direction = match args.get(2) {
                     Some(Value::String(s)) => s.clone(),
-                    _ => "asc".to_string(),
+                    _ => "asc".into(),
                 };
                 validate_order_direction(&direction, "order")?;
 
                 let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
-                qb.set_order(field, direction);
+                qb.set_order(field.to_string(), direction.to_string());
 
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
@@ -1870,7 +1879,7 @@ impl Model {
                         let mut map = serde_json::Map::new();
                         for (k, v) in pairs.borrow().iter() {
                             if let HashKey::String(key) = k {
-                                map.insert(key.clone(), value_to_json(v)?);
+                                map.insert(key.clone().to_string(), value_to_json(v)?);
                             }
                         }
                         Ok(serde_json::Value::Object(map))
@@ -1895,7 +1904,7 @@ impl Model {
 
                 match exec_update(&collection, &id, data_value, true) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             })),
         );
@@ -1920,7 +1929,7 @@ impl Model {
 
                 match exec_delete(&collection, &id) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                 }
             })),
         );
@@ -1963,7 +1972,7 @@ impl Model {
                         use super::crud::exec_transaction_sdbql;
                         match exec_transaction_sdbql(s) {
                             Ok(result) => Ok(json_to_value(&result)),
-                            Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                            Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                         }
                     }
                     Some(Value::Function(_)) | Some(Value::VmClosure(_)) => {
@@ -2067,18 +2076,16 @@ impl Model {
                     _ => return Err("paginate() expects a Hash argument".to_string()),
                 };
 
-                let page = match params.get(&crate::interpreter::value::HashKey::String(
-                    "page".to_string(),
-                )) {
-                    Some(Value::Int(n)) if *n > 0 => *n as usize,
-                    _ => 1,
-                };
-                let per = match params.get(&crate::interpreter::value::HashKey::String(
-                    "per".to_string(),
-                )) {
-                    Some(Value::Int(n)) if *n > 0 => *n as usize,
-                    _ => 25,
-                };
+                let page =
+                    match params.get(&crate::interpreter::value::HashKey::String("page".into())) {
+                        Some(Value::Int(n)) if *n > 0 => *n as usize,
+                        _ => 1,
+                    };
+                let per =
+                    match params.get(&crate::interpreter::value::HashKey::String("per".into())) {
+                        Some(Value::Int(n)) if *n > 0 => *n as usize,
+                        _ => 25,
+                    };
 
                 let mut qb =
                     super::query::QueryBuilder::new_with_class(class_name, collection, class);
@@ -2102,29 +2109,29 @@ impl Model {
 
                 let mut pagination = crate::interpreter::value::HashPairs::default();
                 pagination.insert(
-                    crate::interpreter::value::HashKey::String("page".to_string()),
+                    crate::interpreter::value::HashKey::String("page".into()),
                     Value::Int(page as i64),
                 );
                 pagination.insert(
-                    crate::interpreter::value::HashKey::String("per".to_string()),
+                    crate::interpreter::value::HashKey::String("per".into()),
                     Value::Int(per as i64),
                 );
                 pagination.insert(
-                    crate::interpreter::value::HashKey::String("total".to_string()),
+                    crate::interpreter::value::HashKey::String("total".into()),
                     Value::Int(total as i64),
                 );
                 pagination.insert(
-                    crate::interpreter::value::HashKey::String("total_pages".to_string()),
+                    crate::interpreter::value::HashKey::String("total_pages".into()),
                     Value::Int(total_pages as i64),
                 );
 
                 let mut result = crate::interpreter::value::HashPairs::default();
                 result.insert(
-                    crate::interpreter::value::HashKey::String("records".to_string()),
+                    crate::interpreter::value::HashKey::String("records".into()),
                     records,
                 );
                 result.insert(
-                    crate::interpreter::value::HashKey::String("pagination".to_string()),
+                    crate::interpreter::value::HashKey::String("pagination".into()),
                     Value::Hash(Rc::new(RefCell::new(pagination))),
                 );
 
@@ -2246,7 +2253,7 @@ impl Model {
                             for (k, v) in pairs.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(key) = k {
                                     if let Ok(jv) = super::value_to_json(v) {
-                                        map.insert(key.clone(), jv);
+                                        map.insert(key.clone().to_string(), jv);
                                     }
                                 }
                             }
@@ -2255,7 +2262,7 @@ impl Model {
                         _ => serde_json::Map::new(),
                     };
                     let mut doc = defaults;
-                    doc.insert(field.clone(), json_val.clone());
+                    doc.insert(field.clone().to_string(), json_val.clone());
                     match super::crud::exec_insert(
                         &collection,
                         None,
@@ -2321,7 +2328,7 @@ impl Model {
                         for (k, v) in pairs.borrow().iter() {
                             if let crate::interpreter::value::HashKey::String(k_str) = k {
                                 if let Ok(jv) = super::value_to_json(v) {
-                                    map.insert(k_str.clone(), jv);
+                                    map.insert(k_str.clone().to_string(), jv);
                                 }
                             }
                         }
@@ -2341,8 +2348,10 @@ impl Model {
                         // Snapshot the body sans `_key` so a retry-update
                         // (after a race) sends a normal update payload.
                         let update_payload = serde_json::Value::Object(insert_obj.clone());
-                        insert_obj
-                            .insert("_key".to_string(), serde_json::Value::String(key.clone()));
+                        insert_obj.insert(
+                            "_key".to_string(),
+                            serde_json::Value::String(key.clone().to_string()),
+                        );
                         match super::crud::exec_insert(
                             &collection,
                             None,
@@ -2406,7 +2415,7 @@ impl Model {
                             for (k, v) in pairs.borrow().iter() {
                                 if let crate::interpreter::value::HashKey::String(k_str) = k {
                                     if let Ok(jv) = super::value_to_json(v) {
-                                        map.insert(k_str.clone(), jv);
+                                        map.insert(k_str.clone().to_string(), jv);
                                     }
                                 }
                             }
@@ -2421,7 +2430,7 @@ impl Model {
 
                 let mut result = crate::interpreter::value::HashPairs::default();
                 result.insert(
-                    crate::interpreter::value::HashKey::String("created".to_string()),
+                    crate::interpreter::value::HashKey::String("created".into()),
                     Value::Int(created),
                 );
                 Ok(Value::Hash(Rc::new(RefCell::new(result))))
@@ -2481,7 +2490,7 @@ impl Model {
                     match arg {
                         Value::String(s) => {
                             validate_field_name(s, "pluck")?;
-                            fields.push(s.clone());
+                            fields.push(s.to_string());
                         }
                         _ => return Err("pluck() expects string field names".to_string()),
                     }
@@ -2524,7 +2533,7 @@ impl Model {
                         let mut qb = super::query::QueryBuilder::new_with_class(
                             class_name, collection, class,
                         );
-                        qb.aggregation = Some((func.clone(), field));
+                        qb.aggregation = Some((func.clone(), field.to_string()));
                         Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
                     },
                 )),
@@ -2565,7 +2574,7 @@ impl Model {
                 };
                 let mut qb =
                     super::query::QueryBuilder::new_with_class(class_name, collection, class);
-                qb.group_by_info = Some((group_field, func, agg_field));
+                qb.group_by_info = Some((group_field.to_string(), func, agg_field.to_string()));
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
             })),
         );
@@ -2967,16 +2976,16 @@ impl Model {
                         Ok(_) => {
                             instance
                                 .borrow_mut()
-                                .set("deleted_at".to_string(), Value::String(now));
+                                .set("deleted_at".to_string(), Value::String(now.into()));
                             Ok(Value::Bool(true))
                         }
-                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                        Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                     }
                 } else {
                     // Hard delete: remove document
                     match exec_delete(&collection, &key_str) {
                         Ok(result) => Ok(json_to_value(&result)),
-                        Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                        Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
                     }
                 }
             })),
@@ -3064,7 +3073,7 @@ impl Model {
                     Ok(_) => {
                         instance
                             .borrow_mut()
-                            .set("_updated_at".to_string(), Value::String(now));
+                            .set("_updated_at".to_string(), Value::String(now.into()));
                         Ok(Value::Instance(instance))
                     }
                     Err(e) => Err(format!("touch failed: {}", e)),
@@ -3172,8 +3181,8 @@ fn apply_field_delta(args: &[Value], sign: i64, op_name: &str) -> Result<Value, 
     match super::crud::cas_field_delta(&collection, &key_str, &field, delta) {
         Ok((new_value, new_rev)) => {
             let mut inst_mut = instance.borrow_mut();
-            inst_mut.set(field, Value::Int(new_value));
-            inst_mut.set("_rev".to_string(), Value::String(new_rev));
+            inst_mut.set(field.to_string(), Value::Int(new_value));
+            inst_mut.set("_rev".to_string(), Value::String(new_rev.into()));
             drop(inst_mut);
             Ok(Value::Instance(instance))
         }
@@ -3196,22 +3205,22 @@ pub fn register_model_builtins(env: &mut Environment) {
             for entry in entries {
                 let mut hash = HashPairs::default();
                 hash.insert(
-                    HashKey::String("query".to_string()),
-                    Value::String(entry.query),
+                    HashKey::String("query".into()),
+                    Value::String(entry.query.into()),
                 );
                 let binds_value = match entry.bind_vars {
                     Some(map) => {
                         let mut bh = HashPairs::default();
                         for (k, v) in map {
-                            bh.insert(HashKey::String(k), super::crud::json_to_value(&v));
+                            bh.insert(HashKey::String(k.into()), super::crud::json_to_value(&v));
                         }
                         Value::Hash(Rc::new(RefCell::new(bh)))
                     }
                     None => Value::Null,
                 };
-                hash.insert(HashKey::String("bind_vars".to_string()), binds_value);
+                hash.insert(HashKey::String("bind_vars".into()), binds_value);
                 hash.insert(
-                    HashKey::String("duration_ms".to_string()),
+                    HashKey::String("duration_ms".into()),
                     Value::Float(entry.duration_ms),
                 );
                 arr.push(Value::Hash(Rc::new(RefCell::new(hash))));
@@ -3253,12 +3262,12 @@ pub fn register_model_builtins(env: &mut Environment) {
                 None => return Err("validates() requires options argument".to_string()),
             };
 
-            let mut rule = ValidationRule::new(field);
+            let mut rule = ValidationRule::new(field.to_string());
 
             // Parse options
             for (key, value) in options {
                 if let HashKey::String(key_str) = key {
-                    match key_str.as_str() {
+                    match key_str.as_ref() {
                         "presence" => {
                             if let Value::Bool(b) = value {
                                 rule.presence = b;
@@ -3281,7 +3290,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                         }
                         "format" => {
                             if let Value::String(s) = value {
-                                rule.format = Some(s);
+                                rule.format = Some(s.to_string());
                             }
                         }
                         "numericality" => {
@@ -3301,7 +3310,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                         },
                         "custom" => {
                             if let Value::String(s) = value {
-                                rule.custom = Some(s);
+                                rule.custom = Some(s.to_string());
                             }
                         }
                         _ => {}
@@ -3439,7 +3448,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                 let class_name =
                     match args.first() {
                         Some(Value::String(s)) => s.clone(),
-                        Some(Value::Class(c)) => c.name.clone(),
+                        Some(Value::Class(c)) => c.name.clone().into(),
                         _ => return Err(
                             "model_uploader_config(class_name, field) expects a class or string"
                                 .to_string(),
@@ -3470,7 +3479,7 @@ pub fn register_model_builtins(env: &mut Environment) {
             |args| {
                 let class_name = match args.first() {
                     Some(Value::String(s)) => s.clone(),
-                    Some(Value::Class(c)) => c.name.clone(),
+                    Some(Value::Class(c)) => c.name.clone().into(),
                     _ => {
                         return Err(
                             "model_uploader_fields(class_name) expects a class or string"
@@ -3481,7 +3490,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                 use super::uploaders::get_uploaders;
                 let names: Vec<Value> = get_uploaders(&class_name)
                     .into_iter()
-                    .map(|u| Value::String(u.name))
+                    .map(|u| Value::String(u.name.into()))
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(names))))
             },
@@ -3509,7 +3518,7 @@ pub fn register_model_builtins(env: &mut Environment) {
                 use super::registry::MODEL_CLASSES;
                 let result = MODEL_CLASSES.with(|classes| {
                     classes.borrow().iter().find_map(|(name, class)| {
-                        if class_name_to_collection(name) == collection {
+                        if *class_name_to_collection(name) == *collection {
                             Some(Value::Class(class.clone()))
                         } else {
                             None
@@ -3551,15 +3560,15 @@ pub fn register_model_builtins(env: &mut Environment) {
                     use crate::interpreter::value::HashKey;
                     for (k, v) in hash.borrow().iter() {
                         if let HashKey::String(key) = k {
-                            match key.as_str() {
+                            match key.as_ref() {
                                 "class_name" => {
                                     if let Value::String(s) = v {
-                                        class_override = Some(s.clone());
+                                        class_override = Some(s.clone().to_string());
                                     }
                                 }
                                 "foreign_key" => {
                                     if let Value::String(s) = v {
-                                        fk_override = Some(s.clone());
+                                        fk_override = Some(s.clone().to_string());
                                     }
                                 }
                                 _ => {}
@@ -3613,11 +3622,13 @@ pub fn register_model_builtins(env: &mut Environment) {
                     use crate::interpreter::value::HashKey;
                     for (k, v) in hash.borrow().iter() {
                         if let (HashKey::String(key), Value::String(s)) = (k, v) {
-                            match key.as_str() {
-                                "class_name" => class_override = Some(s.clone()),
-                                "foreign_key" => fk_override = Some(s.clone()),
-                                "association_foreign_key" => assoc_fk_override = Some(s.clone()),
-                                "join_table" => join_table_override = Some(s.clone()),
+                            match key.as_ref() {
+                                "class_name" => class_override = Some(s.clone().to_string()),
+                                "foreign_key" => fk_override = Some(s.clone().to_string()),
+                                "association_foreign_key" => {
+                                    assoc_fk_override = Some(s.clone().to_string())
+                                }
+                                "join_table" => join_table_override = Some(s.clone().to_string()),
                                 _ => {}
                             }
                         }

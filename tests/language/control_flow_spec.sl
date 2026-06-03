@@ -185,6 +185,56 @@ describe("For-In Loops", fn() {
         }
         assert_eq(sum, 9);
     });
+
+    test("for-in over range literal iterates without materializing", fn() {
+        let sum = 0;
+        for (i in 0..5) {
+            sum = sum + i;
+        }
+        assert_eq(sum, 10);
+    });
+
+    test("for-in over empty and inverted range literals does not iterate", fn() {
+        let count = 0;
+        for (i in 5..5) {
+            count = count + 1;
+        }
+        for (i in 5..2) {
+            count = count + 1;
+        }
+        assert_eq(count, 0);
+    });
+
+    test("for-in over range literal supports index variable", fn() {
+        let pairs = [];
+        for (v, i in 10..13) {
+            pairs.push(str(i) + ":" + str(v));
+        }
+        assert_eq(pairs.join(","), "0:10,1:11,2:12");
+    });
+
+    test("for-in iterates the array live when the body appends", fn() {
+        // Iteration is live (bounds-checked indexing): items appended by the
+        // body are visited. Pinned so both engines keep agreeing on this.
+        let arr = [1, 2, 3];
+        for (x in arr) {
+            if (x < 3) {
+                arr.push(x + 10);
+            }
+        }
+        assert_eq(arr.join(","), "1,2,3,11,12");
+    });
+
+    test("for-in sees a shortened array when the body removes items", fn() {
+        let arr = [1, 2, 3, 4];
+        let visited = [];
+        for (x in arr) {
+            visited.push(x);
+            arr.pop();
+        }
+        // [1,2,3,4] -> visit 1, pop 4 -> visit 2, pop 3 -> len 2, stop.
+        assert_eq(visited.join(","), "1,2");
+    });
 });
 
 describe("Postfix Conditionals", fn() {

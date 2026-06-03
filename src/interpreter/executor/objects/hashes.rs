@@ -27,10 +27,10 @@ impl Interpreter {
     fn evaluate_hash_key(&mut self, key_expr: &Expr) -> RuntimeResult<HashKey> {
         match &key_expr.kind {
             ExprKind::IntLiteral(n) => Ok(HashKey::Int(*n)),
-            ExprKind::StringLiteral(s) => Ok(HashKey::String(s.clone())),
+            ExprKind::StringLiteral(s) => Ok(HashKey::String(s.clone().into())),
             ExprKind::BoolLiteral(b) => Ok(HashKey::Bool(*b)),
             ExprKind::Null => Ok(HashKey::Null),
-            ExprKind::Symbol(s) => Ok(HashKey::Symbol(s.clone())),
+            ExprKind::Symbol(s) => Ok(HashKey::Symbol(s.clone().into())),
             _ => {
                 let key = self.evaluate(key_expr)?;
                 key.to_hash_key().ok_or_else(|| {

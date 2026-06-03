@@ -12,7 +12,7 @@ pub fn register_type_builtins(env: &mut Environment) {
         "str".to_string(),
         Value::NativeFunction(NativeFunction::new("str", Some(1), |args| {
             let resolved = args.into_iter().next().unwrap().resolve()?;
-            Ok(Value::String(format!("{}", resolved)))
+            Ok(Value::String(format!("{}", resolved).into()))
         })),
     );
 
@@ -51,7 +51,7 @@ pub fn register_type_builtins(env: &mut Environment) {
     env.define(
         "type".to_string(),
         Value::NativeFunction(NativeFunction::new("type", Some(1), |args| {
-            Ok(Value::String(args[0].type_name().to_string()))
+            Ok(Value::String(args[0].type_name().to_string().into()))
         })),
     );
 }

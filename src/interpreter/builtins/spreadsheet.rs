@@ -42,11 +42,11 @@ fn parse_csv_content(content: &str) -> Result<Value, String> {
             .iter()
             .zip(record.iter())
             .map(|(k, v)| {
-                let key = crate::interpreter::value::HashKey::String(k.clone());
+                let key = crate::interpreter::value::HashKey::String(k.clone().into());
                 let value = if v.is_empty() {
                     Value::Null
                 } else {
-                    Value::String(v.to_string())
+                    Value::String(v.to_string().into())
                 };
                 (key, value)
             })
@@ -81,11 +81,11 @@ fn parse_csv_file(path: &str) -> Result<Value, String> {
             .iter()
             .zip(record.iter())
             .map(|(k, v)| {
-                let key = crate::interpreter::value::HashKey::String(k.clone());
+                let key = crate::interpreter::value::HashKey::String(k.clone().into());
                 let value = if v.is_empty() {
                     Value::Null
                 } else {
-                    Value::String(v.to_string())
+                    Value::String(v.to_string().into())
                 };
                 (key, value)
             })
@@ -123,17 +123,17 @@ fn parse_excel_file(path: &str) -> Result<Value, String> {
             .iter()
             .zip(row.iter())
             .map(|(k, v)| {
-                let key = crate::interpreter::value::HashKey::String(k.clone());
+                let key = crate::interpreter::value::HashKey::String(k.clone().into());
                 let value = match v {
                     calamine::Data::Empty => Value::Null,
-                    calamine::Data::String(s) => Value::String(s.clone()),
+                    calamine::Data::String(s) => Value::String(s.clone().into()),
                     calamine::Data::Float(f) => Value::Float(*f),
                     calamine::Data::Int(i) => Value::Int(*i),
                     calamine::Data::Bool(b) => Value::Bool(*b),
-                    calamine::Data::DateTime(dt) => Value::String(dt.to_string()),
-                    calamine::Data::Error(e) => Value::String(format!("<error: {:?}>", e)),
-                    calamine::Data::DateTimeIso(s) => Value::String(s.clone()),
-                    calamine::Data::DurationIso(s) => Value::String(s.clone()),
+                    calamine::Data::DateTime(dt) => Value::String(dt.to_string().into()),
+                    calamine::Data::Error(e) => Value::String(format!("<error: {:?}>", e).into()),
+                    calamine::Data::DateTimeIso(s) => Value::String(s.clone().into()),
+                    calamine::Data::DurationIso(s) => Value::String(s.clone().into()),
                 };
                 (key, value)
             })
@@ -151,7 +151,7 @@ fn value_to_string(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.clone().to_string(),
         Value::Decimal(d) => d.to_string(),
         Value::Array(arr) => {
             let items: Vec<String> = arr.borrow().iter().map(value_to_string).collect();
@@ -194,7 +194,7 @@ fn extract_headers_and_rows(
             Value::Hash(hash) => headers
                 .iter()
                 .map(|k| {
-                    let key = crate::interpreter::value::HashKey::String(k.clone());
+                    let key = crate::interpreter::value::HashKey::String(k.clone().into());
                     hash.borrow()
                         .get(&key)
                         .map(value_to_string)
@@ -336,7 +336,7 @@ fn build_spreadsheet_class() -> Rc<Class> {
                     ))
                 }
             };
-            to_csv_string(&data).map(Value::String)
+            to_csv_string(&data).map(|s| Value::String(s.into()))
         })),
     );
 

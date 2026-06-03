@@ -115,24 +115,24 @@ pub fn uploaded_files_to_value(files: &[UploadedFile]) -> Value {
         .map(|f| {
             let mut file_map: HashPairs = HashPairs::default();
             file_map.insert(
-                HashKey::String("name".to_string()),
-                Value::String(f.name.clone()),
+                HashKey::String("name".into()),
+                Value::String(f.name.clone().into()),
             );
             file_map.insert(
-                HashKey::String("filename".to_string()),
-                Value::String(f.filename.clone()),
+                HashKey::String("filename".into()),
+                Value::String(f.filename.clone().into()),
             );
             file_map.insert(
-                HashKey::String("content_type".to_string()),
-                Value::String(f.content_type.clone()),
+                HashKey::String("content_type".into()),
+                Value::String(f.content_type.clone().into()),
             );
             file_map.insert(
-                HashKey::String("size".to_string()),
+                HashKey::String("size".into()),
                 Value::Int(f.data.len() as i64),
             );
             file_map.insert(
-                HashKey::String("data".to_string()),
-                Value::String(general_purpose::STANDARD.encode(&f.data)),
+                HashKey::String("data".into()),
+                Value::String(general_purpose::STANDARD.encode(&f.data).into()),
             );
             Value::Hash(Rc::new(RefCell::new(file_map)))
         })
@@ -174,17 +174,17 @@ mod tests {
 
         // Size reflects raw byte count, not base64 length.
         assert!(matches!(
-            file_borrow.get(&HashKey::String("size".to_string())),
+            file_borrow.get(&HashKey::String("size".into())),
             Some(Value::Int(5))
         ));
 
         // Data is a base64-encoded string and round-trips back to the
         // original bytes.
-        let data = match file_borrow.get(&HashKey::String("data".to_string())) {
+        let data = match file_borrow.get(&HashKey::String("data".into())) {
             Some(Value::String(s)) => s.clone(),
             other => panic!("expected string data, got {other:?}"),
         };
-        let decoded = general_purpose::STANDARD.decode(&data).unwrap();
+        let decoded = general_purpose::STANDARD.decode(&*data).unwrap();
         assert_eq!(decoded, vec![0xff, 0xfe, 0x00, 0x42, 0x00]);
     }
 }

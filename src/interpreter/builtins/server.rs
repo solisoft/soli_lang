@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::builtins::session::parse_cookies_from_header;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeFunction, Value};
 
@@ -14,7 +13,7 @@ use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeF
 /// manually stringifying.
 fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         other => stringify_to_string(other)
             .map_err(|e| format!("{}() could not serialize payload to JSON: {}", fn_name, e)),
     }
@@ -826,18 +825,18 @@ struct RequestHashKeys {
 
 thread_local! {
     static REQUEST_KEYS: RequestHashKeys = RequestHashKeys {
-        method: HashKey::String("method".to_string()),
-        path: HashKey::String("path".to_string()),
-        params: HashKey::String("params".to_string()),
-        query: HashKey::String("query".to_string()),
-        headers: HashKey::String("headers".to_string()),
-        body: HashKey::String("body".to_string()),
-        json: HashKey::String("json".to_string()),
-        form: HashKey::String("form".to_string()),
-        files: HashKey::String("files".to_string()),
-        all: HashKey::String("all".to_string()),
-        remote_addr: HashKey::String("remote_addr".to_string()),
-        cookies: HashKey::String("cookies".to_string()),
+        method: HashKey::String("method".into()),
+        path: HashKey::String("path".into()),
+        params: HashKey::String("params".into()),
+        query: HashKey::String("query".into()),
+        headers: HashKey::String("headers".into()),
+        body: HashKey::String("body".into()),
+        json: HashKey::String("json".into()),
+        form: HashKey::String("form".into()),
+        files: HashKey::String("files".into()),
+        all: HashKey::String("all".into()),
+        remote_addr: HashKey::String("remote_addr".into()),
+        cookies: HashKey::String("cookies".into()),
     };
 }
 
@@ -895,7 +894,7 @@ pub fn parse_form_urlencoded_body(body: &str) -> Option<Value> {
     }
     let pairs: HashPairs = form_data
         .into_iter()
-        .map(|(k, v)| (HashKey::String(k), Value::String(v)))
+        .map(|(k, v)| (HashKey::String(k.into()), Value::String(v.into())))
         .collect();
     Some(Value::Hash(Rc::new(RefCell::new(pairs))))
 }
@@ -910,22 +909,42 @@ pub fn build_request_hash(
     headers: HashMap<String, String>,
     body: &str,
 ) -> Value {
-    build_request_hash_with_parsed(
+    // Compat wrapper for callers that still hold String-map headers: parse
+    // cookies here, then hand HashPairs to the single-pass builder.
+    let raw_cookie = headers.get("cookie").map(|s| s.as_str());
+    let cookie_pairs = crate::interpreter::builtins::session::parse_cookie_pairs(raw_cookie);
+    let cookies = Value::Hash(Rc::new(RefCell::new(cookie_pairs)));
+    let mut header_pairs = HashPairs::with_capacity_and_hasher(headers.len(), AHasher::default());
+    for (k, v) in headers {
+        header_pairs.insert(HashKey::String(k.into()), Value::String(v.into()));
+    }
+    let (request_hash, _all) = build_request_hash_with_parsed(
         method,
         path,
         params,
         query,
-        headers,
+        header_pairs,
+        cookies,
         body,
         ParsedBody::default(),
         "",
-    )
+    );
+    request_hash
 }
 
 /// Build a request hash with parsed body data.
 /// Skips inserting Null/empty fields to reduce allocations — missing keys
 /// return Null on access anyway (via StrKey lookup in template engine).
-/// Takes owned query and headers to avoid cloning individual keys/values.
+///
+/// `headers` arrives as ready-made `HashPairs` (built straight off the wire,
+/// no intermediate `HashMap` pass) and `cookies` as an already-parsed
+/// `Value::Hash` — the Cookie header is parsed exactly once per request, by
+/// the caller, which also derives the session ID from the same parse.
+///
+/// Returns `(request_hash, all_params)`: `all_params` is the same `Value`
+/// inserted under `"all"` (or `None` when every source was empty), handed
+/// back so the caller can publish the `params` global without re-probing
+/// the request hash by string key.
 ///
 /// `peer_ip` is the actual TCP peer address as a string (no port). Empty
 /// string when called from a non-server context (e.g. test harness).
@@ -935,18 +954,19 @@ pub fn build_request_hash_with_parsed(
     path: &str,
     params: HashMap<String, String>,
     query: HashMap<String, String>,
-    headers: HashMap<String, String>,
+    headers: HashPairs,
+    cookies: Value,
     body: &str,
     parsed: ParsedBody,
     peer_ip: &str,
-) -> Value {
+) -> (Value, Option<Value>) {
     // Build sub-hashes only when non-empty (avoids Rc allocation for empty maps)
     let params_value = if params.is_empty() {
         None
     } else {
         let mut map = HashPairs::with_capacity_and_hasher(params.len(), AHasher::default());
         for (k, v) in params {
-            map.insert(HashKey::String(k), Value::String(v));
+            map.insert(HashKey::String(k.into()), Value::String(v.into()));
         }
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
@@ -956,35 +976,20 @@ pub fn build_request_hash_with_parsed(
     } else {
         let mut map = HashPairs::with_capacity_and_hasher(query.len(), AHasher::default());
         for (k, v) in query {
-            map.insert(HashKey::String(k), Value::String(v));
+            map.insert(HashKey::String(k.into()), Value::String(v.into()));
         }
         Some(Value::Hash(Rc::new(RefCell::new(map))))
     };
 
-    // Parse cookies from the Cookie header before headers are consumed.
-    // The cookie header name is lowercased by the HTTP parser.
-    let raw_cookie = headers.get("cookie").map(|s| s.as_str());
-    let parsed_cookies = parse_cookies_from_header(raw_cookie);
-    let cookies_value = if parsed_cookies.is_empty() {
-        // Always set a default empty hash, never Null, so callers can safely
-        // index into it.
-        Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
-    } else {
-        let mut map = HashPairs::with_capacity_and_hasher(parsed_cookies.len(), AHasher::default());
-        for (k, v) in parsed_cookies {
-            map.insert(HashKey::String(k), Value::String(v));
-        }
-        Value::Hash(Rc::new(RefCell::new(map)))
-    };
+    // Cookies were parsed once by the caller; always a hash (never Null) so
+    // callers can safely index into it.
+    let cookies_value = cookies;
 
+    // Headers arrive as HashPairs built straight off the wire — wrap, don't copy.
     let header_value = if headers.is_empty() {
         None
     } else {
-        let mut map = HashPairs::with_capacity_and_hasher(headers.len(), AHasher::default());
-        for (k, v) in headers {
-            map.insert(HashKey::String(k), Value::String(v));
-        }
-        Some(Value::Hash(Rc::new(RefCell::new(map))))
+        Some(Value::Hash(Rc::new(RefCell::new(headers))))
     };
 
     // Build unified "all" params only when at least one source has data
@@ -1036,8 +1041,8 @@ pub fn build_request_hash_with_parsed(
             + if all_value.is_some() { 1 } else { 0 }
             + if !peer_ip.is_empty() { 1 } else { 0 };
         let mut map = HashPairs::with_capacity_and_hasher(capacity, AHasher::default());
-        map.insert(keys.method.clone(), Value::String(method.to_string()));
-        map.insert(keys.path.clone(), Value::String(path.to_string()));
+        map.insert(keys.method.clone(), Value::String(method.into()));
+        map.insert(keys.path.clone(), Value::String(path.into()));
         if let Some(v) = params_value {
             map.insert(keys.params.clone(), v);
         }
@@ -1048,7 +1053,7 @@ pub fn build_request_hash_with_parsed(
             map.insert(keys.headers.clone(), v);
         }
         if !body.is_empty() {
-            map.insert(keys.body.clone(), Value::String(body.to_string()));
+            map.insert(keys.body.clone(), Value::String(body.into()));
         }
         if let Some(json) = parsed.json {
             map.insert(keys.json.clone(), json);
@@ -1059,17 +1064,17 @@ pub fn build_request_hash_with_parsed(
         if let Some(files) = parsed.files {
             map.insert(keys.files.clone(), files);
         }
-        if let Some(v) = all_value {
-            map.insert(keys.all.clone(), v);
+        if let Some(ref v) = all_value {
+            map.insert(keys.all.clone(), v.clone());
         }
         if !peer_ip.is_empty() {
-            map.insert(keys.remote_addr.clone(), Value::String(peer_ip.to_string()));
+            map.insert(keys.remote_addr.clone(), Value::String(peer_ip.into()));
         }
         map.insert(keys.cookies.clone(), cookies_value);
         map
     });
 
-    Value::Hash(Rc::new(RefCell::new(request_pairs)))
+    (Value::Hash(Rc::new(RefCell::new(request_pairs))), all_value)
 }
 
 /// Build unified params from borrowed IndexMap references.
@@ -1121,7 +1126,7 @@ fn build_unified_params_refs(
 /// - Anything else → `format!("{}", v)` as UTF-8 bytes (fallback).
 fn body_value_to_bytes(v: Value) -> Vec<u8> {
     match v {
-        Value::String(s) => s.into_bytes(),
+        Value::String(s) => s.as_bytes().to_vec(),
         Value::Array(arr) => {
             let borrowed = arr.borrow();
             let mut out = Vec::with_capacity(borrowed.len());
@@ -1167,7 +1172,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                 let borrowed = rc.borrow();
                 for (k, v) in borrowed.iter() {
                     if let HashKey::String(key) = k {
-                        match key.as_str() {
+                        match key.as_ref() {
                             "status" => {
                                 if let Value::Int(s) = v {
                                     status = *s as u16;
@@ -1177,7 +1182,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                                 if let Value::Hash(h) = v {
                                     for (hk, hv) in h.borrow().iter() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.push((k.clone(), v.clone()));
+                                            headers.push((k.to_string(), v.to_string()));
                                         }
                                     }
                                 }
@@ -1195,7 +1200,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
         // Sole owner — can move values out without cloning
         for (k, v) in map {
             if let HashKey::String(key) = k {
-                match key.as_str() {
+                match key.as_ref() {
                     "status" => {
                         if let Value::Int(s) = v {
                             status = s as u16;
@@ -1207,14 +1212,14 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                                 Ok(cell) => {
                                     for (hk, hv) in cell.into_inner() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.push((k, v));
+                                            headers.push((k.to_string(), v.to_string()));
                                         }
                                     }
                                 }
                                 Err(rc) => {
                                     for (hk, hv) in rc.borrow().iter() {
                                         if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                            headers.push((k.clone(), v.clone()));
+                                            headers.push((k.to_string(), v.to_string()));
                                         }
                                     }
                                 }
@@ -1246,10 +1251,10 @@ pub fn register_server_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("url_encode", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                Value::Int(n) => n.to_string(),
-                Value::Float(f) => f.to_string(),
-                Value::Bool(b) => b.to_string(),
-                Value::Null => String::new(),
+                Value::Int(n) => n.to_string().into(),
+                Value::Float(f) => f.to_string().into(),
+                Value::Bool(b) => b.to_string().into(),
+                Value::Null => String::new().into(),
                 other => {
                     return Err(format!(
                         "url_encode() expects string, got {}",
@@ -1257,7 +1262,7 @@ pub fn register_server_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(urlencoding::encode(&s).into_owned()))
+            Ok(Value::String(urlencoding::encode(&s).into_owned().into()))
         })),
     );
 
@@ -1271,7 +1276,7 @@ pub fn register_server_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("url_decode", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                Value::Null => return Ok(Value::String(String::new())),
+                Value::Null => return Ok(Value::String(String::new().into())),
                 other => {
                     return Err(format!(
                         "url_decode() expects string, got {}",
@@ -1282,7 +1287,7 @@ pub fn register_server_builtins(env: &mut Environment) {
             // Form-style: rewrite `+` to space first, then percent-decode.
             let plus_to_space: String = s.chars().map(|c| if c == '+' { ' ' } else { c }).collect();
             match urlencoding::decode(&plus_to_space) {
-                Ok(decoded) => Ok(Value::String(decoded.into_owned())),
+                Ok(decoded) => Ok(Value::String(decoded.into_owned().into())),
                 Err(e) => Err(format!("url_decode() invalid percent-encoding: {}", e)),
             }
         })),
@@ -1527,26 +1532,26 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                                 .map(|m| {
                                     let mut meta_map: HashPairs = HashPairs::default();
                                     meta_map.insert(
-                                        HashKey::String("connection_id".to_string()),
-                                        Value::String(m.connection_id.to_string()),
+                                        HashKey::String("connection_id".into()),
+                                        Value::String(m.connection_id.to_string().into()),
                                     );
                                     meta_map.insert(
-                                        HashKey::String("phx_ref".to_string()),
-                                        Value::String(m.phx_ref.clone()),
+                                        HashKey::String("phx_ref".into()),
+                                        Value::String(m.phx_ref.clone().into()),
                                     );
                                     meta_map.insert(
-                                        HashKey::String("state".to_string()),
-                                        Value::String(m.state.clone()),
+                                        HashKey::String("state".into()),
+                                        Value::String(m.state.clone().into()),
                                     );
                                     meta_map.insert(
-                                        HashKey::String("online_at".to_string()),
+                                        HashKey::String("online_at".into()),
                                         Value::Int(m.online_at as i64),
                                     );
                                     // Add extra fields
                                     for (k, v) in &m.extra {
                                         meta_map.insert(
-                                            HashKey::String(k.clone()),
-                                            Value::String(v.clone()),
+                                            HashKey::String(k.clone().into()),
+                                            Value::String(v.clone().into()),
                                         );
                                     }
                                     Value::Hash(Rc::new(RefCell::new(meta_map)))
@@ -1555,11 +1560,11 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
                             let mut user_map: HashPairs = HashPairs::default();
                             user_map.insert(
-                                HashKey::String("user_id".to_string()),
-                                Value::String(p.user_id.clone()),
+                                HashKey::String("user_id".into()),
+                                Value::String(p.user_id.clone().into()),
                             );
                             user_map.insert(
-                                HashKey::String("metas".to_string()),
+                                HashKey::String("metas".into()),
                                 Value::Array(Rc::new(RefCell::new(metas))),
                             );
                             Value::Hash(Rc::new(RefCell::new(user_map)))
@@ -1646,24 +1651,26 @@ pub fn register_websocket_builtins(env: &mut Environment) {
                         .map(|m| {
                             let mut meta_map: HashPairs = HashPairs::default();
                             meta_map.insert(
-                                HashKey::String("connection_id".to_string()),
-                                Value::String(m.connection_id.to_string()),
+                                HashKey::String("connection_id".into()),
+                                Value::String(m.connection_id.to_string().into()),
                             );
                             meta_map.insert(
-                                HashKey::String("phx_ref".to_string()),
-                                Value::String(m.phx_ref.clone()),
+                                HashKey::String("phx_ref".into()),
+                                Value::String(m.phx_ref.clone().into()),
                             );
                             meta_map.insert(
-                                HashKey::String("state".to_string()),
-                                Value::String(m.state.clone()),
+                                HashKey::String("state".into()),
+                                Value::String(m.state.clone().into()),
                             );
                             meta_map.insert(
-                                HashKey::String("online_at".to_string()),
+                                HashKey::String("online_at".into()),
                                 Value::Int(m.online_at as i64),
                             );
                             for (k, v) in &m.extra {
-                                meta_map
-                                    .insert(HashKey::String(k.clone()), Value::String(v.clone()));
+                                meta_map.insert(
+                                    HashKey::String(k.clone().into()),
+                                    Value::String(v.clone().into()),
+                                );
                             }
                             Value::Hash(Rc::new(RefCell::new(meta_map)))
                         })
@@ -1671,11 +1678,11 @@ pub fn register_websocket_builtins(env: &mut Environment) {
 
                     let mut user_map: HashPairs = HashPairs::default();
                     user_map.insert(
-                        HashKey::String("user_id".to_string()),
-                        Value::String(presence.user_id),
+                        HashKey::String("user_id".into()),
+                        Value::String(presence.user_id.into()),
                     );
                     user_map.insert(
-                        HashKey::String("metas".to_string()),
+                        HashKey::String("metas".into()),
                         Value::Array(Rc::new(RefCell::new(metas))),
                     );
 

@@ -90,15 +90,15 @@ fn system_class() -> Value {
 fn result_to_hash(result: SystemResultData) -> Value {
     let mut hash: HashPairs = HashPairs::default();
     hash.insert(
-        HashKey::String("stdout".to_string()),
-        Value::String(result.stdout),
+        HashKey::String("stdout".into()),
+        Value::String(result.stdout.into()),
     );
     hash.insert(
-        HashKey::String("stderr".to_string()),
-        Value::String(result.stderr),
+        HashKey::String("stderr".into()),
+        Value::String(result.stderr.into()),
     );
     hash.insert(
-        HashKey::String("exit_code".to_string()),
+        HashKey::String("exit_code".into()),
         Value::Int(result.exit_code as i64),
     );
     Value::Hash(Rc::new(RefCell::new(hash)))
@@ -150,7 +150,7 @@ pub fn parse_argv(value: &Value, fn_name: &str) -> Result<(String, Vec<String>),
             let mut parts: Vec<String> = Vec::with_capacity(arr.len());
             for (i, v) in arr.iter().enumerate() {
                 match v {
-                    Value::String(s) => parts.push(s.clone()),
+                    Value::String(s) => parts.push(s.clone().to_string()),
                     other => {
                         return Err(format!(
                             "{}() array must contain only strings, got {} at index {}",
@@ -193,7 +193,10 @@ pub fn parse_argv(value: &Value, fn_name: &str) -> Result<(String, Vec<String>),
 /// the string in `sh -c <string>`.
 pub fn parse_shell(value: &Value, fn_name: &str) -> Result<(String, Vec<String>), String> {
     match value {
-        Value::String(s) => Ok(("sh".to_string(), vec!["-c".to_string(), s.clone()])),
+        Value::String(s) => Ok((
+            "sh".to_string(),
+            vec!["-c".to_string(), s.clone().to_string()],
+        )),
         other => Err(format!(
             "{}() expects a string command, got {}",
             fn_name,

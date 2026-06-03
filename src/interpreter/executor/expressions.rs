@@ -44,10 +44,10 @@ impl Interpreter {
                 let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
                 Ok(Value::Decimal(DecimalValue(decimal, precision)))
             }
-            ExprKind::StringLiteral(s) => Ok(Value::String(s.clone())),
+            ExprKind::StringLiteral(s) => Ok(Value::String(s.clone().into())),
             ExprKind::CommandSubstitution(cmd) => self.evaluate_system_run(cmd, expr.span),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
-            ExprKind::Symbol(s) => Ok(Value::Symbol(s.clone())),
+            ExprKind::Symbol(s) => Ok(Value::Symbol(s.clone().into())),
             ExprKind::Null => Ok(Value::Null),
 
             // Variables
@@ -325,7 +325,7 @@ impl Interpreter {
                             // Store the value in _pending_translations.{field_name}
                             pending_translations
                                 .borrow_mut()
-                                .insert(HashKey::String(name.clone()), new_value.clone());
+                                .insert(HashKey::String(name.clone().into()), new_value.clone());
 
                             // Don't set the raw field - translations are stored separately
                             return Ok(new_value);
@@ -335,7 +335,7 @@ impl Interpreter {
                         Ok(new_value)
                     }
                     Value::Hash(hash) => {
-                        let key = crate::interpreter::value::HashKey::String(name.clone());
+                        let key = crate::interpreter::value::HashKey::String(name.clone().into());
                         hash.borrow_mut().insert(key, new_value.clone());
                         Ok(new_value)
                     }
@@ -497,7 +497,7 @@ impl Interpreter {
                         Ok(())
                     }
                     Value::Hash(hash) => {
-                        let key = crate::interpreter::value::HashKey::String(name.clone());
+                        let key = crate::interpreter::value::HashKey::String(name.clone().into());
                         hash.borrow_mut().insert(key, value);
                         Ok(())
                     }

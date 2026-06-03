@@ -658,7 +658,7 @@ fn parse_c14n_opts(value: &Value) -> Result<C14nOpts, String> {
     match value {
         Value::Hash(h) => {
             let h = h.borrow();
-            let get = |k: &str| h.get(&HashKey::String(k.to_string())).cloned();
+            let get = |k: &str| h.get(&HashKey::String(k.to_string().into())).cloned();
             let prefix_list = match get("inclusive_prefixes") {
                 Some(v) => parse_prefix_list(&v)?,
                 None => BTreeSet::new(),
@@ -673,7 +673,7 @@ fn parse_c14n_opts(value: &Value) -> Result<C14nOpts, String> {
             let enveloped = matches!(get("enveloped_signature"), Some(Value::Bool(true)));
             Ok(C14nOpts {
                 prefix_list,
-                id,
+                id: id.map(|s| s.to_string()),
                 enveloped,
             })
         }
@@ -720,7 +720,7 @@ pub fn register_xml_builtins(env: &mut Environment) {
             let canonical =
                 canonicalize_exclusive_opts(&xml, &opts.prefix_list, opts.id.as_deref(), opts.enveloped)
                     .map_err(|e| format!("Xml.c14n_exclusive(): {}", e))?;
-            Ok(Value::String(canonical))
+            Ok(Value::String(canonical.into()))
         })),
     );
 
@@ -751,7 +751,7 @@ pub fn register_xml_builtins(env: &mut Environment) {
                 };
                 let fragment = extract_by_id(&xml, &id)
                     .map_err(|e| format!("Xml.get_element_by_id(): {}", e))?;
-                Ok(Value::String(fragment))
+                Ok(Value::String(fragment.into()))
             },
         )),
     );
@@ -783,7 +783,10 @@ pub fn register_xml_builtins(env: &mut Environment) {
                 };
                 let fragments = extract_by_local(&xml, &local)
                     .map_err(|e| format!("Xml.get_elements_by_tag(): {}", e))?;
-                let values: Vec<Value> = fragments.into_iter().map(Value::String).collect();
+                let values: Vec<Value> = fragments
+                    .into_iter()
+                    .map(|s| Value::String(s.into()))
+                    .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(values))))
             },
         )),

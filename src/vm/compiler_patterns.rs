@@ -133,7 +133,7 @@ impl Compiler {
                 // Check type, then bind
                 let _type_idx = self.add_string_constant(type_name);
                 self.emit(Op::Dup, line);
-                self.emit_constant(Constant::String(type_name.clone()), line);
+                self.emit_constant(Constant::String(type_name.clone().into()), line);
                 // Runtime type check — handled by the VM
                 let fail = self.emit_jump(Op::JumpIfFalse(0), line);
                 self.begin_scope();
@@ -219,7 +219,7 @@ impl Compiler {
                 self.emit_constant(Constant::Decimal(s.clone()), line);
             }
             ExprKind::StringLiteral(s) => {
-                self.emit_constant(Constant::String(s.clone()), line);
+                self.emit_constant(Constant::String(s.clone().into()), line);
             }
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
@@ -279,7 +279,7 @@ impl Compiler {
         for (field_name, sub_pattern) in fields {
             self.emit(Op::Dup, line);
             let _key_idx = self.add_string_constant(field_name);
-            self.emit_constant(Constant::String(field_name.clone()), line);
+            self.emit_constant(Constant::String(field_name.clone().into()), line);
             self.emit(Op::GetIndex, line);
             let mut sub_fails = self.compile_pattern(sub_pattern, line)?;
             fails.append(&mut sub_fails);

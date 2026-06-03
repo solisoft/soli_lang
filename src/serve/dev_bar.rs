@@ -23,9 +23,9 @@ const MARKER: &str = "__solidev_bar_injected";
 /// `HX-Request: true` on every fragment fetch; the live page already carries
 /// a dev bar, so the fragment must not include one too. Request header names
 /// arrive lowercased from hyper (see `extract_headers`).
-pub fn is_htmx_request(headers: &std::collections::HashMap<String, String>) -> bool {
-    headers
-        .get("hx-request")
+/// `hx_request` is the value of the `hx-request` header, if present.
+pub fn is_htmx_request(hx_request: Option<&str>) -> bool {
+    hx_request
         .map(|v| v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -1455,14 +1455,10 @@ mod tests {
 
     #[test]
     fn htmx_request_is_detected() {
-        let mut h = std::collections::HashMap::new();
-        assert!(!is_htmx_request(&h));
-        h.insert("hx-request".into(), "true".into());
-        assert!(is_htmx_request(&h));
-        h.insert("hx-request".into(), "TRUE".into());
-        assert!(is_htmx_request(&h));
-        h.insert("hx-request".into(), "false".into());
-        assert!(!is_htmx_request(&h));
+        assert!(!is_htmx_request(None));
+        assert!(is_htmx_request(Some("true")));
+        assert!(is_htmx_request(Some("TRUE")));
+        assert!(!is_htmx_request(Some("false")));
     }
 
     #[test]
@@ -1470,10 +1466,8 @@ mod tests {
         // Mirrors the gate in `handle_request`: an HX-Request fragment must
         // not be rewritten, because the host page already carries the bar.
         let html = "<html><body><p>fragment</p></body></html>";
-        let mut headers = std::collections::HashMap::new();
-        headers.insert("hx-request".into(), "true".into());
 
-        let body = if is_htmx_request(&headers) {
+        let body = if is_htmx_request(Some("true")) {
             html.to_string()
         } else {
             inject_dev_bar(html, &ctx("GET", "/users"))

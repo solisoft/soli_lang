@@ -77,7 +77,7 @@ fn value_to_bytes(value: &Value) -> Result<Vec<u8>, String> {
 
 /// Helper to convert bytes to Value (returns hex string)
 fn bytes_to_value(bytes: &[u8]) -> Value {
-    Value::String(bytes_to_hex(bytes))
+    Value::String(bytes_to_hex(bytes).into())
 }
 
 /// Perform X25519 scalar multiplication (Montgomery curve).
@@ -431,7 +431,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(do_sha256(&data)))
+            Ok(Value::String(do_sha256(&data).into()))
         })),
     );
 
@@ -448,7 +448,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(do_sha512(&data)))
+            Ok(Value::String(do_sha512(&data).into()))
         })),
     );
 
@@ -465,7 +465,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(do_md5(&data)))
+            Ok(Value::String(do_md5(&data).into()))
         })),
     );
 
@@ -492,7 +492,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let result = do_hmac_sha256(&message, &key)?;
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         })),
     );
 
@@ -540,7 +540,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let hash = do_argon2_hash(&password)?;
-            Ok(Value::String(hash))
+            Ok(Value::String(hash.into()))
         })),
     );
 
@@ -592,7 +592,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     }
                 };
                 let hash = do_argon2_hash(&password)?;
-                Ok(Value::String(hash))
+                Ok(Value::String(hash.into()))
             },
         )),
     );
@@ -637,8 +637,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             |_args| {
                 let (private, public) = do_x25519_keypair();
                 Ok(hash_from_pairs([
-                    ("private".to_string(), Value::String(private)),
-                    ("public".to_string(), Value::String(public)),
+                    ("private".to_string(), Value::String(private.into())),
+                    ("public".to_string(), Value::String(public.into())),
                 ]))
             },
         )),
@@ -723,8 +723,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             |_args| {
                 let (private, public) = do_ed25519_keypair();
                 Ok(hash_from_pairs([
-                    ("private".to_string(), Value::String(private)),
-                    ("public".to_string(), Value::String(public)),
+                    ("private".to_string(), Value::String(private.into())),
+                    ("public".to_string(), Value::String(public.into())),
                 ]))
             },
         )),
@@ -791,7 +791,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 30
             };
             let code = do_totp_generate(&secret, time, period)?;
-            Ok(Value::String(code))
+            Ok(Value::String(code.into()))
         })),
     );
 
@@ -952,7 +952,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 uri.push_str(&urlencoding::encode(i));
             }
 
-            Ok(Value::String(uri))
+            Ok(Value::String(uri.into()))
         })),
     );
 
@@ -965,7 +965,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             let modulus = value_to_octets(&args[2], "Crypto.modexp() modulus")?;
             let result =
                 do_modexp(&base, &exp, &modulus).map_err(|e| format!("Crypto.modexp(): {}", e))?;
-            Ok(Value::String(bytes_to_hex(&result)))
+            Ok(Value::String(bytes_to_hex(&result).into()))
         })),
     );
 
@@ -1016,7 +1016,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
             };
             let em = do_pkcs1_pad(&data, key_size, block_type)
                 .map_err(|e| format!("Crypto.pkcs1_pad(): {}", e))?;
-            Ok(Value::String(bytes_to_hex(&em)))
+            Ok(Value::String(bytes_to_hex(&em).into()))
         })),
     );
 
@@ -1026,7 +1026,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         Rc::new(NativeFunction::new("Crypto.pkcs1_unpad", Some(1), |args| {
             let em = value_to_octets(&args[0], "Crypto.pkcs1_unpad() encoded message")?;
             let data = do_pkcs1_unpad(&em).map_err(|e| format!("Crypto.pkcs1_unpad(): {}", e))?;
-            Ok(Value::String(bytes_to_hex(&data)))
+            Ok(Value::String(bytes_to_hex(&data).into()))
         })),
     );
 
@@ -1063,7 +1063,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(do_sha256(&data)))
+            Ok(Value::String(do_sha256(&data).into()))
         })),
     );
 
@@ -1080,7 +1080,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(do_sha512(&data)))
+            Ok(Value::String(do_sha512(&data).into()))
         })),
     );
 
@@ -1092,7 +1092,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 Value::String(s) => s.clone(),
                 other => return Err(format!("md5() expects string, got {}", other.type_name())),
             };
-            Ok(Value::String(do_md5(&data)))
+            Ok(Value::String(do_md5(&data).into()))
         })),
     );
 
@@ -1119,7 +1119,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let result = do_hmac_sha256(&message, &key)?;
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         })),
     );
 
@@ -1163,7 +1163,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let hash = do_argon2_hash(&password)?;
-            Ok(Value::String(hash))
+            Ok(Value::String(hash.into()))
         })),
     );
 
@@ -1208,7 +1208,7 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                 }
             };
             let hash = do_argon2_hash(&password)?;
-            Ok(Value::String(hash))
+            Ok(Value::String(hash.into()))
         })),
     );
 
@@ -1245,8 +1245,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("x25519_keypair", Some(0), |_args| {
             let (private, public) = do_x25519_keypair();
             Ok(hash_from_pairs([
-                ("private".to_string(), Value::String(private)),
-                ("public".to_string(), Value::String(public)),
+                ("private".to_string(), Value::String(private.into())),
+                ("public".to_string(), Value::String(public.into())),
             ]))
         })),
     );
@@ -1363,8 +1363,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("ed25519_keypair", Some(0), |_args| {
             let (private, public) = do_ed25519_keypair();
             Ok(hash_from_pairs([
-                ("private".to_string(), Value::String(private)),
-                ("public".to_string(), Value::String(public)),
+                ("private".to_string(), Value::String(private.into())),
+                ("public".to_string(), Value::String(public.into())),
             ]))
         })),
     );
@@ -1495,7 +1495,7 @@ mod tests {
     fn totp_generate_rejects_zero_period() {
         let f = crypto_static("totp_generate");
         let err = (f.func)(vec![
-            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
             Value::Int(0),
         ])
@@ -1509,7 +1509,7 @@ mod tests {
         // period value, producing wildly wrong codes silently.
         let f = crypto_static("totp_generate");
         let err = (f.func)(vec![
-            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
             Value::Int(-30),
         ])
@@ -1523,7 +1523,7 @@ mod tests {
         // unchanged.
         let f = crypto_static("totp_generate");
         let result = (f.func)(vec![
-            Value::String("JBSWY3DPEHPK3PXP".to_string()),
+            Value::String("JBSWY3DPEHPK3PXP".into()),
             Value::Int(1_700_000_000),
         ])
         .expect("default 30s period must still produce a code");
@@ -1537,8 +1537,8 @@ mod tests {
     fn totp_verify_rejects_zero_period() {
         let f = crypto_static("totp_verify");
         let err = (f.func)(vec![
-            Value::String("JBSWY3DPEHPK3PXP".to_string()),
-            Value::String("000000".to_string()),
+            Value::String("JBSWY3DPEHPK3PXP".into()),
+            Value::String("000000".into()),
             Value::Int(1_700_000_000),
             Value::Int(0),
         ])
@@ -1550,8 +1550,8 @@ mod tests {
     fn totp_verify_rejects_negative_period() {
         let f = crypto_static("totp_verify");
         let err = (f.func)(vec![
-            Value::String("JBSWY3DPEHPK3PXP".to_string()),
-            Value::String("000000".to_string()),
+            Value::String("JBSWY3DPEHPK3PXP".into()),
+            Value::String("000000".into()),
             Value::Int(1_700_000_000),
             Value::Int(-1),
         ])
@@ -1564,7 +1564,7 @@ mod tests {
         // Acceptance criterion: existing valid TOTP behaviour unchanged.
         let gen = crypto_static("totp_generate");
         let ver = crypto_static("totp_verify");
-        let secret = Value::String("JBSWY3DPEHPK3PXP".to_string());
+        let secret = Value::String("JBSWY3DPEHPK3PXP".into());
         let time = Value::Int(1_700_000_000);
         let code = match (gen.func)(vec![secret.clone(), time.clone()]).unwrap() {
             Value::String(s) => s,
@@ -1650,7 +1650,7 @@ mod tests {
 
     #[test]
     fn value_to_octets_treats_string_as_hex() {
-        let v = Value::String("0x00ff10".to_string());
+        let v = Value::String("0x00ff10".into());
         assert_eq!(value_to_octets(&v, "test").unwrap(), vec![0x00, 0xff, 0x10]);
     }
 }

@@ -210,7 +210,7 @@ fn with_conn<R>(
 // ---------------------------------------------------------------------------
 
 fn opt_str(s: Option<&str>) -> Value {
-    s.map(|s| Value::String(s.to_string()))
+    s.map(|s| Value::String(s.to_string().into()))
         .unwrap_or(Value::Null)
 }
 
@@ -249,23 +249,23 @@ fn parse_message(raw: &str, msg_id: i64) -> Value {
         Some(msg) => {
             let date = msg
                 .date()
-                .map(|d| Value::String(d.to_rfc3339()))
+                .map(|d| Value::String(d.to_rfc3339().into()))
                 .unwrap_or(Value::Null);
             let text_body = msg
                 .body_text(0)
-                .map(|c| Value::String(c.into_owned()))
+                .map(|c| Value::String(c.into_owned().into()))
                 .unwrap_or(Value::Null);
             let html_body = msg
                 .body_html(0)
-                .map(|c| Value::String(c.into_owned()))
+                .map(|c| Value::String(c.into_owned().into()))
                 .unwrap_or(Value::Null);
             let mut atts = Vec::new();
             for part in msg.attachments() {
                 let content_type = part
                     .content_type()
                     .map(|ct| match ct.subtype() {
-                        Some(sub) => Value::String(format!("{}/{}", ct.ctype(), sub)),
-                        None => Value::String(ct.ctype().to_string()),
+                        Some(sub) => Value::String(format!("{}/{}", ct.ctype(), sub).into()),
+                        None => Value::String(ct.ctype().to_string().into()),
                     })
                     .unwrap_or(Value::Null);
                 atts.push(hash_from_pairs([
@@ -305,7 +305,7 @@ fn parse_message(raw: &str, msg_id: i64) -> Value {
         ("text_body".to_string(), text_body),
         ("html_body".to_string(), html_body),
         ("attachments".to_string(), attachments),
-        ("raw".to_string(), Value::String(raw.to_string())),
+        ("raw".to_string(), Value::String(raw.to_string().into())),
     ])
 }
 
@@ -322,7 +322,7 @@ fn as_string(v: &Value, field: &str) -> Result<String, String> {
                     "Pop3.new() {field} must not contain CR/LF characters"
                 ))
             } else {
-                Ok(s.clone())
+                Ok(s.clone().to_string())
             }
         }
         other => Err(format!(
@@ -349,13 +349,13 @@ fn pop3_new(class: Rc<Class>, args: Vec<Value>) -> Result<Value, String> {
         None | Some(Value::Null) => {}
         Some(Value::Hash(opts)) => {
             let opts = opts.borrow();
-            if let Some(Value::Int(p)) = opts.get(&HashKey::String("port".to_string())) {
+            if let Some(Value::Int(p)) = opts.get(&HashKey::String("port".into())) {
                 if *p < 1 || *p > 65535 {
                     return Err(format!("Pop3.new() opts.port {p} out of range 1..65535"));
                 }
                 port = *p as u16;
             }
-            if let Some(Value::Bool(b)) = opts.get(&HashKey::String("tls".to_string())) {
+            if let Some(Value::Bool(b)) = opts.get(&HashKey::String("tls".into())) {
                 use_tls = *b;
             }
         }
@@ -593,27 +593,27 @@ mod tests {
         };
         let h = h.borrow();
         assert!(matches!(
-            h.get(&HashKey::String("subject".to_string())),
-            Some(Value::String(s)) if s == "Hello"
+            h.get(&HashKey::String("subject".into())),
+            Some(Value::String(s)) if **s == *"Hello"
         ));
         assert!(matches!(
-            h.get(&HashKey::String("id".to_string())),
+            h.get(&HashKey::String("id".into())),
             Some(Value::Int(1))
         ));
         // from is a {name, address} hash
-        match h.get(&HashKey::String("from".to_string())) {
+        match h.get(&HashKey::String("from".into())) {
             Some(Value::Hash(from)) => {
                 let from = from.borrow();
                 assert!(matches!(
-                    from.get(&HashKey::String("address".to_string())),
-                    Some(Value::String(a)) if a == "alice@example.com"
+                    from.get(&HashKey::String("address".into())),
+                    Some(Value::String(a)) if **a == *"alice@example.com"
                 ));
             }
             other => panic!("expected from hash, got {other:?}"),
         }
         // text body present
         assert!(matches!(
-            h.get(&HashKey::String("text_body".to_string())),
+            h.get(&HashKey::String("text_body".into())),
             Some(Value::String(s)) if s.contains("Hi there!")
         ));
     }
@@ -638,7 +638,7 @@ mod tests {
             panic!("expected hash")
         };
         let h = h.borrow();
-        match h.get(&HashKey::String("attachments".to_string())) {
+        match h.get(&HashKey::String("attachments".into())) {
             Some(Value::Array(arr)) => {
                 let arr = arr.borrow();
                 assert_eq!(arr.len(), 1);
@@ -647,8 +647,8 @@ mod tests {
                 };
                 let att = att.borrow();
                 assert!(matches!(
-                    att.get(&HashKey::String("name".to_string())),
-                    Some(Value::String(n)) if n == "data.csv"
+                    att.get(&HashKey::String("name".into())),
+                    Some(Value::String(n)) if **n == *"data.csv"
                 ));
             }
             other => panic!("expected attachments array, got {other:?}"),

@@ -152,6 +152,10 @@ indexmap = "2"
 # Fast, non-cryptographic hasher for IndexMap (3-5x faster than SipHash)
 ahash = "0.8"
 
+# Cheap-clone string for Value::String: <=15 bytes inline (no heap alloc),
+# longer strings Arc-backed with O(1) clone. Send+Sync.
+ecow = { version = "0.2", features = ["serde"] }
+
 # File watching for hot reload
 notify = "7"
 

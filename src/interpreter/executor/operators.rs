@@ -215,9 +215,13 @@ impl Interpreter {
             (Value::Float(a), Value::Decimal(b)) => {
                 Ok(Value::Float(a + b.value().to_f64().unwrap_or(0.0)))
             }
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            // eco_format! writes straight into a SoliStr (inline for short
+            // results) — no intermediate String allocation + copy.
+            (Value::String(a), Value::String(b)) => {
+                Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
+            }
+            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
+            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
             _ => Err(RuntimeError::type_error(
                 format!("cannot add {} and {}", left.type_name(), right.type_name()),
                 span,

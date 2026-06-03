@@ -12,11 +12,11 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
 fn make_v4(_args: Vec<Value>) -> Result<Value, String> {
-    Ok(Value::String(Uuid::new_v4().to_string()))
+    Ok(Value::String(Uuid::new_v4().to_string().into()))
 }
 
 fn make_v7(_args: Vec<Value>) -> Result<Value, String> {
-    Ok(Value::String(Uuid::now_v7().to_string()))
+    Ok(Value::String(Uuid::now_v7().to_string().into()))
 }
 
 pub fn register_uuid_builtins(env: &mut Environment) {

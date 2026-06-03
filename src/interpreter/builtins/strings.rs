@@ -29,7 +29,7 @@ pub fn register_string_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::Bool(s.starts_with(prefix.as_str())))
+            Ok(Value::Bool(s.starts_with(prefix.as_ref())))
         })),
     );
 
@@ -55,7 +55,7 @@ pub fn register_string_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::Bool(s.ends_with(suffix.as_str())))
+            Ok(Value::Bool(s.ends_with(suffix.as_ref())))
         })),
     );
 
@@ -90,7 +90,7 @@ pub fn register_string_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(s.replace(old.as_str(), new.as_str())))
+            Ok(Value::String(s.replace(old.as_ref(), new.as_ref())))
         })),
     );
 
@@ -116,7 +116,7 @@ pub fn register_string_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::Bool(s.contains(substr.as_str())))
+            Ok(Value::Bool(s.contains(substr.as_ref())))
         })),
     );
 }

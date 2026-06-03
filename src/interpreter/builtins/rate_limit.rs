@@ -219,23 +219,17 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 store.status(&key, limit, Duration::from_secs(window));
 
             let mut result: HashPairs = HashPairs::default();
-            result.insert(HashKey::String("allowed".to_string()), Value::Bool(allowed));
+            result.insert(HashKey::String("allowed".into()), Value::Bool(allowed));
             result.insert(
-                HashKey::String("remaining".to_string()),
+                HashKey::String("remaining".into()),
                 Value::Int(remaining as i64),
             );
             result.insert(
-                HashKey::String("reset_in".to_string()),
+                HashKey::String("reset_in".into()),
                 Value::Int(reset.as_secs() as i64),
             );
-            result.insert(
-                HashKey::String("limit".to_string()),
-                Value::Int(limit as i64),
-            );
-            result.insert(
-                HashKey::String("window".to_string()),
-                Value::Int(window as i64),
-            );
+            result.insert(HashKey::String("limit".into()), Value::Int(limit as i64));
+            result.insert(HashKey::String("window".into()), Value::Int(window as i64));
 
             Ok(Value::Hash(Rc::new(RefCell::new(result))))
         })),
@@ -299,16 +293,16 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
 
                 let mut headers: HashPairs = HashPairs::default();
                 headers.insert(
-                    HashKey::String("X-RateLimit-Limit".to_string()),
-                    Value::String(limit.to_string()),
+                    HashKey::String("X-RateLimit-Limit".into()),
+                    Value::String(limit.to_string().into()),
                 );
                 headers.insert(
-                    HashKey::String("X-RateLimit-Remaining".to_string()),
-                    Value::String(remaining.to_string()),
+                    HashKey::String("X-RateLimit-Remaining".into()),
+                    Value::String(remaining.to_string().into()),
                 );
                 headers.insert(
-                    HashKey::String("X-RateLimit-Reset".to_string()),
-                    Value::String(reset.to_string()),
+                    HashKey::String("X-RateLimit-Reset".into()),
+                    Value::String(reset.to_string().into()),
                 );
 
                 Ok(Value::Hash(Rc::new(RefCell::new(headers))))
@@ -331,7 +325,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
             let mut store = RATE_LIMIT_STORE
                 .write()
                 .map_err(|e| format!("Rate limiter error: {}", e))?;
-            store.buckets.remove(&key);
+            store.buckets.remove(&*key);
             Ok(Value::Bool(true))
         })),
     );
@@ -425,7 +419,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 let key = format!("ip:{}", ip);
 
                 let mut inst = Instance::new(Rc::clone(&class_for_from_ip));
-                inst.set("key".to_string(), Value::String(key));
+                inst.set("key".to_string(), Value::String(key.into()));
                 inst.set("limit".to_string(), Value::Int(limit as i64));
                 inst.set("window".to_string(), Value::Int(window as i64));
                 inst.set("reset".to_string(), Value::Int(0));
@@ -436,10 +430,13 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
 
     let deprecated_function = |name: String| {
         Value::NativeFunction(NativeFunction::new(name.clone(), Some(0), move |_args| {
-            Ok(Value::String(format!(
-                "{}() has been removed. Use RateLimiter class instead.",
-                name
-            )))
+            Ok(Value::String(
+                format!(
+                    "{}() has been removed. Use RateLimiter class instead.",
+                    name
+                )
+                .into(),
+            ))
         }))
     };
 
@@ -504,17 +501,17 @@ fn extract_client_ip(req: &Value) -> Option<String> {
     if super::trust_proxy::is_trust_proxy_enabled() {
         if let Some((_, Value::Hash(headers))) = borrowed
             .iter()
-            .find(|(k, _)| matches!(k, HashKey::String(s) if s == "headers"))
+            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"headers"))
         {
             let h_borrowed = headers.borrow();
             let xff = h_borrowed
                 .iter()
                 .find(|(k, _)| {
-                    matches!(k, HashKey::String(s) if s == "x-forwarded-for" || s == "X-Forwarded-For")
+                    matches!(k, HashKey::String(s) if **s == *"x-forwarded-for" || **s == *"X-Forwarded-For")
                 })
                 .and_then(|(_, v)| {
                     if let Value::String(s) = v {
-                        Some(s.as_str())
+                        Some(s.as_ref())
                     } else {
                         None
                     }
@@ -531,7 +528,7 @@ fn extract_client_ip(req: &Value) -> Option<String> {
 
     borrowed
         .iter()
-        .find(|(k, _)| matches!(k, HashKey::String(s) if s == "remote_addr"))
+        .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *"remote_addr"))
         .and_then(|(_, v)| {
             if let Value::String(s) = v {
                 Some(s.clone())
@@ -539,6 +536,7 @@ fn extract_client_ip(req: &Value) -> Option<String> {
                 None
             }
         })
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -559,18 +557,18 @@ mod tests {
             if let Some(xff) = xff {
                 let mut headers: HashPairs = HashPairs::default();
                 headers.insert(
-                    HashKey::String("x-forwarded-for".to_string()),
-                    Value::String(xff.to_string()),
+                    HashKey::String("x-forwarded-for".into()),
+                    Value::String(xff.to_string().into()),
                 );
                 req.insert(
-                    HashKey::String("headers".to_string()),
+                    HashKey::String("headers".into()),
                     Value::Hash(Rc::new(RefCell::new(headers))),
                 );
             }
             if let Some(remote) = remote {
                 req.insert(
-                    HashKey::String("remote_addr".to_string()),
-                    Value::String(remote.to_string()),
+                    HashKey::String("remote_addr".into()),
+                    Value::String(remote.to_string().into()),
                 );
             }
             Value::Hash(Rc::new(RefCell::new(req)))

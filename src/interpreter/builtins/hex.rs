@@ -52,7 +52,7 @@ pub fn register_hex_class(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(bytes_to_hex(&bytes)))
+            Ok(Value::String(bytes_to_hex(&bytes).into()))
         })),
     );
 
@@ -125,8 +125,8 @@ mod tests {
             Value::Int(16),
         ])));
         let hex = call(&env, "encode", bytes).unwrap();
-        assert_eq!(hex, Value::String("00ff10".to_string()));
-        let back = call(&env, "decode", Value::String("0x00ff10".to_string())).unwrap();
+        assert_eq!(hex, Value::String("00ff10".into()));
+        let back = call(&env, "decode", Value::String("0x00ff10".into())).unwrap();
         match back {
             Value::Array(a) => {
                 let v: Vec<i64> = a
@@ -147,6 +147,6 @@ mod tests {
     fn decode_rejects_odd_length() {
         let mut env = Environment::new();
         register_hex_class(&mut env);
-        assert!(call(&env, "decode", Value::String("abc".to_string())).is_err());
+        assert!(call(&env, "decode", Value::String("abc".into())).is_err());
     }
 }

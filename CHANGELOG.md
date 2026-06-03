@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(value):** Soli strings now use `SoliStr = ecow::EcoString` in `Value::String`/`Value::Symbol`/`HashKey`/VM constants — strings ≤15 bytes are stored inline (constructing them no longer touches the heap) and longer strings are refcounted with O(1) clone. Passing/reading large strings (rendered partials, request bodies, template data) no longer deep-copies: ~5× faster on a 64KB-string passing benchmark; ~+17% server throughput on realistic browser-header requests
+* **perf(serve):** single-pass header materialization — hyper's `HeaderMap` travels to the worker as-is and is converted to the `req["headers"]` hash exactly once (was: per-header owned copy on the async side plus a second copy on the worker)
+* **perf(serve):** the Cookie header is parsed once per request (was twice: session-ID extraction and `req["cookies"]` each re-scanned it); SEC-077 `__Host-session_id` precedence preserved
+* **perf(serve):** the `params` global reuses the `all` hash returned by the request-hash builder instead of re-probing the request hash by string key
+* **perf(vm):** for-in over strings iterates by byte offset (no upfront `Vec<char>`), for-in over hashes indexes the live IndexMap (no upfront key-vector clone)
+* **perf(interpreter):** for-in over arrays uses live bounds-checked indexing instead of snapshot-cloning the whole array; `for i in a..b` iterates the range directly instead of materializing it into an array first. **Behavior change:** mutation of the iterated array inside the loop body is now observed live in both engines (matching the VM, Ruby-style)
+
 ### Features
 
 * **feat(vm):** list/hash comprehensions now execute on the bytecode VM at clean stack positions (a new compile-time stack-height gate) instead of always falling back to the interpreter; comprehensions used as a sub-expression still fall back

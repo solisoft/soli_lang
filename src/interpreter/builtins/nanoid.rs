@@ -64,7 +64,7 @@ fn make_nanoid(args: Vec<Value>) -> Result<Value, String> {
         Some(custom) => format(rngs::default, &custom, size),
         None => format(rngs::default, &alphabet::SAFE, size),
     };
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 pub fn register_nanoid_builtins(env: &mut Environment) {
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn rejects_empty_alphabet() {
-        assert!(make_nanoid(vec![Value::Int(8), Value::String(String::new())]).is_err());
+        assert!(make_nanoid(vec![Value::Int(8), Value::String(String::new().into())]).is_err());
     }
 
     #[test]

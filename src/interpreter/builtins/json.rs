@@ -34,7 +34,7 @@ pub fn register_json_class(env: &mut Environment) {
         Rc::new(NativeFunction::new("JSON.stringify", Some(1), |args| {
             let json_str = stringify_to_string(&args[0])
                 .map_err(|e| format!("JSON serialization error: {}", e))?;
-            Ok(Value::String(json_str))
+            Ok(Value::String(json_str.into()))
         })),
     );
 
@@ -61,7 +61,7 @@ pub fn register_json_class(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("json_stringify", Some(1), |args| {
             let json_str = stringify_to_string(&args[0])
                 .map_err(|e| format!("JSON serialization error: {}", e))?;
-            Ok(Value::String(json_str))
+            Ok(Value::String(json_str.into()))
         })),
     );
 

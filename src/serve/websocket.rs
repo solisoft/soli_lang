@@ -23,7 +23,7 @@ use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, Value};
 /// can return `{"broadcast": {...}}` without manually serializing.
 fn action_payload_to_string(value: &Value) -> Option<String> {
     match value {
-        Value::String(s) => Some(s.clone()),
+        Value::String(s) => Some(s.clone().to_string()),
         other => stringify_to_string(other).ok(),
     }
 }
@@ -593,25 +593,25 @@ impl WebSocketEvent {
     pub fn to_value(&self) -> Value {
         let mut result: HashPairs = HashPairs::default();
         result.insert(
-            HashKey::String("type".to_string()),
-            Value::String(self.event_type.clone()),
+            HashKey::String("type".into()),
+            Value::String(self.event_type.clone().into()),
         );
         result.insert(
-            HashKey::String("connection_id".to_string()),
-            Value::String(self.connection_id.clone()),
+            HashKey::String("connection_id".into()),
+            Value::String(self.connection_id.clone().into()),
         );
 
         if let Some(ref msg) = self.message {
             result.insert(
-                HashKey::String("message".to_string()),
-                Value::String(msg.clone()),
+                HashKey::String("message".into()),
+                Value::String(msg.clone().into()),
             );
         }
 
         if let Some(ref channel) = self.channel {
             result.insert(
-                HashKey::String("channel".to_string()),
-                Value::String(channel.clone()),
+                HashKey::String("channel".into()),
+                Value::String(channel.clone().into()),
             );
         }
 
@@ -671,15 +671,15 @@ impl WebSocketHandlerAction {
         if let Value::Hash(hash) = value {
             for (k, v) in hash.borrow().iter() {
                 if let HashKey::String(key) = k {
-                    match key.as_str() {
+                    match key.as_ref() {
                         "join" => {
                             if let Value::String(s) = v {
-                                action.join = Some(s.clone());
+                                action.join = Some(s.clone().to_string());
                             }
                         }
                         "leave" => {
                             if let Value::String(s) = v {
-                                action.leave = Some(s.clone());
+                                action.leave = Some(s.clone().to_string());
                             }
                         }
                         "send" => {
@@ -693,7 +693,7 @@ impl WebSocketHandlerAction {
                         }
                         "close" => {
                             if let Value::String(s) = v {
-                                action.close = Some(s.clone());
+                                action.close = Some(s.clone().to_string());
                             }
                         }
                         "track" => {
@@ -704,7 +704,8 @@ impl WebSocketHandlerAction {
                                     if let (HashKey::String(track_key), Value::String(track_val)) =
                                         (tk, tv)
                                     {
-                                        track_map.insert(track_key.clone(), track_val.clone());
+                                        track_map
+                                            .insert(track_key.to_string(), track_val.to_string());
                                     }
                                 }
                                 if !track_map.is_empty() {
@@ -715,7 +716,7 @@ impl WebSocketHandlerAction {
                         "untrack" => {
                             // Parse untrack: "channel_name"
                             if let Value::String(s) = v {
-                                action.untrack = Some(s.clone());
+                                action.untrack = Some(s.clone().to_string());
                             }
                         }
                         "set_presence" => {
@@ -724,7 +725,7 @@ impl WebSocketHandlerAction {
                                 let mut presence_map = HashMap::new();
                                 for (pk, pv) in presence_hash.borrow().iter() {
                                     if let (HashKey::String(pkey), Value::String(pval)) = (pk, pv) {
-                                        presence_map.insert(pkey.clone(), pval.clone());
+                                        presence_map.insert(pkey.to_string(), pval.to_string());
                                     }
                                 }
                                 if !presence_map.is_empty() {
@@ -1284,8 +1285,8 @@ mod tests {
     async fn test_handler_action_from_value_join() {
         let mut hash: HashPairs = HashPairs::default();
         hash.insert(
-            HashKey::String("join".to_string()),
-            Value::String("room:lobby".to_string()),
+            HashKey::String("join".into()),
+            Value::String("room:lobby".into()),
         );
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
 
@@ -1298,8 +1299,8 @@ mod tests {
     async fn test_handler_action_from_value_leave() {
         let mut hash: HashPairs = HashPairs::default();
         hash.insert(
-            HashKey::String("leave".to_string()),
-            Value::String("room:lobby".to_string()),
+            HashKey::String("leave".into()),
+            Value::String("room:lobby".into()),
         );
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
 
@@ -1311,8 +1312,8 @@ mod tests {
     async fn test_handler_action_from_value_broadcast_room() {
         let mut hash: HashPairs = HashPairs::default();
         hash.insert(
-            HashKey::String("broadcast_room".to_string()),
-            Value::String(r#"{"msg":"hello"}"#.to_string()),
+            HashKey::String("broadcast_room".into()),
+            Value::String(r#"{"msg":"hello"}"#.to_string().into()),
         );
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
 
@@ -1327,21 +1328,21 @@ mod tests {
     async fn test_handler_action_from_value_track() {
         let mut track_hash: HashPairs = HashPairs::default();
         track_hash.insert(
-            HashKey::String("channel".to_string()),
-            Value::String("room:lobby".to_string()),
+            HashKey::String("channel".into()),
+            Value::String("room:lobby".into()),
         );
         track_hash.insert(
-            HashKey::String("user_id".to_string()),
-            Value::String("user_123".to_string()),
+            HashKey::String("user_id".into()),
+            Value::String("user_123".into()),
         );
         track_hash.insert(
-            HashKey::String("name".to_string()),
-            Value::String("Alice".to_string()),
+            HashKey::String("name".into()),
+            Value::String("Alice".into()),
         );
 
         let mut hash: HashPairs = HashPairs::default();
         hash.insert(
-            HashKey::String("track".to_string()),
+            HashKey::String("track".into()),
             Value::Hash(Rc::new(RefCell::new(track_hash))),
         );
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
@@ -1358,12 +1359,12 @@ mod tests {
     async fn test_handler_action_from_value_multiple_actions() {
         let mut hash: HashPairs = HashPairs::default();
         hash.insert(
-            HashKey::String("join".to_string()),
-            Value::String("room:lobby".to_string()),
+            HashKey::String("join".into()),
+            Value::String("room:lobby".into()),
         );
         hash.insert(
-            HashKey::String("send".to_string()),
-            Value::String("Welcome!".to_string()),
+            HashKey::String("send".into()),
+            Value::String("Welcome!".into()),
         );
         let value = Value::Hash(Rc::new(RefCell::new(hash)));
 

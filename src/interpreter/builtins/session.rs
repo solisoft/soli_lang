@@ -620,6 +620,47 @@ pub fn parse_cookies_from_header(cookie_header: Option<&str>) -> HashMap<String,
     cookies
 }
 
+/// Parse a Cookie header directly into Soli `HashPairs`, ready to drop into
+/// the request hash. Same parsing rules as `parse_cookies_from_header`
+/// (split on `;`, trim name and value, last duplicate wins) without the
+/// intermediate `HashMap` — the request path parses the header exactly once.
+pub fn parse_cookie_pairs(cookie_header: Option<&str>) -> HashPairs {
+    use crate::interpreter::value::HashKey;
+    let mut pairs = HashPairs::default();
+    let header = match cookie_header {
+        Some(h) => h,
+        None => return pairs,
+    };
+    for cookie in header.split(';') {
+        let cookie = cookie.trim();
+        if cookie.is_empty() {
+            continue;
+        }
+        if let Some(pos) = cookie.find('=') {
+            let name = cookie[..pos].trim();
+            let value = cookie[pos + 1..].trim();
+            if !name.is_empty() {
+                pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
+            }
+        }
+    }
+    pairs
+}
+
+/// Derive the session ID from an already-parsed cookie map (the single-parse
+/// request path). SEC-077 precedence preserved: `__Host-session_id` wins over
+/// plain `session_id` when both are present.
+pub fn session_id_from_cookie_pairs(cookies: &HashPairs) -> Option<String> {
+    use crate::interpreter::value::StrKey;
+    let read = |name: &str| match cookies.get(&StrKey(name)) {
+        Some(Value::String(s)) => Some(s.clone()),
+        _ => None,
+    };
+    read("__Host-session_id")
+        .or_else(|| read("session_id"))
+        .map(|s| s.to_string())
+}
+
 /// Get or create a session for the given cookie value.
 /// Returns the session ID to use (may be new if expired or invalid).
 ///
@@ -831,7 +872,7 @@ pub fn register_session_builtins(env: &mut Environment) {
         "session_id".to_string(),
         Value::NativeFunction(NativeFunction::new("session_id", Some(0), |_args| {
             Ok(get_current_session_id()
-                .map(Value::String)
+                .map(|s| Value::String(s.into()))
                 .unwrap_or(Value::Null))
         })),
     );
@@ -848,7 +889,7 @@ pub fn register_session_builtins(env: &mut Environment) {
                     None => get_current_store().create_session(),
                 };
                 set_current_session_id(Some(new_id.clone()));
-                Ok(Value::String(new_id))
+                Ok(Value::String(new_id.into()))
             },
         )),
     );
@@ -879,7 +920,9 @@ pub fn register_session_builtins(env: &mut Environment) {
     env.define(
         "session_driver".to_string(),
         Value::NativeFunction(NativeFunction::new("session_driver", Some(0), |_args| {
-            Ok(Value::String(get_current_store().driver_name().to_string()))
+            Ok(Value::String(
+                get_current_store().driver_name().to_string().into(),
+            ))
         })),
     );
 
@@ -905,7 +948,7 @@ pub fn register_session_builtins(env: &mut Environment) {
                     _ => continue,
                 };
 
-                match key.as_str() {
+                match key.as_ref() {
                     "driver" => {
                         if let Value::String(s) = v {
                             config.driver = s.parse().map_err(|e: String| e)?;
@@ -913,42 +956,42 @@ pub fn register_session_builtins(env: &mut Environment) {
                     }
                     "path" => {
                         if let Value::String(s) = v {
-                            config.path = Some(s.clone());
+                            config.path = Some(s.clone().to_string());
                         }
                     }
                     "solidb_host" | "solidb_addr" => {
                         if let Value::String(s) = v {
-                            config.solidb_host = Some(s.clone());
+                            config.solidb_host = Some(s.clone().to_string());
                         }
                     }
                     "solidb_database" | "database" => {
                         if let Value::String(s) = v {
-                            config.solidb_database = Some(s.clone());
+                            config.solidb_database = Some(s.clone().to_string());
                         }
                     }
                     "solidb_collection" | "collection" => {
                         if let Value::String(s) = v {
-                            config.solidb_collection = Some(s.clone());
+                            config.solidb_collection = Some(s.clone().to_string());
                         }
                     }
                     "solidb_api_key" | "api_key" => {
                         if let Value::String(s) = v {
-                            config.solidb_api_key = Some(s.clone());
+                            config.solidb_api_key = Some(s.clone().to_string());
                         }
                     }
                     "solidb_username" | "username" => {
                         if let Value::String(s) = v {
-                            config.solidb_username = Some(s.clone());
+                            config.solidb_username = Some(s.clone().to_string());
                         }
                     }
                     "solidb_password" | "password" => {
                         if let Value::String(s) = v {
-                            config.solidb_password = Some(s.clone());
+                            config.solidb_password = Some(s.clone().to_string());
                         }
                     }
                     "solikv_host" => {
                         if let Value::String(s) = v {
-                            config.solikv_host = Some(s.clone());
+                            config.solikv_host = Some(s.clone().to_string());
                         }
                     }
                     "solikv_port" | "port" => {
@@ -958,7 +1001,7 @@ pub fn register_session_builtins(env: &mut Environment) {
                     }
                     "solikv_token" | "token" => {
                         if let Value::String(s) = v {
-                            config.solikv_token = Some(s.clone());
+                            config.solikv_token = Some(s.clone().to_string());
                         }
                     }
                     "ttl" => {
@@ -983,54 +1026,54 @@ pub fn register_session_builtins(env: &mut Environment) {
             let mut hash: HashPairs = HashPairs::default();
 
             hash.insert(
-                crate::interpreter::value::HashKey::String("driver".to_string()),
-                Value::String(config.driver.to_string()),
+                crate::interpreter::value::HashKey::String("driver".into()),
+                Value::String(config.driver.to_string().into()),
             );
 
             if let Some(ref path) = config.path {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("path".to_string()),
-                    Value::String(path.clone()),
+                    crate::interpreter::value::HashKey::String("path".into()),
+                    Value::String(path.clone().into()),
                 );
             }
             if let Some(ref host) = config.solidb_host {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solidb_host".to_string()),
-                    Value::String(host.clone()),
+                    crate::interpreter::value::HashKey::String("solidb_host".into()),
+                    Value::String(host.clone().into()),
                 );
             }
             if let Some(ref db) = config.solidb_database {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solidb_database".to_string()),
-                    Value::String(db.clone()),
+                    crate::interpreter::value::HashKey::String("solidb_database".into()),
+                    Value::String(db.clone().into()),
                 );
             }
             if let Some(ref col) = config.solidb_collection {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solidb_collection".to_string()),
-                    Value::String(col.clone()),
+                    crate::interpreter::value::HashKey::String("solidb_collection".into()),
+                    Value::String(col.clone().into()),
                 );
             }
             if let Some(ref host) = config.solikv_host {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solikv_host".to_string()),
-                    Value::String(host.clone()),
+                    crate::interpreter::value::HashKey::String("solikv_host".into()),
+                    Value::String(host.clone().into()),
                 );
             }
             if let Some(port) = config.solikv_port {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solikv_port".to_string()),
+                    crate::interpreter::value::HashKey::String("solikv_port".into()),
                     Value::Int(port as i64),
                 );
             }
             if let Some(ref token) = config.solikv_token {
                 hash.insert(
-                    crate::interpreter::value::HashKey::String("solikv_token".to_string()),
-                    Value::String(token.clone()),
+                    crate::interpreter::value::HashKey::String("solikv_token".into()),
+                    Value::String(token.clone().into()),
                 );
             }
             hash.insert(
-                crate::interpreter::value::HashKey::String("ttl".to_string()),
+                crate::interpreter::value::HashKey::String("ttl".into()),
                 Value::Int(config.ttl as i64),
             );
 
@@ -1197,7 +1240,7 @@ mod tests {
             Value::String(s) => s,
             other => panic!("expected String session id, got {other:?}"),
         };
-        assert_ne!(new_id, old_id, "regenerate must mint a new ID");
+        assert_ne!(&*new_id, old_id.as_str(), "regenerate must mint a new ID");
 
         call_fn(
             &env,
@@ -1216,7 +1259,7 @@ mod tests {
             "data must move from old ID to new ID"
         );
         assert_eq!(get_current_store().get(&new_id, "user_id"), Some(json!(42)));
-        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_str()));
+        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_ref()));
 
         let cookie = session_cookie_if_changed(
             get_current_session_id().as_deref(),
@@ -1239,7 +1282,7 @@ mod tests {
             Value::String(s) => s,
             other => panic!("expected String, got {other:?}"),
         };
-        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_str()));
+        assert_eq!(get_current_session_id().as_deref(), Some(new_id.as_ref()));
         assert!(session_cookie_if_changed(Some(&new_id), None, false).is_some());
     }
 
@@ -1560,7 +1603,7 @@ mod tests {
         let env = fresh_env();
         let result = call_fn(&env, "session_driver", vec![]).unwrap();
         match result {
-            Value::String(s) => assert_eq!(s, "in_memory"),
+            Value::String(s) => assert_eq!(s.as_str(), "in_memory"),
             other => panic!("expected String driver name, got {:?}", other),
         }
     }

@@ -59,10 +59,10 @@ pub fn match_habtm_method(class_name: &str, method_name: &str) -> Option<HabtmMe
 /// raw String key, or an Int key.
 fn extract_key(arg: &Value) -> Result<String, String> {
     match arg {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         Value::Int(n) => Ok(n.to_string()),
         Value::Instance(inst) => match inst.borrow().get("_key") {
-            Some(Value::String(s)) => Ok(s),
+            Some(Value::String(s)) => Ok(s.to_string()),
             Some(Value::Int(n)) => Ok(n.to_string()),
             Some(other) => Err(format!(
                 "instance _key has unsupported type {}",
@@ -103,7 +103,7 @@ pub fn habtm_add(
 ) -> Result<Value, String> {
     let owner_key = match inst.borrow().get("_key") {
         Some(Value::String(s)) => s,
-        Some(Value::Int(n)) => n.to_string(),
+        Some(Value::Int(n)) => n.to_string().into(),
         _ => return Err("owner instance has no _key (save the record first)".to_string()),
     };
 
@@ -138,7 +138,7 @@ pub fn habtm_remove(
 ) -> Result<Value, String> {
     let owner_key = match inst.borrow().get("_key") {
         Some(Value::String(s)) => s,
-        Some(Value::Int(n)) => n.to_string(),
+        Some(Value::Int(n)) => n.to_string().into(),
         _ => return Err("owner instance has no _key".to_string()),
     };
 
@@ -167,7 +167,10 @@ pub fn habtm_remove(
         ph = placeholders.join(", "),
     );
     let mut bind_vars = std::collections::HashMap::new();
-    bind_vars.insert("owner".to_string(), serde_json::Value::String(owner_key));
+    bind_vars.insert(
+        "owner".to_string(),
+        serde_json::Value::String(owner_key.to_string()),
+    );
     for (i, key) in related_keys.iter().enumerate() {
         bind_vars.insert(format!("k{}", i), serde_json::Value::String(key.clone()));
     }

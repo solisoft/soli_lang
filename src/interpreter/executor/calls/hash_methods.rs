@@ -40,7 +40,7 @@ impl Interpreter {
             "to_string" => self.hash_to_string(entries, arguments, span),
             "to_json" => {
                 match crate::interpreter::value::stringify_hash_entries_to_string(entries) {
-                    Ok(json) => Ok(Value::String(json)),
+                    Ok(json) => Ok(Value::String(json.into())),
                     Err(e) => Err(RuntimeError::General { message: e, span }),
                 }
             }
@@ -58,7 +58,7 @@ impl Interpreter {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let class_name = match &arguments[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -640,7 +640,7 @@ impl Interpreter {
             .iter()
             .map(|(k, v)| format!("{} => {}", k.to_value(), v))
             .collect();
-        Ok(Value::String(format!("[{}]", parts.join(", "))))
+        Ok(Value::String(format!("[{}]", parts.join(", ")).into()))
     }
 
     fn hash_keys(

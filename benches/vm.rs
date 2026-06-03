@@ -59,10 +59,9 @@ fn run_vm(source: &str) {
         solilang::interpreter::value::Value::NativeFunction(
             solilang::interpreter::value::NativeFunction::new("str", Some(1), |args| {
                 let resolved = args.into_iter().next().unwrap();
-                Ok(solilang::interpreter::value::Value::String(format!(
-                    "{}",
-                    resolved
-                )))
+                Ok(solilang::interpreter::value::Value::String(
+                    format!("{}", resolved).into(),
+                ))
             }),
         ),
     );
@@ -214,6 +213,26 @@ fn hash_ops_comparison(c: &mut Criterion) {
     group.finish();
 }
 
+fn range_iter_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("range_iter_comparison");
+    let source = load_program("range_iter");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
+fn array_iter_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("array_iter_comparison");
+    let source = load_program("array_iter");
+
+    group.bench_function("treewalk", |b| b.iter(|| run_treewalk(black_box(&source))));
+    group.bench_function("vm", |b| b.iter(|| run_vm(black_box(&source))));
+
+    group.finish();
+}
+
 fn class_ops_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("class_ops_comparison");
     let source = load_program("class_ops");
@@ -237,6 +256,8 @@ criterion_group!(
     string_ops_comparison,
     hash_ops_comparison,
     class_ops_comparison,
+    range_iter_comparison,
+    array_iter_comparison,
 );
 
 criterion_main!(benches);

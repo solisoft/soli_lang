@@ -28,7 +28,7 @@ fn set_locale(locale: String) {
 fn values_to_strings(hash: &HashPairs) -> Vec<(String, String)> {
     hash.iter()
         .filter_map(|(k, v)| match k {
-            HashKey::String(s) => Some((s.clone(), format!("{}", v))),
+            HashKey::String(s) => Some((s.to_string(), format!("{}", v))),
             _ => None,
         })
         .collect()
@@ -86,10 +86,12 @@ fn legacy_lookup_plural(
 }
 
 fn find_string(hash: &HashPairs, key: &str) -> Option<String> {
-    hash.iter().find_map(|(k, v)| match (k, v) {
-        (HashKey::String(s), Value::String(out)) if s == key => Some(out.clone()),
-        _ => None,
-    })
+    hash.iter()
+        .find_map(|(k, v)| match (k, v) {
+            (HashKey::String(s), Value::String(out)) if **s == *key => Some(out.clone()),
+            _ => None,
+        })
+        .map(|s| s.to_string())
 }
 
 /// Register the I18n class in the given environment.
@@ -100,7 +102,7 @@ pub fn register_i18n_class(env: &mut Environment) {
     i18n_static_methods.insert(
         "locale".to_string(),
         Rc::new(NativeFunction::new("I18n.locale", Some(0), |_args| {
-            Ok(Value::String(get_locale()))
+            Ok(Value::String(get_locale().into()))
         })),
     );
 
@@ -112,7 +114,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             Some(1),
             |args| match &args[0] {
                 Value::String(locale) => {
-                    set_locale(locale.clone());
+                    set_locale(locale.clone().to_string());
                     Ok(Value::String(locale.clone()))
                 }
                 other => Err(format!(
@@ -149,7 +151,7 @@ pub fn register_i18n_class(env: &mut Environment) {
 
             if args.len() > 1 {
                 match &args[1] {
-                    Value::String(s) => locale = s.clone(),
+                    Value::String(s) => locale = s.clone().to_string(),
                     Value::Null => {}
                     Value::Hash(h) => values = Some(h.borrow().clone()),
                     other => {
@@ -186,10 +188,10 @@ pub fn register_i18n_class(env: &mut Environment) {
                         .as_ref()
                         .and_then(|t| legacy_lookup(t, &locale, &key))
                 })
-                .unwrap_or_else(|| key.clone());
+                .unwrap_or_else(|| key.clone().to_string());
 
             let interp = values.as_ref().map(values_to_strings).unwrap_or_default();
-            Ok(Value::String(helpers::interpolate(&raw, &interp)))
+            Ok(Value::String(helpers::interpolate(&raw, &interp).into()))
         })),
     );
 
@@ -221,7 +223,7 @@ pub fn register_i18n_class(env: &mut Environment) {
 
             if args.len() > 2 {
                 match &args[2] {
-                    Value::String(s) => locale = s.clone(),
+                    Value::String(s) => locale = s.clone().to_string(),
                     Value::Null => {}
                     Value::Hash(h) => values = Some(h.borrow().clone()),
                     other => {
@@ -258,13 +260,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                         .as_ref()
                         .and_then(|t| legacy_lookup_plural(t, &locale, &key, n))
                 })
-                .unwrap_or_else(|| key.clone());
+                .unwrap_or_else(|| key.clone().to_string());
 
             let mut interp = values.as_ref().map(values_to_strings).unwrap_or_default();
             if !interp.iter().any(|(k, _)| k == "count") {
                 interp.push(("count".to_string(), n.to_string()));
             }
-            Ok(Value::String(helpers::interpolate(&raw, &interp)))
+            Ok(Value::String(helpers::interpolate(&raw, &interp).into()))
         })),
     );
 
@@ -281,16 +283,16 @@ pub fn register_i18n_class(env: &mut Environment) {
             let locale = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    Value::Null => get_locale(),
+                    Value::Null => get_locale().into(),
                     _ => {
                         return Err("I18n.format_number locale must be a string or null".to_string())
                     }
                 }
             } else {
-                get_locale()
+                get_locale().into()
             };
 
-            let formatted = match locale.as_str() {
+            let formatted = match locale.as_ref() {
                 "fr" | "de" | "es" | "it" => {
                     // Use comma as decimal separator
                     format!("{}", n).replace('.', ",")
@@ -300,7 +302,7 @@ pub fn register_i18n_class(env: &mut Environment) {
                     format!("{}", n)
                 }
             };
-            Ok(Value::String(formatted))
+            Ok(Value::String(formatted.into()))
         })),
     );
 
@@ -322,7 +324,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             let locale = if args.len() > 2 {
                 match &args[2] {
                     Value::String(s) => s.clone(),
-                    Value::Null => get_locale(),
+                    Value::Null => get_locale().into(),
                     _ => {
                         return Err(
                             "I18n.format_currency locale must be a string or null".to_string()
@@ -330,10 +332,10 @@ pub fn register_i18n_class(env: &mut Environment) {
                     }
                 }
             } else {
-                get_locale()
+                get_locale().into()
             };
 
-            let symbol = match currency.as_str() {
+            let symbol = match currency.as_ref() {
                 "USD" => "$",
                 "EUR" => "€",
                 "GBP" => "£",
@@ -341,7 +343,7 @@ pub fn register_i18n_class(env: &mut Environment) {
                 _ => &currency,
             };
 
-            let (decimal_sep, thousands_sep, symbol_after) = match locale.as_str() {
+            let (decimal_sep, thousands_sep, symbol_after) = match locale.as_ref() {
                 "fr" | "de" | "es" | "it" => (",", ".", true),
                 _ => (".", ",", false), // default for "en" and others
             };
@@ -376,7 +378,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             } else {
                 format!("{}{}", symbol, number)
             };
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         })),
     );
 
@@ -392,11 +394,11 @@ pub fn register_i18n_class(env: &mut Environment) {
             let locale = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    Value::Null => get_locale(),
+                    Value::Null => get_locale().into(),
                     _ => return Err("I18n.format_date locale must be a string or null".to_string()),
                 }
             } else {
-                get_locale()
+                get_locale().into()
             };
 
             let dt = match chrono::DateTime::from_timestamp(ts, 0) {
@@ -406,7 +408,7 @@ pub fn register_i18n_class(env: &mut Environment) {
             let local = dt.with_timezone(&chrono::Local);
 
             use chrono::Datelike;
-            let formatted = match locale.as_str() {
+            let formatted = match locale.as_ref() {
                 "fr" => format!(
                     "{:02}/{:02}/{:04}",
                     local.day(),
@@ -432,7 +434,7 @@ pub fn register_i18n_class(env: &mut Environment) {
                     local.day()
                 ),
             };
-            Ok(Value::String(formatted))
+            Ok(Value::String(formatted.into()))
         })),
     );
 

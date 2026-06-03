@@ -304,7 +304,7 @@ impl Compiler {
 
                 if let Some(ref type_name) = clause.type_name {
                     // Typed catch: check if exception matches the type
-                    let name_idx = self.add_constant(Constant::String(type_name.clone()));
+                    let name_idx = self.add_constant(Constant::String(type_name.clone().into()));
                     let catch_match_idx = self.emit(Op::CatchMatch(name_idx, 0), line);
                     next_clause_patches.push(catch_match_idx);
                 }

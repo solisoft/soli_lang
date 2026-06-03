@@ -114,7 +114,7 @@ fn callback_for(handler: &str) -> String {
 
 fn arg_string(args: &[Value], idx: usize, fn_name: &str) -> Result<String, String> {
     match args.get(idx) {
-        Some(Value::String(s)) => Ok(s.clone()),
+        Some(Value::String(s)) => Ok(s.clone().to_string()),
         Some(other) => Err(format!(
             "{}() expects string at position {}, got {}",
             fn_name,
@@ -274,14 +274,14 @@ fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
     let payload = arg_hash_as_json(&args, 1)?;
     let queue = match args.get(2) {
         Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone(),
+        _ => jobs_config().default_queue.clone().into(),
     };
     let client = make_client()?;
     let callback = callback_for(&handler);
     let id = client
         .enqueue_job(&queue, &handler, payload, &callback, None)
         .map_err(|e| format!("Job.enqueue failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
@@ -296,7 +296,7 @@ fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     let payload = arg_hash_as_json(&args, 2)?;
     let queue = match args.get(3) {
         Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone(),
+        _ => jobs_config().default_queue.clone().into(),
     };
     let when = iso_now_plus_seconds(secs);
     let client = make_client()?;
@@ -304,7 +304,7 @@ fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     let id = client
         .enqueue_job(&queue, &handler, payload, &callback, Some(&when))
         .map_err(|e| format!("Job.enqueue_in failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn job_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
@@ -319,14 +319,14 @@ fn job_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
     let payload = arg_hash_as_json(&args, 2)?;
     let queue = match args.get(3) {
         Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone(),
+        _ => jobs_config().default_queue.clone().into(),
     };
     let client = make_client()?;
     let callback = callback_for(&handler);
     let id = client
         .enqueue_job(&queue, &handler, payload, &callback, Some(&when))
         .map_err(|e| format!("Job.enqueue_at failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn job_cancel(args: Vec<Value>) -> Result<Value, String> {
@@ -341,7 +341,7 @@ fn job_cancel(args: Vec<Value>) -> Result<Value, String> {
 fn job_list(args: Vec<Value>) -> Result<Value, String> {
     let queue = match args.first() {
         Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone(),
+        _ => jobs_config().default_queue.clone().into(),
     };
     let client = make_client()?;
     let jobs = client
@@ -419,7 +419,7 @@ fn webhook_enqueue(args: Vec<Value>) -> Result<Value, String> {
     let id = client
         .enqueue_webhook(&queue, &url, payload, Some(opts_json))
         .map_err(|e| format!("Webhook.enqueue failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn webhook_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
@@ -443,7 +443,7 @@ fn webhook_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     let id = client
         .enqueue_webhook(&queue, &url, payload, Some(opts_json))
         .map_err(|e| format!("Webhook.enqueue_in failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn webhook_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
@@ -464,7 +464,7 @@ fn webhook_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
     let id = client
         .enqueue_webhook(&queue, &url, payload, Some(opts_json))
         .map_err(|e| format!("Webhook.enqueue_at failed: {}", e))?;
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 // ===== Cron class methods =====
@@ -517,7 +517,7 @@ fn cron_schedule(args: Vec<Value>) -> Result<Value, String> {
             .create_cron(&name, &expr, &handler, payload, &callback)
             .map_err(|e| format!("Cron.schedule create failed: {}", e))?,
     };
-    Ok(Value::String(id))
+    Ok(Value::String(id.into()))
 }
 
 fn cron_list(_args: Vec<Value>) -> Result<Value, String> {
@@ -693,20 +693,20 @@ fn register_cron_class(env: &mut Environment) {
     statics.insert(
         "every".to_string(),
         Rc::new(NativeFunction::new("Cron.every", Some(1), |args| {
-            cron_every(&args[0]).map(Value::String)
+            cron_every(&args[0]).map(|s| Value::String(s.into()))
         })),
     );
     statics.insert(
         "daily_at".to_string(),
         Rc::new(NativeFunction::new("Cron.daily_at", Some(1), |args| {
             let s = arg_string(&args, 0, "Cron.daily_at")?;
-            cron_daily_at(&s).map(Value::String)
+            cron_daily_at(&s).map(|s| Value::String(s.into()))
         })),
     );
     statics.insert(
         "hourly".to_string(),
         Rc::new(NativeFunction::new("Cron.hourly", Some(0), |_| {
-            Ok(Value::String(cron_hourly()))
+            Ok(Value::String(cron_hourly().into()))
         })),
     );
     statics.insert(
@@ -714,7 +714,7 @@ fn register_cron_class(env: &mut Environment) {
         Rc::new(NativeFunction::new("Cron.weekly_at", Some(2), |args| {
             let day = arg_string(&args, 0, "Cron.weekly_at")?;
             let time = arg_string(&args, 1, "Cron.weekly_at")?;
-            cron_weekly_at(&day, &time).map(Value::String)
+            cron_weekly_at(&day, &time).map(|s| Value::String(s.into()))
         })),
     );
 
@@ -750,7 +750,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                 format!("{}.perform_later", class_name),
                 None,
                 move |args| {
-                    let mut a = vec![Value::String(cn.clone())];
+                    let mut a = vec![Value::String(cn.clone().into())];
                     a.extend(args);
                     job_enqueue(a)
                 },
@@ -772,7 +772,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                             cn
                         ));
                     }
-                    let mut a = vec![Value::String(cn.clone()), args[0].clone()];
+                    let mut a = vec![Value::String(cn.clone().into()), args[0].clone()];
                     if args.len() > 1 {
                         a.push(args[1].clone());
                     } else {
@@ -801,7 +801,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                             cn
                         ));
                     }
-                    let mut a = vec![Value::String(cn.clone()), args[0].clone()];
+                    let mut a = vec![Value::String(cn.clone().into()), args[0].clone()];
                     if args.len() > 1 {
                         a.push(args[1].clone());
                     } else {
@@ -830,7 +830,11 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                             cn
                         ));
                     }
-                    let mut a = vec![args[0].clone(), args[1].clone(), Value::String(cn.clone())];
+                    let mut a = vec![
+                        args[0].clone(),
+                        args[1].clone(),
+                        Value::String(cn.clone().into()),
+                    ];
                     if args.len() > 2 {
                         a.push(args[2].clone());
                     }
@@ -858,7 +862,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
 pub fn read_static_cron(class: &Class) -> Option<String> {
     let fields = class.static_fields.borrow();
     match fields.get("cron") {
-        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::String(s)) => Some(s.clone().to_string()),
         _ => None,
     }
 }
@@ -868,12 +872,12 @@ pub fn read_static_cron(class: &Class) -> Option<String> {
 /// Rust during worker boot.
 pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<String, String> {
     let args = vec![
-        Value::String(name.to_string()),
-        Value::String(expr.to_string()),
-        Value::String(handler.to_string()),
+        Value::String(name.to_string().into()),
+        Value::String(expr.to_string().into()),
+        Value::String(handler.to_string().into()),
     ];
     match cron_schedule(args)? {
-        Value::String(id) => Ok(id),
+        Value::String(id) => Ok(id.to_string()),
         _ => Ok(String::new()),
     }
 }
@@ -978,28 +982,28 @@ mod prelude_tests {
     fn make_request(headers: &[(&str, &str)], body: &str, name: &str) -> Value {
         let mut params = HashPairs::default();
         params.insert(
-            HashKey::String("name".to_string()),
-            Value::String(name.to_string()),
+            HashKey::String("name".into()),
+            Value::String(name.to_string().into()),
         );
         let mut hdrs = HashPairs::default();
         for (k, v) in headers {
             hdrs.insert(
-                HashKey::String((*k).to_string()),
-                Value::String((*v).to_string()),
+                HashKey::String((*k).to_string().into()),
+                Value::String((*v).to_string().into()),
             );
         }
         let mut req = HashPairs::default();
         req.insert(
-            HashKey::String("params".to_string()),
+            HashKey::String("params".into()),
             Value::Hash(Rc::new(RefCell::new(params))),
         );
         req.insert(
-            HashKey::String("headers".to_string()),
+            HashKey::String("headers".into()),
             Value::Hash(Rc::new(RefCell::new(hdrs))),
         );
         req.insert(
-            HashKey::String("body".to_string()),
-            Value::String(body.to_string()),
+            HashKey::String("body".into()),
+            Value::String(body.to_string().into()),
         );
         Value::Hash(Rc::new(RefCell::new(req)))
     }
@@ -1019,7 +1023,7 @@ mod prelude_tests {
             panic!("expected Hash response, got {:?}", value)
         };
         for (k, v) in h.borrow().iter() {
-            if matches!(k, HashKey::String(s) if s == "status") {
+            if matches!(k, HashKey::String(s) if **s == *"status") {
                 if let Value::Int(n) = v {
                     return *n;
                 }

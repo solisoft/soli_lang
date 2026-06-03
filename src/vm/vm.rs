@@ -47,7 +47,6 @@ pub enum IterState {
         index: usize,
     },
     Hash {
-        keys: Vec<HashKey>,
         values: Rc<RefCell<HashPairs>>,
         index: usize,
     },
@@ -56,8 +55,8 @@ pub enum IterState {
         end: i64,
     },
     String {
-        chars: Vec<char>,
-        index: usize,
+        s: crate::interpreter::value::SoliStr,
+        byte_offset: usize,
     },
 }
 
@@ -130,12 +129,12 @@ impl Vm {
         Span::new(0, 0, line, 0)
     }
 
-    /// Read a string constant as &str without cloning (for use within a scoped borrow).
+    /// Read a string constant as an owned String (for global-map keys).
     #[inline]
     fn read_string_constant_owned(&self, idx: u16) -> String {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
-            Constant::String(s) => s.clone(),
+            Constant::String(s) => s.to_string(),
             _ => String::new(),
         }
     }
@@ -206,7 +205,7 @@ impl Vm {
                     let val = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_str(),
+                            Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
                         self.globals.get(name).cloned()
@@ -234,7 +233,7 @@ impl Vm {
                     let updated = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_str(),
+                            Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
                         if let Some(entry) = self.globals.get_mut(name) {
@@ -306,7 +305,11 @@ impl Vm {
                         (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
                         (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
                         (Value::String(x), Value::String(y)) => {
-                            let mut s = String::with_capacity(x.len() + y.len());
+                            // Build the SoliStr directly — short results stay
+                            // inline, no String intermediate.
+                            let mut s = crate::interpreter::value::SoliStr::with_capacity(
+                                x.len() + y.len(),
+                            );
                             s.push_str(x);
                             s.push_str(y);
                             Value::String(s)
@@ -508,7 +511,7 @@ impl Vm {
                     let val = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[name_idx as usize] {
-                            Constant::String(s) => s.as_str(),
+                            Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
                         self.globals.get(name).cloned()
@@ -538,7 +541,7 @@ impl Vm {
                     let name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[name_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -593,21 +596,26 @@ impl Vm {
                             // Ultra-fast path: inline common zero-arg string methods
                             let result = if argc == 0 {
                                 let s: &str = match &self.stack[receiver_idx] {
-                                    Value::String(s) => s.as_str(),
+                                    Value::String(s) => s.as_ref(),
                                     _ => unreachable!(),
                                 };
                                 match name {
                                     "len" | "length" => Some(Value::Int(s.len() as i64)),
                                     "empty?" => Some(Value::Bool(s.is_empty())),
                                     "bytesize" => Some(Value::Int(s.len() as i64)),
-                                    "upcase" | "uppercase" => Some(Value::String(s.to_uppercase())),
-                                    "downcase" | "lowercase" => {
-                                        Some(Value::String(s.to_lowercase()))
+                                    "upcase" | "uppercase" => {
+                                        Some(Value::String(s.to_uppercase().into()))
                                     }
-                                    "trim" => Some(Value::String(s.trim().to_string())),
-                                    "reverse" => Some(Value::String(s.chars().rev().collect())),
+                                    "downcase" | "lowercase" => {
+                                        Some(Value::String(s.to_lowercase().into()))
+                                    }
+                                    "trim" => Some(Value::String(s.trim().to_string().into())),
+                                    "reverse" => {
+                                        let out: String = s.chars().rev().collect();
+                                        Some(Value::String(out.into()))
+                                    }
                                     "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("string".to_string())),
+                                    "class" => Some(Value::String("string".into())),
                                     _ => None,
                                 }
                             } else {
@@ -620,7 +628,7 @@ impl Vm {
                                 // General path: borrow string and args from stack
                                 let result = {
                                     let s: &str = match &self.stack[receiver_idx] {
-                                        Value::String(s) => s.as_str(),
+                                        Value::String(s) => s.as_ref(),
                                         _ => unreachable!(),
                                     };
                                     let args =
@@ -657,7 +665,7 @@ impl Vm {
                                         Some(arr.borrow().last().cloned().unwrap_or(Value::Null))
                                     }
                                     "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("array".to_string())),
+                                    "class" => Some(Value::String("array".into())),
                                     "blank?" => Some(Value::Bool(arr.borrow().is_empty())),
                                     "present?" => Some(Value::Bool(!arr.borrow().is_empty())),
                                     _ => None,
@@ -694,7 +702,7 @@ impl Vm {
                                     }
                                     "empty?" => Some(Value::Bool(hash.borrow().is_empty())),
                                     "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("hash".to_string())),
+                                    "class" => Some(Value::String("hash".into())),
                                     "blank?" => Some(Value::Bool(hash.borrow().is_empty())),
                                     "present?" => Some(Value::Bool(!hash.borrow().is_empty())),
                                     _ => None,
@@ -734,7 +742,7 @@ impl Vm {
                     if argc == 0 {
                         let result = match &self.stack[receiver_idx] {
                             Value::String(s) => {
-                                super::method_table::string_method_zero_arg(s.as_str(), method_id)
+                                super::method_table::string_method_zero_arg(s.as_ref(), method_id)
                             }
                             Value::Array(a) => {
                                 super::method_table::array_method_zero_arg(a, method_id)
@@ -753,7 +761,7 @@ impl Vm {
                     if argc == 1 {
                         let result = match &self.stack[receiver_idx] {
                             Value::String(s) => super::method_table::string_method_one_arg(
-                                s.as_str(),
+                                s.as_ref(),
                                 method_id,
                                 &self.stack[receiver_idx + 1],
                                 self.current_span(),
@@ -776,7 +784,7 @@ impl Vm {
                     if argc == 2 {
                         let result = match &self.stack[receiver_idx] {
                             Value::String(s) => super::method_table::string_method_two_arg(
-                                s.as_str(),
+                                s.as_ref(),
                                 method_id,
                                 &self.stack[receiver_idx + 1],
                                 &self.stack[receiver_idx + 2],
@@ -804,7 +812,7 @@ impl Vm {
                     let name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[name_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -814,7 +822,7 @@ impl Vm {
                         Value::String(_) => {
                             let result = {
                                 let s: &str = match &self.stack[receiver_idx] {
-                                    Value::String(s) => s.as_str(),
+                                    Value::String(s) => s.as_ref(),
                                     _ => unreachable!(),
                                 };
                                 let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
@@ -863,7 +871,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -891,7 +899,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -914,7 +922,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -942,7 +950,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -953,7 +961,8 @@ impl Vm {
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref.insert(HashKey::String(key.to_string()), value.clone());
+                                hash_ref
+                                    .insert(HashKey::String(key.to_string().into()), value.clone());
                             }
                             self.push(Value::Null);
                         }
@@ -971,7 +980,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -997,7 +1006,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1019,7 +1028,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1045,7 +1054,7 @@ impl Vm {
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1056,7 +1065,7 @@ impl Vm {
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value;
                             } else {
-                                hash_ref.insert(HashKey::String(key.to_string()), value);
+                                hash_ref.insert(HashKey::String(key.to_string().into()), value);
                             }
                         }
                         other => {
@@ -1073,14 +1082,14 @@ impl Vm {
                     let global_name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[global_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1114,14 +1123,14 @@ impl Vm {
                     let global_name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[global_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1151,14 +1160,14 @@ impl Vm {
                     let global_name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[global_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1192,14 +1201,14 @@ impl Vm {
                     let global_name: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[global_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
                     let key: *const str = {
                         let frame = self.frames.last().unwrap();
                         match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_str() as *const str,
+                            Constant::String(s) => s.as_ref() as *const str,
                             _ => "" as *const str,
                         }
                     };
@@ -1211,7 +1220,7 @@ impl Vm {
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value;
                             } else {
-                                hash_ref.insert(HashKey::String(key.to_string()), value);
+                                hash_ref.insert(HashKey::String(key.to_string().into()), value);
                             }
                         }
                         Some(other) => {
@@ -1381,7 +1390,7 @@ impl Vm {
                         self.stack[i].append_to_string(&mut result);
                     }
                     self.stack.truncate(start);
-                    self.stack.push(Value::String(result));
+                    self.stack.push(Value::String(result.into()));
                 }
                 Op::Spread => {
                     // Spread is handled by the array/hash/call compilation
@@ -2099,7 +2108,7 @@ impl Vm {
                     let val = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_str(),
+                            Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
                         self.globals.get(name).cloned()
@@ -2113,7 +2122,7 @@ impl Vm {
                     let val = {
                         let frame = self.frames.last().unwrap();
                         let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_str(),
+                            Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
                         self.globals.get(name).cloned()
@@ -2227,7 +2236,7 @@ impl Vm {
                     let value = self.stack.pop().unwrap();
                     match crate::interpreter::value::stringify_to_string(&value) {
                         Ok(json_str) => {
-                            self.stack.push(Value::String(json_str));
+                            self.stack.push(Value::String(json_str.into()));
                         }
                         Err(e) => {
                             return Err(RuntimeError::new(
@@ -2334,13 +2343,13 @@ impl Vm {
                     None
                 }
             }
-            IterState::Hash {
-                keys,
-                values: _,
-                index,
-            } => {
-                if *index < keys.len() {
-                    let key = keys[*index].to_value();
+            IterState::Hash { values, index } => {
+                // Live indexing into the IndexMap (insertion-ordered), matching
+                // the Array variant: no upfront key-vector clone. Mutation
+                // during iteration is observed live, same as arrays.
+                let map = values.borrow();
+                if let Some((key, _)) = map.get_index(*index) {
+                    let key = key.to_value();
                     *index += 1;
                     Some(key)
                 } else {
@@ -2357,11 +2366,11 @@ impl Vm {
                     None
                 }
             }
-            IterState::String { chars, index } => {
-                if *index < chars.len() {
-                    let val = Value::String(chars[*index].to_string());
-                    *index += 1;
-                    Some(val)
+            IterState::String { s, byte_offset } => {
+                // Iterate by byte offset instead of pre-collecting a Vec<char>.
+                if let Some(ch) = s[*byte_offset..].chars().next() {
+                    *byte_offset += ch.len_utf8();
+                    Some(Value::String(ch.to_string().into()))
                 } else {
                     None
                 }
@@ -2375,18 +2384,11 @@ impl Vm {
                 values: arr,
                 index: 0,
             }),
-            Value::Hash(hash) => {
-                let keys: Vec<HashKey> = hash.borrow().keys().cloned().collect();
-                Ok(IterState::Hash {
-                    keys,
-                    values: hash,
-                    index: 0,
-                })
-            }
-            Value::String(s) => {
-                let chars: Vec<char> = s.chars().collect();
-                Ok(IterState::String { chars, index: 0 })
-            }
+            Value::Hash(hash) => Ok(IterState::Hash {
+                values: hash,
+                index: 0,
+            }),
+            Value::String(s) => Ok(IterState::String { s, byte_offset: 0 }),
             _ => Err(RuntimeError::type_error(
                 format!("Cannot iterate over {}", iterable.type_name()),
                 span,
@@ -2402,9 +2404,11 @@ impl Vm {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            (Value::String(a), Value::String(b)) => {
+                Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
+            }
+            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
+            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
             (Value::Array(a), Value::Array(b)) => {
                 let mut result = a.borrow().clone();
                 result.extend(b.borrow().iter().cloned());
@@ -2578,13 +2582,14 @@ impl Vm {
                 } else {
                     *i as usize
                 };
-                chars.get(idx).map(|c| Value::String(c.to_string())).ok_or(
-                    RuntimeError::IndexOutOfBounds {
+                chars
+                    .get(idx)
+                    .map(|c| Value::String(c.to_string().into()))
+                    .ok_or(RuntimeError::IndexOutOfBounds {
                         index: *i,
                         length: chars.len(),
                         span,
-                    },
-                )
+                    })
             }
             _ => Err(RuntimeError::type_error(
                 format!(
@@ -2823,7 +2828,7 @@ mod tests {
     #[test]
     fn test_vm_string_concat() {
         let result = compile_and_get_global(r#"let x = "hello" + " " + "world";"#, "x");
-        assert_eq!(result, Value::String("hello world".to_string()));
+        assert_eq!(result, Value::String("hello world".into()));
     }
 
     #[test]
@@ -3311,19 +3316,19 @@ mod tests {
     fn test_vm_string_upcase_downcase() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".upcase();"#, "x"),
-            Value::String("HELLO".to_string())
+            Value::String("HELLO".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "HELLO".downcase();"#, "x"),
-            Value::String("hello".to_string())
+            Value::String("hello".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "abc".uppercase();"#, "x"),
-            Value::String("ABC".to_string())
+            Value::String("ABC".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "ABC".lowercase();"#, "x"),
-            Value::String("abc".to_string())
+            Value::String("abc".into())
         );
     }
 
@@ -3347,19 +3352,19 @@ mod tests {
     fn test_vm_string_trim_strip() {
         assert_eq!(
             compile_and_get_global(r#"let x = "  hi  ".trim();"#, "x"),
-            Value::String("hi".to_string())
+            Value::String("hi".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "  hi  ".strip();"#, "x"),
-            Value::String("hi".to_string())
+            Value::String("hi".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "  hi  ".lstrip();"#, "x"),
-            Value::String("hi  ".to_string())
+            Value::String("hi  ".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "  hi  ".rstrip();"#, "x"),
-            Value::String("  hi".to_string())
+            Value::String("  hi".into())
         );
     }
 
@@ -3367,15 +3372,15 @@ mod tests {
     fn test_vm_string_capitalize_swapcase() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello world".capitalize();"#, "x"),
-            Value::String("Hello world".to_string())
+            Value::String("Hello world".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "Hello World".swapcase();"#, "x"),
-            Value::String("hELLO wORLD".to_string())
+            Value::String("hELLO wORLD".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "".capitalize();"#, "x"),
-            Value::String("".to_string())
+            Value::String("".into())
         );
     }
 
@@ -3383,11 +3388,11 @@ mod tests {
     fn test_vm_string_chomp() {
         assert_eq!(
             compile_and_get_global("let x = \"hello\\n\".chomp();", "x"),
-            Value::String("hello".to_string())
+            Value::String("hello".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".chomp();"#, "x"),
-            Value::String("hello".to_string())
+            Value::String("hello".into())
         );
     }
 
@@ -3395,7 +3400,7 @@ mod tests {
     fn test_vm_string_reverse() {
         assert_eq!(
             compile_and_get_global(r#"let x = "abc".reverse();"#, "x"),
-            Value::String("cba".to_string())
+            Value::String("cba".into())
         );
     }
 
@@ -3502,15 +3507,15 @@ mod tests {
     fn test_vm_string_delete_prefix_suffix() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".delete("l");"#, "x"),
-            Value::String("heo".to_string())
+            Value::String("heo".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".delete_prefix("he");"#, "x"),
-            Value::String("llo".to_string())
+            Value::String("llo".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".delete_suffix("lo");"#, "x"),
-            Value::String("hel".to_string())
+            Value::String("hel".into())
         );
     }
 
@@ -3526,19 +3531,19 @@ mod tests {
     fn test_vm_string_replace_gsub_sub() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".replace("l", "L");"#, "x"),
-            Value::String("heLLo".to_string())
+            Value::String("heLLo".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".gsub("l", "L");"#, "x"),
-            Value::String("heLLo".to_string())
+            Value::String("heLLo".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".sub("l", "L");"#, "x"),
-            Value::String("heLlo".to_string())
+            Value::String("heLlo".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "abc".tr("ab", "xy");"#, "x"),
-            Value::String("xyc".to_string())
+            Value::String("xyc".into())
         );
     }
 
@@ -3546,11 +3551,11 @@ mod tests {
     fn test_vm_string_substring_insert() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello".substring(1, 4);"#, "x"),
-            Value::String("ell".to_string())
+            Value::String("ell".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "abc".insert(1, "X");"#, "x"),
-            Value::String("aXbc".to_string())
+            Value::String("aXbc".into())
         );
     }
 
@@ -3558,23 +3563,23 @@ mod tests {
     fn test_vm_string_padding() {
         assert_eq!(
             compile_and_get_global(r#"let x = "ab".center(6);"#, "x"),
-            Value::String("  ab  ".to_string())
+            Value::String("  ab  ".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "ab".ljust(5);"#, "x"),
-            Value::String("ab   ".to_string())
+            Value::String("ab   ".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "ab".rjust(5);"#, "x"),
-            Value::String("   ab".to_string())
+            Value::String("   ab".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "ab".lpad(4, "0");"#, "x"),
-            Value::String("00ab".to_string())
+            Value::String("00ab".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "ab".rpad(4, "0");"#, "x"),
-            Value::String("ab00".to_string())
+            Value::String("ab00".into())
         );
     }
 
@@ -3582,11 +3587,11 @@ mod tests {
     fn test_vm_string_truncate() {
         assert_eq!(
             compile_and_get_global(r#"let x = "hello world".truncate(8);"#, "x"),
-            Value::String("hello...".to_string())
+            Value::String("hello...".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "hi".truncate(8);"#, "x"),
-            Value::String("hi".to_string())
+            Value::String("hi".into())
         );
     }
 
@@ -3602,7 +3607,7 @@ mod tests {
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "abc".to_sym();"#, "x"),
-            Value::Symbol("abc".to_string())
+            Value::Symbol("abc".into())
         );
         // Zero-arg universal methods on strings need to be invoked through
         // member access; the VM exposes them by name without auto-invocation,
@@ -3677,7 +3682,7 @@ mod tests {
         );
         assert_eq!(
             compile_and_get_global(r#"let x = {"a": 7}.fetch("missing", "default");"#, "x"),
-            Value::String("default".to_string())
+            Value::String("default".into())
         );
     }
 
@@ -3763,7 +3768,7 @@ mod tests {
             "#,
             "val",
         );
-        assert_eq!(result, Value::String("ok+final".to_string()));
+        assert_eq!(result, Value::String("ok+final".into()));
     }
 
     #[test]
@@ -3792,7 +3797,7 @@ mod tests {
             "#,
             "val",
         );
-        assert_eq!(result, Value::String("the answer".to_string()));
+        assert_eq!(result, Value::String("the answer".into()));
     }
 
     #[test]
@@ -3807,7 +3812,7 @@ mod tests {
             "#,
             "val",
         );
-        assert_eq!(result, Value::String("fallback".to_string()));
+        assert_eq!(result, Value::String("fallback".into()));
     }
 
     #[test]
@@ -3833,11 +3838,11 @@ mod tests {
     fn test_vm_string_concat_operator() {
         assert_eq!(
             compile_and_get_global(r#"let x = "foo" + "bar";"#, "x"),
-            Value::String("foobar".to_string())
+            Value::String("foobar".into())
         );
         assert_eq!(
             compile_and_get_global(r#"let x = "x" + "y" + "z";"#, "x"),
-            Value::String("xyz".to_string())
+            Value::String("xyz".into())
         );
     }
 
@@ -3924,7 +3929,7 @@ mod tests {
             "#,
             "val",
         );
-        assert_eq!(result, Value::String("negative".to_string()));
+        assert_eq!(result, Value::String("negative".into()));
     }
 
     #[test]
@@ -3938,7 +3943,7 @@ mod tests {
             "#,
             "val",
         );
-        assert_eq!(result, Value::String("hi".to_string()));
+        assert_eq!(result, Value::String("hi".into()));
     }
 
     #[test]
@@ -4000,13 +4005,13 @@ mod tests {
             "#,
             "upper",
         );
-        assert_eq!(result, Value::String("HELLO".to_string()));
+        assert_eq!(result, Value::String("HELLO".into()));
     }
 
     #[test]
     fn test_vm_method_chain() {
         let result = compile_and_get_global(r#"let val = "  hello  ".trim().upcase();"#, "val");
-        assert_eq!(result, Value::String("HELLO".to_string()));
+        assert_eq!(result, Value::String("HELLO".into()));
     }
 
     #[test]
@@ -4049,10 +4054,10 @@ mod tests {
     fn test_vm_logical_operators_return_value_not_bool() {
         // In Soli, `||` and `&&` short-circuit and return one of the operands.
         let result = compile_and_get_global(r#"let x = null || "fallback";"#, "x");
-        assert_eq!(result, Value::String("fallback".to_string()));
+        assert_eq!(result, Value::String("fallback".into()));
 
         let result = compile_and_get_global(r#"let x = "a" || "b";"#, "x");
-        assert_eq!(result, Value::String("a".to_string()));
+        assert_eq!(result, Value::String("a".into()));
     }
 
     #[test]

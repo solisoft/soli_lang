@@ -82,9 +82,9 @@ pub fn register_soap_class(env: &mut Environment) {
                         if let HashKey::String(key) = k {
                             let value_str = match v {
                                 Value::String(s) => s.clone(),
-                                _ => format!("{}", v),
+                                _ => format!("{}", v).into(),
                             };
-                            headers.push((key.clone(), value_str));
+                            headers.push((key.clone().to_string(), value_str.to_string()));
                         }
                     }
                 }
@@ -94,14 +94,14 @@ pub fn register_soap_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match rt.block_on(async move {
-                        let mut request = client.post(&url);
+                        let mut request = client.post(&*url);
 
                         for (key, value) in &headers {
                             request = request.header(key.as_str(), value.as_str());
                         }
 
                         let resp = request
-                            .body(envelope)
+                            .body(envelope.to_string())
                             .send()
                             .await
                             .map_err(|e| e.to_string())?;
@@ -114,8 +114,8 @@ pub fn register_soap_class(env: &mut Environment) {
                         for (name, value) in resp.headers().iter() {
                             if let Ok(v) = value.to_str() {
                                 resp_headers.insert(
-                                    HashKey::String(name.to_string()),
-                                    Value::String(v.to_string()),
+                                    HashKey::String(name.to_string().into()),
+                                    Value::String(v.to_string().into()),
                                 );
                             }
                         }
@@ -125,20 +125,17 @@ pub fn register_soap_class(env: &mut Environment) {
                         let parsed_xml = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
                         let mut result: HashPairs = HashPairs::default();
+                        result.insert(HashKey::String("status".into()), Value::Int(status as i64));
                         result.insert(
-                            HashKey::String("status".to_string()),
-                            Value::Int(status as i64),
+                            HashKey::String("status_text".into()),
+                            Value::String(status_text.into()),
                         );
                         result.insert(
-                            HashKey::String("status_text".to_string()),
-                            Value::String(status_text),
-                        );
-                        result.insert(
-                            HashKey::String("headers".to_string()),
+                            HashKey::String("headers".into()),
                             Value::Hash(Rc::new(RefCell::new(resp_headers))),
                         );
-                        result.insert(HashKey::String("body".to_string()), Value::String(body));
-                        result.insert(HashKey::String("parsed".to_string()), parsed_xml);
+                        result.insert(HashKey::String("body".into()), Value::String(body.into()));
+                        result.insert(HashKey::String("parsed".into()), parsed_xml);
 
                         Ok(Value::Hash(Rc::new(RefCell::new(result))))
                     }) {
@@ -146,7 +143,11 @@ pub fn register_soap_class(env: &mut Environment) {
                         Err(e) => Err(e),
                     }
                 }
-                _ => Ok(spawn_soap_future(url, headers, envelope)),
+                _ => Ok(spawn_soap_future(
+                    url.to_string(),
+                    headers,
+                    envelope.to_string(),
+                )),
             }
         })),
     );
@@ -168,16 +169,16 @@ pub fn register_soap_class(env: &mut Environment) {
             let namespace = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => SOAP11_NS.to_string(),
+                    _ => SOAP11_NS.to_string().into(),
                 }
             } else {
-                SOAP11_NS.to_string()
+                SOAP11_NS.to_string().into()
             };
 
             let escape_body = if args.len() > 2 {
                 if let Value::Hash(opts) = &args[2] {
                     let opts = opts.borrow();
-                    opts.get(&HashKey::String("escape".to_string()))
+                    opts.get(&HashKey::String("escape".into()))
                         .map(|v| matches!(v, Value::Bool(true)))
                         .unwrap_or(false)
                 } else {
@@ -201,7 +202,7 @@ pub fn register_soap_class(env: &mut Environment) {
                 }
                 result
             } else {
-                body
+                body.to_string()
             };
 
             let envelope = format!(
@@ -214,7 +215,7 @@ pub fn register_soap_class(env: &mut Environment) {
                 namespace, safe_body
             );
 
-            Ok(Value::String(envelope))
+            Ok(Value::String(envelope.into()))
         })),
     );
 
@@ -251,11 +252,11 @@ pub fn register_soap_class(env: &mut Environment) {
             };
 
             let escaped = text
-                .replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;")
-                .replace('"', "&quot;")
-                .replace('\'', "&apos;");
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
 
             Ok(Value::String(escaped))
         })),
@@ -278,14 +279,14 @@ pub fn register_soap_class(env: &mut Environment) {
             let root_element = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => "root".to_string(),
+                    _ => "root".into(),
                 }
             } else {
-                "root".to_string()
+                "root".into()
             };
 
             let xml = value_to_xml(&Value::Hash(hash), &root_element);
-            Ok(Value::String(xml))
+            Ok(Value::String(xml.into()))
         })),
     );
 
@@ -354,20 +355,17 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
                     let parsed = parse_xml_to_value(&body).unwrap_or(Value::Null);
 
                     let mut result: HashPairs = HashPairs::default();
+                    result.insert(HashKey::String("status".into()), Value::Int(status as i64));
                     result.insert(
-                        HashKey::String("status".to_string()),
-                        Value::Int(status as i64),
+                        HashKey::String("status_text".into()),
+                        Value::String(status_text.into()),
                     );
                     result.insert(
-                        HashKey::String("status_text".to_string()),
-                        Value::String(status_text),
-                    );
-                    result.insert(
-                        HashKey::String("headers".to_string()),
+                        HashKey::String("headers".into()),
                         Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
                     );
-                    result.insert(HashKey::String("body".to_string()), Value::String(body));
-                    result.insert(HashKey::String("parsed".to_string()), parsed);
+                    result.insert(HashKey::String("body".into()), Value::String(body.into()));
+                    result.insert(HashKey::String("parsed".into()), parsed);
 
                     build_json_from_value(&Value::Hash(Rc::new(RefCell::new(result))))
                 }
@@ -390,7 +388,7 @@ fn build_json_from_value(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
-        Value::String(s) => format!("\"{}\"", s.replace('"', "\\\"")),
+        Value::String(s) => format!("\"{}\"", s.replace("\"", "\\\"")),
         Value::Array(arr) => {
             let items: Vec<String> = arr.borrow().iter().map(build_json_from_value).collect();
             format!("[{}]", items.join(", "))
@@ -456,8 +454,8 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 if !current_text.trim().is_empty() && !stack.is_empty() {
                     if let Some((_, parent)) = stack.last_mut() {
                         parent.insert(
-                            HashKey::String("_text".to_string()),
-                            Value::String(current_text.trim().to_string()),
+                            HashKey::String("_text".into()),
+                            Value::String(current_text.trim().to_string().into()),
                         );
                     }
                     current_text.clear();
@@ -487,8 +485,8 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 if let Some((name, mut attrs)) = stack.pop() {
                     if !current_text.trim().is_empty() {
                         attrs.insert(
-                            HashKey::String("_text".to_string()),
-                            Value::String(current_text.trim().to_string()),
+                            HashKey::String("_text".into()),
+                            Value::String(current_text.trim().to_string().into()),
                         );
                         current_text.clear();
                     }
@@ -496,17 +494,17 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                     let value = if attrs.is_empty() {
                         Value::Null
                     } else if attrs.len() == 1
-                        && attrs.contains_key(&HashKey::String("_text".to_string()))
+                        && attrs.contains_key(&HashKey::String("_text".into()))
                     {
                         attrs
-                            .swap_remove(&HashKey::String("_text".to_string()))
+                            .swap_remove(&HashKey::String("_text".into()))
                             .unwrap_or(Value::Null)
                     } else {
                         Value::Hash(Rc::new(RefCell::new(attrs)))
                     };
 
                     if let Some((_parent_name, parent)) = stack.last_mut() {
-                        let key = HashKey::String(name.clone());
+                        let key = HashKey::String(name.clone().into());
                         if let Some(existing) = parent.get(&key) {
                             // Convert to array if multiple elements with same name
                             let new_arr = match existing {
@@ -527,7 +525,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                     } else {
                         // Root element
                         let mut root = HashPairs::default();
-                        root.insert(HashKey::String(name), value);
+                        root.insert(HashKey::String(name.into()), value);
                         return Ok(Value::Hash(Rc::new(RefCell::new(root))));
                     }
                 }
@@ -535,7 +533,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
             Ok(Event::Empty(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 if let Some((_, parent)) = stack.last_mut() {
-                    parent.insert(HashKey::String(name), Value::Null);
+                    parent.insert(HashKey::String(name.into()), Value::Null);
                 }
             }
             Ok(Event::Eof) => break,
@@ -549,7 +547,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
         Some((name, attrs)) => {
             let mut root = HashPairs::default();
             root.insert(
-                HashKey::String(name),
+                HashKey::String(name.into()),
                 Value::Hash(Rc::new(RefCell::new(attrs))),
             );
             Ok(Value::Hash(Rc::new(RefCell::new(root))))
@@ -593,10 +591,10 @@ fn value_to_xml(value: &Value, element_name: &str) -> String {
                 let key = match k {
                     HashKey::String(s) => s.clone(),
                     HashKey::Symbol(s) => s.clone(),
-                    HashKey::Int(i) => i.to_string(),
-                    HashKey::Decimal(d) => d.to_string(),
-                    HashKey::Bool(b) => b.to_string(),
-                    HashKey::Null => "null".to_string(),
+                    HashKey::Int(i) => i.to_string().into(),
+                    HashKey::Decimal(d) => d.to_string().into(),
+                    HashKey::Bool(b) => b.to_string().into(),
+                    HashKey::Null => "null".into(),
                 };
 
                 if let Some(attr_name) = key.strip_prefix('@') {
@@ -649,7 +647,7 @@ fn get_value_string(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.clone().to_string(),
         Value::Array(arr) => format!(
             "[{}]",
             arr.borrow()
@@ -666,10 +664,10 @@ fn get_value_string(value: &Value) -> String {
                     let key = match k {
                         HashKey::String(s) => s.clone(),
                         HashKey::Symbol(s) => s.clone(),
-                        HashKey::Int(i) => i.to_string(),
-                        HashKey::Decimal(d) => d.to_string(),
-                        HashKey::Bool(b) => b.to_string(),
-                        HashKey::Null => "null".to_string(),
+                        HashKey::Int(i) => i.to_string().into(),
+                        HashKey::Decimal(d) => d.to_string().into(),
+                        HashKey::Bool(b) => b.to_string().into(),
+                        HashKey::Null => "null".into(),
                     };
                     format!("{}: {}", key, get_value_string(v))
                 })

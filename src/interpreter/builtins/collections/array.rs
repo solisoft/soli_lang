@@ -38,7 +38,7 @@ pub fn register_array_class(env: &mut Environment) {
                 Some(Value::Array(arr)) => {
                     let arr = arr.borrow();
                     let parts: Vec<String> = arr.iter().map(|v| format!("{}", v)).collect();
-                    Ok(Value::String(format!("[{}]", parts.join(", "))))
+                    Ok(Value::String(format!("[{}]", parts.join(", ")).into()))
                 }
                 _ => Err("Array missing internal value".to_string()),
             }
@@ -749,7 +749,7 @@ pub fn register_array_class(env: &mut Environment) {
                 Some(Value::Array(arr)) => {
                     let parts: Vec<String> =
                         arr.borrow().iter().map(|v| format!("{}", v)).collect();
-                    Ok(Value::String(parts.join(&delim)))
+                    Ok(Value::String(parts.join(&delim).into()))
                 }
                 _ => Err("Array missing internal value".to_string()),
             }

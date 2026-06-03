@@ -181,7 +181,7 @@ pub fn register_assertions(env: &mut Environment) {
                 }
                 Value::String(s) => {
                     if let Value::String(sub) = &args[1] {
-                        if s.contains(sub) {
+                        if s.contains(&**(sub)) {
                             ASSERTION_COUNT.with(|count| {
                                 *count.borrow_mut() += 1;
                             });

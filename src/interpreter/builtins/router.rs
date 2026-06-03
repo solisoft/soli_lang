@@ -129,11 +129,11 @@ fn extract_middleware_from_value(value: &Value) -> Vec<Value> {
 fn extract_middleware_names(value: &Value) -> Vec<String> {
     let mut names = Vec::new();
     if let Value::String(name) = value {
-        names.push(name.clone());
+        names.push(name.to_string());
     } else if let Value::Array(arr) = value {
         for item in arr.borrow().iter() {
             if let Value::String(name) = item {
-                names.push(name.clone());
+                names.push(name.to_string());
             }
         }
     }
@@ -395,7 +395,7 @@ pub fn register_router_builtins(env: &mut Environment) {
 
                     stack.push(RouterScope {
                         path_prefix: child_path,
-                        controller: Some(controller),
+                        controller: Some(controller.to_string()),
                         is_member: false,
                         is_collection: false,
                         middleware: current.middleware.clone(),
@@ -465,7 +465,14 @@ pub fn register_router_builtins(env: &mut Environment) {
                 // Pass scoped middleware from current context
                 let middleware = current.middleware.clone();
                 let mw_names = current.middleware_names.clone();
-                register_route_with_name(&method, &full_path, handler, name, middleware, mw_names);
+                register_route_with_name(
+                    &method,
+                    &full_path,
+                    handler,
+                    name.map(|s| s.to_string()),
+                    middleware,
+                    mw_names,
+                );
                 Ok(Value::Null)
             })
         })),
@@ -734,7 +741,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            crate::serve::register_csrf_skip_pattern(pattern);
+            crate::serve::register_csrf_skip_pattern(pattern.to_string());
             Ok(Value::Null)
         })),
     );

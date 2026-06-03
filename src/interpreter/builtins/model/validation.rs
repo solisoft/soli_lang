@@ -110,11 +110,11 @@ impl ValidationError {
         let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
             HashKey::String("field".into()),
-            Value::String(self.field.clone()),
+            Value::String(self.field.clone().into()),
         );
         pairs.insert(
             HashKey::String("message".into()),
-            Value::String(self.message.clone()),
+            Value::String(self.message.clone().into()),
         );
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
@@ -226,7 +226,7 @@ pub fn run_validations(
         // Find the field value
         let field_value = hash
             .iter()
-            .find(|(k, _)| matches!(k, HashKey::String(s) if s == &rule.field))
+            .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *rule.field))
             .map(|(_, v)| v.clone());
 
         // Presence validation
@@ -293,7 +293,10 @@ pub fn run_validations(
                         )
                     };
                     let mut bind_vars = std::collections::HashMap::new();
-                    bind_vars.insert("val".to_string(), serde_json::Value::String(val.clone()));
+                    bind_vars.insert(
+                        "val".to_string(),
+                        serde_json::Value::String(val.clone().to_string()),
+                    );
                     if let Some(key) = exclude_key {
                         bind_vars.insert(
                             "key".to_string(),
@@ -393,7 +396,7 @@ pub fn run_validations(
         for v in &custom {
             let field_value = hash
                 .iter()
-                .find(|(k, _)| matches!(k, HashKey::String(s) if s == &v.field))
+                .find(|(k, _)| matches!(k, HashKey::String(s) if **s == *v.field))
                 .map(|(_, val)| val.clone())
                 .unwrap_or(Value::Null);
             match invoke_validator(&v.func, &field_value, data) {

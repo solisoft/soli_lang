@@ -91,10 +91,10 @@ fn read_instance_field(value: &Value, field: &str) -> Option<String> {
 fn read_hash_key(value: &Value, key: &str) -> Option<String> {
     if let Value::Hash(h) = value {
         let pairs = h.borrow();
-        if let Some(v) = pairs.get(&HashKey::String(key.to_string())) {
+        if let Some(v) = pairs.get(&HashKey::String(key.to_string().into())) {
             return Some(value_to_path_segment(v));
         }
-        if let Some(v) = pairs.get(&HashKey::Symbol(key.to_string())) {
+        if let Some(v) = pairs.get(&HashKey::Symbol(key.to_string().into())) {
             return Some(value_to_path_segment(v));
         }
     }
@@ -105,7 +105,7 @@ fn read_hash_key(value: &Value, key: &str) -> Option<String> {
 /// Strings, ints, decimals, etc. all stringify naturally.
 fn value_to_path_segment(value: &Value) -> String {
     match value {
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.clone().to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
         Value::Decimal(d) => d.to_string(),
@@ -242,14 +242,14 @@ fn define_helpers_for(env: &mut Environment, base: &str) {
     env.define(
         path_name.clone(),
         Value::NativeFunction(NativeFunction::new(path_name, None, move |args| {
-            build_path_for_name(&path_base, &args).map(Value::String)
+            build_path_for_name(&path_base, &args).map(|s| Value::String(s.into()))
         })),
     );
     let url_base = base_owned;
     env.define(
         url_name.clone(),
         Value::NativeFunction(NativeFunction::new(url_name, None, move |args| {
-            build_url_for_name(&url_base, &args).map(Value::String)
+            build_url_for_name(&url_base, &args).map(|s| Value::String(s.into()))
         })),
     );
 }
@@ -312,7 +312,7 @@ mod tests {
     fn hash(pairs: Vec<(&str, Value)>) -> Value {
         let mut p = HashPairs::default();
         for (k, v) in pairs {
-            p.insert(HashKey::String(k.to_string()), v);
+            p.insert(HashKey::String(k.to_string().into()), v);
         }
         Value::Hash(Rc::new(std::cell::RefCell::new(p)))
     }
@@ -341,7 +341,7 @@ mod tests {
     fn member_path_with_string_id() {
         install(vec![("post", entry("GET", "/posts/:id"))]);
         assert_eq!(
-            build_path_for_name("post", &[Value::String("abc-123".to_string())]).unwrap(),
+            build_path_for_name("post", &[Value::String("abc-123".into())]).unwrap(),
             "/posts/abc-123"
         );
     }

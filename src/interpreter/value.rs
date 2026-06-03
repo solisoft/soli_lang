@@ -60,16 +60,28 @@ impl Hash for DecimalValue {
     }
 }
 
+/// Soli's immutable string payload. Strings are immutable in the language
+/// (every "mutating" method returns a new string), so the buffer can be
+/// shared: `EcoString` stores up to 15 bytes inline (constructing a short
+/// string never touches the heap — cheaper than `String`) and switches to an
+/// atomically-refcounted heap buffer beyond that, making `clone()` O(1) for
+/// long strings instead of a byte copy. Thread-safe, so the same payload can
+/// flow into `HashKey` and the VM constant pool, which cross threads via the
+/// compiled-module cache. (A plain `Arc<str>` was benchmarked first and lost:
+/// `Arc<str>::from(String)` re-copies the bytes on every construction, which
+/// dominated the clone savings on construction-heavy workloads.)
+pub type SoliStr = ecow::EcoString;
+
 /// A hashable key type for use in IndexMap.
 /// This wraps primitive Value types that can be used as hash keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HashKey {
     Int(i64),
     Decimal(DecimalValue), // Hashable Decimal
-    String(String),
+    String(SoliStr),
     Bool(bool),
     Null,
-    Symbol(String),
+    Symbol(SoliStr),
 }
 
 impl Hash for HashKey {
@@ -118,7 +130,7 @@ impl Hash for StrKey<'_> {
 impl indexmap::Equivalent<HashKey> for StrKey<'_> {
     #[inline]
     fn equivalent(&self, key: &HashKey) -> bool {
-        matches!(key, HashKey::String(s) if s.as_str() == self.0)
+        matches!(key, HashKey::String(s) if &**s == self.0)
     }
 }
 
@@ -138,7 +150,7 @@ impl Hash for SymKey<'_> {
 impl indexmap::Equivalent<HashKey> for SymKey<'_> {
     #[inline]
     fn equivalent(&self, key: &HashKey) -> bool {
-        matches!(key, HashKey::Symbol(s) if s.as_str() == self.0)
+        matches!(key, HashKey::Symbol(s) if &**s == self.0)
     }
 }
 
@@ -234,13 +246,14 @@ impl std::fmt::Display for HashKey {
 
 /// Helper function to create a hash Value from string key-value pairs.
 /// This is a convenience function for creating hashes in builtin functions.
-pub fn hash_from_pairs<I>(pairs: I) -> Value
+pub fn hash_from_pairs<I, K>(pairs: I) -> Value
 where
-    I: IntoIterator<Item = (String, Value)>,
+    I: IntoIterator<Item = (K, Value)>,
+    K: Into<SoliStr>,
 {
     let map: HashPairs = pairs
         .into_iter()
-        .map(|(k, v)| (HashKey::String(k), v))
+        .map(|(k, v)| (HashKey::String(k.into()), v))
         .collect();
     Value::Hash(Rc::new(RefCell::new(map)))
 }
@@ -280,10 +293,10 @@ pub enum Value {
     Float(f64),
     /// Decimal value (exact arithmetic for financial calculations)
     Decimal(DecimalValue),
-    /// String value
-    String(String),
+    /// String value (refcounted: clone = Rc bump, not a byte copy)
+    String(SoliStr),
     /// Symbol value (:name)
-    Symbol(String),
+    Symbol(SoliStr),
     /// Boolean value
     Bool(bool),
     /// Null value
@@ -368,6 +381,14 @@ impl std::fmt::Debug for HttpFutureKind {
 }
 
 impl Value {
+    /// Build a string Value from anything that converts into the shared
+    /// `SoliStr` payload (`&str`, `String`, `Box<str>`, ...). Preferred over
+    /// spelling out `Value::String(x.into())` at construction sites.
+    #[inline]
+    pub fn str(s: impl Into<SoliStr>) -> Value {
+        Value::String(s.into())
+    }
+
     /// If this value is a `DateTime` instance, return the nanosecond
     /// timestamp stored in its private `_ts` field. Used by equality and
     /// ordering so two distinct `DateTime` instances pointing at the same
@@ -1267,7 +1288,7 @@ impl Instance {
 /// For FullResponse, the raw_data is a JSON-encoded response object.
 fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value, String> {
     match kind {
-        HttpFutureKind::String => Ok(Value::String(raw_data.to_string())),
+        HttpFutureKind::String => Ok(Value::String(raw_data.to_string().into())),
         HttpFutureKind::Json => {
             // Parse JSON string into Value
             match serde_json::from_str::<serde_json::Value>(raw_data) {
@@ -1295,15 +1316,15 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
                     // Create a simple hash with the result data using IndexMap
                     let mut hash: HashPairs = HashPairs::default();
                     hash.insert(
-                        HashKey::String("stdout".to_string()),
-                        Value::String(data.stdout),
+                        HashKey::String("stdout".into()),
+                        Value::String(data.stdout.into()),
                     );
                     hash.insert(
-                        HashKey::String("stderr".to_string()),
-                        Value::String(data.stderr),
+                        HashKey::String("stderr".into()),
+                        Value::String(data.stderr.into()),
                     );
                     hash.insert(
-                        HashKey::String("exit_code".to_string()),
+                        HashKey::String("exit_code".into()),
                         Value::Int(data.exit_code as i64),
                     );
                     Ok(Value::Hash(Rc::new(RefCell::new(hash))))
@@ -1599,7 +1620,7 @@ fn parse_number(b: &[u8], pos: &mut usize) -> Result<Value, String> {
     }
 }
 
-fn parse_string(b: &[u8], pos: &mut usize) -> Result<String, String> {
+fn parse_string(b: &[u8], pos: &mut usize) -> Result<SoliStr, String> {
     *pos += 1; // skip opening '"'
     let start = *pos;
 
@@ -1607,8 +1628,9 @@ fn parse_string(b: &[u8], pos: &mut usize) -> Result<String, String> {
     while *pos < b.len() {
         let c = b[*pos];
         if c == b'"' {
-            // No escapes found — direct allocation from slice
-            let s = unsafe { String::from_utf8_unchecked(b[start..*pos].to_vec()) };
+            // No escapes found — build the SoliStr straight from the slice
+            // (short keys/values stay inline: zero heap allocation).
+            let s = SoliStr::from(unsafe { std::str::from_utf8_unchecked(&b[start..*pos]) });
             *pos += 1;
             return Ok(s);
         }
@@ -1624,7 +1646,7 @@ fn parse_string(b: &[u8], pos: &mut usize) -> Result<String, String> {
         match b[*pos] {
             b'"' => {
                 *pos += 1;
-                return Ok(result);
+                return Ok(result.into());
             }
             b'\\' => {
                 *pos += 1;
@@ -2151,7 +2173,7 @@ mod decimal_tests {
         match value {
             Value::Hash(hash_ref) => {
                 let hash = hash_ref.borrow();
-                let price_key = HashKey::String("price".to_string());
+                let price_key = HashKey::String("price".into());
 
                 if let Some(price_value) = hash.get(&price_key) {
                     match price_value {
@@ -2186,7 +2208,7 @@ mod return_type_tests {
 
     #[test]
     fn test_string_matches_string() {
-        let value = Value::String("hello".to_string());
+        let value = Value::String("hello".into());
         let ty = make_type(TypeKind::Named("String".to_string()));
         assert!(value_matches_type(&value, &ty));
     }
@@ -2202,7 +2224,7 @@ mod return_type_tests {
     fn test_any_matches_everything() {
         let ty = make_type(TypeKind::Named("Any".to_string()));
         assert!(value_matches_type(&Value::Int(1), &ty));
-        assert!(value_matches_type(&Value::String("x".to_string()), &ty));
+        assert!(value_matches_type(&Value::String("x".into()), &ty));
         assert!(value_matches_type(&Value::Null, &ty));
         assert!(value_matches_type(&Value::Bool(true), &ty));
     }
@@ -2213,7 +2235,7 @@ mod return_type_tests {
         let ty = make_type(TypeKind::Nullable(Box::new(inner)));
         assert!(value_matches_type(&Value::Null, &ty));
         assert!(value_matches_type(&Value::Int(42), &ty));
-        assert!(!value_matches_type(&Value::String("x".to_string()), &ty));
+        assert!(!value_matches_type(&Value::String("x".into()), &ty));
     }
 
     #[test]
@@ -2280,11 +2302,31 @@ mod value_misc_tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    /// Pin the zero-alloc lookup invariant after the SoliStr (Arc<str>)
+    /// migration: a `StrKey`/`SymKey` borrowed key must hash byte-identically
+    /// to `HashKey::String`/`HashKey::Symbol`, or every string-keyed hash
+    /// lookup silently misses (map corruption, not a compile error).
+    #[test]
+    fn strkey_symkey_hash_equivalent_to_hashkey() {
+        let mut map = HashPairs::default();
+        map.insert(HashKey::String("name".into()), Value::Int(1));
+        map.insert(HashKey::Symbol("status".into()), Value::Int(2));
+
+        assert_eq!(map.get(&StrKey("name")), Some(&Value::Int(1)));
+        assert_eq!(map.get(&SymKey("status")), Some(&Value::Int(2)));
+        // Cross-kind lookups must NOT match (distinct hash tags).
+        assert_eq!(map.get(&StrKey("status")), None);
+        assert_eq!(map.get(&SymKey("name")), None);
+        // Insert-then-update through the borrowed key path.
+        assert!(map.contains_key(&StrKey("name")));
+        assert!(!map.contains_key(&StrKey("missing")));
+    }
+
     #[test]
     fn type_name_covers_all_variants() {
         assert_eq!(Value::Int(0).type_name(), "int");
         assert_eq!(Value::Float(0.0).type_name(), "float");
-        assert_eq!(Value::String(String::new()).type_name(), "string");
+        assert_eq!(Value::String(String::new().into()).type_name(), "string");
         assert_eq!(Value::Bool(true).type_name(), "bool");
         assert_eq!(Value::Null.type_name(), "null");
         assert_eq!(
@@ -2294,7 +2336,7 @@ mod value_misc_tests {
         let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
             indexmap::IndexMap::default();
         assert_eq!(Value::Hash(Rc::new(RefCell::new(h))).type_name(), "hash");
-        assert_eq!(Value::Symbol("x".to_string()).type_name(), "symbol");
+        assert_eq!(Value::Symbol("x".into()).type_name(), "symbol");
     }
 
     #[test]
@@ -2302,13 +2344,13 @@ mod value_misc_tests {
         // Truthy
         assert!(Value::Int(1).is_truthy());
         assert!(Value::Float(0.0).is_truthy());
-        assert!(Value::String("hi".to_string()).is_truthy());
+        assert!(Value::String("hi".into()).is_truthy());
         assert!(Value::Bool(true).is_truthy());
         // Falsy: Bool(false), Null, Int(0), empty string, empty array, empty hash
         assert!(!Value::Bool(false).is_truthy());
         assert!(!Value::Null.is_truthy());
         assert!(!Value::Int(0).is_truthy());
-        assert!(!Value::String(String::new()).is_truthy());
+        assert!(!Value::String(String::new().into()).is_truthy());
         assert!(!Value::Array(Rc::new(RefCell::new(Vec::new()))).is_truthy());
         let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
             indexmap::IndexMap::default();
@@ -2320,11 +2362,11 @@ mod value_misc_tests {
     fn display_basic_values() {
         assert_eq!(format!("{}", Value::Int(42)), "42");
         assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
-        assert_eq!(format!("{}", Value::String("hi".to_string())), "hi");
+        assert_eq!(format!("{}", Value::String("hi".into())), "hi");
         assert_eq!(format!("{}", Value::Bool(true)), "true");
         assert_eq!(format!("{}", Value::Bool(false)), "false");
         assert_eq!(format!("{}", Value::Null), "null");
-        assert_eq!(format!("{}", Value::Symbol("foo".to_string())), ":foo");
+        assert_eq!(format!("{}", Value::Symbol("foo".into())), ":foo");
     }
 
     #[test]
@@ -2337,7 +2379,7 @@ mod value_misc_tests {
         assert_eq!(parse_json("null").unwrap(), Value::Null);
         assert_eq!(
             parse_json(r#""hello""#).unwrap(),
-            Value::String("hello".to_string())
+            Value::String("hello".into())
         );
     }
 
@@ -2362,13 +2404,10 @@ mod value_misc_tests {
             Value::Hash(h) => {
                 let h = h.borrow();
                 assert_eq!(h.len(), 2);
+                assert_eq!(h.get(&HashKey::String("a".into())), Some(&Value::Int(1)));
                 assert_eq!(
-                    h.get(&HashKey::String("a".to_string())),
-                    Some(&Value::Int(1))
-                );
-                assert_eq!(
-                    h.get(&HashKey::String("b".to_string())),
-                    Some(&Value::String("x".to_string()))
+                    h.get(&HashKey::String("b".into())),
+                    Some(&Value::String("x".into()))
                 );
             }
             _ => panic!("expected Hash"),
@@ -2398,15 +2437,15 @@ mod value_misc_tests {
 
     #[test]
     fn hashkey_string_int_equality() {
-        let k1 = HashKey::String("hello".to_string());
-        let k2 = HashKey::String("hello".to_string());
+        let k1 = HashKey::String("hello".into());
+        let k2 = HashKey::String("hello".into());
         assert_eq!(k1, k2);
 
         let i1 = HashKey::Int(42);
         let i2 = HashKey::Int(42);
         assert_eq!(i1, i2);
 
-        assert_ne!(HashKey::String("a".to_string()), HashKey::Int(1));
+        assert_ne!(HashKey::String("a".into()), HashKey::Int(1));
     }
 
     #[test]

@@ -46,7 +46,7 @@ impl Interpreter {
                     let values: Vec<Value> = results.iter().map(json_to_value).collect();
                     Ok(Value::Array(Rc::new(RefCell::new(values))))
                 }
-                Err(e) => Ok(Value::String(format!("Error: {}", e))),
+                Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
             }
         }
     }
@@ -60,7 +60,7 @@ impl Interpreter {
         // Fast path: single literal (no interpolation)
         if parts.len() == 1 {
             if let crate::ast::expr::InterpolatedPart::Literal(s) = &parts[0] {
-                return Ok(Value::String(s.clone()));
+                return Ok(Value::String(s.clone().into()));
             }
         }
 
@@ -85,7 +85,7 @@ impl Interpreter {
                 }
             }
         }
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     /// Evaluate a literal value from an expression kind.
@@ -102,7 +102,7 @@ impl Interpreter {
                 let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
                 Ok(Value::Decimal(DecimalValue(decimal, precision)))
             }
-            ExprKind::StringLiteral(s) => Ok(Value::String(s.clone())),
+            ExprKind::StringLiteral(s) => Ok(Value::String(s.clone().into())),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
             ExprKind::Null => Ok(Value::Null),
             _ => Err(RuntimeError::type_error(
@@ -133,7 +133,7 @@ fn value_to_json(value: &Value) -> serde_json::Value {
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Int(n) => serde_json::json!(*n),
         Value::Float(f) => serde_json::json!(*f),
-        Value::String(s) => serde_json::Value::String(s.clone()),
+        Value::String(s) => serde_json::Value::String(s.clone().to_string()),
         Value::Array(arr) => {
             let items: Vec<serde_json::Value> = arr.borrow().iter().map(value_to_json).collect();
             serde_json::Value::Array(items)
@@ -143,13 +143,13 @@ fn value_to_json(value: &Value) -> serde_json::Value {
             for (key, val) in hash.borrow().iter() {
                 let key_str = match key {
                     crate::interpreter::value::HashKey::String(s) => s.clone(),
-                    crate::interpreter::value::HashKey::Symbol(s) => format!(":{}", s),
-                    crate::interpreter::value::HashKey::Int(i) => i.to_string(),
-                    crate::interpreter::value::HashKey::Decimal(d) => d.0.to_string(),
-                    crate::interpreter::value::HashKey::Bool(b) => b.to_string(),
-                    crate::interpreter::value::HashKey::Null => "null".to_string(),
+                    crate::interpreter::value::HashKey::Symbol(s) => format!(":{}", s).into(),
+                    crate::interpreter::value::HashKey::Int(i) => i.to_string().into(),
+                    crate::interpreter::value::HashKey::Decimal(d) => d.0.to_string().into(),
+                    crate::interpreter::value::HashKey::Bool(b) => b.to_string().into(),
+                    crate::interpreter::value::HashKey::Null => "null".into(),
                 };
-                obj.insert(key_str, value_to_json(val));
+                obj.insert(key_str.to_string(), value_to_json(val));
             }
             serde_json::Value::Object(obj)
         }

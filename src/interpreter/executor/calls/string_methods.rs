@@ -108,49 +108,51 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.to_string())))
+                Some(Ok(Value::String(s.to_string().into())))
             }
             "upcase" | "uppercase" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.to_uppercase())))
+                Some(Ok(Value::String(s.to_uppercase().into())))
             }
             "downcase" | "lowercase" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.to_lowercase())))
+                Some(Ok(Value::String(s.to_lowercase().into())))
             }
             "trim" | "strip" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.trim().to_string())))
+                Some(Ok(Value::String(s.trim().to_string().into())))
             }
             "lstrip" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.trim_start().to_string())))
+                Some(Ok(Value::String(s.trim_start().to_string().into())))
             }
             "rstrip" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.trim_end().to_string())))
+                Some(Ok(Value::String(s.trim_end().to_string().into())))
             }
             "reverse" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(s.chars().rev().collect())))
+                Some(Ok(Value::String(
+                    s.chars().rev().collect::<String>().into(),
+                )))
             }
             "slugify" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::String(slugify_string(s))))
+                Some(Ok(Value::String(slugify_string(s).into())))
             }
             "camelize" => {
                 if arguments.len() > 1 {
@@ -166,7 +168,7 @@ impl Interpreter {
                         )))
                     }
                 };
-                Some(Ok(Value::String(camelize_string(s, upper))))
+                Some(Ok(Value::String(camelize_string(s, upper).into())))
             }
             "empty?" => {
                 if !arguments.is_empty() {
@@ -179,7 +181,7 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
                 match &arguments[0] {
-                    Value::String(sub) => Some(Ok(Value::Bool(s.contains(sub)))),
+                    Value::String(sub) => Some(Ok(Value::Bool(s.contains(&**(sub))))),
                     _ => Some(Err(RuntimeError::type_error(
                         format!("{} expects a string argument", method_name),
                         span,
@@ -191,7 +193,7 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
                 match &arguments[0] {
-                    Value::String(prefix) => Some(Ok(Value::Bool(s.starts_with(prefix)))),
+                    Value::String(prefix) => Some(Ok(Value::Bool(s.starts_with(&**(prefix))))),
                     _ => Some(Err(RuntimeError::type_error(
                         "starts_with? expects a string argument",
                         span,
@@ -203,7 +205,7 @@ impl Interpreter {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
                 match &arguments[0] {
-                    Value::String(suffix) => Some(Ok(Value::Bool(s.ends_with(suffix)))),
+                    Value::String(suffix) => Some(Ok(Value::Bool(s.ends_with(&**(suffix))))),
                     _ => Some(Err(RuntimeError::type_error(
                         "ends_with? expects a string argument",
                         span,
@@ -218,7 +220,7 @@ impl Interpreter {
                     " "
                 } else {
                     match &arguments[0] {
-                        Value::String(delim) => delim.as_str(),
+                        Value::String(delim) => delim.as_ref(),
                         _ => {
                             return Some(Err(RuntimeError::type_error(
                                 "split expects a string delimiter",
@@ -233,7 +235,7 @@ impl Interpreter {
                     s.matches(delim).count() + 1
                 });
                 for part in s.split(delim) {
-                    parts.push(Value::String(part.to_string()));
+                    parts.push(Value::String(part.to_string().into()));
                 }
                 Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
             }
@@ -259,7 +261,7 @@ impl Interpreter {
                         )))
                     }
                 };
-                Some(Ok(Value::String(s.replace(from, to))))
+                Some(Ok(Value::String(s.replace(&**(from), to).into())))
             }
             _ => None,
         }
@@ -311,7 +313,7 @@ impl Interpreter {
             "oct" => self.string_oct(s, arguments, span),
             "truncate" => self.string_truncate(s, arguments, span),
             "length" | "len" | "size" => self.string_length(s, arguments, span),
-            "to_s" | "to_string" => Ok(Value::String(s.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
             "to_i" | "to_int" => {
                 let trimmed = s.trim();
                 // Try integer first, then float-truncate (e.g. "4.88".to_i => 4)
@@ -332,9 +334,9 @@ impl Interpreter {
                         .unwrap_or(0.0),
                 ))
             }
-            "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase())),
-            "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase())),
-            "trim" | "strip" => Ok(Value::String(s.trim().to_string())),
+            "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase().into())),
+            "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase().into())),
+            "trim" | "strip" => Ok(Value::String(s.trim().to_string().into())),
             "contains" => self.string_contains(s, arguments, span),
             "starts_with" => self.string_starts_with(s, arguments, span),
             "ends_with" => self.string_ends_with(s, arguments, span),
@@ -344,10 +346,10 @@ impl Interpreter {
             "replace" => self.string_replace(s, arguments, span),
             "lpad" => self.string_lpad(s, arguments, span),
             "rpad" => self.string_rpad(s, arguments, span),
-            "join" => Ok(Value::String(s.to_string())),
+            "join" => Ok(Value::String(s.to_string().into())),
             "empty?" => self.string_empty(s, arguments, span),
             "includes?" | "include?" => self.string_include(s, arguments, span),
-            "to_sym" => Ok(Value::Symbol(s.to_string())),
+            "to_sym" => Ok(Value::Symbol(s.to_string().into())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(
@@ -365,7 +367,7 @@ impl Interpreter {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
                 }
                 let class_name = match &arguments[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -387,7 +389,7 @@ impl Interpreter {
                 };
                 use std::cmp::Ordering;
                 Ok(Value::Int(
-                    match s.to_lowercase().cmp(&other.to_lowercase()) {
+                    match s.to_lowercase().as_str().cmp(other.to_lowercase().as_ref()) {
                         Ordering::Less => -1,
                         Ordering::Equal => 0,
                         Ordering::Greater => 1,
@@ -412,9 +414,9 @@ impl Interpreter {
                     Value::String(o) => o,
                     _ => return Err(RuntimeError::type_error("prepend expects a string", span)),
                 };
-                let mut result = other.clone();
+                let mut result = other.to_string();
                 result.push_str(s);
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "chop" => {
                 if !arguments.is_empty() {
@@ -422,7 +424,7 @@ impl Interpreter {
                 }
                 let mut chars: Vec<char> = s.chars().collect();
                 chars.pop();
-                Ok(Value::String(chars.into_iter().collect()))
+                Ok(Value::String(chars.into_iter().collect::<String>().into()))
             }
             "ascii_only?" => {
                 if !arguments.is_empty() {
@@ -434,7 +436,7 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
                 }
-                Ok(Value::String(string_succ(s)))
+                Ok(Value::String(string_succ(s).into()))
             }
             "chr" => Err(RuntimeError::type_error(
                 "chr is not a string instance method",
@@ -466,7 +468,7 @@ impl Interpreter {
                 ))
             }
         };
-        Ok(Value::Bool(s.starts_with(prefix)))
+        Ok(Value::Bool(s.starts_with(&**(prefix))))
     }
 
     fn string_ends_with(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -482,7 +484,7 @@ impl Interpreter {
                 ))
             }
         };
-        Ok(Value::Bool(s.ends_with(suffix)))
+        Ok(Value::Bool(s.ends_with(&**(suffix))))
     }
 
     fn string_chomp(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -494,21 +496,21 @@ impl Interpreter {
             .or_else(|| s.strip_suffix("\r\n"))
             .or_else(|| s.strip_suffix('\r'))
             .unwrap_or(s);
-        Ok(Value::String(result.to_string()))
+        Ok(Value::String(result.to_string().into()))
     }
 
     fn string_lstrip(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(Value::String(s.trim_start().to_string()))
+        Ok(Value::String(s.trim_start().to_string().into()))
     }
 
     fn string_rstrip(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(Value::String(s.trim_end().to_string()))
+        Ok(Value::String(s.trim_end().to_string().into()))
     }
 
     fn string_squeeze(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -538,7 +540,7 @@ impl Interpreter {
             }
             last_char = Some(c);
         }
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_count(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -554,7 +556,7 @@ impl Interpreter {
                 ))
             }
         };
-        let count = s.matches(substr).count() as i64;
+        let count = s.matches(&**(substr)).count() as i64;
         Ok(Value::Int(count))
     }
 
@@ -593,13 +595,13 @@ impl Interpreter {
             };
             let re = crate::regex_cache::get_regex(pattern)
                 .map_err(|e| RuntimeError::type_error(e, span))?;
-            re.replacen(s, limit, &replacement).to_string()
+            re.replacen(s, limit, &*replacement).to_string()
         } else {
             let re = crate::regex_cache::get_regex(pattern)
                 .map_err(|e| RuntimeError::type_error(e, span))?;
-            re.replace_all(s, &replacement).to_string()
+            re.replace_all(s, &*replacement).to_string()
         };
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_sub(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -627,8 +629,8 @@ impl Interpreter {
 
         let re = crate::regex_cache::get_regex(pattern)
             .map_err(|e| RuntimeError::type_error(e, span))?;
-        let result = re.replacen(s, 1, &replacement).to_string();
-        Ok(Value::String(result))
+        let result = re.replacen(s, 1, &*replacement).to_string();
+        Ok(Value::String(result.into()))
     }
 
     fn string_match(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -651,7 +653,7 @@ impl Interpreter {
             let mut result = Vec::new();
             for i in 0..captures.len() {
                 if let Some(m) = captures.get(i) {
-                    result.push(Value::String(m.as_str().to_string()));
+                    result.push(Value::String(m.as_str().to_string().into()));
                 }
             }
             Ok(Value::Array(Rc::new(RefCell::new(result))))
@@ -678,7 +680,7 @@ impl Interpreter {
             .map_err(|e| RuntimeError::type_error(e, span))?;
         let matches: Vec<Value> = re
             .find_iter(s)
-            .map(|m| Value::String(m.as_str().to_string()))
+            .map(|m| Value::String(m.as_str().to_string().into()))
             .collect();
         Ok(Value::Array(Rc::new(RefCell::new(matches))))
     }
@@ -716,7 +718,7 @@ impl Interpreter {
                 result.push(c);
             }
         }
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_center(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -741,14 +743,14 @@ impl Interpreter {
             .unwrap_or(' ');
 
         if s.len() >= width {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let total_pad = width - s.len();
             let left_pad = total_pad / 2;
             let right_pad = total_pad - left_pad;
             let result =
                 pad_char.to_string().repeat(left_pad) + s + &pad_char.to_string().repeat(right_pad);
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         }
     }
 
@@ -774,10 +776,10 @@ impl Interpreter {
             .unwrap_or(' ');
 
         if s.len() >= width {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let result = s.to_string() + &pad_char.to_string().repeat(width - s.len());
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         }
     }
 
@@ -803,10 +805,10 @@ impl Interpreter {
             .unwrap_or(' ');
 
         if s.len() >= width {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let result = pad_char.to_string().repeat(width - s.len()) + s;
-            Ok(Value::String(result))
+            Ok(Value::String(result.into()))
         }
     }
 
@@ -835,7 +837,7 @@ impl Interpreter {
         }
         let mut chars = Vec::with_capacity(s.len());
         for c in s.chars() {
-            chars.push(Value::String(c.to_string()));
+            chars.push(Value::String(c.to_string().into()));
         }
         Ok(Value::Array(Rc::new(RefCell::new(chars))))
     }
@@ -846,7 +848,7 @@ impl Interpreter {
         }
         let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
         for line in s.lines() {
-            lines.push(Value::String(line.to_string()));
+            lines.push(Value::String(line.to_string().into()));
         }
         Ok(Value::Array(Rc::new(RefCell::new(lines))))
     }
@@ -874,7 +876,7 @@ impl Interpreter {
                 first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
             }
         };
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_swapcase(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -893,7 +895,7 @@ impl Interpreter {
                 }
             }
         }
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_insert(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -934,7 +936,7 @@ impl Interpreter {
         if index == char_count {
             result.push_str(insert_str);
         }
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_delete(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -950,8 +952,8 @@ impl Interpreter {
                 ))
             }
         };
-        let result = s.replace(to_delete, "");
-        Ok(Value::String(result))
+        let result = s.replace(&**(to_delete), "");
+        Ok(Value::String(result.into()))
     }
 
     fn string_delete_prefix(
@@ -972,8 +974,8 @@ impl Interpreter {
                 ))
             }
         };
-        let result = s.strip_prefix(prefix).unwrap_or(s);
-        Ok(Value::String(result.to_string()))
+        let result = s.strip_prefix(&**(prefix)).unwrap_or(s);
+        Ok(Value::String(result.to_string().into()))
     }
 
     fn string_delete_suffix(
@@ -994,8 +996,8 @@ impl Interpreter {
                 ))
             }
         };
-        let result = s.strip_suffix(suffix).unwrap_or(s);
-        Ok(Value::String(result.to_string()))
+        let result = s.strip_suffix(&**(suffix)).unwrap_or(s);
+        Ok(Value::String(result.to_string().into()))
     }
 
     fn string_partition(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1012,20 +1014,20 @@ impl Interpreter {
             }
         };
 
-        if let Some(pos) = s.find(sep) {
+        if let Some(pos) = s.find(&**(sep)) {
             let before = &s[..pos];
             let after = &s[pos + sep.len()..];
             let result = vec![
-                Value::String(before.to_string()),
-                Value::String(sep.to_string()),
-                Value::String(after.to_string()),
+                Value::String(before.to_string().into()),
+                Value::String(sep.to_string().into()),
+                Value::String(after.to_string().into()),
             ];
             Ok(Value::Array(Rc::new(RefCell::new(result))))
         } else {
             let result = vec![
-                Value::String(s.to_string()),
-                Value::String("".to_string()),
-                Value::String("".to_string()),
+                Value::String(s.to_string().into()),
+                Value::String("".into()),
+                Value::String("".into()),
             ];
             Ok(Value::Array(Rc::new(RefCell::new(result))))
         }
@@ -1050,20 +1052,20 @@ impl Interpreter {
             }
         };
 
-        if let Some(pos) = s.rfind(sep) {
+        if let Some(pos) = s.rfind(&**(sep)) {
             let before = &s[..pos];
             let after = &s[pos + sep.len()..];
             let result = vec![
-                Value::String(before.to_string()),
-                Value::String(sep.to_string()),
-                Value::String(after.to_string()),
+                Value::String(before.to_string().into()),
+                Value::String(sep.to_string().into()),
+                Value::String(after.to_string().into()),
             ];
             Ok(Value::Array(Rc::new(RefCell::new(result))))
         } else {
             let result = vec![
-                Value::String("".to_string()),
-                Value::String("".to_string()),
-                Value::String(s.to_string()),
+                Value::String("".into()),
+                Value::String("".into()),
+                Value::String(s.to_string().into()),
             ];
             Ok(Value::Array(Rc::new(RefCell::new(result))))
         }
@@ -1074,7 +1076,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         let result: String = s.chars().rev().collect();
-        Ok(Value::String(result))
+        Ok(Value::String(result.into()))
     }
 
     fn string_hex(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1111,16 +1113,16 @@ impl Interpreter {
         let suffix = arguments
             .get(1)
             .map(|v| match v {
-                Value::String(s) => s.as_str(),
+                Value::String(s) => s.as_ref(),
                 _ => "...",
             })
             .unwrap_or("...");
 
         if s.len() <= length {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let result = &s[..length.saturating_sub(suffix.len())];
-            Ok(Value::String(result.to_string() + suffix))
+            Ok(Value::String((result.to_string() + suffix).into()))
         }
     }
 
@@ -1144,7 +1146,7 @@ impl Interpreter {
                 ))
             }
         };
-        Ok(Value::Bool(s.contains(substr)))
+        Ok(Value::Bool(s.contains(&**(substr))))
     }
 
     fn string_split(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1155,7 +1157,7 @@ impl Interpreter {
             " "
         } else {
             match &arguments[0] {
-                Value::String(d) => d.as_str(),
+                Value::String(d) => d.as_ref(),
                 _ => {
                     return Err(RuntimeError::type_error(
                         "split expects a string delimiter",
@@ -1171,7 +1173,7 @@ impl Interpreter {
         };
         let mut parts = Vec::with_capacity(capacity);
         for part in s.split(delim) {
-            parts.push(Value::String(part.to_string()));
+            parts.push(Value::String(part.to_string().into()));
         }
         Ok(Value::Array(Rc::new(RefCell::new(parts))))
     }
@@ -1189,7 +1191,7 @@ impl Interpreter {
                 ))
             }
         };
-        if let Some(idx) = s.find(substr) {
+        if let Some(idx) = s.find(&**(substr)) {
             Ok(Value::Int(idx as i64))
         } else {
             Ok(Value::Int(-1))
@@ -1226,10 +1228,13 @@ impl Interpreter {
             (end as usize).min(chars.len())
         };
         if start_usize >= end_usize || start_usize >= chars.len() {
-            Ok(Value::String(String::new()))
+            Ok(Value::String(String::new().into()))
         } else {
             Ok(Value::String(
-                chars[start_usize..end_usize].iter().collect(),
+                chars[start_usize..end_usize]
+                    .iter()
+                    .collect::<String>()
+                    .into(),
             ))
         }
     }
@@ -1251,7 +1256,7 @@ impl Interpreter {
             Value::String(t) => t,
             _ => return Err(RuntimeError::type_error("replace expects string to", span)),
         };
-        Ok(Value::String(s.replace(from, to)))
+        Ok(Value::String(s.replace(&**(from), to).into()))
     }
 
     fn string_lpad(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1275,10 +1280,12 @@ impl Interpreter {
             })
             .unwrap_or(' ');
         if s.len() >= width {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let padding = width - s.len();
-            Ok(Value::String(pad_char.to_string().repeat(padding) + s))
+            Ok(Value::String(
+                (pad_char.to_string().repeat(padding) + s).into(),
+            ))
         }
     }
 
@@ -1303,11 +1310,11 @@ impl Interpreter {
             })
             .unwrap_or(' ');
         if s.len() >= width {
-            Ok(Value::String(s.to_string()))
+            Ok(Value::String(s.to_string().into()))
         } else {
             let padding = width - s.len();
             Ok(Value::String(
-                s.to_string() + &pad_char.to_string().repeat(padding),
+                (s.to_string() + &pad_char.to_string().repeat(padding)).into(),
             ))
         }
     }
@@ -1332,7 +1339,7 @@ impl Interpreter {
                 ))
             }
         };
-        Ok(Value::Bool(s.contains(substr)))
+        Ok(Value::Bool(s.contains(&**(substr))))
     }
 }
 

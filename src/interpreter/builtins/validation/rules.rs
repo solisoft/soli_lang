@@ -329,7 +329,7 @@ impl ValidationRule {
             ValidationRule::Max(n) => ("max", Value::Float(*n)),
             ValidationRule::MinLength(n) => ("min_length", Value::Int(*n as i64)),
             ValidationRule::MaxLength(n) => ("max_length", Value::Int(*n as i64)),
-            ValidationRule::Pattern(s) => ("pattern", Value::String(s.clone())),
+            ValidationRule::Pattern(s) => ("pattern", Value::String(s.clone().into())),
             ValidationRule::Email => ("email", Value::Bool(true)),
             ValidationRule::Url => ("url", Value::Bool(true)),
             ValidationRule::OneOf(arr) => {
@@ -340,15 +340,17 @@ impl ValidationRule {
             ValidationRule::MixedCase => ("mixed_case", Value::Bool(true)),
             ValidationRule::Numbers => ("numbers", Value::Bool(true)),
             ValidationRule::Symbols => ("symbols", Value::Bool(true)),
-            ValidationRule::Confirmation(field) => ("confirmation", Value::String(field.clone())),
+            ValidationRule::Confirmation(field) => {
+                ("confirmation", Value::String(field.clone().into()))
+            }
         };
 
         let mut pairs: HashPairs = HashPairs::default();
         pairs.insert(
-            HashKey::String("type".to_string()),
-            Value::String(rule_type.to_string()),
+            HashKey::String("type".into()),
+            Value::String(rule_type.to_string().into()),
         );
-        pairs.insert(HashKey::String("value".to_string()), rule_value);
+        pairs.insert(HashKey::String("value".into()), rule_value);
         Value::Hash(Rc::new(RefCell::new(pairs)))
     }
 
@@ -378,7 +380,7 @@ impl ValidationRule {
 
         for (k, v) in hash.iter() {
             if let HashKey::String(key) = k {
-                match key.as_str() {
+                match key.as_ref() {
                     "type" => {
                         if let Value::String(t) = v {
                             rule_type = Some(t.clone());
@@ -395,7 +397,7 @@ impl ValidationRule {
         let rule_type = rule_type?;
         let rule_value = rule_value?;
 
-        match rule_type.as_str() {
+        match rule_type.as_ref() {
             "min" => {
                 let n = match rule_value {
                     Value::Float(f) => f,
@@ -431,7 +433,7 @@ impl ValidationRule {
                     Value::String(s) => s,
                     _ => return None,
                 };
-                Some(ValidationRule::Pattern(s))
+                Some(ValidationRule::Pattern(s.to_string()))
             }
             "email" => Some(ValidationRule::Email),
             "url" => Some(ValidationRule::Url),
@@ -451,7 +453,7 @@ impl ValidationRule {
                     Value::String(s) => s,
                     _ => return None,
                 };
-                Some(ValidationRule::Confirmation(field))
+                Some(ValidationRule::Confirmation(field.to_string()))
             }
             _ => None,
         }

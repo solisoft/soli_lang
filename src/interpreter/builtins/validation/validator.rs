@@ -61,45 +61,39 @@ impl Validator {
 
         // Create a hash with chainable methods
         let mut pairs: HashPairs = HashPairs::default();
+        pairs.insert(HashKey::String("__validator__".into()), Value::Bool(true));
         pairs.insert(
-            HashKey::String("__validator__".to_string()),
-            Value::Bool(true),
+            HashKey::String("__type__".into()),
+            Value::String(self.validator_type.name().to_string().into()),
         );
         pairs.insert(
-            HashKey::String("__type__".to_string()),
-            Value::String(self.validator_type.name().to_string()),
-        );
-        pairs.insert(
-            HashKey::String("__required__".to_string()),
+            HashKey::String("__required__".into()),
             Value::Bool(self.required),
         );
         pairs.insert(
-            HashKey::String("__nullable__".to_string()),
+            HashKey::String("__nullable__".into()),
             Value::Bool(self.nullable),
         );
 
         if let Some(ref default) = self.default_value {
-            pairs.insert(HashKey::String("__default__".to_string()), default.clone());
+            pairs.insert(HashKey::String("__default__".into()), default.clone());
         }
 
         if let Some(ref schema) = self.nested_schema {
-            pairs.insert(
-                HashKey::String("__nested_schema__".to_string()),
-                schema.clone(),
-            );
+            pairs.insert(HashKey::String("__nested_schema__".into()), schema.clone());
         }
 
         // Serialize rules
         let rules_array: Vec<Value> = self.rules.iter().map(|r| r.to_value()).collect();
         pairs.insert(
-            HashKey::String("__rules__".to_string()),
+            HashKey::String("__rules__".into()),
             Value::Array(Rc::new(RefCell::new(rules_array))),
         );
 
         // Add chainable methods
         let validator_for_required = validator_rc.clone();
         pairs.insert(
-            HashKey::String("required".to_string()),
+            HashKey::String("required".into()),
             Value::NativeFunction(NativeFunction::new("required", Some(0), move |_args| {
                 let mut v = validator_for_required.borrow().clone();
                 v.required = true;
@@ -109,7 +103,7 @@ impl Validator {
 
         let validator_for_optional = validator_rc.clone();
         pairs.insert(
-            HashKey::String("optional".to_string()),
+            HashKey::String("optional".into()),
             Value::NativeFunction(NativeFunction::new("optional", Some(0), move |_args| {
                 let mut v = validator_for_optional.borrow().clone();
                 v.required = false;
@@ -119,7 +113,7 @@ impl Validator {
 
         let validator_for_nullable = validator_rc.clone();
         pairs.insert(
-            HashKey::String("nullable".to_string()),
+            HashKey::String("nullable".into()),
             Value::NativeFunction(NativeFunction::new("nullable", Some(0), move |_args| {
                 let mut v = validator_for_nullable.borrow().clone();
                 v.nullable = true;
@@ -129,7 +123,7 @@ impl Validator {
 
         let validator_for_default = validator_rc.clone();
         pairs.insert(
-            HashKey::String("default".to_string()),
+            HashKey::String("default".into()),
             Value::NativeFunction(NativeFunction::new("default", Some(1), move |args| {
                 let mut v = validator_for_default.borrow().clone();
                 v.default_value = Some(args[0].clone());
@@ -141,7 +135,7 @@ impl Validator {
         if self.validator_type == ValidatorType::String {
             let validator_for_min_length = validator_rc.clone();
             pairs.insert(
-                HashKey::String("min_length".to_string()),
+                HashKey::String("min_length".into()),
                 Value::NativeFunction(NativeFunction::new("min_length", Some(1), move |args| {
                     let min = match &args[0] {
                         Value::Int(n) => *n as usize,
@@ -155,7 +149,7 @@ impl Validator {
 
             let validator_for_max_length = validator_rc.clone();
             pairs.insert(
-                HashKey::String("max_length".to_string()),
+                HashKey::String("max_length".into()),
                 Value::NativeFunction(NativeFunction::new("max_length", Some(1), move |args| {
                     let max = match &args[0] {
                         Value::Int(n) => *n as usize,
@@ -169,21 +163,21 @@ impl Validator {
 
             let validator_for_pattern = validator_rc.clone();
             pairs.insert(
-                HashKey::String("pattern".to_string()),
+                HashKey::String("pattern".into()),
                 Value::NativeFunction(NativeFunction::new("pattern", Some(1), move |args| {
                     let pattern = match &args[0] {
                         Value::String(s) => s.clone(),
                         _ => return Err("pattern() expects string regex".to_string()),
                     };
                     let mut v = validator_for_pattern.borrow().clone();
-                    v.rules.push(ValidationRule::Pattern(pattern));
+                    v.rules.push(ValidationRule::Pattern(pattern.to_string()));
                     Ok(v.to_value())
                 })),
             );
 
             let validator_for_email = validator_rc.clone();
             pairs.insert(
-                HashKey::String("email".to_string()),
+                HashKey::String("email".into()),
                 Value::NativeFunction(NativeFunction::new("email", Some(0), move |_args| {
                     let mut v = validator_for_email.borrow().clone();
                     v.rules.push(ValidationRule::Email);
@@ -193,7 +187,7 @@ impl Validator {
 
             let validator_for_url = validator_rc.clone();
             pairs.insert(
-                HashKey::String("url".to_string()),
+                HashKey::String("url".into()),
                 Value::NativeFunction(NativeFunction::new("url", Some(0), move |_args| {
                     let mut v = validator_for_url.borrow().clone();
                     v.rules.push(ValidationRule::Url);
@@ -203,7 +197,7 @@ impl Validator {
 
             let validator_for_letters = validator_rc.clone();
             pairs.insert(
-                HashKey::String("letters".to_string()),
+                HashKey::String("letters".into()),
                 Value::NativeFunction(NativeFunction::new("letters", Some(0), move |_args| {
                     let mut v = validator_for_letters.borrow().clone();
                     v.rules.push(ValidationRule::Letters);
@@ -213,7 +207,7 @@ impl Validator {
 
             let validator_for_mixed_case = validator_rc.clone();
             pairs.insert(
-                HashKey::String("mixed_case".to_string()),
+                HashKey::String("mixed_case".into()),
                 Value::NativeFunction(NativeFunction::new("mixed_case", Some(0), move |_args| {
                     let mut v = validator_for_mixed_case.borrow().clone();
                     v.rules.push(ValidationRule::MixedCase);
@@ -223,7 +217,7 @@ impl Validator {
 
             let validator_for_numbers = validator_rc.clone();
             pairs.insert(
-                HashKey::String("numbers".to_string()),
+                HashKey::String("numbers".into()),
                 Value::NativeFunction(NativeFunction::new("numbers", Some(0), move |_args| {
                     let mut v = validator_for_numbers.borrow().clone();
                     v.rules.push(ValidationRule::Numbers);
@@ -233,7 +227,7 @@ impl Validator {
 
             let validator_for_symbols = validator_rc.clone();
             pairs.insert(
-                HashKey::String("symbols".to_string()),
+                HashKey::String("symbols".into()),
                 Value::NativeFunction(NativeFunction::new("symbols", Some(0), move |_args| {
                     let mut v = validator_for_symbols.borrow().clone();
                     v.rules.push(ValidationRule::Symbols);
@@ -247,7 +241,7 @@ impl Validator {
         {
             let validator_for_min = validator_rc.clone();
             pairs.insert(
-                HashKey::String("min".to_string()),
+                HashKey::String("min".into()),
                 Value::NativeFunction(NativeFunction::new("min", Some(1), move |args| {
                     let min = match &args[0] {
                         Value::Int(n) => *n as f64,
@@ -262,7 +256,7 @@ impl Validator {
 
             let validator_for_max = validator_rc.clone();
             pairs.insert(
-                HashKey::String("max".to_string()),
+                HashKey::String("max".into()),
                 Value::NativeFunction(NativeFunction::new("max", Some(1), move |args| {
                     let max = match &args[0] {
                         Value::Int(n) => *n as f64,
@@ -279,7 +273,7 @@ impl Validator {
         // one_of() - works for any type
         let validator_for_one_of = validator_rc.clone();
         pairs.insert(
-            HashKey::String("one_of".to_string()),
+            HashKey::String("one_of".into()),
             Value::NativeFunction(NativeFunction::new("one_of", Some(1), move |args| {
                 let allowed = match &args[0] {
                     Value::Array(arr) => arr.borrow().clone(),
@@ -294,14 +288,15 @@ impl Validator {
         // confirmation(field_name) - available on any validator
         let validator_for_confirmation = validator_rc.clone();
         pairs.insert(
-            HashKey::String("confirmation".to_string()),
+            HashKey::String("confirmation".into()),
             Value::NativeFunction(NativeFunction::new("confirmation", Some(1), move |args| {
                 let field = match &args[0] {
                     Value::String(s) => s.clone(),
                     _ => return Err("confirmation() expects a string field name".to_string()),
                 };
                 let mut v = validator_for_confirmation.borrow().clone();
-                v.rules.push(ValidationRule::Confirmation(field));
+                v.rules
+                    .push(ValidationRule::Confirmation(field.to_string()));
                 Ok(v.to_value())
             })),
         );
@@ -309,7 +304,7 @@ impl Validator {
         // to_password_rules_string() - available on any validator
         let validator_for_password_rules = validator_rc.clone();
         pairs.insert(
-            HashKey::String("to_password_rules_string".to_string()),
+            HashKey::String("to_password_rules_string".into()),
             Value::NativeFunction(NativeFunction::new(
                 "to_password_rules_string",
                 Some(0),
@@ -320,7 +315,7 @@ impl Validator {
                         .iter()
                         .filter_map(|r| r.to_password_rule_str())
                         .collect();
-                    Ok(Value::String(parts.join(" ")))
+                    Ok(Value::String(parts.join(" ").into()))
                 },
             )),
         );
@@ -344,7 +339,7 @@ impl Validator {
         // Check for __validator__ marker
         let is_validator = hash.iter().any(|(k, v)| {
             if let (HashKey::String(key), Value::Bool(true)) = (k, v) {
-                key == "__validator__"
+                **key == *"__validator__"
             } else {
                 false
             }
@@ -363,8 +358,8 @@ impl Validator {
             .iter()
             .find_map(|(k, v)| {
                 if let (HashKey::String(key), Value::String(type_name)) = (k, v) {
-                    if key == "__type__" {
-                        return match type_name.as_str() {
+                    if **key == *"__type__" {
+                        return match type_name.as_ref() {
                             "string" => Some(ValidatorType::String),
                             "int" => Some(ValidatorType::Int),
                             "float" => Some(ValidatorType::Float),
@@ -382,7 +377,7 @@ impl Validator {
         // Extract required
         let required = hash.iter().any(|(k, v)| {
             if let (HashKey::String(key), Value::Bool(true)) = (k, v) {
-                key == "__required__"
+                **key == *"__required__"
             } else {
                 false
             }
@@ -391,7 +386,7 @@ impl Validator {
         // Extract nullable
         let nullable = hash.iter().any(|(k, v)| {
             if let (HashKey::String(key), Value::Bool(true)) = (k, v) {
-                key == "__nullable__"
+                **key == *"__nullable__"
             } else {
                 false
             }
@@ -400,7 +395,7 @@ impl Validator {
         // Extract default value
         let default_value = hash.iter().find_map(|(k, v)| {
             if let HashKey::String(key) = k {
-                if key == "__default__" {
+                if **key == *"__default__" {
                     return Some(v.clone());
                 }
             }
@@ -410,7 +405,7 @@ impl Validator {
         // Extract nested schema
         let nested_schema = hash.iter().find_map(|(k, v)| {
             if let HashKey::String(key) = k {
-                if key == "__nested_schema__" {
+                if **key == *"__nested_schema__" {
                     return Some(v.clone());
                 }
             }
@@ -421,7 +416,7 @@ impl Validator {
         let mut rules = Vec::new();
         for (k, v) in hash.iter() {
             if let HashKey::String(key) = k {
-                if key == "__rules__" {
+                if **key == *"__rules__" {
                     if let Value::Array(arr) = v {
                         for rule_value in arr.borrow().iter() {
                             if let Some(rule) = ValidationRule::from_value(rule_value) {

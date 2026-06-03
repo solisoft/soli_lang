@@ -41,17 +41,14 @@ pub fn register_regex_class(env: &mut Environment) {
                     if let Some(m) = re.find(s) {
                         let mut matches: HashPairs = HashPairs::default();
                         matches.insert(
-                            HashKey::String("match".to_string()),
-                            Value::String(m.as_str().to_string()),
+                            HashKey::String("match".into()),
+                            Value::String(m.as_str().to_string().into()),
                         );
                         matches.insert(
-                            HashKey::String("start".to_string()),
+                            HashKey::String("start".into()),
                             Value::Int(m.start() as i64),
                         );
-                        matches.insert(
-                            HashKey::String("end".to_string()),
-                            Value::Int(m.end() as i64),
-                        );
+                        matches.insert(HashKey::String("end".into()), Value::Int(m.end() as i64));
                         Ok(Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(
                             matches,
                         ))))
@@ -78,17 +75,15 @@ pub fn register_regex_class(env: &mut Environment) {
                         .map(|m| {
                             let mut match_hash: HashPairs = HashPairs::default();
                             match_hash.insert(
-                                HashKey::String("match".to_string()),
-                                Value::String(m.as_str().to_string()),
+                                HashKey::String("match".into()),
+                                Value::String(m.as_str().to_string().into()),
                             );
                             match_hash.insert(
-                                HashKey::String("start".to_string()),
+                                HashKey::String("start".into()),
                                 Value::Int(m.start() as i64),
                             );
-                            match_hash.insert(
-                                HashKey::String("end".to_string()),
-                                Value::Int(m.end() as i64),
-                            );
+                            match_hash
+                                .insert(HashKey::String("end".into()), Value::Int(m.end() as i64));
                             Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(match_hash)))
                         })
                         .collect();
@@ -110,8 +105,8 @@ pub fn register_regex_class(env: &mut Environment) {
             |args| match (&args[0], &args[1], &args[2]) {
                 (Value::String(pattern), Value::String(s), Value::String(replacement)) => {
                     let re = get_safe_regex(pattern)?;
-                    let result = re.replace(s, replacement.as_str());
-                    Ok(Value::String(result.to_string()))
+                    let result = re.replace(s, replacement.as_ref());
+                    Ok(Value::String(result.to_string().into()))
                 }
                 _ => Err("Regex.replace requires (string, string, string)".to_string()),
             },
@@ -127,8 +122,8 @@ pub fn register_regex_class(env: &mut Environment) {
             |args| match (&args[0], &args[1], &args[2]) {
                 (Value::String(pattern), Value::String(s), Value::String(replacement)) => {
                     let re = get_safe_regex(pattern)?;
-                    let result = re.replace_all(s, replacement.as_str());
-                    Ok(Value::String(result.to_string()))
+                    let result = re.replace_all(s, replacement.as_ref());
+                    Ok(Value::String(result.to_string().into()))
                 }
                 _ => Err("Regex.replace_all requires (string, string, string)".to_string()),
             },
@@ -142,8 +137,10 @@ pub fn register_regex_class(env: &mut Environment) {
             match (&args[0], &args[1]) {
                 (Value::String(pattern), Value::String(s)) => {
                     let re = get_safe_regex(pattern)?;
-                    let parts: Vec<Value> =
-                        re.split(s).map(|p| Value::String(p.to_string())).collect();
+                    let parts: Vec<Value> = re
+                        .split(s)
+                        .map(|p| Value::String(p.to_string().into()))
+                        .collect();
                     Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
                         parts,
                     ))))
@@ -165,26 +162,27 @@ pub fn register_regex_class(env: &mut Environment) {
                     if let Some(caps) = re.captures(s) {
                         let mut result: HashPairs = HashPairs::default();
                         result.insert(
-                            HashKey::String("match".to_string()),
+                            HashKey::String("match".into()),
                             Value::String(
                                 caps.get(0)
                                     .map(|m| m.as_str().to_string())
-                                    .unwrap_or_default(),
+                                    .unwrap_or_default()
+                                    .into(),
                             ),
                         );
                         result.insert(
-                            HashKey::String("start".to_string()),
+                            HashKey::String("start".into()),
                             Value::Int(caps.get(0).map(|m| m.start() as i64).unwrap_or(-1)),
                         );
                         result.insert(
-                            HashKey::String("end".to_string()),
+                            HashKey::String("end".into()),
                             Value::Int(caps.get(0).map(|m| m.end() as i64).unwrap_or(-1)),
                         );
                         for name in re.capture_names().flatten() {
                             if let Some(cap) = caps.name(name) {
                                 result.insert(
-                                    HashKey::String(name.to_string()),
-                                    Value::String(cap.as_str().to_string()),
+                                    HashKey::String(name.to_string().into()),
+                                    Value::String(cap.as_str().to_string().into()),
                                 );
                             }
                         }
@@ -209,7 +207,7 @@ pub fn register_regex_class(env: &mut Environment) {
             |args| match &args[0] {
                 Value::String(s) => {
                     let escaped = regex::escape(s);
-                    Ok(Value::String(escaped))
+                    Ok(Value::String(escaped.into()))
                 }
                 _ => Err("Regex.escape requires (string)".to_string()),
             },

@@ -263,8 +263,8 @@ impl Interpreter {
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "class" => Ok(Value::String("Function".to_string())),
-            "inspect" => Ok(Value::String("<function>".to_string())),
+            "class" => Ok(Value::String("Function".into())),
+            "inspect" => Ok(Value::String("<function>".into())),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: type_name,
                 property: name.to_string(),
@@ -287,7 +287,9 @@ impl Interpreter {
             "inspect" => {
                 let inst_ref = inst.borrow();
                 if inst_ref.fields.is_empty() {
-                    return Ok(Value::String(format!("<{} instance>", inst_ref.class.name)));
+                    return Ok(Value::String(
+                        format!("<{} instance>", inst_ref.class.name).into(),
+                    ));
                 }
                 let mut s = format!("<{}", inst_ref.class.name);
                 let mut first = true;
@@ -311,11 +313,11 @@ impl Interpreter {
                     s.push_str(&Self::inspect_compact(v));
                 }
                 s.push('>');
-                return Ok(Value::String(s));
+                return Ok(Value::String(s.into()));
             }
             "class" => {
                 let inst_ref = inst.borrow();
-                return Ok(Value::String(inst_ref.class.name.clone()));
+                return Ok(Value::String(inst_ref.class.name.clone().into()));
             }
             "is_a?" => {
                 let inst_clone = inst.clone();
@@ -327,7 +329,7 @@ impl Interpreter {
                             return Err("is_a? expects 1 argument".to_string());
                         }
                         let class_name = match &args[0] {
-                            Value::String(s) => s.as_str(),
+                            Value::String(s) => s.as_ref(),
                             _ => return Err("is_a? expects a string argument".to_string()),
                         };
                         let inst_ref = inst_clone.borrow();
@@ -366,7 +368,7 @@ impl Interpreter {
                             || inst_ref.class.find_native_method(&method_name).is_some();
                         // Also check universal methods (handled inline, not in class methods)
                         let is_universal = matches!(
-                            method_name.as_str(),
+                            method_name.as_ref(),
                             "inspect"
                                 | "class"
                                 | "nil?"
@@ -486,7 +488,7 @@ impl Interpreter {
                 let vars: Vec<Value> = inst_ref
                     .fields
                     .keys()
-                    .map(|k| Value::String(format!("@{}", k)))
+                    .map(|k| Value::String(format!("@{}", k).into()))
                     .collect();
                 return Ok(Value::Array(Rc::new(RefCell::new(vars))));
             }
@@ -502,10 +504,10 @@ impl Interpreter {
                                 if let Some(stripped) = s.strip_prefix('@') {
                                     stripped.to_string()
                                 } else {
-                                    s.clone()
+                                    s.clone().to_string()
                                 }
                             }
-                            Some(Value::Symbol(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone().to_string(),
                             _ => {
                                 return Err(
                                     "instance_variable_get expects a string or symbol argument"
@@ -531,10 +533,10 @@ impl Interpreter {
                                 if let Some(stripped) = s.strip_prefix('@') {
                                     stripped.to_string()
                                 } else {
-                                    s.clone()
+                                    s.clone().to_string()
                                 }
                             }
-                            Some(Value::Symbol(s)) => s.clone(),
+                            Some(Value::Symbol(s)) => s.clone().to_string(),
                             _ => {
                                 return Err(
                                     "instance_variable_set expects a string or symbol as first argument"
@@ -584,7 +586,10 @@ impl Interpreter {
                         };
 
                         let class = inst_clone.borrow().class.clone();
-                        class.methods.borrow_mut().insert(method_name, func);
+                        class
+                            .methods
+                            .borrow_mut()
+                            .insert(method_name.to_string(), func);
                         class.all_methods_cache.borrow_mut().take();
 
                         Ok(Value::Null)
@@ -620,17 +625,19 @@ impl Interpreter {
                         };
 
                         let class = inst_clone.borrow().class.clone();
-                        let old_method = class.methods.borrow().get(&old_name).cloned();
+                        let old_method = class.methods.borrow().get(&*old_name).cloned();
 
                         if let Some(method) = old_method {
-                            class.methods.borrow_mut().insert(new_name, method);
+                            class
+                                .methods
+                                .borrow_mut()
+                                .insert(new_name.to_string(), method);
                             class.all_methods_cache.borrow_mut().take();
                             Ok(Value::Null)
                         } else {
-                            Ok(Value::String(format!(
-                                "alias_method: method '{}' not found",
-                                old_name
-                            )))
+                            Ok(Value::String(
+                                format!("alias_method: method '{}' not found", old_name).into(),
+                            ))
                         }
                     },
                 )));
@@ -685,15 +692,18 @@ impl Interpreter {
                 let _ = inst_ref.class.find_native_method("__methods_dummy__");
                 let mut method_names: Vec<Value> = Vec::new();
                 if let Some(ref cache) = *inst_ref.class.all_methods_cache.borrow() {
-                    method_names = cache.keys().map(|k| Value::String(k.clone())).collect();
+                    method_names = cache
+                        .keys()
+                        .map(|k| Value::String(k.clone().into()))
+                        .collect();
                 }
                 if let Some(ref cache) = *inst_ref.class.all_native_methods_cache.borrow() {
                     for k in cache.keys() {
                         if !method_names
                             .iter()
-                            .any(|v| matches!(v, Value::String(s) if s == k))
+                            .any(|v| matches!(v, Value::String(s) if **s == **k))
                         {
-                            method_names.push(Value::String(k.clone()));
+                            method_names.push(Value::String(k.clone().into()));
                         }
                     }
                 }
@@ -715,9 +725,9 @@ impl Interpreter {
                 for m in universal_methods {
                     if !method_names
                         .iter()
-                        .any(|v| matches!(v, Value::String(s) if s == m))
+                        .any(|v| matches!(v, Value::String(s) if **s == *m))
                     {
-                        method_names.push(Value::String(m.to_string()));
+                        method_names.push(Value::String(m.to_string().into()));
                     }
                 }
                 return Ok(Value::Array(Rc::new(RefCell::new(method_names))));
@@ -841,7 +851,10 @@ impl Interpreter {
                     let mut binds = std::collections::HashMap::new();
                     match fk_value {
                         Some(Value::String(s)) => {
-                            binds.insert("__rel_fk".to_string(), serde_json::Value::String(s));
+                            binds.insert(
+                                "__rel_fk".to_string(),
+                                serde_json::Value::String(s.to_string()),
+                            );
                             qb.set_filter(format!("{} == @__rel_fk", relation.foreign_key), binds);
                         }
                         Some(Value::Int(n)) => {
@@ -864,7 +877,7 @@ impl Interpreter {
 
                 let fk = match fk_value {
                     Some(Value::String(s)) => s,
-                    Some(Value::Int(n)) => n.to_string(),
+                    Some(Value::Int(n)) => n.to_string().into(),
                     // Missing or null FK: collection-typed associations return
                     // an empty array; singular associations return null.
                     _ => {
@@ -925,7 +938,7 @@ impl Interpreter {
                 };
 
                 let mut bind_vars = std::collections::HashMap::new();
-                bind_vars.insert("fk".to_string(), serde_json::Value::String(fk));
+                bind_vars.insert("fk".to_string(), serde_json::Value::String(fk.to_string()));
 
                 use crate::interpreter::builtins::model::crud::exec_with_auto_collection;
                 return match exec_with_auto_collection(sdbql, Some(bind_vars), related_collection) {
@@ -1033,13 +1046,15 @@ impl Interpreter {
                     if let Value::Hash(tf_hash) = translated_fields {
                         let tf_ref = tf_hash.borrow();
                         if let Some(field_translations) = tf_ref.get(
-                            &crate::interpreter::value::HashKey::String(name.to_string()),
+                            &crate::interpreter::value::HashKey::String(name.to_string().into()),
                         ) {
                             if let Value::Hash(locale_hash) = field_translations {
                                 let locale_ref = locale_hash.borrow();
-                                if let Some(translated_value) = locale_ref.get(
-                                    &crate::interpreter::value::HashKey::String(locale.clone()),
-                                ) {
+                                if let Some(translated_value) =
+                                    locale_ref.get(&crate::interpreter::value::HashKey::String(
+                                        locale.clone().into(),
+                                    ))
+                                {
                                     return Ok(translated_value.clone());
                                 }
                             }
@@ -1158,7 +1173,7 @@ impl Interpreter {
                 None, // Variable arity
                 move |args: Vec<Value>| -> Result<Value, String> {
                     // Build the method_missing call arguments: [method_name, ...original_args]
-                    let mut mm_args = vec![Value::String(method_name.clone())];
+                    let mut mm_args = vec![Value::String(method_name.clone().into())];
                     mm_args.extend(args);
 
                     // Build environment for method_missing execution
@@ -1315,7 +1330,7 @@ impl Interpreter {
                                     if field.starts_with('_') {
                                         continue;
                                     }
-                                    inst_mut.set(field.clone(), v.clone());
+                                    inst_mut.set(field.clone().to_string(), v.clone());
                                 }
                             }
                         }
@@ -1333,12 +1348,14 @@ impl Interpreter {
 
         // Universal methods on class values
         match name {
-            "inspect" => return Ok(Value::String(format!("<class {}>", class.name))),
-            "class" => return Ok(Value::String("class".to_string())),
+            "inspect" => return Ok(Value::String(format!("<class {}>", class.name).into())),
+            "class" => return Ok(Value::String("class".into())),
             "nil?" => return Ok(Value::Bool(false)),
             "blank?" => return Ok(Value::Bool(false)),
             "present?" => return Ok(Value::Bool(true)),
-            "to_s" | "to_string" => return Ok(Value::String(format!("<class {}>", class.name))),
+            "to_s" | "to_string" => {
+                return Ok(Value::String(format!("<class {}>", class.name).into()))
+            }
             // Metaprogramming: respond_to? (checks if class has static method)
             "respond_to?" => {
                 let class_clone = class.clone();
@@ -1451,11 +1468,14 @@ impl Interpreter {
                         if let Some(prim_type) = prim {
                             crate::interpreter::executor::calls::user_methods::register_user_method(
                                 prim_type,
-                                method_name,
+                                method_name.to_string(),
                                 func,
                             );
                         } else {
-                            class_clone.methods.borrow_mut().insert(method_name, func);
+                            class_clone
+                                .methods
+                                .borrow_mut()
+                                .insert(method_name.to_string(), func);
                             class_clone.all_methods_cache.borrow_mut().take();
                         }
                         let _ = class_name;
@@ -1493,16 +1513,21 @@ impl Interpreter {
                         };
                         if let Some(prim_type) = prim {
                             if crate::interpreter::executor::calls::user_methods::alias_user_method(
-                                prim_type, new_name, &old_name,
+                                prim_type,
+                                new_name.to_string(),
+                                &old_name,
                             ) {
                                 Ok(Value::Null)
                             } else {
                                 Err(format!("alias_method: method '{}' not found", old_name))
                             }
                         } else {
-                            let old_method = class_clone.methods.borrow().get(&old_name).cloned();
+                            let old_method = class_clone.methods.borrow().get(&*old_name).cloned();
                             if let Some(method) = old_method {
-                                class_clone.methods.borrow_mut().insert(new_name, method);
+                                class_clone
+                                    .methods
+                                    .borrow_mut()
+                                    .insert(new_name.to_string(), method);
                                 class_clone.all_methods_cache.borrow_mut().take();
                                 Ok(Value::Null)
                             } else {
@@ -1564,7 +1589,10 @@ impl Interpreter {
                 let _ = class.find_native_static_method("__methods_dummy__");
                 let mut method_names: Vec<Value> = Vec::new();
                 if let Some(ref cache) = *class.all_methods_cache.borrow() {
-                    method_names = cache.keys().map(|k| Value::String(k.clone())).collect();
+                    method_names = cache
+                        .keys()
+                        .map(|k| Value::String(k.clone().into()))
+                        .collect();
                 }
                 return Ok(Value::Array(Rc::new(RefCell::new(method_names))));
             }
@@ -1668,10 +1696,10 @@ impl Interpreter {
         }
         // Universal methods
         match name {
-            "class" => return Ok(Value::String("array".to_string())),
+            "class" => return Ok(Value::String("array".into())),
             "nil?" => return Ok(Value::Bool(false)),
             "inspect" => {
-                return Ok(Value::String(Self::inspect_value(&obj_val)));
+                return Ok(Value::String(Self::inspect_value(&obj_val).into()));
             }
             "blank?" => {
                 if let Value::Array(ref arr) = obj_val {
@@ -1731,10 +1759,10 @@ impl Interpreter {
         }
         // Universal methods
         match name {
-            "class" => return Ok(Value::String("hash".to_string())),
+            "class" => return Ok(Value::String("hash".into())),
             "nil?" => return Ok(Value::Bool(false)),
             "inspect" => {
-                return Ok(Value::String(Self::inspect_value(&obj_val)));
+                return Ok(Value::String(Self::inspect_value(&obj_val).into()));
             }
             "blank?" => return Ok(Value::Bool(hash.borrow().is_empty())),
             "present?" => return Ok(Value::Bool(!hash.borrow().is_empty())),
@@ -1771,9 +1799,9 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         // Universal methods
         match name {
-            "class" => return Ok(Value::String("query_builder".to_string())),
+            "class" => return Ok(Value::String("query_builder".into())),
             "nil?" => return Ok(Value::Bool(false)),
-            "inspect" => return Ok(Value::String(format!("{}", obj_val))),
+            "inspect" => return Ok(Value::String(format!("{}", obj_val).into())),
             "blank?" => return Ok(Value::Bool(false)),
             "present?" => return Ok(Value::Bool(true)),
             _ => {}
@@ -1838,11 +1866,11 @@ impl Interpreter {
         // Handle string methods and properties
         match name {
             // Universal methods
-            "class" => return Ok(Value::String("string".to_string())),
+            "class" => return Ok(Value::String("string".into())),
             "nil?" => return Ok(Value::Bool(false)),
             "inspect" => {
                 if let Value::String(ref s) = obj_val {
-                    return Ok(Value::String(format!("\"{}\"", s)));
+                    return Ok(Value::String(format!("\"{}\"", s).into()));
                 }
                 unreachable!()
             }
@@ -1901,13 +1929,13 @@ impl Interpreter {
         }
         match name {
             // Zero-arg methods (return value directly)
-            "class" => Ok(Value::String("int".to_string())),
+            "class" => Ok(Value::String("int".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "to_s" | "to_string" => Ok(Value::String(n.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(n.to_string().into())),
             "to_f" | "to_float" => Ok(Value::Float(n as f64)),
-            "inspect" => Ok(Value::String(n.to_string())),
+            "inspect" => Ok(Value::String(n.to_string().into())),
             "abs" => Ok(Value::Int(n.abs())),
             "sqrt" => Ok(Value::Float((n as f64).sqrt())),
             "even?" => Ok(Value::Bool(n % 2 == 0)),
@@ -1918,7 +1946,7 @@ impl Interpreter {
             "chr" => {
                 if (0..=0x10FFFF).contains(&n) {
                     if let Some(c) = char::from_u32(n as u32) {
-                        return Ok(Value::String(c.to_string()));
+                        return Ok(Value::String(c.to_string().into()));
                     }
                 }
                 Err(RuntimeError::type_error(
@@ -1960,13 +1988,13 @@ impl Interpreter {
         }
         match name {
             // Zero-arg methods (returned directly)
-            "class" => Ok(Value::String("float".to_string())),
+            "class" => Ok(Value::String("float".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "to_s" | "to_string" => Ok(Value::String(format!("{}", n))),
+            "to_s" | "to_string" => Ok(Value::String(format!("{}", n).into())),
             "to_i" | "to_int" => Ok(Value::Int(n as i64)),
-            "inspect" => Ok(Value::String(format!("{}", n))),
+            "inspect" => Ok(Value::String(format!("{}", n).into())),
             "abs" => Ok(Value::Float(n.abs())),
             "sqrt" => Ok(Value::Float(n.sqrt())),
             "ceil" => Ok(Value::Int(n.ceil() as i64)),
@@ -2009,13 +2037,13 @@ impl Interpreter {
             }
         }
         match name {
-            "class" => Ok(Value::String("bool".to_string())),
+            "class" => Ok(Value::String("bool".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(!b)),
             "present?" => Ok(Value::Bool(b)),
-            "to_s" | "to_string" => Ok(Value::String(b.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(b.to_string().into())),
             "to_i" | "to_int" => Ok(Value::Int(if b { 1 } else { 0 })),
-            "inspect" => Ok(Value::String(b.to_string())),
+            "inspect" => Ok(Value::String(b.to_string().into())),
             // Method with args
             "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(Value::Bool(b)),
@@ -2039,15 +2067,15 @@ impl Interpreter {
             }
         }
         match name {
-            "class" => Ok(Value::String("null".to_string())),
+            "class" => Ok(Value::String("null".into())),
             "nil?" => Ok(Value::Bool(true)),
             "blank?" => Ok(Value::Bool(true)),
             "present?" => Ok(Value::Bool(false)),
-            "to_s" | "to_string" => Ok(Value::String(String::new())),
+            "to_s" | "to_string" => Ok(Value::String(String::new().into())),
             "to_a" | "to_array" => Ok(Value::Array(Rc::new(RefCell::new(Vec::new())))),
             "to_i" | "to_int" => Ok(Value::Int(0)),
             "to_f" | "to_float" => Ok(Value::Float(0.0)),
-            "inspect" => Ok(Value::String("null".to_string())),
+            "inspect" => Ok(Value::String("null".into())),
             // Method with args
             "is_a?" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(Value::Null),
@@ -2068,20 +2096,20 @@ impl Interpreter {
         if has_user_methods(PrimType::Symbol) {
             if let Some(f) = lookup_user_method(PrimType::Symbol, name) {
                 return Ok(bind_user_method_to_receiver(
-                    Value::Symbol(s.to_string()),
+                    Value::Symbol(s.to_string().into()),
                     f,
                 ));
             }
         }
         match name {
-            "class" => Ok(Value::String("symbol".to_string())),
+            "class" => Ok(Value::String("symbol".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "to_s" | "to_string" => Ok(Value::String(s.to_string())),
-            "inspect" => Ok(Value::String(format!(":{}", s))),
+            "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
+            "inspect" => Ok(Value::String(format!(":{}", s).into())),
             "is_a?" => Ok(Value::Method(ValueMethod {
-                receiver: Box::new(Value::Symbol(s.to_string())),
+                receiver: Box::new(Value::Symbol(s.to_string().into())),
                 method_name: name.to_string(),
             })),
             _ => Err(RuntimeError::NoSuchProperty {
@@ -2109,14 +2137,14 @@ impl Interpreter {
         let val = d.0;
         match name {
             // Zero-arg methods
-            "class" => Ok(Value::String("decimal".to_string())),
+            "class" => Ok(Value::String("decimal".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "to_s" | "to_string" => Ok(Value::String(val.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(val.to_string().into())),
             "to_i" | "to_int" => Ok(Value::Int(val.to_i64().unwrap_or(0))),
             "to_f" | "to_float" => Ok(Value::Float(d.to_f64())),
-            "inspect" => Ok(Value::String(format!("Decimal({})", val))),
+            "inspect" => Ok(Value::String(format!("Decimal({})", val).into())),
             "abs" => Ok(Value::Decimal(crate::interpreter::value::DecimalValue(
                 val.abs(),
                 d.1,

@@ -220,7 +220,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
             io::stdin()
                 .read_line(&mut line)
                 .map_err(|e| e.to_string())?;
-            Ok(Value::String(line.trim_end().to_string()))
+            Ok(Value::String(line.trim_end().to_string().into()))
         })),
     );
 

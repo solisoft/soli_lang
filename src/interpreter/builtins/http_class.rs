@@ -638,7 +638,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("GET", &url, client.get(&url)).await?;
+                        let resp = send_logged("GET", &url, client.get(&*url)).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -648,7 +648,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         read_capped_text_async(resp).await
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -656,7 +656,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .get(&url)
+                                .get(&*url)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -691,7 +691,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let body = match &args[1] {
                 Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?,
+                Value::Hash(_) => value_to_json(&args[1])?.into(),
                 other => {
                     return Err(format!(
                         "HTTP.post() expects string or hash body, got {}",
@@ -711,9 +711,9 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .post(&url)
+                            .post(&*url)
                             .header("Content-Type", content_type)
-                            .body(body);
+                            .body(body.to_string());
                         let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
@@ -724,7 +724,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         read_capped_text_async(resp).await
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -732,9 +732,9 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .post(&url)
+                                .post(&*url)
                                 .header("Content-Type", content_type)
-                                .body(body)
+                                .body(body.to_string())
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -769,7 +769,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let body = match &args[1] {
                 Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?,
+                Value::Hash(_) => value_to_json(&args[1])?.into(),
                 other => {
                     return Err(format!(
                         "HTTP.put() expects string or hash body, got {}",
@@ -789,9 +789,9 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .put(&url)
+                            .put(&*url)
                             .header("Content-Type", content_type)
-                            .body(body);
+                            .body(body.to_string());
                         let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
@@ -802,7 +802,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         read_capped_text_async(resp).await
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -810,9 +810,9 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .put(&url)
+                                .put(&*url)
                                 .header("Content-Type", content_type)
-                                .body(body)
+                                .body(body.to_string())
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -847,7 +847,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let body = match &args[1] {
                 Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?,
+                Value::Hash(_) => value_to_json(&args[1])?.into(),
                 other => {
                     return Err(format!(
                         "HTTP.patch() expects string or hash body, got {}",
@@ -867,9 +867,9 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .patch(&url)
+                            .patch(&*url)
                             .header("Content-Type", content_type)
-                            .body(body);
+                            .body(body.to_string());
                         let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
@@ -880,7 +880,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         read_capped_text_async(resp).await
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -888,9 +888,9 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .patch(&url)
+                                .patch(&*url)
                                 .header("Content-Type", content_type)
-                                .body(body)
+                                .body(body.to_string())
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -927,7 +927,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("DELETE", &url, client.delete(&url)).await?;
+                        let resp = send_logged("DELETE", &url, client.delete(&*url)).await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -937,7 +937,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         read_capped_text_async(resp).await
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -945,7 +945,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .delete(&url)
+                                .delete(&*url)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -982,7 +982,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("HEAD", &url, client.head(&url)).await?;
+                        let resp = send_logged("HEAD", &url, client.head(&*url)).await?;
                         let status = resp.status().as_u16();
                         Ok(format!(
                             "{} {}",
@@ -990,7 +990,7 @@ pub fn register_http_class(env: &mut Environment) {
                             resp.status().canonical_reason().unwrap_or("")
                         ))
                     }) {
-                        Ok(text) => Ok(Value::String(text)),
+                        Ok(text) => Ok(Value::String(text.into())),
                         Err(e) => Err(e),
                     }
                 }
@@ -998,7 +998,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .head(&url)
+                                .head(&*url)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -1035,7 +1035,7 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client.get(&url).header("Accept", "application/json");
+                        let req = client.get(&*url).header("Accept", "application/json");
                         let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();
@@ -1058,7 +1058,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .get(&url)
+                                .get(&*url)
                                 .header("Accept", "application/json")
                                 .send()
                                 .await
@@ -1099,7 +1099,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .post(&url)
+                            .post(&*url)
                             .header("Content-Type", "application/json")
                             .body(json_body);
                         let resp = send_logged("POST", &url, req).await?;
@@ -1124,7 +1124,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .post(&url)
+                                .post(&*url)
                                 .header("Content-Type", "application/json")
                                 .body(json_body)
                                 .send()
@@ -1166,7 +1166,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .put(&url)
+                            .put(&*url)
                             .header("Content-Type", "application/json")
                             .body(json_body);
                         let resp = send_logged("PUT", &url, req).await?;
@@ -1191,7 +1191,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .put(&url)
+                                .put(&*url)
                                 .header("Content-Type", "application/json")
                                 .body(json_body)
                                 .send()
@@ -1233,7 +1233,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
                         let req = client
-                            .patch(&url)
+                            .patch(&*url)
                             .header("Content-Type", "application/json")
                             .body(json_body);
                         let resp = send_logged("PATCH", &url, req).await?;
@@ -1258,7 +1258,7 @@ pub fn register_http_class(env: &mut Environment) {
                     move || {
                         run_user_http_request(move |client| async move {
                             let resp = client
-                                .patch(&url)
+                                .patch(&*url)
                                 .header("Content-Type", "application/json")
                                 .body(json_body)
                                 .send()
@@ -1317,16 +1317,16 @@ pub fn register_http_class(env: &mut Environment) {
                         };
                         let value_str = match value {
                             Value::String(s) => s.clone(),
-                            _ => format!("{}", value),
+                            _ => format!("{}", value).into(),
                         };
-                        headers_vec.push((key_str, value_str));
+                        headers_vec.push((key_str.to_string(), value_str.to_string()));
                     }
                 }
             }
 
             let body_opt: Option<String> = if args.len() > 3 {
                 Some(match &args[3] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.clone().to_string(),
                     Value::Hash(_) => value_to_json(&args[3])?,
                     Value::Null => String::new(),
                     other => format!("{}", other),
@@ -1343,12 +1343,12 @@ pub fn register_http_class(env: &mut Environment) {
                     let headers_vec_clone = headers_vec.clone();
                     match http_block_on(&rt, async move {
                         let mut request = match method_clone.as_str() {
-                            "GET" => client.get(&url),
-                            "POST" => client.post(&url),
-                            "PUT" => client.put(&url),
-                            "DELETE" => client.delete(&url),
-                            "PATCH" => client.patch(&url),
-                            "HEAD" => client.head(&url),
+                            "GET" => client.get(&*url),
+                            "POST" => client.post(&*url),
+                            "PUT" => client.put(&*url),
+                            "DELETE" => client.delete(&*url),
+                            "PATCH" => client.patch(&*url),
+                            "HEAD" => client.head(&*url),
                             _ => return Err(format!("Unsupported HTTP method: {}", method_clone)),
                         };
 
@@ -1392,12 +1392,12 @@ pub fn register_http_class(env: &mut Environment) {
                         move || {
                             run_user_http_request(move |client| async move {
                                 let mut request = match method_clone.as_str() {
-                                    "GET" => client.get(&url),
-                                    "POST" => client.post(&url),
-                                    "PUT" => client.put(&url),
-                                    "DELETE" => client.delete(&url),
-                                    "PATCH" => client.patch(&url),
-                                    "HEAD" => client.head(&url),
+                                    "GET" => client.get(&*url),
+                                    "POST" => client.post(&*url),
+                                    "PUT" => client.put(&*url),
+                                    "DELETE" => client.delete(&*url),
+                                    "PATCH" => client.patch(&*url),
+                                    "HEAD" => client.head(&*url),
                                     _ => {
                                         return Err(format!(
                                             "Unsupported HTTP method: {}",
@@ -1477,7 +1477,7 @@ pub fn register_http_class(env: &mut Environment) {
         Rc::new(NativeFunction::new(
             "HTTP.json_stringify",
             Some(1),
-            |args| value_to_json(&args[0]).map(Value::String),
+            |args| value_to_json(&args[0]).map(|s| Value::String(s.into())),
         )),
     );
 
@@ -1489,7 +1489,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let mut url_strings = Vec::new();
                     for item in arr.borrow().iter() {
                         match item {
-                            Value::String(s) => url_strings.push(s.clone()),
+                            Value::String(s) => url_strings.push(s.to_string()),
                             other => {
                                 return Err(format!(
                                     "HTTP.get_all() expects array of strings, got {}",
@@ -1527,8 +1527,8 @@ pub fn register_http_class(env: &mut Environment) {
             let values: Vec<Value> = results
                 .into_iter()
                 .map(|r| match r {
-                    Ok(body) => Value::String(body),
-                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                    Ok(body) => Value::String(body.into()),
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e.into()))]),
                 })
                 .collect();
 
@@ -1544,7 +1544,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let mut url_strings = Vec::new();
                     for item in arr.borrow().iter() {
                         match item {
-                            Value::String(s) => url_strings.push(s.clone()),
+                            Value::String(s) => url_strings.push(s.to_string()),
                             other => {
                                 return Err(format!(
                                     "HTTP.get_all_json() expects array of strings, got {}",
@@ -1583,7 +1583,7 @@ pub fn register_http_class(env: &mut Environment) {
                 .into_iter()
                 .map(|r| match r {
                     Ok(value) => value,
-                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e.into()))]),
                 })
                 .collect();
 
@@ -1631,7 +1631,7 @@ pub fn register_http_class(env: &mut Environment) {
                 .into_iter()
                 .map(|r| match r {
                     Ok(response) => response_to_value(response),
-                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e))]),
+                    Err(e) => hash_from_pairs([("error".to_string(), Value::String(e.into()))]),
                 })
                 .collect();
 
@@ -1666,26 +1666,23 @@ fn create_http_response(
         .into_iter()
         .map(|(k, v)| {
             (
-                HashKey::String(k),
-                Value::String(v.as_str().unwrap_or("").to_string()),
+                HashKey::String(k.into()),
+                Value::String(v.as_str().unwrap_or("").to_string().into()),
             )
         })
         .collect();
 
     let mut result: HashPairs = HashPairs::default();
+    result.insert(HashKey::String("status".into()), Value::Int(status as i64));
     result.insert(
-        HashKey::String("status".to_string()),
-        Value::Int(status as i64),
+        HashKey::String("status_text".into()),
+        Value::String(status_text.into()),
     );
     result.insert(
-        HashKey::String("status_text".to_string()),
-        Value::String(status_text),
-    );
-    result.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(response_headers))),
     );
-    result.insert(HashKey::String("body".to_string()), Value::String(body));
+    result.insert(HashKey::String("body".into()), Value::String(body.into()));
 
     Ok(Value::Hash(Rc::new(RefCell::new(result))))
 }
@@ -1709,7 +1706,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
     match value {
         Value::String(url) => Ok(RequestConfig {
             method: "GET".to_string(),
-            url: url.clone(),
+            url: url.clone().to_string(),
             headers: vec![],
             body: None,
         }),
@@ -1722,7 +1719,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
 
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
-                    match key.as_str() {
+                    match key.as_ref() {
                         "url" => {
                             if let Value::String(s) = v {
                                 url = Some(s.clone());
@@ -1730,21 +1727,21 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
                         }
                         "method" => {
                             if let Value::String(s) = v {
-                                method = s.to_uppercase();
+                                method = s.to_uppercase().to_string();
                             }
                         }
                         "headers" => {
                             if let Value::Hash(h) = v {
                                 for (hk, hv) in h.borrow().iter() {
                                     if let (HashKey::String(k), Value::String(v)) = (hk, hv) {
-                                        headers.push((k.clone(), v.clone()));
+                                        headers.push((k.to_string(), v.to_string()));
                                     }
                                 }
                             }
                         }
                         "body" => match v {
                             Value::String(s) => body = Some(s.clone()),
-                            Value::Hash(_) => body = Some(value_to_json(v)?),
+                            Value::Hash(_) => body = Some(value_to_json(v)?.into()),
                             _ => {}
                         },
                         _ => {}
@@ -1755,9 +1752,9 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             let url = url.ok_or("Request config must have 'url' field")?;
             Ok(RequestConfig {
                 method,
-                url,
+                url: url.to_string(),
                 headers,
-                body,
+                body: body.map(|s| s.to_string()),
             })
         }
         other => Err(format!(
@@ -2087,25 +2084,25 @@ fn response_to_value(response: HttpResponse) -> Value {
     let headers: HashPairs = response
         .headers
         .into_iter()
-        .map(|(k, v)| (HashKey::String(k), Value::String(v)))
+        .map(|(k, v)| (HashKey::String(k.into()), Value::String(v.into())))
         .collect();
 
     let mut result: HashPairs = HashPairs::default();
     result.insert(
-        HashKey::String("status".to_string()),
+        HashKey::String("status".into()),
         Value::Int(response.status as i64),
     );
     result.insert(
-        HashKey::String("status_text".to_string()),
-        Value::String(response.status_text),
+        HashKey::String("status_text".into()),
+        Value::String(response.status_text.into()),
     );
     result.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers))),
     );
     result.insert(
-        HashKey::String("body".to_string()),
-        Value::String(response.body),
+        HashKey::String("body".into()),
+        Value::String(response.body.into()),
     );
 
     Value::Hash(Rc::new(RefCell::new(result)))
@@ -2138,10 +2135,8 @@ mod parallel_ssrf_tests {
     #[test]
     fn get_all_rejects_blocked_scheme() {
         let f = http_static("get_all");
-        let err = (f.func)(vec![arr(vec![Value::String(
-            "file:///etc/passwd".to_string(),
-        )])])
-        .expect_err("get_all should reject file:// URLs");
+        let err = (f.func)(vec![arr(vec![Value::String("file:///etc/passwd".into())])])
+            .expect_err("get_all should reject file:// URLs");
         assert!(err.contains("not allowed"), "got: {}", err);
     }
 
@@ -2149,8 +2144,8 @@ mod parallel_ssrf_tests {
     fn get_all_json_rejects_blocked_scheme() {
         let f = http_static("get_all_json");
         let err = (f.func)(vec![arr(vec![
-            Value::String("https://example.com/ok".to_string()),
-            Value::String("gopher://internal/".to_string()),
+            Value::String("https://example.com/ok".into()),
+            Value::String("gopher://internal/".into()),
         ])])
         .expect_err("get_all_json should reject gopher:// URLs");
         assert!(err.contains("not allowed"), "got: {}", err);
@@ -2162,8 +2157,8 @@ mod parallel_ssrf_tests {
         let cfg = {
             let mut h = HashPairs::default();
             h.insert(
-                HashKey::String("url".to_string()),
-                Value::String("ftp://internal/etc/passwd".to_string()),
+                HashKey::String("url".into()),
+                Value::String("ftp://internal/etc/passwd".into()),
             );
             Value::Hash(Rc::new(RefCell::new(h)))
         };
@@ -2179,7 +2174,7 @@ mod parallel_ssrf_tests {
         let f = http_static("get_all");
         let cap = parallel_max_items();
         let urls: Vec<Value> = (0..=cap)
-            .map(|i| Value::String(format!("https://example.com/{}", i)))
+            .map(|i| Value::String(format!("https://example.com/{}", i).into()))
             .collect();
         let err = (f.func)(vec![arr(urls)]).expect_err("get_all should reject oversized input");
         assert!(

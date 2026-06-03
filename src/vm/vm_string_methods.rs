@@ -24,11 +24,11 @@ impl Vm {
             // --- Zero-arg methods ---
             "upcase" | "uppercase" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.to_uppercase()))
+                Ok(Value::String(s.to_uppercase().into()))
             }
             "downcase" | "lowercase" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.to_lowercase()))
+                Ok(Value::String(s.to_lowercase().into()))
             }
             "len" | "length" | "size" => {
                 check_arity(0, args.len(), span)?;
@@ -36,15 +36,15 @@ impl Vm {
             }
             "trim" | "strip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim().to_string()))
+                Ok(Value::String(s.trim().to_string().into()))
             }
             "lstrip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim_start().to_string()))
+                Ok(Value::String(s.trim_start().to_string().into()))
             }
             "rstrip" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(s.trim_end().to_string()))
+                Ok(Value::String(s.trim_end().to_string().into()))
             }
             "capitalize" => {
                 check_arity(0, args.len(), span)?;
@@ -55,7 +55,7 @@ impl Vm {
                         first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
                     }
                 };
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "swapcase" => {
                 check_arity(0, args.len(), span)?;
@@ -71,7 +71,7 @@ impl Vm {
                         }
                     }
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "chomp" => {
                 check_arity(0, args.len(), span)?;
@@ -80,7 +80,7 @@ impl Vm {
                     .or_else(|| s.strip_suffix("\r\n"))
                     .or_else(|| s.strip_suffix('\r'))
                     .unwrap_or(s);
-                Ok(Value::String(result.to_string()))
+                Ok(Value::String(result.to_string().into()))
             }
             "squeeze" => {
                 if args.len() > 1 {
@@ -106,18 +106,18 @@ impl Vm {
                     }
                     last_char = Some(c);
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "reverse" => {
                 check_arity(0, args.len(), span)?;
                 let result: String = s.chars().rev().collect();
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "chars" => {
                 check_arity(0, args.len(), span)?;
                 let mut chars = Vec::with_capacity(s.len());
                 for c in s.chars() {
-                    chars.push(Value::String(c.to_string()));
+                    chars.push(Value::String(c.to_string().into()));
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(chars))))
             }
@@ -130,7 +130,7 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
                 for line in s.lines() {
-                    lines.push(Value::String(line.to_string()));
+                    lines.push(Value::String(line.to_string().into()));
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(lines))))
             }
@@ -154,7 +154,7 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(format!("invalid octal: {}", e), span))?;
                 Ok(Value::Int(result))
             }
-            "to_s" | "to_string" => Ok(Value::String(s.to_string())),
+            "to_s" | "to_string" => Ok(Value::String(s.to_string().into())),
             "to_i" | "to_int" => {
                 let trimmed = s.trim();
                 Ok(Value::Int(
@@ -195,7 +195,7 @@ impl Vm {
                         ))
                     }
                 };
-                Ok(Value::String(camelize_string(s, upper)))
+                Ok(Value::String(camelize_string(s, upper).into()))
             }
 
             // --- One-arg methods ---
@@ -222,7 +222,7 @@ impl Vm {
             "slugify" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(
-                    crate::interpreter::executor::calls::string_methods::slugify_string(s),
+                    crate::interpreter::executor::calls::string_methods::slugify_string(s).into(),
                 ))
             }
             "split" => {
@@ -241,7 +241,7 @@ impl Vm {
                 };
                 let mut parts = Vec::with_capacity(capacity);
                 for part in s.split(delim) {
-                    parts.push(Value::String(part.to_string()));
+                    parts.push(Value::String(part.to_string().into()));
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(parts))))
             }
@@ -262,20 +262,20 @@ impl Vm {
             "delete" => {
                 check_arity(1, args.len(), span)?;
                 let to_delete = expect_string(&args[0], "delete", span)?;
-                Ok(Value::String(s.replace(to_delete, "")))
+                Ok(Value::String(s.replace(to_delete, "").into()))
             }
             "delete_prefix" => {
                 check_arity(1, args.len(), span)?;
                 let prefix = expect_string(&args[0], "delete_prefix", span)?;
                 Ok(Value::String(
-                    s.strip_prefix(prefix).unwrap_or(s).to_string(),
+                    s.strip_prefix(prefix).unwrap_or(s).to_string().into(),
                 ))
             }
             "delete_suffix" => {
                 check_arity(1, args.len(), span)?;
                 let suffix = expect_string(&args[0], "delete_suffix", span)?;
                 Ok(Value::String(
-                    s.strip_suffix(suffix).unwrap_or(s).to_string(),
+                    s.strip_suffix(suffix).unwrap_or(s).to_string().into(),
                 ))
             }
             "partition" => {
@@ -283,16 +283,16 @@ impl Vm {
                 let sep = expect_string(&args[0], "partition", span)?;
                 if let Some(pos) = s.find(sep) {
                     let result = vec![
-                        Value::String(s[..pos].to_string()),
-                        Value::String(sep.to_string()),
-                        Value::String(s[pos + sep.len()..].to_string()),
+                        Value::String(s[..pos].to_string().into()),
+                        Value::String(sep.to_string().into()),
+                        Value::String(s[pos + sep.len()..].to_string().into()),
                     ];
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 } else {
                     let result = vec![
-                        Value::String(s.to_string()),
-                        Value::String(String::new()),
-                        Value::String(String::new()),
+                        Value::String(s.to_string().into()),
+                        Value::String(String::new().into()),
+                        Value::String(String::new().into()),
                     ];
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
@@ -302,16 +302,16 @@ impl Vm {
                 let sep = expect_string(&args[0], "rpartition", span)?;
                 if let Some(pos) = s.rfind(sep) {
                     let result = vec![
-                        Value::String(s[..pos].to_string()),
-                        Value::String(sep.to_string()),
-                        Value::String(s[pos + sep.len()..].to_string()),
+                        Value::String(s[..pos].to_string().into()),
+                        Value::String(sep.to_string().into()),
+                        Value::String(s[pos + sep.len()..].to_string().into()),
                     ];
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 } else {
                     let result = vec![
-                        Value::String(String::new()),
-                        Value::String(String::new()),
-                        Value::String(s.to_string()),
+                        Value::String(String::new().into()),
+                        Value::String(String::new().into()),
+                        Value::String(s.to_string().into()),
                     ];
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
                 }
@@ -322,7 +322,7 @@ impl Vm {
                 check_arity(2, args.len(), span)?;
                 let from = expect_string(&args[0], "replace from", span)?;
                 let to = expect_string(&args[1], "replace to", span)?;
-                Ok(Value::String(s.replace(from, to)))
+                Ok(Value::String(s.replace(from, to).into()))
             }
             "gsub" | "replace_all" => {
                 if args.len() < 2 || args.len() > 3 {
@@ -342,9 +342,11 @@ impl Vm {
                                 ))
                             }
                         };
-                        Ok(Value::String(replacen_str(s, pattern, replacement, limit)))
+                        Ok(Value::String(
+                            replacen_str(s, pattern, replacement, limit).into(),
+                        ))
                     } else {
-                        Ok(Value::String(s.replace(pattern, replacement)))
+                        Ok(Value::String(s.replace(pattern, replacement).into()))
                     }
                 } else {
                     let re = crate::regex_cache::get_regex(pattern)
@@ -360,10 +362,12 @@ impl Vm {
                             }
                         };
                         Ok(Value::String(
-                            re.replacen(s, limit, replacement).to_string(),
+                            re.replacen(s, limit, replacement).to_string().into(),
                         ))
                     } else {
-                        Ok(Value::String(re.replace_all(s, replacement).to_string()))
+                        Ok(Value::String(
+                            re.replace_all(s, replacement).to_string().into(),
+                        ))
                     }
                 }
             }
@@ -372,11 +376,15 @@ impl Vm {
                 let pattern = expect_string(&args[0], "sub pattern", span)?;
                 let replacement = expect_string(&args[1], "sub replacement", span)?;
                 if !has_regex_metacharacters(pattern) {
-                    Ok(Value::String(replacen_str(s, pattern, replacement, 1)))
+                    Ok(Value::String(
+                        replacen_str(s, pattern, replacement, 1).into(),
+                    ))
                 } else {
                     let re = crate::regex_cache::get_regex(pattern)
                         .map_err(|e| RuntimeError::type_error(e, span))?;
-                    Ok(Value::String(re.replacen(s, 1, replacement).to_string()))
+                    Ok(Value::String(
+                        re.replacen(s, 1, replacement).to_string().into(),
+                    ))
                 }
             }
             "tr" => {
@@ -395,7 +403,7 @@ impl Vm {
                         result.push(c);
                     }
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "substring" => {
                 check_arity(2, args.len(), span)?;
@@ -424,9 +432,9 @@ impl Vm {
                     end as usize
                 };
                 if start_usize >= end_usize || start_usize >= s.len() {
-                    Ok(Value::String(String::new()))
+                    Ok(Value::String(String::new().into()))
                 } else {
-                    Ok(Value::String(s[start_usize..end_usize].to_string()))
+                    Ok(Value::String(s[start_usize..end_usize].to_string().into()))
                 }
             }
             "insert" => {
@@ -455,7 +463,7 @@ impl Vm {
                 if index == char_count {
                     result.push_str(insert_str);
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
 
             // --- Variable-arg methods ---
@@ -472,7 +480,7 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let total_pad = width - s.len();
                     let left_pad = total_pad / 2;
@@ -485,7 +493,7 @@ impl Vm {
                     for _ in 0..right_pad {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result))
+                    Ok(Value::String(result.into()))
                 }
             }
             "ljust" => {
@@ -501,14 +509,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let mut result = String::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result))
+                    Ok(Value::String(result.into()))
                 }
             }
             "rjust" => {
@@ -524,14 +532,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let mut result = String::with_capacity(width);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result))
+                    Ok(Value::String(result.into()))
                 }
             }
             "lpad" => {
@@ -555,7 +563,7 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let padding = width - s.len();
                     let mut result = String::with_capacity(width);
@@ -563,7 +571,7 @@ impl Vm {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result))
+                    Ok(Value::String(result.into()))
                 }
             }
             "rpad" => {
@@ -587,7 +595,7 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let padding = width - s.len();
                     let mut result = String::with_capacity(width);
@@ -595,7 +603,7 @@ impl Vm {
                     for _ in 0..padding {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result))
+                    Ok(Value::String(result.into()))
                 }
             }
             "truncate" => {
@@ -606,15 +614,15 @@ impl Vm {
                 let suffix = args
                     .get(1)
                     .and_then(|v| match v {
-                        Value::String(s) => Some(s.as_str()),
+                        Value::String(s) => Some(s.as_ref()),
                         _ => None,
                     })
                     .unwrap_or("...");
                 if s.len() <= length {
-                    Ok(Value::String(s.to_string()))
+                    Ok(Value::String(s.to_string().into()))
                 } else {
                     let result = &s[..length.saturating_sub(suffix.len())];
-                    Ok(Value::String(format!("{}{}", result, suffix)))
+                    Ok(Value::String(format!("{}{}", result, suffix).into()))
                 }
             }
             "match" => {
@@ -626,7 +634,7 @@ impl Vm {
                     let mut result = Vec::new();
                     for i in 0..captures.len() {
                         if let Some(m) = captures.get(i) {
-                            result.push(Value::String(m.as_str().to_string()));
+                            result.push(Value::String(m.as_str().to_string().into()));
                         }
                     }
                     Ok(Value::Array(Rc::new(RefCell::new(result))))
@@ -641,12 +649,12 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(e, span))?;
                 let matches: Vec<Value> = re
                     .find_iter(s)
-                    .map(|m| Value::String(m.as_str().to_string()))
+                    .map(|m| Value::String(m.as_str().to_string().into()))
                     .collect();
                 Ok(Value::Array(Rc::new(RefCell::new(matches))))
             }
-            "join" => Ok(Value::String(s.to_string())),
-            "to_sym" => Ok(Value::Symbol(s.to_string())),
+            "join" => Ok(Value::String(s.to_string().into())),
+            "to_sym" => Ok(Value::Symbol(s.to_string().into())),
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(
@@ -665,7 +673,7 @@ impl Vm {
             "is_a?" => {
                 check_arity(1, args.len(), span)?;
                 let class_name = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -699,13 +707,14 @@ impl Vm {
                 let other = expect_string(&args[0], "prepend", span)?;
                 let mut result = other.to_string();
                 result.push_str(s);
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "chop" => {
                 check_arity(0, args.len(), span)?;
                 let mut chars: Vec<char> = s.chars().collect();
                 chars.pop();
-                Ok(Value::String(chars.into_iter().collect()))
+                let out: String = chars.into_iter().collect();
+                Ok(Value::String(out.into()))
             }
             "ascii_only?" => {
                 check_arity(0, args.len(), span)?;
@@ -713,14 +722,14 @@ impl Vm {
             }
             "succ" | "next" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::String(string_succ(s)))
+                Ok(Value::String(string_succ(s).into()))
             }
             // Universal methods
-            "class" => Ok(Value::String("string".to_string())),
+            "class" => Ok(Value::String("string".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(s.trim().is_empty())),
             "present?" => Ok(Value::Bool(!s.trim().is_empty())),
-            "inspect" => Ok(Value::String(format!("\"{}\"", s))),
+            "inspect" => Ok(Value::String(format!("\"{}\"", s).into())),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "String".to_string(),
                 property: name.to_string(),
@@ -742,7 +751,7 @@ fn check_arity(expected: usize, got: usize, span: Span) -> Result<(), RuntimeErr
 #[inline]
 fn expect_string<'a>(val: &'a Value, method: &str, span: Span) -> Result<&'a str, RuntimeError> {
     match val {
-        Value::String(s) => Ok(s.as_str()),
+        Value::String(s) => Ok(s.as_ref()),
         _ => Err(RuntimeError::type_error(
             format!("{} expects a string argument", method),
             span,

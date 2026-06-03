@@ -160,7 +160,7 @@ pub fn evaluate_with_interpreter(
         Expr::FloatLit(n) => return Ok(Value::Float(*n)),
         Expr::BoolLit(b) => return Ok(Value::Bool(*b)),
         Expr::Null => return Ok(Value::Null),
-        Expr::StringLit(s) => return Ok(Value::String(s.clone())),
+        Expr::StringLit(s) => return Ok(Value::String(s.clone().into())),
         // Fast path: common no-arg method calls (e.g., items.length, name.upcase)
         // Bypasses: translate_expr Box allocations + evaluate dispatch + method resolution
         Expr::MethodCall { base, method, args } if args.is_empty() => {
@@ -174,11 +174,11 @@ pub fn evaluate_with_interpreter(
                     return Ok(Value::String(s.to_lowercase()))
                 }
                 (Value::String(s), "strip" | "trim") => {
-                    return Ok(Value::String(s.trim().to_string()))
+                    return Ok(Value::String(s.trim().to_string().into()))
                 }
                 (Value::String(s), "empty?") => return Ok(Value::Bool(s.is_empty())),
                 (Value::String(s), "reverse") => {
-                    return Ok(Value::String(s.chars().rev().collect()))
+                    return Ok(Value::String(s.chars().rev().collect::<String>().into()))
                 }
                 (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
                 (Value::Float(f), "to_i") => return Ok(Value::Int(*f as i64)),
@@ -212,12 +212,16 @@ pub fn evaluate_with_interpreter(
                 }
                 (Value::String(s), "to_s" | "to_string") => return Ok(Value::String(s.clone())),
                 (Value::Int(_) | Value::Float(_), "to_s" | "to_string") => {
-                    return Ok(Value::String(format!("{}", base_val)));
+                    return Ok(Value::String(format!("{}", base_val).into()));
                 }
                 (Value::Bool(b), "to_s" | "to_string") => {
-                    return Ok(Value::String(if *b { "true" } else { "false" }.to_string()))
+                    return Ok(Value::String(
+                        if *b { "true" } else { "false" }.to_string().into(),
+                    ))
                 }
-                (Value::Null, "to_s" | "to_string") => return Ok(Value::String(String::new())),
+                (Value::Null, "to_s" | "to_string") => {
+                    return Ok(Value::String(String::new().into()))
+                }
                 (Value::Array(arr), "to_a" | "to_array") => {
                     return Ok(Value::Array(Rc::clone(arr)))
                 }
@@ -396,7 +400,7 @@ mod tests {
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let mut map = HashPairs::default();
         for (k, v) in pairs {
-            map.insert(HashKey::String(k.to_string()), v);
+            map.insert(HashKey::String(k.to_string().into()), v);
         }
         Value::Hash(Rc::new(RefCell::new(map)))
     }
@@ -424,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_evaluate_with_context() {
-        let data = make_hash(vec![("name", Value::String("World".to_string()))]);
+        let data = make_hash(vec![("name", Value::String("World".into()))]);
         let expr = Expr::Binary(
             Box::new(Expr::StringLit("Hello ".to_string())),
             tpl::BinaryOp::Add,
@@ -432,17 +436,17 @@ mod tests {
         );
         let result = evaluate_expression(&expr, &data);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::String("Hello World".to_string()));
+        assert_eq!(result.unwrap(), Value::String("Hello World".into()));
     }
 
     #[test]
     fn test_evaluate_nested_hash_access() {
-        let user = make_hash(vec![("name", Value::String("Alice".to_string()))]);
+        let user = make_hash(vec![("name", Value::String("Alice".into()))]);
         let data = make_hash(vec![("user", user)]);
         let expr = Expr::Field(Box::new(Expr::Var("user".to_string())), "name".to_string());
         let result = evaluate_expression(&expr, &data);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::String("Alice".to_string()));
+        assert_eq!(result.unwrap(), Value::String("Alice".into()));
     }
 
     #[test]
@@ -544,7 +548,7 @@ mod tests {
         let called =
             evaluate_with_interpreter(&Expr::Call("admin_path".to_string(), vec![]), &mut interp)
                 .unwrap();
-        assert_eq!(called, Value::String("/admin".to_string()));
+        assert_eq!(called, Value::String("/admin".into()));
 
         clear_routes();
         reset_builtins_rc();

@@ -76,7 +76,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
                         if let HashKey::String(key) = k {
-                            match key.as_str() {
+                            match key.as_ref() {
                                 "expires_in" => {
                                     if let Value::Int(secs) = v {
                                         expires_in = Some(*secs as u64);
@@ -84,7 +84,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                 }
                                 "algorithm" => {
                                     if let Value::String(alg) = v {
-                                        algorithm = match alg.as_str() {
+                                        algorithm = match alg.as_ref() {
                                             "HS256" => Algorithm::HS256,
                                             "HS384" => Algorithm::HS384,
                                             "HS512" => Algorithm::HS512,
@@ -101,7 +101,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                 }
                                 "key" => {
                                     if let Value::String(k) = v {
-                                        pem_key = Some(k.clone());
+                                        pem_key = Some(k.clone().to_string());
                                     }
                                 }
                                 _ => {}
@@ -129,8 +129,8 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 for (k, v) in hash.borrow().iter() {
                     if let HashKey::String(key) = k {
                         // Skip reserved claims
-                        if key != "exp" && key != "iat" && key != "sub" {
-                            data.insert(key.clone(), value_to_json(v)?);
+                        if **key != *"exp" && **key != *"iat" && **key != *"sub" {
+                            data.insert(key.to_string(), value_to_json(v)?);
                         }
                     }
                 }
@@ -150,7 +150,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let token = encode(&header, &claims, &encoding_key)
                 .map_err(|e| format!("Failed to create JWT: {}", e))?;
 
-            Ok(Value::String(token))
+            Ok(Value::String(token.into()))
         })),
     );
 
@@ -197,15 +197,15 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 if let Value::Hash(opts) = &args[2] {
                     for (k, v) in opts.borrow().iter() {
                         if let HashKey::String(key) = k {
-                            match key.as_str() {
+                            match key.as_ref() {
                                 "key" => {
                                     if let Value::String(k) = v {
-                                        pem_key = Some(k.clone());
+                                        pem_key = Some(k.clone().to_string());
                                     }
                                 }
                                 "algorithm" => {
                                     if let Value::String(alg) = v {
-                                        expected_algorithm = Some(match alg.as_str() {
+                                        expected_algorithm = Some(match alg.as_ref() {
                                             "HS256" => Algorithm::HS256,
                                             "HS384" => Algorithm::HS384,
                                             "HS512" => Algorithm::HS512,
@@ -293,18 +293,18 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     let mut pairs: HashPairs = HashPairs::default();
 
                     if let Some(sub) = claims.sub {
-                        pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
+                        pairs.insert(HashKey::String("sub".into()), Value::String(sub.into()));
                     }
                     if let Some(exp) = claims.exp {
-                        pairs.insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
+                        pairs.insert(HashKey::String("exp".into()), Value::Int(exp as i64));
                     }
                     if let Some(iat) = claims.iat {
-                        pairs.insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
+                        pairs.insert(HashKey::String("iat".into()), Value::Int(iat as i64));
                     }
 
                     // Add custom data
                     for (key, value) in claims.data {
-                        pairs.insert(HashKey::String(key), json_to_value(value)?);
+                        pairs.insert(HashKey::String(key.into()), json_to_value(value)?);
                     }
 
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
@@ -312,10 +312,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                 Err(e) => {
                     // Return error hash instead of throwing
                     let mut error_pairs: HashPairs = HashPairs::default();
-                    error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
+                    error_pairs.insert(HashKey::String("error".into()), Value::Bool(true));
                     error_pairs.insert(
-                        HashKey::String("message".to_string()),
-                        Value::String(format!("{}", e)),
+                        HashKey::String("message".into()),
+                        Value::String(format!("{}", e).into()),
                     );
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
@@ -368,38 +368,37 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     let mut claims_pairs: HashPairs = HashPairs::default();
 
                     if let Some(sub) = claims.sub {
-                        claims_pairs.insert(HashKey::String("sub".to_string()), Value::String(sub));
+                        claims_pairs
+                            .insert(HashKey::String("sub".into()), Value::String(sub.into()));
                     }
                     if let Some(exp) = claims.exp {
-                        claims_pairs
-                            .insert(HashKey::String("exp".to_string()), Value::Int(exp as i64));
+                        claims_pairs.insert(HashKey::String("exp".into()), Value::Int(exp as i64));
                     }
                     if let Some(iat) = claims.iat {
-                        claims_pairs
-                            .insert(HashKey::String("iat".to_string()), Value::Int(iat as i64));
+                        claims_pairs.insert(HashKey::String("iat".into()), Value::Int(iat as i64));
                     }
 
                     for (key, value) in claims.data {
-                        claims_pairs.insert(HashKey::String(key), json_to_value(value)?);
+                        claims_pairs.insert(HashKey::String(key.into()), json_to_value(value)?);
                     }
 
                     // Wrap the claims in an outer hash that names them as
                     // unverified. Code that mistakenly does
                     // `result["sub"]` now reads `null`, not a forged claim.
                     let mut pairs: HashPairs = HashPairs::default();
-                    pairs.insert(HashKey::String("unverified".to_string()), Value::Bool(true));
+                    pairs.insert(HashKey::String("unverified".into()), Value::Bool(true));
                     pairs.insert(
-                        HashKey::String("claims".to_string()),
+                        HashKey::String("claims".into()),
                         Value::Hash(Rc::new(RefCell::new(claims_pairs))),
                     );
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
                     let mut error_pairs: HashPairs = HashPairs::default();
-                    error_pairs.insert(HashKey::String("error".to_string()), Value::Bool(true));
+                    error_pairs.insert(HashKey::String("error".into()), Value::Bool(true));
                     error_pairs.insert(
-                        HashKey::String("message".to_string()),
-                        Value::String(format!("{}", e)),
+                        HashKey::String("message".into()),
+                        Value::String(format!("{}", e).into()),
                     );
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
@@ -484,9 +483,9 @@ fn extract_string_claim(payload: &Value, key: &str) -> Option<String> {
     if let Value::Hash(hash) = payload {
         for (k, v) in hash.borrow().iter() {
             if let HashKey::String(k_str) = k {
-                if k_str == key {
+                if **k_str == *key {
                     if let Value::String(s) = v {
-                        return Some(s.clone());
+                        return Some(s.clone().to_string());
                     }
                 }
             }
@@ -523,20 +522,17 @@ mod tests {
 
         // Build a payload {sub: "alice", role: "admin"} and sign it.
         let mut payload: HashPairs = HashPairs::default();
+        payload.insert(HashKey::String("sub".into()), Value::String("alice".into()));
         payload.insert(
-            HashKey::String("sub".to_string()),
-            Value::String("alice".to_string()),
-        );
-        payload.insert(
-            HashKey::String("role".to_string()),
-            Value::String("admin".to_string()),
+            HashKey::String("role".into()),
+            Value::String("admin".into()),
         );
         let payload_hash = Value::Hash(Rc::new(RefCell::new(payload)));
         // SEC-054: secret must be ≥ 32 bytes; the prior fixture was
         // only 23 chars and would now fail the minimum-length check.
         let token = (sign.func)(vec![
             payload_hash,
-            Value::String("0123456789abcdef0123456789abcdef".to_string()),
+            Value::String("0123456789abcdef0123456789abcdef".into()),
         ])
         .unwrap();
         let token_str = match token {
@@ -553,22 +549,20 @@ mod tests {
 
         // Outer shape is `{unverified: true, claims: {...}}`.
         assert!(matches!(
-            outer_borrow.get(&HashKey::String("unverified".to_string())),
+            outer_borrow.get(&HashKey::String("unverified".into())),
             Some(Value::Bool(true))
         ));
-        let claims = match outer_borrow.get(&HashKey::String("claims".to_string())) {
+        let claims = match outer_borrow.get(&HashKey::String("claims".into())) {
             Some(Value::Hash(c)) => c.clone(),
             other => panic!("expected nested claims hash, got {other:?}"),
         };
         let claims_borrow = claims.borrow();
         // Claims are reachable via the wrapper but NOT at the top level.
         assert!(matches!(
-            claims_borrow.get(&HashKey::String("sub".to_string())),
-            Some(Value::String(s)) if s == "alice"
+            claims_borrow.get(&HashKey::String("sub".into())),
+            Some(Value::String(s)) if **s == *"alice"
         ));
-        assert!(outer_borrow
-            .get(&HashKey::String("sub".to_string()))
-            .is_none());
+        assert!(outer_borrow.get(&HashKey::String("sub".into())).is_none());
     }
 
     /// SEC-054: jwt_sign and jwt_verify reject secrets shorter than 32
@@ -581,7 +575,7 @@ mod tests {
 
         let payload = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
         let weak = "a".repeat(31);
-        let err = (sign.func)(vec![payload, Value::String(weak)]).unwrap_err();
+        let err = (sign.func)(vec![payload, Value::String(weak.into())]).unwrap_err();
         assert!(
             err.contains("at least 32") && err.contains("openssl rand"),
             "expected 32-byte minimum + .env hint, got: {err}"
@@ -597,8 +591,8 @@ mod tests {
         // first — the key check fires before signature verification.
         let weak = "a".repeat(31);
         let err = (verify.func)(vec![
-            Value::String("dummy.token.value".to_string()),
-            Value::String(weak),
+            Value::String("dummy.token.value".into()),
+            Value::String(weak.into()),
         ])
         .unwrap_err();
         assert!(
@@ -614,7 +608,7 @@ mod tests {
         let env = fresh_env();
         let decode = jwt_fn(&env, "jwt_decode");
 
-        let err = (decode.func)(vec![Value::String("anything".to_string())]).unwrap_err();
+        let err = (decode.func)(vec![Value::String("anything".into())]).unwrap_err();
         assert!(
             err.contains("SEC-029")
                 && err.contains("jwt_decode_unsafe")
@@ -635,21 +629,21 @@ mod tests {
     fn sign_hs256(secret: &str, sub: &str) -> String {
         let mut payload: HashPairs = HashPairs::default();
         payload.insert(
-            HashKey::String("sub".to_string()),
-            Value::String(sub.to_string()),
+            HashKey::String("sub".into()),
+            Value::String(sub.to_string().into()),
         );
         let mut sign_opts: HashPairs = HashPairs::default();
-        sign_opts.insert(HashKey::String("expires_in".to_string()), Value::Int(3600));
+        sign_opts.insert(HashKey::String("expires_in".into()), Value::Int(3600));
         let env = fresh_env();
         let sign = jwt_fn(&env, "jwt_sign");
         let token = (sign.func)(vec![
             Value::Hash(Rc::new(RefCell::new(payload))),
-            Value::String(secret.to_string()),
+            Value::String(secret.to_string().into()),
             Value::Hash(Rc::new(RefCell::new(sign_opts))),
         ])
         .unwrap();
         match token {
-            Value::String(s) => s,
+            Value::String(s) => s.to_string(),
             other => panic!("expected token string, got {:?}", other),
         }
     }
@@ -657,7 +651,7 @@ mod tests {
     fn opts(pairs: &[(&str, Value)]) -> Value {
         let mut h: HashPairs = HashPairs::default();
         for (k, v) in pairs {
-            h.insert(HashKey::String((*k).to_string()), v.clone());
+            h.insert(HashKey::String((*k).to_string().into()), v.clone());
         }
         Value::Hash(Rc::new(RefCell::new(h)))
     }
@@ -680,9 +674,9 @@ mod tests {
         let attacker_token = sign_hs256(pretend_pub_key, "alice");
 
         let result = (verify.func)(vec![
-            Value::String(attacker_token),
-            Value::String(pretend_pub_key.to_string()),
-            opts(&[("algorithm", Value::String("RS256".to_string()))]),
+            Value::String(attacker_token.into()),
+            Value::String(pretend_pub_key.to_string().into()),
+            opts(&[("algorithm", Value::String("RS256".into()))]),
         ])
         .expect_err("HS256 token must be rejected when RS256 is expected");
         assert!(
@@ -704,9 +698,9 @@ mod tests {
         let attacker_token = sign_hs256(pretend_pub_key, "alice");
 
         let err = (verify.func)(vec![
-            Value::String(attacker_token),
-            Value::String(pretend_pub_key.to_string()),
-            opts(&[("key", Value::String(pretend_pub_key.to_string()))]),
+            Value::String(attacker_token.into()),
+            Value::String(pretend_pub_key.to_string().into()),
+            opts(&[("key", Value::String(pretend_pub_key.to_string().into()))]),
         ])
         .expect_err("HMAC token must be rejected when a PEM key is provided");
         assert!(err.contains("does not match expected"), "{}", err);
@@ -723,7 +717,11 @@ mod tests {
         let secret = "0123456789abcdef0123456789abcdef".to_string();
         let token = sign_hs256(&secret, "alice");
 
-        let result = (verify.func)(vec![Value::String(token), Value::String(secret)]).unwrap();
+        let result = (verify.func)(vec![
+            Value::String(token.into()),
+            Value::String(secret.into()),
+        ])
+        .unwrap();
         let h = match result {
             Value::Hash(h) => h,
             other => panic!("expected verified-claims hash, got {:?}", other),
@@ -731,9 +729,9 @@ mod tests {
         let h = h.borrow();
         // Verified path returns claims at the top level (distinct from
         // jwt_decode_unsafe which wraps them in `{unverified, claims}`).
-        let sub = h.get(&HashKey::String("sub".to_string()));
+        let sub = h.get(&HashKey::String("sub".into()));
         assert!(
-            matches!(sub, Some(Value::String(s)) if s == "alice"),
+            matches!(sub, Some(Value::String(s)) if **s == *"alice"),
             "{:?}",
             sub
         );
@@ -752,18 +750,18 @@ mod tests {
 
         // Match → success.
         let ok = (verify.func)(vec![
-            Value::String(token_hs256.clone()),
-            Value::String(secret.clone()),
-            opts(&[("algorithm", Value::String("HS256".to_string()))]),
+            Value::String(token_hs256.clone().into()),
+            Value::String(secret.clone().into()),
+            opts(&[("algorithm", Value::String("HS256".into()))]),
         ])
         .unwrap();
         assert!(matches!(ok, Value::Hash(_)));
 
         // Mismatch → error.
         let err = (verify.func)(vec![
-            Value::String(token_hs256),
-            Value::String(secret),
-            opts(&[("algorithm", Value::String("HS512".to_string()))]),
+            Value::String(token_hs256.into()),
+            Value::String(secret.into()),
+            opts(&[("algorithm", Value::String("HS512".into()))]),
         ])
         .expect_err("HS256 token must be rejected when HS512 is pinned");
         assert!(err.contains("does not match expected"), "{}", err);
@@ -774,9 +772,9 @@ mod tests {
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
         let err = (verify.func)(vec![
-            Value::String("unused.token.value".to_string()),
-            Value::String("0123456789abcdef0123456789abcdef".to_string()),
-            opts(&[("algorithm", Value::String("none".to_string()))]),
+            Value::String("unused.token.value".into()),
+            Value::String("0123456789abcdef0123456789abcdef".into()),
+            opts(&[("algorithm", Value::String("none".into()))]),
         ])
         .expect_err("unsupported algorithm name must error");
         assert!(err.contains("unsupported algorithm"), "{}", err);
@@ -789,10 +787,10 @@ mod tests {
         let env = fresh_env();
         let verify = jwt_fn(&env, "jwt_verify");
         let err = (verify.func)(vec![
-            Value::String("t".to_string()),
-            Value::String("s".to_string()),
+            Value::String("t".into()),
+            Value::String("s".into()),
             Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
-            Value::String("extra".to_string()),
+            Value::String("extra".into()),
         ])
         .expect_err("4 args must be rejected");
         assert!(err.contains("expects 2 or 3 arguments"), "{}", err);

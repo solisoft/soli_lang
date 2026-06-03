@@ -341,7 +341,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
 
 fn constant_string(chunk: &Chunk, idx: u16) -> String {
     match chunk.constants.get(idx as usize) {
-        Some(Constant::String(s)) => s.clone(),
+        Some(Constant::String(s)) => s.clone().to_string(),
         _ => format!("?{}", idx),
     }
 }
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn constant_op_renders_string_quoted() {
         let mut p = proto("test");
-        let idx = p.chunk.add_constant(Constant::String("hi".to_string()));
+        let idx = p.chunk.add_constant(Constant::String("hi".into()));
         p.chunk.emit(Op::Constant(idx), 1);
         let out = disassemble(&p);
         assert!(out.contains(r#"("hi")"#), "got: {out}");
@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn symbol_op_uses_colon_prefix_when_constant_is_string() {
         let mut p = proto("test");
-        let idx = p.chunk.add_constant(Constant::String("name".to_string()));
+        let idx = p.chunk.add_constant(Constant::String("name".into()));
         p.chunk.emit(Op::Symbol(idx), 1);
         let out = disassemble(&p);
         assert!(out.contains("SYMBOL"));
@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn get_global_renders_name_from_constant_pool() {
         let mut p = proto("test");
-        let idx = p.chunk.add_constant(Constant::String("my_var".to_string()));
+        let idx = p.chunk.add_constant(Constant::String("my_var".into()));
         p.chunk.emit(Op::GetGlobal(idx), 1);
         let out = disassemble(&p);
         assert!(out.contains("GET_GLOBAL"));
@@ -585,7 +585,7 @@ mod tests {
     #[test]
     fn get_local_property_includes_property_name() {
         let mut p = proto("test");
-        let idx = p.chunk.add_constant(Constant::String("foo".to_string()));
+        let idx = p.chunk.add_constant(Constant::String("foo".into()));
         p.chunk.emit(Op::GetLocalProperty(2, idx), 1);
         let out = disassemble(&p);
         assert!(out.contains("GET_LOCAL_PROP"));
@@ -633,8 +633,8 @@ mod tests {
         use crate::interpreter::value::HashKey;
         let mut p = proto("test");
         let keys = Arc::new(vec![
-            HashKey::String("a".to_string()),
-            HashKey::String("b".to_string()),
+            HashKey::String("a".into()),
+            HashKey::String("b".into()),
         ]);
         let idx = p.chunk.add_constant(Constant::HashKeys(keys));
         p.chunk.emit(Op::Constant(idx), 1);

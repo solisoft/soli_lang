@@ -28,7 +28,7 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
         let class_name = match &arguments[0] {
-            Value::String(s) => s.as_str(),
+            Value::String(s) => s.as_ref(),
             _ => {
                 return Err(RuntimeError::type_error(
                     "is_a? expects a string argument",

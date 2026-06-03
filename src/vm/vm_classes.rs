@@ -89,7 +89,7 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 let hash = hash.borrow();
-                let key = HashKey::String(name.to_string());
+                let key = HashKey::String(name.to_string().into());
                 if let Some(val) = hash.get(&key) {
                     Ok(val.clone())
                 } else {
@@ -119,8 +119,8 @@ impl Vm {
             }
             Value::Symbol(s) => match name {
                 "to_s" | "to_string" => Ok(Value::String(s.clone())),
-                "inspect" => Ok(Value::String(format!(":{}", s))),
-                "class" => Ok(Value::String("symbol".to_string())),
+                "inspect" => Ok(Value::String(format!(":{}", s).into())),
+                "class" => Ok(Value::String("symbol".into())),
                 "nil?" => Ok(Value::Bool(false)),
                 "blank?" => Ok(Value::Bool(false)),
                 "present?" => Ok(Value::Bool(true)),
@@ -147,8 +147,8 @@ impl Vm {
                 "nil?" => Ok(Value::Bool(false)),
                 "blank?" => Ok(Value::Bool(false)),
                 "present?" => Ok(Value::Bool(true)),
-                "class" => Ok(Value::String("Function".to_string())),
-                "inspect" => Ok(Value::String("<function>".to_string())),
+                "class" => Ok(Value::String("Function".into())),
+                "inspect" => Ok(Value::String("<function>".into())),
                 _ => Err(RuntimeError::NoSuchProperty {
                     value_type: object.type_name().to_string(),
                     property: name.to_string(),
@@ -219,7 +219,7 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 hash.borrow_mut()
-                    .insert(HashKey::String(name.to_string()), value);
+                    .insert(HashKey::String(name.to_string().into()), value);
                 Ok(())
             }
             _ => Err(RuntimeError::type_error(

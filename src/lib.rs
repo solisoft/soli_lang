@@ -155,13 +155,13 @@ pub fn run_vm(
     vm_instance.globals.insert(
         "str".to_string(),
         V::NativeFunction(NativeFunction::new("str", Some(1), |args| {
-            Ok(V::String(format!("{}", args[0])))
+            Ok(V::String(format!("{}", args[0]).into()))
         })),
     );
     vm_instance.globals.insert(
         "type_of".to_string(),
         V::NativeFunction(NativeFunction::new("type_of", Some(1), |args| {
-            Ok(V::String(args[0].type_name().to_string()))
+            Ok(V::String(args[0].type_name().to_string().into()))
         })),
     );
     vm_instance.globals.insert(

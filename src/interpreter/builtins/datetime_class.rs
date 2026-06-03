@@ -359,7 +359,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     )
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
-                    Ok(Value::String(weekday_name(local.weekday())))
+                    Ok(Value::String(weekday_name(local.weekday()).into()))
                 }
                 _ => Err("DateTime missing internal timestamp".to_string()),
             }
@@ -396,7 +396,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         (t % 1_000_000_000) as u32,
                     )
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
-                    Ok(Value::String(dt.to_rfc3339()))
+                    Ok(Value::String(dt.to_rfc3339().into()))
                 }
                 _ => Err("DateTime missing internal timestamp".to_string()),
             }
@@ -419,7 +419,9 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     )
                     .ok_or_else(|| "Invalid timestamp".to_string())?;
                     let local = dt.with_timezone(&Local);
-                    Ok(Value::String(local.format("%Y-%m-%d %H:%M:%S").to_string()))
+                    Ok(Value::String(
+                        local.format("%Y-%m-%d %H:%M:%S").to_string().into(),
+                    ))
                 }
                 _ => Err("DateTime missing internal timestamp".to_string()),
             }
@@ -513,8 +515,8 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 _ => return Err("Duration.to_string() called on non-Duration".to_string()),
             };
             match this.borrow().fields.get("seconds").cloned() {
-                Some(Value::Float(s)) => Ok(Value::String(format!("{}s", s))),
-                Some(Value::Int(s)) => Ok(Value::String(format!("{}s", s))),
+                Some(Value::Float(s)) => Ok(Value::String(format!("{}s", s).into())),
+                Some(Value::Int(s)) => Ok(Value::String(format!("{}s", s).into())),
                 _ => Err("Duration missing seconds".to_string()),
             }
         })),
@@ -533,18 +535,18 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let locale = if args.len() > 1 {
                     match &args[1] {
                         Value::String(s) => s.clone(),
-                        Value::Null => i18n_get_locale(),
+                        Value::Null => i18n_get_locale().into(),
                         _ => return Err("Duration.humanize() locale must be a string".to_string()),
                     }
                 } else {
-                    i18n_get_locale()
+                    i18n_get_locale().into()
                 };
                 let seconds = match this.borrow().fields.get("seconds").cloned() {
                     Some(Value::Float(s)) => s,
                     Some(Value::Int(s)) => s as f64,
                     _ => return Err("Duration missing seconds".to_string()),
                 };
-                Ok(Value::String(humanize_duration(seconds, &locale)))
+                Ok(Value::String(humanize_duration(seconds, &locale).into()))
             },
         )),
     );
@@ -753,12 +755,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         let local = dt.with_timezone(&Local);
                         let formatted = local.format(&fmt).to_string();
                         match locale {
-                            Some(ref loc) if loc != "en" => {
+                            Some(ref loc) if **loc != *"en" => {
                                 use super::datetime::helpers::{get_locale_data, localize_names};
                                 let (months, days, _, _, _) = get_locale_data(loc);
-                                Ok(Value::String(localize_names(&formatted, months, days, loc)))
+                                Ok(Value::String(
+                                    localize_names(&formatted, months, days, loc).into(),
+                                ))
                             }
-                            _ => Ok(Value::String(formatted)),
+                            _ => Ok(Value::String(formatted.into())),
                         }
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),

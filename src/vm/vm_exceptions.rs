@@ -40,7 +40,7 @@ impl Vm {
 
         // No handler found — convert to a RuntimeError
         let message = match &value {
-            Value::String(s) => s.clone(),
+            Value::String(s) => s.to_string(),
             Value::Instance(inst) => {
                 let inst = inst.borrow();
                 if let Some(msg) = inst.fields.get("message") {

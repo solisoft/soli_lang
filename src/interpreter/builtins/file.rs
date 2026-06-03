@@ -348,12 +348,12 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
                 [Value::String(path)] => {
                     let resolved = resolve(path, "slurp")?;
                     read_to_string_policy(&resolved, follow)
-                        .map(Value::String)
+                        .map(|s| Value::String(s.into()))
                         .map_err(|e| format!("slurp failed to read {}: {}", path, e))
                 }
                 [Value::String(path), Value::String(mode)] => {
                     let resolved = resolve(path, "slurp")?;
-                    if mode == "binary" {
+                    if **mode == *"binary" {
                         let bytes = read_to_bytes_policy(&resolved, follow)
                             .map_err(|e| format!("slurp failed to read {}: {}", path, e))?;
                         let value_bytes: Vec<Value> =
@@ -361,7 +361,7 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
                         Ok(Value::Array(Rc::new(RefCell::new(value_bytes))))
                     } else {
                         read_to_string_policy(&resolved, follow)
-                            .map(Value::String)
+                            .map(|s| Value::String(s.into()))
                             .map_err(|e| format!("slurp failed to read {}: {}", path, e))
                     }
                 }
@@ -446,7 +446,7 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
                 let resolved = resolve(&path, "file_write_base64")?;
                 use base64::Engine;
                 let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(&data)
+                    .decode(&*data)
                     .map_err(|e| format!("file_write_base64() decode failed: {}", e))?;
                 write_all_policy(&resolved, &bytes, follow)
                     .map(|_| Value::Bool(true))
@@ -511,7 +511,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                     };
                     let resolved = resolve(&path, "read")?;
                     read_to_string_policy(&resolved, follow)
-                        .map(Value::String)
+                        .map(|s| Value::String(s.into()))
                         .map_err(|e| format!("{}.read() failed: {}", class_name, e))
                 },
             )),
@@ -533,7 +533,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                     };
                     let content = match &args[1] {
                         Value::String(s) => s.clone(),
-                        other => other.to_string(),
+                        other => other.to_string().into(),
                     };
                     let resolved = resolve(&path, "write")?;
                     write_all_policy(&resolved, content.as_bytes(), follow)
@@ -707,7 +707,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                     };
                     let content = match &args[1] {
                         Value::String(s) => s.clone(),
-                        other => other.to_string(),
+                        other => other.to_string().into(),
                     };
                     let resolved = resolve(&path, "append")?;
                     let mut file = open_for_append(&resolved, follow)
@@ -738,7 +738,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                         .map_err(|e| format!("{}.lines() failed: {}", class_name, e))?;
                     let lines: Vec<Value> = content
                         .lines()
-                        .map(|l| Value::String(l.to_string()))
+                        .map(|l| Value::String(l.to_string().into()))
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(lines))))
                 },
@@ -834,7 +834,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                         .map_err(|e| format!("{}.glob() {}", class_name, e))?;
                     let matches: Vec<Value> = paths
                         .into_iter()
-                        .map(|p| Value::String(p.to_string_lossy().to_string()))
+                        .map(|p| Value::String(p.to_string_lossy().to_string().into()))
                         .collect();
                     Ok(Value::Array(Rc::new(RefCell::new(matches))))
                 },
@@ -863,7 +863,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                     let pattern = Pattern::new(&pattern_str).map_err(|e| {
                         format!("{}.glob_recursive() invalid pattern: {}", class_name, e)
                     })?;
-                    let path = Path::new(&pattern_str);
+                    let path = Path::new(&*pattern_str);
                     let base_dir_str = path
                         .parent()
                         .map(|p| p.to_string_lossy().to_string())
@@ -887,7 +887,7 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
                             path_str.clone()
                         };
                         if pattern.matches(&relative) || pattern.matches(&path_str) {
-                            matches.push(Value::String(path_str));
+                            matches.push(Value::String(path_str.into()));
                         }
                     }
                     Ok(Value::Array(Rc::new(RefCell::new(matches))))

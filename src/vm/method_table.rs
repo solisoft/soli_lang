@@ -118,19 +118,19 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         0 | 1 => Some(Value::Int(s.len() as i64)), // len, length
         2 => Some(Value::Bool(s.is_empty())),      // empty?
         3 => Some(Value::Int(s.len() as i64)),     // bytesize
-        4 | 5 => Some(Value::String(s.to_uppercase())), // upcase, uppercase
-        6 | 7 => Some(Value::String(s.to_lowercase())), // downcase, lowercase
-        8 => Some(Value::String(s.trim().to_string())), // trim
-        9 => Some(Value::String(s.trim_start().to_string())), // lstrip
-        10 => Some(Value::String(s.trim_end().to_string())), // rstrip
+        4 | 5 => Some(Value::String(s.to_uppercase().into())), // upcase, uppercase
+        6 | 7 => Some(Value::String(s.to_lowercase().into())), // downcase, lowercase
+        8 => Some(Value::String(s.trim().to_string().into())), // trim
+        9 => Some(Value::String(s.trim_start().to_string().into())), // lstrip
+        10 => Some(Value::String(s.trim_end().to_string().into())), // rstrip
         11 => {
             // capitalize
             let mut chars = s.chars();
             Some(Value::String(match chars.next() {
-                None => String::new(),
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
-                }
+                None => String::new().into(),
+                Some(first) => (first.to_uppercase().collect::<String>()
+                    + &chars.as_str().to_lowercase())
+                    .into(),
             }))
         }
         12 => {
@@ -147,7 +147,7 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
                     }
                 }
             }
-            Some(Value::String(result))
+            Some(Value::String(result.into()))
         }
         13 => {
             // chomp
@@ -156,12 +156,19 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
                 .or_else(|| s.strip_suffix("\r\n"))
                 .or_else(|| s.strip_suffix('\r'))
                 .unwrap_or(s);
-            Some(Value::String(r.to_string()))
+            Some(Value::String(r.to_string().into()))
         }
-        14 => Some(Value::String(s.chars().rev().collect())), // reverse
+        14 => {
+            // reverse
+            let out: String = s.chars().rev().collect();
+            Some(Value::String(out.into()))
+        }
         15 => {
             // chars
-            let v: Vec<Value> = s.chars().map(|c| Value::String(c.to_string())).collect();
+            let v: Vec<Value> = s
+                .chars()
+                .map(|c| Value::String(c.to_string().into()))
+                .collect();
             Some(Value::Array(Rc::new(RefCell::new(v))))
         }
         16 => {
@@ -171,17 +178,20 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         }
         17 => {
             // lines
-            let v: Vec<Value> = s.lines().map(|l| Value::String(l.to_string())).collect();
+            let v: Vec<Value> = s
+                .lines()
+                .map(|l| Value::String(l.to_string().into()))
+                .collect();
             Some(Value::Array(Rc::new(RefCell::new(v))))
         }
         18 => i64::from_str_radix(s, 16).ok().map(Value::Int), // hex
         19 => i64::from_str_radix(s, 8).ok().map(Value::Int),  // oct
-        38 | 59 => Some(Value::String(s.to_string())),         // to_s, to_string
-        41 => Some(Value::String("string".to_string())),       // class
+        38 | 59 => Some(Value::String(s.to_string().into())),  // to_s, to_string
+        41 => Some(Value::String("string".into())),            // class
         42 => Some(Value::Bool(false)),                        // nil?
         43 => Some(Value::Bool(s.trim().is_empty())),          // blank?
         44 => Some(Value::Bool(!s.trim().is_empty())),         // present?
-        45 => Some(Value::String(format!("\"{}\"", s))),       // inspect
+        45 => Some(Value::String(format!("\"{}\"", s).into())), // inspect
         46 => {
             // squeeze (0-arg form)
             let mut result = String::with_capacity(s.len());
@@ -192,10 +202,10 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
                 }
                 last = Some(c);
             }
-            Some(Value::String(result))
+            Some(Value::String(result.into()))
         }
         57 => s.chars().next().map(|c| Value::Int(c as i64)), // ord
-        37 => Some(Value::String(s.to_string())),             // join (string.join = itself)
+        37 => Some(Value::String(s.to_string().into())),      // join (string.join = itself)
         _ => None,
     }
 }
@@ -216,7 +226,7 @@ pub fn string_method_one_arg(
                     span,
                 )));
             };
-            Some(Ok(Value::Bool(s.contains(sub))))
+            Some(Ok(Value::Bool(s.contains(&**(sub)))))
         }
         21 | 62 => {
             let Value::String(prefix) = arg else {
@@ -225,7 +235,7 @@ pub fn string_method_one_arg(
                     span,
                 )));
             };
-            Some(Ok(Value::Bool(s.starts_with(prefix))))
+            Some(Ok(Value::Bool(s.starts_with(&**(prefix)))))
         }
         22 | 63 => {
             let Value::String(suffix) = arg else {
@@ -234,7 +244,7 @@ pub fn string_method_one_arg(
                     span,
                 )));
             };
-            Some(Ok(Value::Bool(s.ends_with(suffix))))
+            Some(Ok(Value::Bool(s.ends_with(&**(suffix)))))
         }
         24 => {
             let Value::String(delim) = arg else {
@@ -246,10 +256,10 @@ pub fn string_method_one_arg(
             let mut parts = Vec::with_capacity(if delim.is_empty() {
                 s.len() + 1
             } else {
-                s.matches(delim.as_str()).count() + 1
+                s.matches(delim.as_ref()).count() + 1
             });
-            for part in s.split(delim.as_str()) {
-                parts.push(Value::String(part.to_string()));
+            for part in s.split(delim.as_ref()) {
+                parts.push(Value::String(part.to_string().into()));
             }
             Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
         }
@@ -280,7 +290,7 @@ pub fn string_method_two_arg(
                     span,
                 )));
             };
-            Some(Ok(Value::String(s.replace(from, to))))
+            Some(Ok(Value::String(s.replace(&**(from), to).into())))
         }
         _ => None,
     }
@@ -294,7 +304,7 @@ pub fn array_method_zero_arg(arr: &Rc<RefCell<Vec<Value>>>, mid: MethodId) -> Op
         2 => Some(Value::Bool(arr.borrow().is_empty())),      // empty?
         67 => Some(arr.borrow().first().cloned().unwrap_or(Value::Null)), // first
         68 => Some(arr.borrow().last().cloned().unwrap_or(Value::Null)), // last
-        41 => Some(Value::String("array".to_string())),       // class
+        41 => Some(Value::String("array".into())),            // class
         42 => Some(Value::Bool(false)),                       // nil?
         43 => Some(Value::Bool(arr.borrow().is_empty())),     // blank?
         44 => Some(Value::Bool(!arr.borrow().is_empty())),    // present?
@@ -356,7 +366,7 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
     match mid {
         0 | 1 => Some(Value::Int(hash.borrow().len() as i64)), // len, length
         2 => Some(Value::Bool(hash.borrow().is_empty())),      // empty?
-        41 => Some(Value::String("hash".to_string())),         // class
+        41 => Some(Value::String("hash".into())),              // class
         42 => Some(Value::Bool(false)),                        // nil?
         43 => Some(Value::Bool(hash.borrow().is_empty())),     // blank?
         44 => Some(Value::Bool(!hash.borrow().is_empty())),    // present?
@@ -371,7 +381,7 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
                     HashKey::Int(n) => Value::Int(*n),
                     HashKey::Bool(b) => Value::Bool(*b),
                     HashKey::Null => Value::Null,
-                    HashKey::Decimal(d) => Value::String(d.to_string()),
+                    HashKey::Decimal(d) => Value::String(d.to_string().into()),
                 })
                 .collect();
             Some(Value::Array(Rc::new(RefCell::new(keys))))

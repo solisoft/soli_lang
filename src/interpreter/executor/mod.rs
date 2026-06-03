@@ -171,7 +171,7 @@ impl Interpreter {
             let resolved_value = if value.is_future() {
                 match value.resolve() {
                     Ok(v) => v,
-                    Err(e) => Value::String(format!("<future error: {}>", e)),
+                    Err(e) => Value::String(format!("<future error: {}>", e).into()),
                 }
             } else {
                 value
@@ -216,7 +216,7 @@ impl Interpreter {
                 for (key, value) in hash.borrow().iter() {
                     if let HashKey::String(key_str) = key {
                         // Skip if this key already exists in the environment
-                        if existing_names.contains(key_str) {
+                        if existing_names.contains(&**key_str) {
                             continue;
                         }
                         // Skip functions and classes
@@ -251,7 +251,7 @@ impl Interpreter {
             let resolved_value = if value.is_future() {
                 match value.clone().resolve() {
                     Ok(v) => v,
-                    Err(e) => Value::String(format!("<future error: {}>", e)),
+                    Err(e) => Value::String(format!("<future error: {}>", e).into()),
                 }
             } else {
                 value.clone()
@@ -276,11 +276,11 @@ impl Interpreter {
             Value::String(s) => {
                 // Escape string for JSON
                 let escaped = s
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n")
-                    .replace('\r', "\\r")
-                    .replace('\t', "\\t");
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                    .replace("\t", "\\t");
                 format!("\"{}\"", escaped)
             }
             Value::Array(arr) => {
@@ -295,9 +295,9 @@ impl Interpreter {
                     .map(|(k, v)| {
                         let key = match k {
                             HashKey::String(s) => s.clone(),
-                            other => format!("{}", other),
+                            other => format!("{}", other).into(),
                         };
-                        let escaped_key = key.replace('\\', "\\\\").replace('"', "\\\"");
+                        let escaped_key = key.replace("\\", "\\\\").replace("\"", "\\\"");
                         format!(r#""{}": {}"#, escaped_key, self.value_to_json(v))
                     })
                     .collect();
@@ -954,7 +954,7 @@ let u = { "name" => "Alice" }
 let result = u&.name
 "#,
         );
-        assert_eq!(val, Value::String("Alice".to_string()));
+        assert_eq!(val, Value::String("Alice".into()));
     }
 
     #[test]
@@ -994,13 +994,13 @@ let u = { "address" => { "city" => "Paris" } }
 let result = u&.address&.city
 "#,
         );
-        assert_eq!(val, Value::String("Paris".to_string()));
+        assert_eq!(val, Value::String("Paris".into()));
     }
 
     #[test]
     fn test_safe_nav_with_nullish_coalescing() {
         let val = eval(r#"let x = null; let result = x&.name ?? "default";"#);
-        assert_eq!(val, Value::String("default".to_string()));
+        assert_eq!(val, Value::String("default".into()));
     }
 
     #[test]
@@ -1011,6 +1011,6 @@ let u = { "name" => "Eve" }
 let result = u&.name ?? "default"
 "#,
         );
-        assert_eq!(val, Value::String("Eve".to_string()));
+        assert_eq!(val, Value::String("Eve".into()));
     }
 }

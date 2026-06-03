@@ -106,7 +106,7 @@ fn extract_string(
     param: &str,
 ) -> Result<String, String> {
     match args.get(idx) {
-        Some(Value::String(s)) => Ok(s.clone()),
+        Some(Value::String(s)) => Ok(s.clone().to_string()),
         Some(other) => Err(format!(
             "{}() expects string {}, got {}",
             fn_name,
@@ -196,7 +196,7 @@ pub fn register_s3_class(env: &mut Environment) {
                             .buckets
                             .unwrap_or_default()
                             .into_iter()
-                            .map(|b| Value::String(b.name.unwrap_or_default()))
+                            .map(|b| Value::String(b.name.unwrap_or_default().into()))
                             .collect();
                         Ok(Value::Array(Rc::new(RefCell::new(buckets))))
                     }
@@ -269,9 +269,9 @@ pub fn register_s3_class(env: &mut Environment) {
             let mut content_type = "application/octet-stream".to_string();
             if let Some(Value::Hash(options)) = args.get(3) {
                 let options = options.borrow();
-                let ct_key = HashKey::String("content_type".to_string());
+                let ct_key = HashKey::String("content_type".into());
                 if let Some(Value::String(ct)) = options.get(&ct_key) {
-                    content_type = ct.clone();
+                    content_type = ct.clone().to_string();
                 }
             }
 
@@ -319,7 +319,7 @@ pub fn register_s3_class(env: &mut Environment) {
                             bytes.extend_from_slice(&chunk);
                         }
                         String::from_utf8(bytes.to_vec())
-                            .map(Value::String)
+                            .map(|s| Value::String(s.into()))
                             .map_err(|_| {
                                 format!(
                                     "Object '{}' in '{}' contains non-UTF-8 binary data",
@@ -399,7 +399,7 @@ pub fn register_s3_class(env: &mut Environment) {
                     if let Some(contents) = result.contents {
                         for obj in contents {
                             if let Some(key) = obj.key {
-                                all_keys.push(Value::String(key));
+                                all_keys.push(Value::String(key.into()));
                             }
                         }
                     }

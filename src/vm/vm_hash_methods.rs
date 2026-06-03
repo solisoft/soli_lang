@@ -165,7 +165,7 @@ impl Vm {
             "to_string" | "to_s" => {
                 let h = hash.borrow();
                 if h.is_empty() {
-                    return Ok(Value::String("{}".to_string()));
+                    return Ok(Value::String("{}".into()));
                 }
                 let mut result = String::with_capacity(2 + h.len() * 12);
                 result.push('{');
@@ -178,17 +178,17 @@ impl Vm {
                     v.write_to_string(&mut result);
                 }
                 result.push('}');
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             // Universal methods
-            "class" => Ok(Value::String("hash".to_string())),
+            "class" => Ok(Value::String("hash".into())),
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(hash.borrow().is_empty())),
             "present?" => Ok(Value::Bool(!hash.borrow().is_empty())),
             "inspect" => {
                 let h = hash.borrow();
                 if h.is_empty() {
-                    return Ok(Value::String("{}".to_string()));
+                    return Ok(Value::String("{}".into()));
                 }
                 let mut result = String::with_capacity(2 + h.len() * 12);
                 result.push('{');
@@ -201,14 +201,14 @@ impl Vm {
                     v.write_to_string(&mut result);
                 }
                 result.push('}');
-                Ok(Value::String(result))
+                Ok(Value::String(result.into()))
             }
             "is_a?" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let class_name = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
                             "is_a? expects a string argument",
@@ -362,7 +362,7 @@ impl Vm {
                 match crate::interpreter::value_stringify::stringify_hash_map_to_string(
                     &hash.borrow(),
                 ) {
-                    Ok(json) => Ok(Value::String(json)),
+                    Ok(json) => Ok(Value::String(json.into())),
                     Err(e) => Err(RuntimeError::General { message: e, span }),
                 }
             }

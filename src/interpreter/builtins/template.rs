@@ -336,16 +336,16 @@ pub fn render_error_template(status_code: u16, message: &str, request_id: &str) 
     // Create error context for the template
     let mut error_map: HashPairs = HashPairs::default();
     error_map.insert(
-        HashKey::String("status".to_string()),
+        HashKey::String("status".into()),
         Value::Int(status_code as i64),
     );
     error_map.insert(
-        HashKey::String("message".to_string()),
-        Value::String(message.to_string()),
+        HashKey::String("message".into()),
+        Value::String(message.to_string().into()),
     );
     error_map.insert(
-        HashKey::String("request_id".to_string()),
-        Value::String(request_id.to_string()),
+        HashKey::String("request_id".into()),
+        Value::String(request_id.to_string().into()),
     );
     let error_data = Value::Hash(Rc::new(RefCell::new(error_map)));
 
@@ -375,7 +375,7 @@ fn resolve_futures_in_value(value: Value) -> Value {
     match value {
         Value::Future(_) => match value.resolve() {
             Ok(resolved) => resolve_futures_in_value(resolved),
-            Err(e) => Value::String(format!("<future error: {}>", e)),
+            Err(e) => Value::String(format!("<future error: {}>", e).into()),
         },
         Value::Hash(hash) => {
             // Quick scan: if no values could contain futures, return as-is
@@ -452,7 +452,7 @@ pub fn inject_template_helpers(data: &Value) {
             if !helpers_map.is_empty() {
                 let mut h = hash.borrow_mut();
                 for (name, value) in helpers_map.iter() {
-                    let key = HashKey::String(name.clone());
+                    let key = HashKey::String(name.clone().into());
                     if !h.contains_key(&key) {
                         h.insert(key, value.clone());
                     }
@@ -467,7 +467,7 @@ pub fn inject_request_context(data: &Value) {
     if let Value::Hash(hash) = data {
         if let Some(req) = get_current_request() {
             let mut h = hash.borrow_mut();
-            let req_key = HashKey::String("req".to_string());
+            let req_key = HashKey::String("req".into());
             if !h.contains_key(&req_key) {
                 h.insert(req_key, req.clone());
             }
@@ -476,16 +476,16 @@ pub fn inject_request_context(data: &Value) {
                 let borrowed = req_hash.borrow();
 
                 // Extract params from req and inject as top-level "params"
-                if let Some(params) = borrowed.get(&HashKey::String("params".to_string())) {
-                    let params_key = HashKey::String("params".to_string());
+                if let Some(params) = borrowed.get(&HashKey::String("params".into())) {
+                    let params_key = HashKey::String("params".into());
                     if !h.contains_key(&params_key) {
                         h.insert(params_key, params.clone());
                     }
                 }
 
                 // Extract cookies from req and inject as top-level "cookies"
-                if let Some(cookies) = borrowed.get(&HashKey::String("cookies".to_string())) {
-                    let cookies_key = HashKey::String("cookies".to_string());
+                if let Some(cookies) = borrowed.get(&HashKey::String("cookies".into())) {
+                    let cookies_key = HashKey::String("cookies".into());
                     if !h.contains_key(&cookies_key) {
                         h.insert(cookies_key, cookies.clone());
                     }
@@ -506,7 +506,7 @@ fn current_request_string_field(field: &str) -> Value {
         return Value::Null;
     };
     let borrowed = h.borrow();
-    match borrowed.get(&HashKey::String(field.to_string())) {
+    match borrowed.get(&HashKey::String(field.to_string().into())) {
         Some(Value::String(s)) => Value::String(s.clone()),
         _ => Value::Null,
     }
@@ -528,7 +528,7 @@ fn get_current_controller_registered_layout() -> Option<Value> {
         .read()
         .ok()?;
     let info = registry.get_by_name(&class_name)?;
-    info.layout.clone().map(Value::String)
+    info.layout.clone().map(|s| Value::String(s.into()))
 }
 
 /// Expose the current controller's instance fields as view locals.
@@ -549,7 +549,7 @@ pub fn inject_controller_instance_vars(data: &Value) {
         if matches!(name.as_str(), "req" | "params" | "session" | "headers") {
             continue;
         }
-        let key = HashKey::String(name.clone());
+        let key = HashKey::String(name.clone().into());
         if !h.contains_key(&key) {
             h.insert(key, value.clone());
         }
@@ -638,16 +638,16 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                 _ => None,
             };
             let public_dir = public_dir.unwrap_or_else(|| PathBuf::from("public"));
-            let full_path = public_dir.join(&path);
+            let full_path = public_dir.join(&*path);
             match get_file_mtime_cached(&full_path) {
                 Ok(mtime) => {
                     if path.contains('?') {
-                        Ok(Value::String(format!("/{}&v={}", path, mtime)))
+                        Ok(Value::String(format!("/{}&v={}", path, mtime).into()))
                     } else {
-                        Ok(Value::String(format!("/{}?v={}", path, mtime)))
+                        Ok(Value::String(format!("/{}?v={}", path, mtime).into()))
                     }
                 }
-                Err(_) => Ok(Value::String(format!("/{}", path))),
+                Err(_) => Ok(Value::String(format!("/{}", path).into())),
             }
         })),
     );
@@ -658,7 +658,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             "strip_html",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(html::strip_html(s))),
+                Value::String(s) => Ok(Value::String(html::strip_html(s).into())),
                 other => Err(format!(
                     "strip_html() expects string, got {}",
                     other.type_name()
@@ -697,7 +697,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(html::substring(&s, start, end)))
+            Ok(Value::String(html::substring(&s, start, end).into()))
         })),
     );
 
@@ -706,9 +706,9 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
-            Ok(Value::String(html::html_escape(&s)))
+            Ok(Value::String(html::html_escape(&s).into()))
         })),
     );
 
@@ -718,7 +718,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             "html_unescape",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(html::html_unescape(s))),
+                Value::String(s) => Ok(Value::String(html::html_unescape(s).into())),
                 other => Err(format!(
                     "html_unescape() expects string, got {}",
                     other.type_name()
@@ -733,7 +733,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             "sanitize_html",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(html::sanitize_html(s))),
+                Value::String(s) => Ok(Value::String(html::sanitize_html(s).into())),
                 other => Err(format!(
                     "sanitize_html() expects string, got {}",
                     other.type_name()
@@ -759,7 +759,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             Value::String(s) => s.clone(),
             other => return Err(format!("datetime_format() expects string format as second argument, got {}", other.type_name())),
         };
-        Ok(Value::String(datetime_helpers::datetime_format(timestamp, &format)))
+        Ok(Value::String(datetime_helpers::datetime_format(timestamp, &format).into()))
     })));
 
     env.define(
@@ -874,16 +874,16 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                 }
             };
             let locale = i18n_helpers::get_locale();
-            Ok(Value::String(datetime_helpers::time_ago_localized(
-                timestamp, &locale,
-            )))
+            Ok(Value::String(
+                datetime_helpers::time_ago_localized(timestamp, &locale).into(),
+            ))
         })),
     );
 
     env.define(
         "locale".to_string(),
         Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
-            Ok(Value::String(i18n_helpers::get_locale()))
+            Ok(Value::String(i18n_helpers::get_locale().into()))
         })),
     );
 
@@ -934,15 +934,15 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             let format = if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => s.clone(),
-                    _ => "short".to_string(),
+                    _ => "short".into(),
                 }
             } else {
-                "short".to_string()
+                "short".into()
             };
             let locale = i18n_helpers::get_locale();
-            Ok(Value::String(datetime_helpers::localize_date(
-                timestamp, &locale, &format,
-            )))
+            Ok(Value::String(
+                datetime_helpers::localize_date(timestamp, &locale, &format).into(),
+            ))
         })),
     );
 
@@ -1003,7 +1003,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         inject_template_helpers(&data);
         cache
             .render_partial(&partial_name, &data)
-            .map(Value::String)
+            .map(|s| Value::String(s.into()))
     });
     env.define(
         "render_partial".to_string(),
@@ -1019,17 +1019,17 @@ pub fn register_static_template_helpers(env: &mut Environment) {
 fn redirect_response(location: String) -> Value {
     let mut headers_map: HashPairs = HashPairs::default();
     headers_map.insert(
-        HashKey::String("Location".to_string()),
-        Value::String(location),
+        HashKey::String("Location".into()),
+        Value::String(location.into()),
     );
     let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
     let mut response_map: HashPairs = HashPairs::default();
-    response_map.insert(HashKey::String("status".to_string()), Value::Int(302));
-    response_map.insert(HashKey::String("headers".to_string()), headers);
+    response_map.insert(HashKey::String("status".into()), Value::Int(302));
+    response_map.insert(HashKey::String("headers".into()), headers);
     response_map.insert(
-        HashKey::String("body".to_string()),
-        Value::String(String::new()),
+        HashKey::String("body".into()),
+        Value::String(String::new().into()),
     );
 
     Value::Hash(Rc::new(RefCell::new(response_map)))
@@ -1068,11 +1068,11 @@ fn resolve_back_redirect() -> String {
     };
     let referer = req_hash
         .borrow()
-        .get(&HashKey::String("headers".to_string()))
+        .get(&HashKey::String("headers".into()))
         .and_then(|h| match h {
             Value::Hash(hh) => hh
                 .borrow()
-                .get(&HashKey::String("referer".to_string()))
+                .get(&HashKey::String("referer".into()))
                 .and_then(|v| match v {
                     Value::String(s) => Some(s.clone()),
                     _ => None,
@@ -1269,7 +1269,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             // Convert layout option for render call
             let layout_arg = match &layout {
-                Some(Some(name)) => Some(Some(name.as_str())),
+                Some(Some(name)) => Some(Some(name.as_ref())),
                 Some(None) => Some(None),
                 None => None,
             };
@@ -1341,7 +1341,7 @@ pub fn register_template_builtins(env: &mut Environment) {
         };
 
         // Return just the string for partials (they're typically embedded)
-        Ok(Value::String(rendered))
+        Ok(Value::String(rendered.into()))
     });
     env.define(
         "render_partial".to_string(),
@@ -1358,10 +1358,12 @@ pub fn register_template_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("html_escape", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
             Ok(Value::String(
-                crate::template::renderer::html_escape(&s).into_owned(),
+                crate::template::renderer::html_escape(&s)
+                    .into_owned()
+                    .into(),
             ))
         })),
     );
@@ -1372,10 +1374,12 @@ pub fn register_template_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("h", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
             Ok(Value::String(
-                crate::template::renderer::html_escape(&s).into_owned(),
+                crate::template::renderer::html_escape(&s)
+                    .into_owned()
+                    .into(),
             ))
         })),
     );
@@ -1386,10 +1390,10 @@ pub fn register_template_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("j", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
             Ok(Value::String(
-                crate::template::renderer::js_escape(&s).into_owned(),
+                crate::template::renderer::js_escape(&s).into_owned().into(),
             ))
         })),
     );
@@ -1400,10 +1404,12 @@ pub fn register_template_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("attr", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
             Ok(Value::String(
-                crate::template::renderer::attr_escape(&s).into_owned(),
+                crate::template::renderer::attr_escape(&s)
+                    .into_owned()
+                    .into(),
             ))
         })),
     );
@@ -1414,10 +1420,12 @@ pub fn register_template_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("url", Some(1), |args| {
             let s = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
             Ok(Value::String(
-                crate::template::renderer::url_escape(&s).into_owned(),
+                crate::template::renderer::url_escape(&s)
+                    .into_owned()
+                    .into(),
             ))
         })),
     );
@@ -1502,7 +1510,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                     validate_local_redirect_url(s)?;
                     s.clone()
                 }
-                Value::Symbol(s) if s == "back" => resolve_back_redirect(),
+                Value::Symbol(s) if **s == *"back" => resolve_back_redirect().into(),
                 Value::Symbol(s) => {
                     return Err(format!(
                         "redirect() does not understand :{s}; only :back is supported"
@@ -1516,7 +1524,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             };
 
-            Ok(redirect_response(url))
+            Ok(redirect_response(url.to_string()))
         })),
     );
 
@@ -1535,7 +1543,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             };
 
             validate_external_redirect_url(&url)?;
-            Ok(redirect_response(url))
+            Ok(redirect_response(url.to_string()))
         })),
     );
 
@@ -1563,20 +1571,20 @@ pub fn register_template_builtins(env: &mut Environment) {
             };
             let message = match &args[1] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
 
             let mut headers_map: HashPairs = HashPairs::default();
             headers_map.insert(
-                HashKey::String("Content-Type".to_string()),
-                Value::String("text/plain; charset=utf-8".to_string()),
+                HashKey::String("Content-Type".into()),
+                Value::String("text/plain; charset=utf-8".into()),
             );
             let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
 
             let mut response_map: HashPairs = HashPairs::default();
-            response_map.insert(HashKey::String("status".to_string()), Value::Int(status));
-            response_map.insert(HashKey::String("headers".to_string()), headers);
-            response_map.insert(HashKey::String("body".to_string()), Value::String(message));
+            response_map.insert(HashKey::String("status".into()), Value::Int(status));
+            response_map.insert(HashKey::String("headers".into()), headers);
+            response_map.insert(HashKey::String("body".into()), Value::String(message));
 
             Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
         })),
@@ -1603,7 +1611,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let json_body = match &data {
                 Value::String(s) => s.clone(),
-                _ => value_to_json(&data)?.to_string(),
+                _ => value_to_json(&data)?.to_string().into(),
             };
 
             // Set fast-path response to bypass Value::Hash round-trip in extract_response
@@ -1614,7 +1622,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                         "Content-Type".to_string(),
                         "application/json; charset=utf-8".to_string(),
                     )],
-                    body: json_body,
+                    body: json_body.to_string(),
                 },
             );
 
@@ -1633,7 +1641,7 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             let text = match &args[0] {
                 Value::String(s) => s.clone(),
-                other => format!("{}", other),
+                other => format!("{}", other).into(),
             };
 
             let status = if args.len() > 1 {
@@ -1653,7 +1661,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                         "Content-Type".to_string(),
                         "text/plain; charset=utf-8".to_string(),
                     )],
-                    body: text,
+                    body: text.to_string(),
                 },
             );
 
@@ -1702,34 +1710,35 @@ mod tests {
         };
         let headers = response_hash
             .borrow()
-            .get(&HashKey::String("headers".to_string()))?
+            .get(&HashKey::String("headers".into()))?
             .clone();
         let Value::Hash(headers_hash) = headers else {
             return None;
         };
         let location = headers_hash
             .borrow()
-            .get(&HashKey::String("Location".to_string()))
+            .get(&HashKey::String("Location".into()))
             .and_then(|value| match value {
                 Value::String(location) => Some(location.clone()),
                 _ => None,
             });
-        location
+        location.map(|s| s.to_string())
     }
 
     fn get_str(data: &Value, key: &str) -> Option<String> {
         let Value::Hash(h) = data else { return None };
         h.borrow()
-            .get(&HashKey::String(key.to_string()))
+            .get(&HashKey::String(key.to_string().into()))
             .and_then(|v| match v {
                 Value::String(s) => Some(s.clone()),
                 _ => None,
             })
+            .map(|s| s.to_string())
     }
 
     #[test]
     fn redirect_accepts_local_absolute_path() {
-        let response = call_builtin("redirect", vec![Value::String("/dashboard".to_string())])
+        let response = call_builtin("redirect", vec![Value::String("/dashboard".into())])
             .expect("local redirect should succeed");
 
         assert_eq!(response_location(&response).as_deref(), Some("/dashboard"));
@@ -1745,7 +1754,7 @@ mod tests {
             "/\\evil.com",
             "/ok\r\nX-Injected: yes",
         ] {
-            let err = call_builtin("redirect", vec![Value::String(url.to_string())])
+            let err = call_builtin("redirect", vec![Value::String(url.to_string().into())])
                 .expect_err("redirect should reject unsafe location");
             assert!(
                 err.contains("local") || err.contains("non-empty"),
@@ -1758,7 +1767,7 @@ mod tests {
     fn redirect_external_requires_explicit_http_url() {
         let response = call_builtin(
             "redirect_external",
-            vec![Value::String("https://example.com/login".to_string())],
+            vec![Value::String("https://example.com/login".into())],
         )
         .expect("external redirect should succeed");
 
@@ -1774,7 +1783,11 @@ mod tests {
             "https://user@example.com",
         ] {
             assert!(
-                call_builtin("redirect_external", vec![Value::String(url.to_string())]).is_err(),
+                call_builtin(
+                    "redirect_external",
+                    vec![Value::String(url.to_string().into())]
+                )
+                .is_err(),
                 "expected redirect_external to reject {url:?}"
             );
         }
@@ -1784,8 +1797,8 @@ mod tests {
         let mut headers = HashPairs::default();
         if let Some(r) = referer {
             headers.insert(
-                HashKey::String("referer".to_string()),
-                Value::String(r.to_string()),
+                HashKey::String("referer".into()),
+                Value::String(r.to_string().into()),
             );
         }
         make_request(&[("headers", Value::Hash(Rc::new(RefCell::new(headers))))])
@@ -1877,19 +1890,14 @@ mod tests {
         let Value::Hash(h) = &data else {
             unreachable!()
         };
-        assert!(h
-            .borrow()
-            .contains_key(&HashKey::String("count".to_string())));
+        assert!(h.borrow().contains_key(&HashKey::String("count".into())));
         clear_current_controller();
     }
 
     #[test]
     fn inject_request_context_exposes_params_as_top_level_local() {
         let mut params_map = HashPairs::default();
-        params_map.insert(
-            HashKey::String("q".to_string()),
-            Value::String("search".into()),
-        );
+        params_map.insert(HashKey::String("q".into()), Value::String("search".into()));
         set_current_request(make_request(&[(
             "params",
             Value::Hash(Rc::new(RefCell::new(params_map))),
@@ -1901,16 +1909,16 @@ mod tests {
         };
         let h = h.borrow();
         assert!(
-            h.contains_key(&HashKey::String("params".to_string())),
+            h.contains_key(&HashKey::String("params".into())),
             "params should be injected as top-level view local"
         );
-        let params = h.get(&HashKey::String("params".to_string())).unwrap();
+        let params = h.get(&HashKey::String("params".into())).unwrap();
         let Value::Hash(params_hash) = params else {
             unreachable!("params should be a Hash")
         };
         let params = params_hash.borrow();
         assert_eq!(
-            params.get(&HashKey::String("q".to_string())),
+            params.get(&HashKey::String("q".into())),
             Some(&Value::String("search".into()))
         );
         clear_current_request();
@@ -1925,7 +1933,7 @@ mod tests {
         let data = empty_data();
         if let Value::Hash(h) = &data {
             h.borrow_mut().insert(
-                HashKey::String("title".to_string()),
+                HashKey::String("title".into()),
                 Value::String("from_render".into()),
             );
         }
@@ -1955,7 +1963,7 @@ mod tests {
         let h = h.borrow();
         for k in ["req", "params", "session", "headers"] {
             assert!(
-                !h.contains_key(&HashKey::String(k.to_string())),
+                !h.contains_key(&HashKey::String(k.to_string().into())),
                 "framework field {} leaked into view locals",
                 k
             );
@@ -1977,7 +1985,7 @@ mod tests {
     fn make_request(fields: &[(&str, Value)]) -> Value {
         let mut map = HashPairs::default();
         for (k, v) in fields {
-            map.insert(HashKey::String(k.to_string()), v.clone());
+            map.insert(HashKey::String(k.to_string().into()), v.clone());
         }
         Value::Hash(Rc::new(RefCell::new(map)))
     }

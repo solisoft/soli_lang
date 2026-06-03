@@ -25,7 +25,7 @@ pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
                 let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
                 Ok(Value::Decimal(DecimalValue(d, precision)))
             } else {
-                Ok(Value::String(s))
+                Ok(Value::String(s.into()))
             }
         }
         serde_json::Value::Array(arr) => {
@@ -38,7 +38,7 @@ pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
         serde_json::Value::Object(obj) => {
             let mut map = HashPairs::with_capacity_and_hasher(obj.len(), AHasher::default());
             for (k, v) in obj {
-                map.insert(HashKey::String(k), json_to_value(v)?);
+                map.insert(HashKey::String(k.into()), json_to_value(v)?);
             }
             Ok(Value::Hash(Rc::new(RefCell::new(map))))
         }
@@ -64,7 +64,7 @@ pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
                 let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
                 Ok(Value::Decimal(DecimalValue(d, precision)))
             } else {
-                Ok(Value::String(s.clone()))
+                Ok(Value::String(s.clone().into()))
             }
         }
         serde_json::Value::Array(arr) => {
@@ -77,7 +77,7 @@ pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
         serde_json::Value::Object(obj) => {
             let mut map = HashPairs::with_capacity_and_hasher(obj.len(), AHasher::default());
             for (k, v) in obj {
-                map.insert(HashKey::String(k.clone()), json_to_value_ref(v)?);
+                map.insert(HashKey::String(k.clone().into()), json_to_value_ref(v)?);
             }
             Ok(Value::Hash(Rc::new(RefCell::new(map))))
         }
@@ -92,7 +92,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             serde_json::Number::from_f64(*f).ok_or_else(|| "Invalid float".to_string())?,
         )),
         Value::Decimal(d) => Ok(serde_json::Value::String(d.to_string())),
-        Value::String(s) => Ok(serde_json::Value::String(s.clone())),
+        Value::String(s) => Ok(serde_json::Value::String(s.clone().to_string())),
         Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Null => Ok(serde_json::Value::Null),
         Value::Array(arr) => {
@@ -108,7 +108,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             let mut map = serde_json::Map::with_capacity(borrow.len());
             for (k, v) in borrow.iter() {
                 if let HashKey::String(key) = k {
-                    map.insert(key.clone(), value_to_json(v)?);
+                    map.insert(key.clone().to_string(), value_to_json(v)?);
                 }
             }
             Ok(serde_json::Value::Object(map))

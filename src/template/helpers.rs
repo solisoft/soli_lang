@@ -24,10 +24,10 @@ pub fn call_array_method(
             let delim = if let Some(Value::String(s)) = args.first() {
                 s.clone()
             } else {
-                String::new()
+                String::new().into()
             };
             let parts: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-            Ok(Value::String(parts.join(&delim)))
+            Ok(Value::String(parts.join(&delim).into()))
         }
         "empty" | "is_empty" => Ok(Value::Bool(items.is_empty())),
         "sum" => {
@@ -84,24 +84,24 @@ pub fn call_string_method(s: &str, method_name: &str, args: Vec<Value>) -> Resul
         "reverse" => {
             let mut chars: Vec<char> = s.chars().collect();
             chars.reverse();
-            Ok(Value::String(chars.into_iter().collect()))
+            Ok(Value::String(chars.into_iter().collect::<String>().into()))
         }
-        "uppercase" | "upcase" => Ok(Value::String(s.to_uppercase())),
-        "lowercase" | "downcase" => Ok(Value::String(s.to_lowercase())),
-        "trim" => Ok(Value::String(s.trim().to_string())),
+        "uppercase" | "upcase" => Ok(Value::String(s.to_uppercase().into())),
+        "lowercase" | "downcase" => Ok(Value::String(s.to_lowercase().into())),
+        "trim" => Ok(Value::String(s.trim().to_string().into())),
         "capitalize" => {
             let mut chars = s.chars();
             match chars.next() {
-                None => Ok(Value::String(String::new())),
+                None => Ok(Value::String(String::new().into())),
                 Some(c) => Ok(Value::String(
-                    c.to_uppercase().collect::<String>() + chars.as_str(),
+                    (c.to_uppercase().collect::<String>() + chars.as_str()).into(),
                 )),
             }
         }
         "replace" => {
             if args.len() >= 2 {
                 if let (Value::String(from), Value::String(to)) = (&args[0], &args[1]) {
-                    return Ok(Value::String(s.replace(from, to)));
+                    return Ok(Value::String(s.replace(&**(from), to).into()));
                 }
             }
             Err("replace requires two string arguments".to_string())
@@ -109,8 +109,8 @@ pub fn call_string_method(s: &str, method_name: &str, args: Vec<Value>) -> Resul
         "split" => {
             if let Some(Value::String(delim)) = args.first() {
                 let parts: Vec<Value> = s
-                    .split(delim)
-                    .map(|p| Value::String(p.to_string()))
+                    .split(&**(delim))
+                    .map(|p| Value::String(p.to_string().into()))
                     .collect();
                 return Ok(Value::Array(Rc::new(RefCell::new(parts))));
             }
@@ -118,19 +118,19 @@ pub fn call_string_method(s: &str, method_name: &str, args: Vec<Value>) -> Resul
         }
         "includes" | "contains" => {
             if let Some(Value::String(sub)) = args.first() {
-                return Ok(Value::Bool(s.contains(sub)));
+                return Ok(Value::Bool(s.contains(&**(sub))));
             }
             Err("includes requires a string argument".to_string())
         }
         "starts_with" => {
             if let Some(Value::String(prefix)) = args.first() {
-                return Ok(Value::Bool(s.starts_with(prefix)));
+                return Ok(Value::Bool(s.starts_with(&**(prefix))));
             }
             Err("starts_with requires a string argument".to_string())
         }
         "ends_with" => {
             if let Some(Value::String(suffix)) = args.first() {
-                return Ok(Value::Bool(s.ends_with(suffix)));
+                return Ok(Value::Bool(s.ends_with(&**(suffix))));
             }
             Err("ends_with requires a string argument".to_string())
         }

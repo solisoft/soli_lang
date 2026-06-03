@@ -22,10 +22,10 @@ pub fn coerce_value(value: &Value, target_type: &ValidatorType) -> Result<Value,
 fn coerce_to_string(value: &Value) -> Result<Value, Value> {
     match value {
         Value::String(_) => Ok(value.clone()),
-        Value::Int(n) => Ok(Value::String(n.to_string())),
-        Value::Float(n) => Ok(Value::String(n.to_string())),
-        Value::Bool(b) => Ok(Value::String(b.to_string())),
-        Value::Null => Ok(Value::String(String::new())),
+        Value::Int(n) => Ok(Value::String(n.to_string().into())),
+        Value::Float(n) => Ok(Value::String(n.to_string().into())),
+        Value::Bool(b) => Ok(Value::String(b.to_string().into())),
+        Value::Null => Ok(Value::String(String::new().into())),
         _ => Err(create_error(
             "",
             &format!("cannot convert {} to string", value.type_name()),
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_coerce_string_to_int() {
-        let result = coerce_to_int(&Value::String("123".to_string()));
+        let result = coerce_to_int(&Value::String("123".into()));
         assert!(result.is_ok());
         if let Ok(Value::Int(n)) = result {
             assert_eq!(n, 123);
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     #[allow(clippy::approx_constant)]
     fn test_coerce_string_to_float() {
-        let result = coerce_to_float(&Value::String("3.14".to_string()));
+        let result = coerce_to_float(&Value::String("3.14".into()));
         assert!(result.is_ok());
         if let Ok(Value::Float(f)) = result {
             assert!((f - 3.14).abs() < 0.001);
@@ -168,19 +168,19 @@ mod tests {
     #[test]
     fn test_coerce_string_to_bool() {
         assert!(matches!(
-            coerce_to_bool(&Value::String("true".to_string())),
+            coerce_to_bool(&Value::String("true".into())),
             Ok(Value::Bool(true))
         ));
         assert!(matches!(
-            coerce_to_bool(&Value::String("false".to_string())),
+            coerce_to_bool(&Value::String("false".into())),
             Ok(Value::Bool(false))
         ));
         assert!(matches!(
-            coerce_to_bool(&Value::String("1".to_string())),
+            coerce_to_bool(&Value::String("1".into())),
             Ok(Value::Bool(true))
         ));
         assert!(matches!(
-            coerce_to_bool(&Value::String("0".to_string())),
+            coerce_to_bool(&Value::String("0".into())),
             Ok(Value::Bool(false))
         ));
     }

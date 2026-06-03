@@ -268,13 +268,13 @@ fn http_request(
     if let Some(Value::Hash(opts)) = options {
         if let Some(Value::Hash(headers)) = opts
             .borrow()
-            .get(&HashKey::String("headers".to_string()))
+            .get(&HashKey::String("headers".into()))
             .cloned()
         {
             for (k, v) in headers.borrow().iter() {
                 if let HashKey::String(name) = k {
                     if let Value::String(s) = v {
-                        all_headers.insert(name.clone(), s.clone());
+                        all_headers.insert(name.to_string(), s.to_string());
                     }
                 }
             }
@@ -322,26 +322,26 @@ fn http_request(
 
     let mut header_pairs: HashPairs = HashPairs::default();
     for (name, value) in response_headers {
-        header_pairs.insert(HashKey::String(name), Value::String(value));
+        header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
     }
 
     let mut response_hash: HashPairs = HashPairs::default();
+    response_hash.insert(HashKey::String("status".into()), Value::Int(status as i64));
     response_hash.insert(
-        HashKey::String("status".to_string()),
-        Value::Int(status as i64),
-    );
-    response_hash.insert(
-        HashKey::String("headers".to_string()),
+        HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(header_pairs))),
     );
     response_hash.insert(
-        HashKey::String("body".to_string()),
-        Value::String(body_text.clone()),
+        HashKey::String("body".into()),
+        Value::String(body_text.clone().into()),
     );
-    response_hash.insert(HashKey::String("url".to_string()), Value::String(full_url));
     response_hash.insert(
-        HashKey::String("method".to_string()),
-        Value::String(method.to_string()),
+        HashKey::String("url".into()),
+        Value::String(full_url.into()),
+    );
+    response_hash.insert(
+        HashKey::String("method".into()),
+        Value::String(method.to_string().into()),
     );
 
     Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
@@ -349,14 +349,14 @@ fn http_request(
 
 fn extract_string(value: &Value, context: &str) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s.clone()),
+        Value::String(s) => Ok(s.clone().to_string()),
         _ => Err(format!("{} expects string argument", context)),
     }
 }
 
 fn value_to_string(value: Value) -> Result<String, String> {
     match value {
-        Value::String(s) => Ok(s),
+        Value::String(s) => Ok(s.to_string()),
         Value::Int(n) => Ok(n.to_string()),
         Value::Float(f) => Ok(f.to_string()),
         Value::Bool(b) => Ok(b.to_string()),
@@ -368,7 +368,7 @@ fn value_to_string(value: Value) -> Result<String, String> {
 
 fn value_to_json(value: &Value) -> String {
     match value {
-        Value::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        Value::String(s) => format!("\"{}\"", s.replace("\\", "\\\\").replace("\"", "\\\"")),
         Value::Int(n) => n.to_string(),
         Value::Float(f) => f.to_string(),
         Value::Bool(b) => b.to_string(),
@@ -381,10 +381,10 @@ fn value_to_json(value: &Value) -> String {
                     let key = match k {
                         HashKey::String(s) => s.clone(),
                         HashKey::Symbol(s) => s.clone(),
-                        HashKey::Int(i) => i.to_string(),
-                        HashKey::Bool(b) => b.to_string(),
-                        HashKey::Decimal(d) => d.to_string(),
-                        HashKey::Null => "null".to_string(),
+                        HashKey::Int(i) => i.to_string().into(),
+                        HashKey::Bool(b) => b.to_string().into(),
+                        HashKey::Decimal(d) => d.to_string().into(),
+                        HashKey::Null => "null".into(),
                     };
                     format!("\"{}\":{}", key, value_to_json(v))
                 })

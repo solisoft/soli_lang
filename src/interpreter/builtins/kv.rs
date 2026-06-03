@@ -5,7 +5,7 @@ use crate::interpreter::value::{json_to_value, Class, HashKey, HashPairs, Native
 /// Convert a Value to a raw string for Redis storage (no JSON encoding).
 fn value_to_raw(v: &Value) -> String {
     match v {
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.clone().to_string(),
         other => format!("{}", other),
     }
 }
@@ -20,7 +20,7 @@ fn extract_string(
     param: &str,
 ) -> Result<String, String> {
     match args.get(idx) {
-        Some(Value::String(s)) => Ok(s.clone()),
+        Some(Value::String(s)) => Ok(s.clone().to_string()),
         Some(other) => Err(format!(
             "{}() expects string {}, got {}",
             fn_name,
@@ -112,7 +112,7 @@ fn solikv_result_to_value(result: &serde_json::Value) -> Result<Value, String> {
                 Ok(Value::Null)
             }
         }
-        serde_json::Value::String(s) => Ok(Value::String(s.clone())),
+        serde_json::Value::String(s) => Ok(Value::String(s.clone().into())),
         serde_json::Value::Array(arr) => {
             let vals: Result<Vec<Value>, String> = arr.iter().map(solikv_result_to_value).collect();
             Ok(Value::Array(Rc::new(RefCell::new(vals?))))
@@ -152,7 +152,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             let key = extract_string(&args, 0, "KV.get", "key")?;
             match solikv_get(&key)? {
                 None => Ok(Value::Null),
-                Some(s) => Ok(Value::String(s)),
+                Some(s) => Ok(Value::String(s.into())),
             }
         })),
     );
@@ -190,7 +190,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                     Value::String(s) => Some(s.clone()),
                     _ => None,
                 })
-                .unwrap_or_else(|| "*".to_string());
+                .unwrap_or_else(|| "*".into());
 
             // SEC-037: KEYS is O(N) and exposes the entire keyspace —
             // denylisted unless SOLI_KV_ALLOW_ADMIN=1.
@@ -200,7 +200,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 .as_array()
                 .map(|arr| {
                     arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| Value::String(s.to_string())))
+                        .filter_map(|v| v.as_str().map(|s| Value::String(s.to_string().into())))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -261,7 +261,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             let key = extract_string(&args, 0, "KV.type", "key")?;
             let result = solikv_cmd(&["TYPE", &key])?;
             match result.as_str() {
-                Some(s) => Ok(Value::String(s.to_string())),
+                Some(s) => Ok(Value::String(s.to_string().into())),
                 None => Ok(Value::Null),
             }
         })),
@@ -492,7 +492,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
             let mut cmd_args: Vec<String> = vec!["HDEL".to_string(), key];
             for v in &args[1..] {
                 match v {
-                    Value::String(s) => cmd_args.push(s.clone()),
+                    Value::String(s) => cmd_args.push(s.clone().to_string()),
                     other => {
                         return Err(format!(
                             "KV.hdel() expects string fields, got {}",
@@ -518,7 +518,10 @@ pub fn register_kv_builtins(env: &mut Environment) {
             if let Some(obj) = result.as_object() {
                 let mut hash = HashPairs::default();
                 for (k, v) in obj {
-                    hash.insert(HashKey::String(k.clone()), solikv_result_to_value(v)?);
+                    hash.insert(
+                        HashKey::String(k.clone().into()),
+                        solikv_result_to_value(v)?,
+                    );
                 }
                 return Ok(Value::Hash(Rc::new(RefCell::new(hash))));
             }
@@ -529,7 +532,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 while i + 1 < arr.len() {
                     if let Some(k) = arr[i].as_str() {
                         hash.insert(
-                            HashKey::String(k.to_string()),
+                            HashKey::String(k.to_string().into()),
                             solikv_result_to_value(&arr[i + 1])?,
                         );
                     }
@@ -577,7 +580,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
         Rc::new(NativeFunction::new("KV.ping", Some(0), |_args| {
             let result = solikv_cmd(&["PING"])?;
             match result.as_str() {
-                Some(s) => Ok(Value::String(s.to_string())),
+                Some(s) => Ok(Value::String(s.to_string().into())),
                 None => Ok(Value::Bool(true)),
             }
         })),
@@ -640,7 +643,7 @@ pub fn register_kv_builtins(env: &mut Environment) {
                 Value::String(s) => Some(s.clone()),
                 _ => None,
             });
-            solikv_configure(&host, token);
+            solikv_configure(&host, token.map(|s| s.to_string()));
             Ok(Value::Null)
         })),
     );

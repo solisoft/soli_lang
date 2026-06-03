@@ -15,7 +15,7 @@ fn get_actual(args: &[Value]) -> Result<Value, String> {
     let this = &args[0];
     if let Value::Hash(hash) = this {
         let borrowed = hash.borrow();
-        if let Some(actual) = borrowed.get(&HashKey::String("actual".to_string())) {
+        if let Some(actual) = borrowed.get(&HashKey::String("actual".into())) {
             return Ok(actual.clone());
         }
     }
@@ -291,7 +291,7 @@ pub fn register_expectation_class(env: &mut Environment) {
                 let item = &args[1];
                 let contains = match (&actual, item) {
                     (Value::Array(arr), item) => arr.borrow().contains(item),
-                    (Value::String(s), Value::String(sub)) => s.contains(sub.as_str()),
+                    (Value::String(s), Value::String(sub)) => s.contains(sub.as_ref()),
                     (Value::String(s), item) => s.contains(&item.to_string()),
                     _ => return Err("to_contain expects array or string".to_string()),
                 };

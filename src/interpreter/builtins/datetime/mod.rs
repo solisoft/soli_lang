@@ -19,9 +19,9 @@ pub fn register_datetime_builtins(env: &mut Environment) {
                 }
             };
             let locale = i18n_helpers::get_locale();
-            Ok(Value::String(helpers::time_ago_localized(
-                timestamp, &locale,
-            )))
+            Ok(Value::String(
+                helpers::time_ago_localized(timestamp, &locale).into(),
+            ))
         })),
     );
 
@@ -47,7 +47,7 @@ pub fn register_datetime_builtins(env: &mut Environment) {
         "locale".to_string(),
         Value::NativeFunction(NativeFunction::new("locale", Some(0), |_args| {
             use super::i18n::helpers as i18n_helpers;
-            Ok(Value::String(i18n_helpers::get_locale()))
+            Ok(Value::String(i18n_helpers::get_locale().into()))
         })),
     );
 }

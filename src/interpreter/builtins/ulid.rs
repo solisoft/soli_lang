@@ -13,7 +13,7 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
 fn make_ulid(_args: Vec<Value>) -> Result<Value, String> {
-    Ok(Value::String(Ulid::new().to_string()))
+    Ok(Value::String(Ulid::new().to_string().into()))
 }
 
 pub fn register_ulid_builtins(env: &mut Environment) {

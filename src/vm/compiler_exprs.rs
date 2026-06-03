@@ -26,7 +26,7 @@ impl Compiler {
                 self.emit_constant(Constant::Decimal(s.clone()), line);
             }
             ExprKind::StringLiteral(s) => {
-                self.emit_constant(Constant::String(s.clone()), line);
+                self.emit_constant(Constant::String(s.clone().into()), line);
             }
             ExprKind::CommandSubstitution(_) => {
                 return Err(CompileError::new(
@@ -681,11 +681,11 @@ impl Compiler {
         let mut keys = Vec::with_capacity(pairs.len());
         for (key, _) in pairs {
             let hk = match &key.kind {
-                ExprKind::StringLiteral(s) => HashKey::String(s.clone()),
+                ExprKind::StringLiteral(s) => HashKey::String(s.clone().into()),
                 ExprKind::IntLiteral(n) => HashKey::Int(*n),
                 ExprKind::BoolLiteral(b) => HashKey::Bool(*b),
                 ExprKind::Null => HashKey::Null,
-                ExprKind::Symbol(s) => HashKey::Symbol(s.clone()),
+                ExprKind::Symbol(s) => HashKey::Symbol(s.clone().into()),
                 ExprKind::DecimalLiteral(s) => {
                     let d: rust_decimal::Decimal = s.parse().ok()?;
                     let prec = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
@@ -836,7 +836,7 @@ impl Compiler {
         for part in parts {
             match part {
                 InterpolatedPart::Literal(s) => {
-                    self.emit_constant(Constant::String(s.clone()), line);
+                    self.emit_constant(Constant::String(s.clone().into()), line);
                 }
                 InterpolatedPart::Expression(expr) => {
                     self.compile_expr(expr)?;
@@ -857,7 +857,7 @@ impl Compiler {
         // The runtime will handle interpolations
         // TODO: Implement proper interpolation handling
         let _ = interpolations; // suppress warning for now
-        self.emit_constant(Constant::String(query.to_string()), line);
+        self.emit_constant(Constant::String(query.to_string().into()), line);
 
         // Emit a call to a builtin function to execute the SDBQL
         // For now, we'll use a placeholder - will be implemented later

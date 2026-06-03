@@ -30,11 +30,14 @@ fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
 fn set_callback_aborted_error(instance: &Rc<RefCell<Instance>>, callback_kind: &str) {
     let mut entry = crate::interpreter::value::HashPairs::default();
     entry.insert(
-        HashKey::String("message".to_string()),
-        Value::String(format!(
-            "{} callback returned false; persistence aborted",
-            callback_kind
-        )),
+        HashKey::String("message".into()),
+        Value::String(
+            format!(
+                "{} callback returned false; persistence aborted",
+                callback_kind
+            )
+            .into(),
+        ),
     );
     let error_hash = Value::Hash(Rc::new(RefCell::new(entry)));
     instance.borrow_mut().set(
@@ -283,7 +286,7 @@ impl Interpreter {
         let mut instance = Instance::new(class.clone());
         for (k, v) in data_hash.borrow().iter() {
             if let HashKey::String(name) = k {
-                instance.set(name.clone(), v.clone());
+                instance.set(name.clone().to_string(), v.clone());
             }
         }
         let inst_rc = Rc::new(RefCell::new(instance));
@@ -308,7 +311,7 @@ impl Interpreter {
         let inst_ref = inst_rc.borrow();
         let mut new_pairs = crate::interpreter::value::HashPairs::default();
         for (k, v) in &inst_ref.fields {
-            new_pairs.insert(HashKey::String(k.clone()), v.clone());
+            new_pairs.insert(HashKey::String(k.clone().into()), v.clone());
         }
         drop(inst_ref);
         arg_values[data_index] = Value::Hash(Rc::new(RefCell::new(new_pairs)));
@@ -348,11 +351,11 @@ impl Interpreter {
             if let Value::Hash(result_hash) = &result {
                 let valid = result_hash
                     .borrow()
-                    .get(&HashKey::String("valid".to_string()))
+                    .get(&HashKey::String("valid".into()))
                     .cloned();
                 let record = result_hash
                     .borrow()
-                    .get(&HashKey::String("record".to_string()))
+                    .get(&HashKey::String("record".into()))
                     .cloned();
                 if matches!(valid, Some(Value::Bool(true))) {
                     if let Some(Value::Instance(inst)) = record {
@@ -766,7 +769,7 @@ impl Interpreter {
                                 span,
                             ));
                         }
-                        regs.push((name.clone(), v.clone()));
+                        regs.push((name.to_string(), v.clone()));
                     }
                 }
                 RESPOND_TO_BUILDER.with(|stack| {
@@ -939,7 +942,7 @@ impl Interpreter {
                     Some(value) => value,
                     None => {
                         return Err(RuntimeError::type_error(
-                            format!("key not found: {:?}", Value::String(key.clone())),
+                            format!("key not found: {:?}", Value::String(key.clone().into())),
                             span,
                         ))
                     }
@@ -982,7 +985,7 @@ impl Interpreter {
                 if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                     *existing = value.clone();
                 } else {
-                    hash_ref.insert(HashKey::String(key.clone()), value.clone());
+                    hash_ref.insert(HashKey::String(key.clone().into()), value.clone());
                 }
                 Ok(Some(value))
             }
@@ -1165,7 +1168,7 @@ impl Interpreter {
                         span,
                     )?));
                 };
-                let args = [Value::String(arg.clone())];
+                let args = [Value::String(arg.clone().into())];
                 if let Some(result) = self.call_string_method_borrowed(&s, method_name, &args, span)
                 {
                     return Ok(Some(result?));
@@ -1196,7 +1199,10 @@ impl Interpreter {
                         span,
                     )?));
                 };
-                let args = [Value::String(from.clone()), Value::String(to.clone())];
+                let args = [
+                    Value::String(from.clone().into()),
+                    Value::String(to.clone().into()),
+                ];
                 if let Some(result) = self.call_string_method_borrowed(&s, method_name, &args, span)
                 {
                     return Ok(Some(result?));

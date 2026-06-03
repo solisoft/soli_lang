@@ -118,9 +118,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
             if report_only {
-                config.csp_report_only = Some(policy);
+                config.csp_report_only = Some(policy.to_string());
             } else {
-                config.csp = Some(policy);
+                config.csp = Some(policy.to_string());
             }
             invalidate_security_headers_cache();
             Ok(Value::Null)
@@ -137,7 +137,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     .iter()
                     .filter_map(|v| {
                         if let Value::String(s) = v {
-                            Some(s.clone())
+                            Some(s.to_string())
                         } else {
                             None
                         }
@@ -161,7 +161,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .iter()
                 .filter_map(|v| {
                     if let Value::String(s) = v {
-                        Some(s.clone())
+                        Some(s.to_string())
                     } else {
                         None
                     }
@@ -184,7 +184,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 .iter()
                 .filter_map(|v| {
                     if let Value::String(s) = v {
-                        Some(s.clone())
+                        Some(s.to_string())
                     } else {
                         None
                     }
@@ -315,7 +315,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 let mut config = SECURITY_HEADERS_CONFIG
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
-                config.referrer_policy = Some(policy);
+                config.referrer_policy = Some(policy.to_string());
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -340,7 +340,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 let mut config = SECURITY_HEADERS_CONFIG
                     .write()
                     .map_err(|e| format!("Security headers error: {}", e))?;
-                config.permissions_policy = Some(policy);
+                config.permissions_policy = Some(policy.to_string());
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -362,7 +362,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             let mut config = SECURITY_HEADERS_CONFIG
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_embedder_policy = Some(policy);
+            config.cross_origin_embedder_policy = Some(policy.to_string());
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -383,7 +383,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             let mut config = SECURITY_HEADERS_CONFIG
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_opener_policy = Some(policy);
+            config.cross_origin_opener_policy = Some(policy.to_string());
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -404,7 +404,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             let mut config = SECURITY_HEADERS_CONFIG
                 .write()
                 .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_resource_policy = Some(policy);
+            config.cross_origin_resource_policy = Some(policy.to_string());
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -528,14 +528,14 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
 
                 if let Some(ref csp) = config.csp {
                     headers.insert(
-                        HashKey::String("Content-Security-Policy".to_string()),
-                        Value::String(csp.clone()),
+                        HashKey::String("Content-Security-Policy".into()),
+                        Value::String(csp.clone().into()),
                     );
                 }
                 if let Some(ref csp_ro) = config.csp_report_only {
                     headers.insert(
-                        HashKey::String("Content-Security-Policy-Report-Only".to_string()),
-                        Value::String(csp_ro.clone()),
+                        HashKey::String("Content-Security-Policy-Report-Only".into()),
+                        Value::String(csp_ro.clone().into()),
                     );
                 }
                 if let Some(ref hsts) = config.hsts {
@@ -547,56 +547,56 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                         hsts_val.push_str("; preload");
                     }
                     headers.insert(
-                        HashKey::String("Strict-Transport-Security".to_string()),
-                        Value::String(hsts_val),
+                        HashKey::String("Strict-Transport-Security".into()),
+                        Value::String(hsts_val.into()),
                     );
                 }
                 if let Some(ref xfo) = config.x_frame_options {
                     headers.insert(
-                        HashKey::String("X-Frame-Options".to_string()),
-                        Value::String(xfo.clone()),
+                        HashKey::String("X-Frame-Options".into()),
+                        Value::String(xfo.clone().into()),
                     );
                 }
                 if config.x_content_type_options {
                     headers.insert(
-                        HashKey::String("X-Content-Type-Options".to_string()),
-                        Value::String("nosniff".to_string()),
+                        HashKey::String("X-Content-Type-Options".into()),
+                        Value::String("nosniff".into()),
                     );
                 }
                 if let Some(ref xss) = config.xss_protection {
                     headers.insert(
-                        HashKey::String("X-XSS-Protection".to_string()),
-                        Value::String(xss.clone()),
+                        HashKey::String("X-XSS-Protection".into()),
+                        Value::String(xss.clone().into()),
                     );
                 }
                 if let Some(ref rp) = config.referrer_policy {
                     headers.insert(
-                        HashKey::String("Referrer-Policy".to_string()),
-                        Value::String(rp.clone()),
+                        HashKey::String("Referrer-Policy".into()),
+                        Value::String(rp.clone().into()),
                     );
                 }
                 if let Some(ref pp) = config.permissions_policy {
                     headers.insert(
-                        HashKey::String("Permissions-Policy".to_string()),
-                        Value::String(pp.clone()),
+                        HashKey::String("Permissions-Policy".into()),
+                        Value::String(pp.clone().into()),
                     );
                 }
                 if let Some(ref coep) = config.cross_origin_embedder_policy {
                     headers.insert(
-                        HashKey::String("Cross-Origin-Embedder-Policy".to_string()),
-                        Value::String(coep.clone()),
+                        HashKey::String("Cross-Origin-Embedder-Policy".into()),
+                        Value::String(coep.clone().into()),
                     );
                 }
                 if let Some(ref coop) = config.cross_origin_opener_policy {
                     headers.insert(
-                        HashKey::String("Cross-Origin-Opener-Policy".to_string()),
-                        Value::String(coop.clone()),
+                        HashKey::String("Cross-Origin-Opener-Policy".into()),
+                        Value::String(coop.clone().into()),
                     );
                 }
                 if let Some(ref corp) = config.cross_origin_resource_policy {
                     headers.insert(
-                        HashKey::String("Cross-Origin-Resource-Policy".to_string()),
-                        Value::String(corp.clone()),
+                        HashKey::String("Cross-Origin-Resource-Policy".into()),
+                        Value::String(corp.clone().into()),
                     );
                 }
 

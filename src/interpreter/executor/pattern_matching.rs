@@ -103,7 +103,7 @@ impl Interpreter {
                 let mut bindings = Vec::new();
 
                 for (field_name, field_pattern) in fields {
-                    let hash_key = HashKey::String(field_name.clone());
+                    let hash_key = HashKey::String(field_name.clone().into());
                     if let Some(val) = hash.get(&hash_key) {
                         match self.match_pattern(val, field_pattern)? {
                             Some(field_bindings) => {
@@ -121,7 +121,7 @@ impl Interpreter {
                 if let Some(rest_name) = rest {
                     let matched_keys: HashSet<HashKey> = fields
                         .iter()
-                        .map(|(f, _)| HashKey::String(f.clone()))
+                        .map(|(f, _)| HashKey::String(f.clone().into()))
                         .collect();
                     let rest_map: HashPairs = hash
                         .into_iter()

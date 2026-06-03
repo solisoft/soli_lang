@@ -35,7 +35,7 @@ pub fn register_markdown_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(markdown_to_html(&md)))
+            Ok(Value::String(markdown_to_html(&md).into()))
         })),
     );
 
@@ -56,7 +56,7 @@ pub fn register_markdown_builtins(env: &mut Environment) {
                         ))
                     }
                 };
-                Ok(Value::String(markdown_to_safe_html(&md)))
+                Ok(Value::String(markdown_to_safe_html(&md).into()))
             },
         )),
     );
@@ -86,7 +86,7 @@ mod tests {
         let class = env.get("Markdown").unwrap();
         if let Value::Class(cls) = class {
             let method = cls.native_static_methods.get(method_name).unwrap();
-            (method.func)(vec![Value::String(input.to_string())])
+            (method.func)(vec![Value::String(input.to_string().into())])
         } else {
             panic!("Markdown is not a class");
         }
@@ -206,7 +206,7 @@ mod tests {
     fn test_empty_input() {
         let result = call_to_html("").unwrap();
         if let Value::String(s) = result {
-            assert_eq!(s, "");
+            assert_eq!(s.as_str(), "");
         } else {
             panic!("expected string");
         }

@@ -17,7 +17,7 @@ pub fn register_html_builtins(env: &mut Environment) {
             "html_escape",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(html_escape(s))),
+                Value::String(s) => Ok(Value::String(html_escape(s).into())),
                 other => Err(format!(
                     "html_escape expects string, got {}",
                     other.type_name()
@@ -33,7 +33,7 @@ pub fn register_html_builtins(env: &mut Environment) {
             "html_unescape",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(html_unescape(s))),
+                Value::String(s) => Ok(Value::String(html_unescape(s).into())),
                 other => Err(format!(
                     "html_unescape expects string, got {}",
                     other.type_name()
@@ -49,7 +49,7 @@ pub fn register_html_builtins(env: &mut Environment) {
             "sanitize_html",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(sanitize_html(s))),
+                Value::String(s) => Ok(Value::String(sanitize_html(s).into())),
                 other => Err(format!(
                     "sanitize_html expects string, got {}",
                     other.type_name()
@@ -65,7 +65,7 @@ pub fn register_html_builtins(env: &mut Environment) {
             "strip_html",
             Some(1),
             |args| match &args[0] {
-                Value::String(s) => Ok(Value::String(strip_html(s))),
+                Value::String(s) => Ok(Value::String(strip_html(s).into())),
                 other => Err(format!(
                     "strip_html expects string, got {}",
                     other.type_name()
