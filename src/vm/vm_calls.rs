@@ -401,14 +401,26 @@ impl Vm {
         arg: Value,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        let proto = if let Some(cached) = method.jit_cache.borrow().clone() {
-            cached
-        } else {
-            let compiled = Compiler::compile_method_standalone(method, self.globals.keys().cloned())
+        // The `let cached = ...borrow().clone()` line scopes the
+        // `RefCell` borrow to the let statement so it's released before
+        // the `else` branch runs. The earlier `if let Some(...) = borrow()`
+        // form held the `Ref` across the whole if-else, which panicked
+        // with "RefCell already borrowed" when the else arm took
+        // `borrow_mut()` to install the freshly-compiled proto.
+        let proto = {
+            let cached = method.jit_cache.borrow().clone();
+            if let Some(cached) = cached {
+                cached
+            } else {
+                let compiled = Compiler::compile_method_standalone(
+                    method,
+                    self.globals.keys().cloned(),
+                )
                 .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
-            let arc = Arc::new(compiled);
-            *method.jit_cache.borrow_mut() = Some(arc.clone());
-            arc
+                let arc = Arc::new(compiled);
+                *method.jit_cache.borrow_mut() = Some(arc.clone());
+                arc
+            }
         };
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
