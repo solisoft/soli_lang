@@ -94,6 +94,19 @@ md-5 = "0.10"
 hmac = "0.12"
 sha1 = "0.10"
 
+# Arbitrary-precision integers for RSA-style modular exponentiation
+# (Crypto.modexp). Pairs with the PKCS#1 v1.5 padding helpers and
+# exclusive XML C14N to build XML-DSig / WS-Security signing in Soli.
+num-bigint = "0.4"
+
+# X.509 certificate parsing (X509.public_key) — extracts the RSA modulus /
+# exponent from an IdP signing certificate for SAML signature verification.
+x509-parser = "0.16"
+
+# RSA private-key (PKCS#8 / PKCS#1 PEM) parsing for RsaKey.private_from_pem —
+# extracts (n, d, e) so an SP can *sign* envelopes via Crypto.modexp.
+rsa = "0.9"
+
 # Data encoding
 base64 = "0.22"
 rmp-serde = "1"

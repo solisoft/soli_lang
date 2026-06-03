@@ -12,6 +12,7 @@ use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use hmac::{Hmac, Mac};
 use md5::Md5;
+use num_bigint::BigUint;
 use rand_core::RngCore;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
@@ -253,6 +254,163 @@ fn do_totp_verify(secret: &str, code: &str, time: u64, period: u64) -> Result<bo
         }
     }
     Ok(false)
+}
+
+// ============================================================================
+// RSA primitives: modular exponentiation + PKCS#1 v1.5 padding
+//
+// These are the low-level building blocks for RSA signing/verification and,
+// together with exclusive XML C14N (see `xml_c14n.rs`), for XML-DSig /
+// WS-Security. They operate on octet strings (big-endian byte arrays), the
+// representation RFC 8017 (PKCS#1) calls I2OSP/OS2IP.
+// ============================================================================
+
+/// Convert a Soli value to big-endian octets for the bignum / RSA primitives.
+///
+/// Unlike [`value_to_bytes`], a string is **always** interpreted as hex (with
+/// an optional `0x` prefix), never as raw UTF-8. These primitives work on
+/// octet strings — silently treating a hex-encoded 2048-bit modulus as UTF-8
+/// bytes would be a dangerous, hard-to-debug surprise.
+fn value_to_octets(value: &Value, what: &str) -> Result<Vec<u8>, String> {
+    match value {
+        Value::String(s) => {
+            let trimmed = s
+                .strip_prefix("0x")
+                .or_else(|| s.strip_prefix("0X"))
+                .unwrap_or(s);
+            hex_to_bytes(trimmed).map_err(|e| format!("{}: {}", what, e))
+        }
+        Value::Array(arr) => arr
+            .borrow()
+            .iter()
+            .map(|v| match v {
+                Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+                Value::Int(n) => Err(format!("{}: byte value {} out of range 0-255", what, n)),
+                other => Err(format!(
+                    "{}: expected byte (Int 0-255), got {}",
+                    what,
+                    other.type_name()
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "{}: expected hex string or byte array, got {}",
+            what,
+            other.type_name()
+        )),
+    }
+}
+
+/// Modular exponentiation `base^exp mod modulus` over big-endian octet strings.
+///
+/// The result is left-padded with zero octets to the modulus length `k`
+/// (`k = ceil(bits(modulus) / 8)`), matching the RSA convention where a
+/// signature / ciphertext is always `k` octets wide. This makes the output
+/// directly composable with the PKCS#1 padding helpers.
+fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, String> {
+    let m = BigUint::from_bytes_be(modulus);
+    if m == BigUint::from(0u32) {
+        return Err("modulus must be non-zero".to_string());
+    }
+    let b = BigUint::from_bytes_be(base);
+    let e = BigUint::from_bytes_be(exp);
+    let result = b.modpow(&e, &m);
+
+    let k = (m.bits().div_ceil(8) as usize).max(1);
+    let raw = result.to_bytes_be();
+    if raw.len() < k {
+        let mut padded = vec![0u8; k - raw.len()];
+        padded.extend_from_slice(&raw);
+        Ok(padded)
+    } else {
+        // `result < modulus`, so `raw` can never be wider than `k`.
+        Ok(raw)
+    }
+}
+
+/// PKCS#1 v1.5 padding (RFC 8017 §7.2.1 / §9.2): `EM = 0x00 || BT || PS || 0x00 || data`.
+///
+/// `block_type` 1 (signatures) fills `PS` with `0xFF`; block type 2
+/// (encryption) fills it with random non-zero octets. `PS` is always at least
+/// 8 octets, so `data` must be at most `k - 11` octets long.
+fn do_pkcs1_pad(data: &[u8], k: usize, block_type: u8) -> Result<Vec<u8>, String> {
+    if k < 11 {
+        return Err(format!(
+            "key size {} too small for PKCS#1 v1.5 padding (need >= 11)",
+            k
+        ));
+    }
+    if data.len() > k - 11 {
+        return Err(format!(
+            "data length {} too long for key size {} (max {} octets)",
+            data.len(),
+            k,
+            k - 11
+        ));
+    }
+    let ps_len = k - 3 - data.len(); // >= 8, guaranteed by the check above
+    let mut em = Vec::with_capacity(k);
+    em.push(0x00);
+    em.push(block_type);
+    match block_type {
+        1 => em.resize(em.len() + ps_len, 0xFFu8),
+        2 => {
+            // Random *non-zero* padding so the 0x00 separator is unambiguous.
+            let mut written = 0;
+            while written < ps_len {
+                let mut b = [0u8; 1];
+                OsRng.fill_bytes(&mut b);
+                if b[0] != 0 {
+                    em.push(b[0]);
+                    written += 1;
+                }
+            }
+        }
+        other => {
+            return Err(format!(
+                "unsupported block type {} (use 1 for signatures, 2 for encryption)",
+                other
+            ))
+        }
+    }
+    em.push(0x00);
+    em.extend_from_slice(data);
+    Ok(em)
+}
+
+/// Strip PKCS#1 v1.5 padding, returning the embedded data octets. Validates the
+/// `0x00 || BT` prefix, the minimum 8-octet padding string, and (for block
+/// type 1) that every padding octet is `0xFF`.
+fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
+    if em.len() < 11 {
+        return Err("encoded message too short (need >= 11 octets)".to_string());
+    }
+    if em[0] != 0x00 {
+        return Err(format!("first octet is 0x{:02x}, expected 0x00", em[0]));
+    }
+    let block_type = em[1];
+    if block_type != 0x01 && block_type != 0x02 {
+        return Err(format!(
+            "unsupported block type 0x{:02x} (expected 0x01 or 0x02)",
+            block_type
+        ));
+    }
+    let mut sep = None;
+    for (i, &b) in em.iter().enumerate().skip(2) {
+        if b == 0x00 {
+            sep = Some(i);
+            break;
+        }
+        if block_type == 0x01 && b != 0xFF {
+            return Err("block type 1 padding octet is not 0xFF".to_string());
+        }
+    }
+    let sep = sep.ok_or("missing 0x00 separator after padding string")?;
+    // PS must be >= 8 octets: separator index >= 2 + 8 = 10.
+    if sep < 10 {
+        return Err("padding string shorter than 8 octets".to_string());
+    }
+    Ok(em[sep + 1..].to_vec())
 }
 
 /// Register cryptographic functions and Crypto class in the given environment.
@@ -798,6 +956,80 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
+    // Crypto.modexp(base, exp, modulus) -> String (big-endian hex, k octets wide)
+    crypto_static_methods.insert(
+        "modexp".to_string(),
+        Rc::new(NativeFunction::new("Crypto.modexp", Some(3), |args| {
+            let base = value_to_octets(&args[0], "Crypto.modexp() base")?;
+            let exp = value_to_octets(&args[1], "Crypto.modexp() exponent")?;
+            let modulus = value_to_octets(&args[2], "Crypto.modexp() modulus")?;
+            let result =
+                do_modexp(&base, &exp, &modulus).map_err(|e| format!("Crypto.modexp(): {}", e))?;
+            Ok(Value::String(bytes_to_hex(&result)))
+        })),
+    );
+
+    // Crypto.pkcs1_pad(data, key_size, block_type?) -> String (hex)
+    crypto_static_methods.insert(
+        "pkcs1_pad".to_string(),
+        Rc::new(NativeFunction::new("Crypto.pkcs1_pad", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "Crypto.pkcs1_pad() expects 2-3 arguments (data, key_size, block_type?), got {}",
+                    args.len()
+                ));
+            }
+            let data = value_to_octets(&args[0], "Crypto.pkcs1_pad() data")?;
+            let key_size = match &args[1] {
+                Value::Int(n) if *n > 0 => *n as usize,
+                Value::Int(n) => {
+                    return Err(format!(
+                        "Crypto.pkcs1_pad() key_size must be positive, got {}",
+                        n
+                    ))
+                }
+                other => {
+                    return Err(format!(
+                        "Crypto.pkcs1_pad() expects Int key_size, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let block_type = if args.len() == 3 {
+                match &args[2] {
+                    Value::Int(t @ (1 | 2)) => *t as u8,
+                    Value::Int(t) => {
+                        return Err(format!(
+                            "Crypto.pkcs1_pad() block_type must be 1 or 2, got {}",
+                            t
+                        ))
+                    }
+                    other => {
+                        return Err(format!(
+                            "Crypto.pkcs1_pad() expects Int block_type, got {}",
+                            other.type_name()
+                        ))
+                    }
+                }
+            } else {
+                1
+            };
+            let em = do_pkcs1_pad(&data, key_size, block_type)
+                .map_err(|e| format!("Crypto.pkcs1_pad(): {}", e))?;
+            Ok(Value::String(bytes_to_hex(&em)))
+        })),
+    );
+
+    // Crypto.pkcs1_unpad(encoded_message) -> String (hex of the embedded data)
+    crypto_static_methods.insert(
+        "pkcs1_unpad".to_string(),
+        Rc::new(NativeFunction::new("Crypto.pkcs1_unpad", Some(1), |args| {
+            let em = value_to_octets(&args[0], "Crypto.pkcs1_unpad() encoded message")?;
+            let data = do_pkcs1_unpad(&em).map_err(|e| format!("Crypto.pkcs1_unpad(): {}", e))?;
+            Ok(Value::String(bytes_to_hex(&data)))
+        })),
+    );
+
     // Create and register the Crypto class
     let crypto_class = Class {
         name: "Crypto".to_string(),
@@ -1340,5 +1572,85 @@ mod tests {
         };
         let valid = (ver.func)(vec![secret, Value::String(code), time]).unwrap();
         assert!(matches!(valid, Value::Bool(true)));
+    }
+
+    // ---- RSA primitives: modexp + PKCS#1 v1.5 ----
+
+    #[test]
+    fn modexp_small_known_value() {
+        // 4^13 mod 497 = 445 (classic textbook modexp example).
+        // 497 = 0x01F1, 445 = 0x01BD; modulus needs 9 bits -> k = 2 octets.
+        let out = do_modexp(&[4], &[13], &[0x01, 0xF1]).unwrap();
+        assert_eq!(out, vec![0x01, 0xBD]);
+    }
+
+    #[test]
+    fn modexp_rejects_zero_modulus() {
+        let err = do_modexp(&[2], &[3], &[0]).unwrap_err();
+        assert!(err.contains("non-zero"), "{}", err);
+    }
+
+    #[test]
+    fn modexp_rsa_roundtrip() {
+        // Tiny RSA: p=61, q=53, n=3233, e=17, d=2753.
+        // Message 65 -> cipher 65^17 mod 3233 = 2790 -> 2790^2753 mod 3233 = 65.
+        let n = 3233u32.to_be_bytes();
+        let cipher = do_modexp(&[65], &[17], &n[2..]).unwrap();
+        let plain = do_modexp(&cipher, &2753u32.to_be_bytes()[2..], &n[2..]).unwrap();
+        // k = ceil(12/8) = 2 octets.
+        assert_eq!(plain, vec![0x00, 0x41]); // 0x41 == 65
+    }
+
+    #[test]
+    fn pkcs1_type1_pad_unpad_roundtrip() {
+        let data = b"hello";
+        let em = do_pkcs1_pad(data, 64, 1).unwrap();
+        assert_eq!(em.len(), 64);
+        assert_eq!(em[0], 0x00);
+        assert_eq!(em[1], 0x01);
+        // All padding octets are 0xFF up to the separator.
+        assert!(em[2..64 - data.len() - 1].iter().all(|&b| b == 0xFF));
+        assert_eq!(em[64 - data.len() - 1], 0x00);
+        let recovered = do_pkcs1_unpad(&em).unwrap();
+        assert_eq!(recovered, data);
+    }
+
+    #[test]
+    fn pkcs1_type2_pad_is_random_nonzero_and_unpads() {
+        let data = b"secret";
+        let em = do_pkcs1_pad(data, 64, 2).unwrap();
+        assert_eq!(em[1], 0x02);
+        // Padding string (between BT and separator) must be all non-zero.
+        let sep = em.iter().skip(2).position(|&b| b == 0).unwrap() + 2;
+        assert!(sep >= 10, "PS must be >= 8 octets");
+        assert!(em[2..sep].iter().all(|&b| b != 0));
+        assert_eq!(do_pkcs1_unpad(&em).unwrap(), data);
+    }
+
+    #[test]
+    fn pkcs1_pad_rejects_overlong_data() {
+        // k=11 leaves room for 0 data octets (k-11); 1 octet must fail.
+        let err = do_pkcs1_pad(b"x", 11, 1).unwrap_err();
+        assert!(err.contains("too long"), "{}", err);
+    }
+
+    #[test]
+    fn pkcs1_unpad_rejects_bad_prefix() {
+        let mut em = do_pkcs1_pad(b"data", 32, 1).unwrap();
+        em[0] = 0x01; // corrupt leading octet
+        assert!(do_pkcs1_unpad(&em).is_err());
+    }
+
+    #[test]
+    fn pkcs1_unpad_rejects_short_padding() {
+        // 0x00 01 FF 00 <data...> — only 1 padding octet, below the 8 minimum.
+        let em = [0x00, 0x01, 0xFF, 0x00, 0xAA, 0xBB];
+        assert!(do_pkcs1_unpad(&em).is_err());
+    }
+
+    #[test]
+    fn value_to_octets_treats_string_as_hex() {
+        let v = Value::String("0x00ff10".to_string());
+        assert_eq!(value_to_octets(&v, "test").unwrap(), vec![0x00, 0xff, 0x10]);
     }
 }

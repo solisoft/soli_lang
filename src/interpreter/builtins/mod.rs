@@ -20,12 +20,14 @@ pub mod controller;
 pub mod crypto;
 pub mod datetime;
 pub mod datetime_class;
+pub mod deflate;
 pub mod dotenv;
 pub mod env;
 pub mod expectations;
 pub mod factories;
 pub mod file;
 pub mod hash;
+pub mod hex;
 pub mod html;
 pub mod http_class;
 pub mod http_log;
@@ -50,6 +52,7 @@ pub mod resp;
 pub mod respond_to;
 pub mod response_helpers;
 pub mod router;
+pub mod rsa_key;
 pub mod s3;
 pub mod secure_cookies;
 pub mod security_headers;
@@ -75,6 +78,8 @@ pub mod uploads;
 pub mod uuid;
 pub mod validation;
 pub mod vapid;
+pub mod x509;
+pub mod xml_c14n;
 
 thread_local! {
     /// When `Some`, Soli's `print`/`println` builtins write here instead of
@@ -326,6 +331,21 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register SOAP class
     soap::register_soap_class(env);
+
+    // Register Xml class (exclusive XML canonicalization for XML-DSig)
+    xml_c14n::register_xml_builtins(env);
+
+    // Register X509 class (certificate public-key extraction for SAML)
+    x509::register_x509_builtins(env);
+
+    // Register Deflate class (raw DEFLATE for the SAML HTTP-Redirect binding)
+    deflate::register_deflate_builtins(env);
+
+    // Register Hex class (hex<->bytes bridge between Crypto.* and Base64)
+    hex::register_hex_class(env);
+
+    // Register RsaKey class (PEM private-key parsing for envelope signing)
+    rsa_key::register_rsa_key_builtins(env);
 
     // Register Pop3 email-reading class
     pop3::register_pop3_class(env);

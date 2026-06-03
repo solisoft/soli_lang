@@ -1381,6 +1381,210 @@ Generates a new Ed25519 signing key pair.
 
 **Returns:** Hash - `{ "public": String, "private": String }` (hex-encoded, 64 chars each)
 
+### XML Digital Signature Primitives
+
+Low-level building blocks for RSA signatures and XML-DSig / SAML / WS-Security:
+2048-bit modular exponentiation, PKCS#1 v1.5 padding, and exclusive XML
+canonicalization. All octet inputs are hex strings (an optional `0x` prefix is
+allowed) or arrays of byte-valued `Int`s; results are returned as hex strings.
+
+> **⚠ These are primitives, not a turn-key signer.** They give you `m^e mod n`,
+> the PKCS#1 padding frame, and a canonical byte stream — you compose the digest,
+> the `DigestInfo`, and reference resolution yourself. Use a vetted library if one
+> is available for your platform.
+
+#### Crypto.modexp(base, exp, modulus)
+
+Computes `base^exp mod modulus` over big-endian octet strings. The result is
+left-padded with zero octets to the modulus width (`k = ceil(bits(modulus)/8)`),
+matching the RSA convention where a signature or ciphertext is always `k` octets
+wide — so the output drops straight into the PKCS#1 helpers.
+
+**Returns:** String — big-endian hex, `k` octets wide. Errors if the modulus is zero.
+
+```soli
+# 4^13 mod 497 = 445 (0x01bd); modulus 0x01f1 is 2 octets, so output is 2 octets
+Crypto.modexp("04", "0d", "01f1")   # => "01bd"
+```
+
+#### Crypto.pkcs1_pad(data, key_size, block_type?)
+
+Applies PKCS#1 v1.5 padding (RFC 8017): `EM = 0x00 || BT || PS || 0x00 || data`,
+producing an encoded message exactly `key_size` octets long. `block_type` defaults
+to `1` (signature padding — `PS` is all `0xFF`); pass `2` for encryption padding
+(`PS` is random non-zero octets). `data` must be at most `key_size - 11` octets.
+
+**Returns:** String — the `key_size`-octet encoded message as hex.
+
+#### Crypto.pkcs1_unpad(encoded_message)
+
+Strips PKCS#1 v1.5 padding, returning the embedded data. Validates the
+`0x00 || BT` prefix, the minimum 8-octet padding string, and (for block type 1)
+that every padding octet is `0xFF`.
+
+**Returns:** String — the recovered data octets as hex. Errors on malformed padding.
+
+```soli
+# RSA sign/verify round-trip: sign a digest with the private exponent d,
+# verify by raising the signature to the public exponent e.
+digest      = Crypto.sha256(canonical_xml)        # 32-byte hex digest
+em          = Crypto.pkcs1_pad(digest, key_octets) # block type 1
+signature   = Crypto.modexp(em, rsa_d, rsa_n)      # sign
+
+recovered   = Crypto.pkcs1_unpad(Crypto.modexp(signature, rsa_e, rsa_n))
+assert(recovered == digest)
+```
+
+#### Xml.c14n_exclusive(xml, inclusive_prefixes_or_options?)
+
+Canonicalizes an XML document with the W3C **Exclusive XML Canonicalization 1.0**
+algorithm (`http://www.w3.org/2001/10/xml-exc-c14n#`) — the canonical form
+signed by XML-DSig. Empty elements expand to start/end pairs, attributes and
+namespace declarations are sorted, the XML declaration and comments are removed,
+and (the "exclusive" part) namespace declarations that are not visibly utilized
+are dropped rather than inherited from ancestors. `DOCTYPE` declarations are
+rejected (XXE defense).
+
+The optional second argument is either the **InclusiveNamespaces PrefixList**
+directly — a space-separated string (e.g. `"ds saml"`) or an array of prefixes,
+`#default` selecting the default namespace — or an **options hash**:
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `inclusive_prefixes` | String / Array | as above |
+| `id` | String | canonicalize only the subtree of the element whose `Id`/`ID`/`id` attribute matches (inheriting the ancestor namespace context) — resolves a `Reference URI="#..."` |
+| `enveloped_signature` | Bool | drop any descendant `<ds:Signature>` (the enveloped-signature transform) |
+
+**Returns:** String — the canonical UTF-8 serialization.
+
+```soli
+Xml.c14n_exclusive("<?xml version=\"1.0\"?><doc b='2' a='1'/>")
+# => "<doc a=\"1\" b=\"2\"></doc>"
+
+# An ancestor namespace that the signed element doesn't use is dropped:
+xml = "<n0:r xmlns:n0=\"http://a\" xmlns:n2=\"http://c\"><n1:e xmlns:n1=\"http://b\">x</n1:e></n0:r>"
+Xml.c14n_exclusive(xml)
+# => "<n0:r xmlns:n0=\"http://a\"><n1:e xmlns:n1=\"http://b\">x</n1:e></n0:r>"  (n2 removed)
+
+# Canonicalize the SAML-referenced element with its signature stripped:
+Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": true})
+```
+
+> **Note:** comments are omitted (the no-comments form). See the source for full
+> notes on attribute-value whitespace handling.
+
+#### Xml.get_element_by_id(xml, id)
+
+Returns the element whose `Id`/`ID`/`id` attribute equals `id`, serialized as a
+standalone XML fragment with the inherited ancestor namespaces injected onto its
+root (so it re-parses and re-canonicalizes identically to the in-context
+subtree). Errors if no such element exists.
+
+**Returns:** String — the element subtree as standalone XML.
+
+#### Xml.get_elements_by_tag(xml, local_name)
+
+Returns every element with the given local name (namespace prefix ignored),
+each as a standalone XML fragment. Used to locate elements that have no `Id`,
+such as `<ds:SignedInfo>`.
+
+**Returns:** Array of String.
+
+#### X509.public_key(cert)
+
+Parses an X.509 certificate and extracts its RSA public key. Accepts PEM
+(`-----BEGIN CERTIFICATE-----`), bare base64 (as found in a SAML metadata
+`<ds:X509Certificate>`), hex, or a raw DER byte array.
+
+**Returns:** Hash — `{ "algorithm": "RSA", "n": hex, "e": hex, "bits": Int }`.
+The `n`/`e` hex strings drop straight into `Crypto.modexp`.
+
+```soli
+key = X509.public_key(idp_metadata_cert)
+em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step
+```
+
+#### X509.fingerprint(cert, algorithm?)
+
+Returns the certificate fingerprint (hash of the DER bytes) as hex. `algorithm`
+is `"sha256"` (default) or `"sha1"`. Useful for pinning an IdP certificate.
+
+**Returns:** String — hex digest.
+
+#### Deflate.deflate(data) / Deflate.inflate(data)
+
+Raw DEFLATE (RFC 1951, no zlib/gzip wrapper) — the compression used by the SAML
+2.0 **HTTP-Redirect binding**. Byte conventions mirror `Base64`: `deflate`
+takes a String (its UTF-8 bytes) or byte array and returns a byte array;
+`inflate` returns a String when the result is valid UTF-8, else a byte array.
+Designed to pipe through `Base64`:
+
+```soli
+# Inbound: decode a SAMLRequest from a redirect URL
+xml = Deflate.inflate(Base64.decode(params["SAMLRequest"]))
+
+# Outbound: encode one
+param = Base64.encode(Deflate.deflate(authn_request_xml))
+```
+
+#### RsaKey.private_from_pem(pem)
+
+Parses an RSA private key — PKCS#8 (`-----BEGIN PRIVATE KEY-----`) or PKCS#1
+(`-----BEGIN RSA PRIVATE KEY-----`) PEM — so a Service Provider can **sign**
+(the verification side, `X509.public_key`, only yields `(n, e)`).
+
+**Returns:** Hash — `{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }`.
+Sign with the private exponent: `Crypto.modexp(padded, key["d"], key["n"])`.
+
+#### Hex.encode(data) / Hex.decode(hex)
+
+Bridges the hex world (`Crypto.modexp` / `sha256` / `pkcs1_*` all speak hex) and
+the byte/base64 world (`Base64`, and XML-DSig's base64 `DigestValue` /
+`SignatureValue`). `encode` takes a String/byte-array → hex; `decode` takes a hex
+string (optional `0x` prefix) → byte array.
+
+```soli
+# hex digest -> base64 DigestValue
+digest_value = Base64.encode(Hex.decode(Crypto.sha256(canonical_xml)))
+# incoming base64 -> hex (to compare against a Crypto.* result)
+Hex.encode(Base64.decode(incoming_b64))
+```
+
+#### Putting it together: signing an envelope
+
+```soli
+key = RsaKey.private_from_pem(sp_private_key_pem)
+
+# 1. Digest the referenced element (enveloped transform; no Signature yet)
+ref_canon  = Xml.c14n_exclusive(doc, {"id": "_obj1", "enveloped_signature": true})
+digest_b64 = Base64.encode(Hex.decode(Crypto.sha256(ref_canon)))
+
+# 2. Build SignedInfo (CanonicalizationMethod=exc-c14n, SignatureMethod=rsa-sha256,
+#    Reference with enveloped+exc-c14n transforms and DigestValue=digest_b64), then sign it:
+si_hash   = Crypto.sha256(Xml.c14n_exclusive(signed_info))
+em        = Crypto.pkcs1_pad("3031300d060960864801650304020105000420" + si_hash, key["bits"] / 8)
+sig_b64   = Base64.encode(Hex.decode(Crypto.modexp(em, key["d"], key["n"])))
+
+# 3. Assemble <ds:Signature> (SignedInfo + <ds:SignatureValue>sig_b64</...> + KeyInfo)
+#    and envelope it into the document. Verifies cleanly under any XML-DSig library.
+```
+
+#### Putting it together: verifying a SAML signature
+
+```soli
+# 1. Verify the Reference digest (enveloped transform + by-id exclusive c14n)
+canonical = Xml.c14n_exclusive(saml, {"id": assertion_id, "enveloped_signature": true})
+if Crypto.sha256(canonical) != digest_value_hex { return false }
+
+# 2. Verify the signature over SignedInfo
+signed_info = Xml.get_elements_by_tag(saml, "SignedInfo")[0]
+si_hash     = Crypto.sha256(Xml.c14n_exclusive(signed_info))
+key         = X509.public_key(idp_cert)
+recovered   = Crypto.pkcs1_unpad(Crypto.modexp(signature_hex, key["e"], key["n"]))
+# DigestInfo = SHA-256 DER prefix + the SignedInfo hash
+recovered == "3031300d060960864801650304020105000420" + si_hash
+```
+
 ### ID Generation
 
 Four ID generators are available: UUID v4 / v7 (RFC 4122), ULID, and NanoID.
