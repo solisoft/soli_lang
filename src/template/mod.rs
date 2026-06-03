@@ -12,6 +12,7 @@ pub mod helpers;
 pub mod layout;
 pub mod parser;
 pub mod renderer;
+pub mod response_cache;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -96,6 +97,46 @@ impl TemplateCache {
         data: &Value,
         layout: Option<Option<&str>>,
     ) -> Result<String, String> {
+        // Static-page response cache: for routes whose output depends only
+        // on `data` (the default `soli new` `HomeController#index` is the
+        // canonical example), every request would otherwise re-walk the
+        // template AST and re-derive the same ETag. Compute a signature
+        // over `data` and look up `(template_path, layout, data_sig)` in
+        // the per-thread LRU. Builtins that mutate request-visible state
+        // (`set_cookie`, `session_set`, `clock`, ...) trip dirty flags in
+        // `response_cache` so the lookup is skipped for those requests.
+        let data_sig = response_cache::data_signature(data);
+        let layout_name: Option<&str> = match layout {
+            Some(Some(name)) => Some(name),
+            _ => None,
+        };
+        // Resolve the template path once and use it as the cache key
+        // prefix; `resolve_template_path` already returns `Arc<PathBuf>`,
+        // so a cache hit is a refcount bump, not a heap clone.
+        let template_path = self.resolve_template_path(template_name)?;
+        if let Some(cached) =
+            response_cache::get(template_path.clone(), layout_name, data_sig)
+        {
+            return Ok(cached.body);
+        }
+        let result =
+            self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
+        // Store the freshly-rendered body. On the next identical
+        // request the cache lookup above short-circuits to this body.
+        response_cache::put(template_path, layout_name, data_sig, result.clone(), String::new());
+        Ok(result)
+    }
+
+    /// Internal: do the actual template render. Wrapped by `render`
+    /// which adds the static-page response cache on top.
+    fn render_uncached(
+        &self,
+        template_name: &str,
+        data: &Value,
+        layout: Option<Option<&str>>,
+        template_path: &std::path::Path,
+        _layout_name: Option<&str>,
+    ) -> Result<String, String> {
         // Treat undefined variable lookups as Null throughout template
         // rendering — controllers commonly omit optional locals like
         // `flash`, and the scaffolded layout references them directly.
@@ -118,11 +159,8 @@ impl TemplateCache {
         // This captures the full cost of view + layout + all partials executed during render.
         let render_start = crate::metrics::metrics_enabled().then(Instant::now);
 
-        // Get the template file path
-        let template_path = self.resolve_template_path(template_name)?;
-
         // Get template from cache
-        let nodes = self.get_or_load_template(&template_path)?;
+        let nodes = self.get_or_load_template(template_path)?;
 
         // Create partial renderer closure
         let partial_renderer =
@@ -142,7 +180,7 @@ impl TemplateCache {
         )?;
 
         // If the template is a markdown file, convert to HTML
-        let content = if is_markdown_template(&template_path) {
+        let content = if is_markdown_template(template_path) {
             markdown_to_html(&content)
         } else {
             content

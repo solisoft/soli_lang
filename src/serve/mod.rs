@@ -5191,6 +5191,12 @@ fn handle_request(
 
     // Clear response cookies from any previous request on this thread.
     clear_response_cookies();
+    // Reset the static-page response cacheability flags so this request
+    // starts clean. set_cookie / session_set trip `mark_response_dirty`
+    // and clock / random trip `mark_data_dirty` while the controller
+    // runs; the cache lookup in TemplateCache::render consults both
+    // and short-circuits to a cache hit only when neither is set.
+    crate::template::response_cache::reset_for_new_request();
 
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {

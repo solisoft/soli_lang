@@ -90,6 +90,10 @@ fn register_math_class(env: &mut Environment) {
     math_static_methods.insert(
         "random".to_string(),
         Rc::new(NativeFunction::new("Math.random", Some(0), |_args| {
+            // Same as clock(): the result lands in the data hash, so
+            // trip the cache's data-dirty flag to prevent grouping
+            // requests with different random values under one cache key.
+            crate::template::response_cache::mark_data_dirty();
             use rand::Rng;
             let mut rng = rand::thread_rng();
             Ok(Value::Float(rng.r#gen::<f64>()))

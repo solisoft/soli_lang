@@ -287,6 +287,11 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     env.define(
         "clock".to_string(),
         Value::NativeFunction(NativeFunction::new("clock", Some(0), |_| {
+            // Trip the data-cache dirty flag: the returned value flows
+            // into the controller's data hash, so a data-signature
+            // key would otherwise group requests with different
+            // timestamps under one cached body.
+            crate::template::response_cache::mark_data_dirty();
             let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
             Ok(Value::Float(duration.as_secs_f64()))
         })),

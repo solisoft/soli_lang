@@ -586,6 +586,9 @@ pub fn clear_response_cookies() {
 
 /// Store a response cookie to be emitted as a Set-Cookie header.
 pub fn set_response_cookie(name: &str, value: &str) {
+    // Trip the response cache dirty flag so a stale cached body
+    // can't be returned without the new Set-Cookie header.
+    crate::template::response_cache::mark_response_dirty();
     RESPONSE_COOKIES.with(|c| c.borrow_mut().push((name.to_string(), value.to_string())));
 }
 
