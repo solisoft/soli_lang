@@ -1227,7 +1227,17 @@ fn worker_database_names(num_workers: usize, base_database_name: &str) -> Vec<St
 }
 
 fn ensure_test_databases(db_names: &[String]) {
+    let databases: Vec<&String> = db_names.iter().filter(|name| *name != "default").collect();
+    if databases.is_empty() {
+        return;
+    }
+
     let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    println!(
+        "Resetting {} test database(s) on {} (drop + recreate)...",
+        databases.len(),
+        host
+    );
     let auth_header = match (
         std::env::var("SOLIDB_USERNAME"),
         std::env::var("SOLIDB_PASSWORD"),
@@ -1249,33 +1259,49 @@ fn ensure_test_databases(db_names: &[String]) {
     // non-deterministic failures. SoliDB serialises drops on its side
     // (~500ms each), so this phase is always slowest at high `--jobs`.
     std::thread::scope(|s| {
-        for database in db_names {
-            if database == "default" {
-                continue;
-            }
-            let host = &host;
-            let auth_header = &auth_header;
-            s.spawn(move || {
-                let drop_url = format!("{}/_api/database/{}", host, database);
-                let mut drop_req =
-                    solilang::interpreter::builtins::http_class::ureq_agent().delete(&drop_url);
-                if let Some(auth) = auth_header {
-                    drop_req = drop_req.set("Authorization", auth);
-                }
-                let _ = drop_req.call();
+        let handles: Vec<_> = databases
+            .iter()
+            .map(|database| {
+                let host = &host;
+                let auth_header = &auth_header;
+                s.spawn(move || {
+                    let started = std::time::Instant::now();
+                    // Drop errors are expected (404 when the DB doesn't
+                    // exist yet) — only the create result matters.
+                    let drop_url = format!("{}/_api/database/{}", host, database);
+                    let mut drop_req =
+                        solilang::interpreter::builtins::http_class::ureq_agent().delete(&drop_url);
+                    if let Some(auth) = auth_header {
+                        drop_req = drop_req.set("Authorization", auth);
+                    }
+                    let _ = drop_req.call();
 
-                let create_url = format!("{}/_api/database", host);
-                let payload = format!(r#"{{"name":"{}"}}"#, database);
-                let mut create_req = solilang::interpreter::builtins::http_class::ureq_agent()
-                    .post(&create_url)
-                    .set("Content-Type", "application/json");
-                if let Some(auth) = auth_header {
-                    create_req = create_req.set("Authorization", auth);
-                }
-                let _ = create_req.send_string(&payload);
-            });
+                    let create_url = format!("{}/_api/database", host);
+                    let payload = format!(r#"{{"name":"{}"}}"#, database);
+                    let mut create_req = solilang::interpreter::builtins::http_class::ureq_agent()
+                        .post(&create_url)
+                        .set("Content-Type", "application/json");
+                    if let Some(auth) = auth_header {
+                        create_req = create_req.set("Authorization", auth);
+                    }
+                    let create_error = create_req.send_string(&payload).err();
+                    (*database, started.elapsed(), create_error)
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let (database, elapsed, create_error) = handle.join().unwrap();
+            match create_error {
+                None => println!("  ✓ {} ({}ms)", database, elapsed.as_millis()),
+                Some(err) => println!(
+                    "  ✗ {} — create failed: {} (tests against this DB may fail)",
+                    database, err
+                ),
+            }
         }
     });
+    println!();
 }
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
