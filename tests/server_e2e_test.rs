@@ -11,6 +11,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -114,6 +115,27 @@ impl Drop for ServerProcess {
     }
 }
 
+/// One `soli serve` subprocess shared across every `#[test]` in this binary.
+///
+/// `ServerProcess::start()` is a `solang` boot: parse every controller, warm
+/// the VM (pre-compile every handler to bytecode), load templates/locales,
+/// bind a port. Per test that is 80-120ms on the small fixture and several
+/// seconds for a fatter app — and the cost *regresses* with `cargo test
+/// --jobs N` because every parallel boot pays its own cold-start tax
+/// (separate processes, separate VM warmup, separate page-cache fill) while
+/// fighting for cores. Sharing one server across all tests collapses 20
+/// boots into 1 and removes the per-bind port race (`pick_port` had a
+/// `drop(listener)` window between picking the port and the child binding
+/// it; with one server there is one bind and no window).
+///
+/// `Drop` still runs at process end when the `OnceLock` is destroyed,
+/// preserving the SIGTERM / coverage-flush behavior above.
+static SHARED_SERVER: OnceLock<ServerProcess> = OnceLock::new();
+
+fn shared_server() -> &'static ServerProcess {
+    SHARED_SERVER.get_or_init(ServerProcess::start)
+}
+
 fn body_string(resp: ureq::Response) -> String {
     let mut buf = String::new();
     resp.into_reader().read_to_string(&mut buf).unwrap();
@@ -122,7 +144,7 @@ fn body_string(resp: ureq::Response) -> String {
 
 #[test]
 fn ping_returns_json() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/ping"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -133,7 +155,7 @@ fn ping_returns_json() {
 
 #[test]
 fn add_handles_query_params() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/add?a=12&b=30"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -144,7 +166,7 @@ fn add_handles_query_params() {
 
 #[test]
 fn unknown_route_returns_404() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let result = ureq::get(&server.url("/nothing-here"))
         .timeout(Duration::from_secs(3))
         .call();
@@ -157,7 +179,7 @@ fn unknown_route_returns_404() {
 
 #[test]
 fn echo_path_returns_request_path() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/echo"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -168,7 +190,7 @@ fn echo_path_returns_request_path() {
 
 #[test]
 fn echo_method_handles_get_post_put_delete() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let url = server.url("/method");
 
     let resp = ureq::get(&url)
@@ -198,7 +220,7 @@ fn echo_method_handles_get_post_put_delete() {
 
 #[test]
 fn echo_header_returns_request_header() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/header?name=x-test"))
         .timeout(Duration::from_secs(3))
         .set("X-Test", "soli-rocks")
@@ -210,7 +232,7 @@ fn echo_header_returns_request_header() {
 
 #[test]
 fn json_body_round_trip() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::post(&server.url("/json"))
         .timeout(Duration::from_secs(3))
         .set("Content-Type", "application/json")
@@ -224,7 +246,7 @@ fn json_body_round_trip() {
 
 #[test]
 fn redirect_returns_3xx_with_location() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     // ureq follows redirects by default; disable so we can inspect.
     let agent = ureq::AgentBuilder::new().redirects(0).build();
     let resp = agent
@@ -250,7 +272,7 @@ fn redirect_returns_3xx_with_location() {
 
 #[test]
 fn explicit_500_propagates() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let result = ureq::get(&server.url("/oops"))
         .timeout(Duration::from_secs(3))
         .call();
@@ -268,7 +290,7 @@ fn explicit_500_propagates() {
 fn array_ops_in_handler_exercise_vm() {
     // Exercises array.map + array.reduce in the production-mode VM, not
     // just the interpreter — soli serve compiles handlers to bytecode.
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/array"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -280,7 +302,7 @@ fn array_ops_in_handler_exercise_vm() {
 
 #[test]
 fn string_ops_in_handler_exercise_vm() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/string?name=alice"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -291,7 +313,7 @@ fn string_ops_in_handler_exercise_vm() {
 
 #[test]
 fn pipeline_in_handler() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/pipeline"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -302,7 +324,7 @@ fn pipeline_in_handler() {
 
 #[test]
 fn hash_methods_in_handler() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/hash"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -312,7 +334,7 @@ fn hash_methods_in_handler() {
 
 #[test]
 fn for_loop_in_handler() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/for"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -322,7 +344,7 @@ fn for_loop_in_handler() {
 
 #[test]
 fn while_loop_in_handler() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/while"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -333,7 +355,7 @@ fn while_loop_in_handler() {
 
 #[test]
 fn closure_in_handler() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/closure"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -349,7 +371,7 @@ fn named_route_helpers_resolve_through_running_server() {
     // failing the assertion means the registration path
     // (router_resource_enter → register_route_with_name → rebuild_named_routes
     // → register_named_route_helpers) is broken end-to-end.
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/named_routes"))
         .timeout(Duration::from_secs(3))
         .set("Host", "test.example.com")
@@ -378,7 +400,7 @@ fn named_route_helpers_resolve_through_running_server() {
 
 #[test]
 fn server_handles_concurrent_requests() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let url = server.url("/ping");
     let handles: Vec<_> = (0..8)
         .map(|_| {
@@ -401,7 +423,7 @@ fn server_handles_concurrent_requests() {
 
 #[test]
 fn cookies_global_returns_empty_hash_when_no_cookie_header() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/cookies"))
         .timeout(Duration::from_secs(3))
         .call()
@@ -413,7 +435,7 @@ fn cookies_global_returns_empty_hash_when_no_cookie_header() {
 
 #[test]
 fn cookies_global_parses_cookie_header() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/cookies"))
         .timeout(Duration::from_secs(3))
         .set("Cookie", "foo=bar; session_id=abc123")
@@ -429,7 +451,7 @@ fn cookies_global_parses_cookie_header() {
 
 #[test]
 fn set_cookie_emits_set_cookie_header() {
-    let server = ServerProcess::start();
+    let server = shared_server();
     let resp = ureq::get(&server.url("/set_cookie?name=my_cookie&value=my_value"))
         .timeout(Duration::from_secs(3))
         .call()
