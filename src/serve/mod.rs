@@ -881,7 +881,7 @@ fn run_hyper_server_worker_pool(
                     //
                     // `Builder::new` takes an executor (used by h2 to spawn
                     // stream tasks), not the IO — the IO goes into
-                    // `serve_connection` below.
+                    // `serve_connection_with_upgrades` below.
                     let mut builder = auto::Builder::new(hyper_util::rt::TokioExecutor::new());
                     // Configure h1: bound the header read timeout so slowloris
                     // attackers don't pin accept slots. h2c has its own
@@ -890,7 +890,13 @@ fn run_hyper_server_worker_pool(
                         .http1()
                         .timer(TokioTimer::new())
                         .header_read_timeout(Duration::from_secs(10));
-                    if let Err(_e) = builder.serve_connection(io, service).await {
+                    // MUST be the `_with_upgrades` variant: plain
+                    // `serve_connection` never performs the HTTP/1.1 protocol
+                    // upgrade after a 101, so every WebSocket (live reload,
+                    // /ws/* routes, LiveView, presence) dies with
+                    // "Handshake not finished". h2 streams are unaffected by
+                    // the wrapper — it only arms the h1 upgrade path.
+                    if let Err(_e) = builder.serve_connection_with_upgrades(io, service).await {
                         // Silently ignore connection errors
                     }
                 });

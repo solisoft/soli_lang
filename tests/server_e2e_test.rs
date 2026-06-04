@@ -464,3 +464,33 @@ fn set_cookie_emits_set_cookie_header() {
         set_cookie
     );
 }
+
+#[test]
+fn websocket_upgrade_completes_and_round_trips() {
+    let server = shared_server();
+    let url = format!("ws://127.0.0.1:{}/ws/echo", server.port);
+    let (mut socket, response) = tungstenite::connect(&url)
+        .expect("WebSocket handshake must complete (101 + h1 protocol upgrade)");
+    assert_eq!(response.status().as_u16(), 101);
+
+    // Regression guard for the h1/h2c auto-detect change: plain
+    // `serve_connection` still emits the 101 (so `connect` above succeeds)
+    // but never performs the protocol upgrade — frames sent afterwards go
+    // nowhere, the server logs "Handshake not finished", and no echo ever
+    // comes back. Only `serve_connection_with_upgrades` arms the h1 upgrade
+    // path. Bound the read so the broken case fails in seconds instead of
+    // hanging the suite.
+    if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+    }
+
+    socket
+        .send(tungstenite::Message::Text("hello".into()))
+        .expect("send text frame");
+    let reply = socket
+        .read()
+        .expect("server must deliver the echo frame after the upgrade");
+    assert_eq!(reply.to_text().unwrap(), "echo:hello");
+}

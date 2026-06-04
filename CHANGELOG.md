@@ -4,6 +4,7 @@
 
 ### Fixes
 
+* **fix(serve):** WebSocket upgrades work again — the h1/h2c auto-detect change (1cc2a7a, v1.8.3) served connections with hyper's plain `serve_connection`, which never performs the HTTP/1.1 protocol upgrade after a 101: every WebSocket (`/ws/*` routes, LiveView, live reload, presence) died with `[WS] WebSocket handshake error: Handshake not finished` and clients reconnect-looped forever. Now uses `serve_connection_with_upgrades` (h2 streams unaffected); covered by an e2e echo round-trip test
 * **fix(vm):** safe navigation (`&.`) in a handler no longer aborts the whole server at warmup — the VM compiler now returns a compile error (handler falls back to the tree-walking interpreter) instead of hitting an `unimplemented!()` panic, which core-dumped the process under the release profile's `panic="abort"`
 
 ### Performance
