@@ -4,11 +4,16 @@
 
 ### Fixes
 
+* **fix(test):** `soli test --jobs N` no longer storms SoliDB's `/auth/login` — the runner logs in once and hands the JWT to every test-server child via `SOLIDB_JWT`, and a failed login backs off 30s instead of retrying on every query. Previously N parallel boots tripped SoliDB's per-IP login rate limit (20/min, shared `127.0.0.1` bucket) and a single failure became a self-sustaining 400 storm (475+ warnings per suite) that randomly pushed specs past their 10s HTTP timeouts
+* **fix(test):** pre-created worker-DB collections keep their SoliDB type (`document`/`edge`/`blob`) — blob uploads (`doc_files`, `card_attachments`, …) 400'd against collections pre-created as plain documents; type mismatches are detected and repaired (drop + correctly-typed recreate)
+
 * **fix(serve):** WebSocket upgrades work again — the h1/h2c auto-detect change (1cc2a7a, v1.8.3) served connections with hyper's plain `serve_connection`, which never performs the HTTP/1.1 protocol upgrade after a 101: every WebSocket (`/ws/*` routes, LiveView, live reload, presence) died with `[WS] WebSocket handshake error: Handshake not finished` and clients reconnect-looped forever. Now uses `serve_connection_with_upgrades` (h2 streams unaffected); covered by an e2e echo round-trip test
 * **fix(vm):** safe navigation (`&.`) in a handler no longer aborts the whole server at warmup — the VM compiler now returns a compile error (handler falls back to the tree-walking interpreter) instead of hitting an `unimplemented!()` panic, which core-dumped the process under the release profile's `panic="abort"`
 
 ### Performance
 
+* **perf(test):** per-run test database reset is ~200× faster — collections are truncated (a 1-25ms range delete each, in parallel) instead of dropping + recreating the whole database (~180ms *per collection*, serialized inside SoliDB: 7.3s on a 41-collection app). `SOLI_TEST_FRESH_DB=1` forces the old drop+recreate when a schema-level reset is wanted
+* **perf(test):** new worker DBs pre-create the base DB's collections through one sequential queue *before* specs run, instead of lazily mid-request — a first `--jobs 16` run no longer blows random specs past the 10s timeout while SoliDB serializes hundreds of collection creations. The reset phase now reports per-DB progress (truncate/create counts and timings) instead of running silently
 * **perf(value):** Soli strings now use `SoliStr = ecow::EcoString` in `Value::String`/`Value::Symbol`/`HashKey`/VM constants — strings ≤15 bytes are stored inline (constructing them no longer touches the heap) and longer strings are refcounted with O(1) clone. Passing/reading large strings (rendered partials, request bodies, template data) no longer deep-copies: ~5× faster on a 64KB-string passing benchmark; ~+17% server throughput on realistic browser-header requests
 * **perf(serve):** single-pass header materialization — hyper's `HeaderMap` travels to the worker as-is and is converted to the `req["headers"]` hash exactly once (was: per-header owned copy on the async side plus a second copy on the worker)
 * **perf(serve):** the Cookie header is parsed once per request (was twice: session-ID extraction and `req["cookies"]` each re-scanned it); SEC-077 `__Host-session_id` precedence preserved

@@ -531,6 +531,14 @@ pub fn run_test(
         let solidb_user = std::env::var("SOLIDB_USERNAME").unwrap_or_default();
         let solidb_pass = std::env::var("SOLIDB_PASSWORD").unwrap_or_default();
 
+        // One `/auth/login` for the whole run: children inherit the token
+        // via SOLIDB_JWT instead of each logging in at boot. N parallel
+        // boots from one IP trip SoliDB's per-IP login rate limit
+        // (20/min), and a process that boots into a poisoned window falls
+        // back to basic auth with a login retry storm that keeps the
+        // bucket full for every subsequent run.
+        let shared_jwt = solilang::interpreter::builtins::model::db_config::get_jwt_token();
+
         for (i, env) in worker_envs.iter_mut().enumerate() {
             let port = {
                 let listener = std::net::TcpListener::bind("127.0.0.1:0")
@@ -568,6 +576,7 @@ pub fn run_test(
                 // so an operator who accidentally sets `=1` (legacy
                 // shape) doesn't silently lose the SSRF guardrail.
                 .env("SOLI_INTERNAL_TEST_RUNNER", &internal_test_runner_token)
+                .env("SOLIDB_JWT", shared_jwt.as_deref().unwrap_or(""))
                 .env("SOLIDB_HOST", &solidb_host)
                 .env("SOLIDB_DATABASE", &env.database)
                 .env("SOLIDB_USERNAME", &solidb_user)
@@ -1234,7 +1243,7 @@ fn ensure_test_databases(db_names: &[String]) {
 
     let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     println!(
-        "Resetting {} test database(s) on {} (drop + recreate)...",
+        "Resetting {} test database(s) on {}...",
         databases.len(),
         host
     );
@@ -1251,57 +1260,340 @@ fn ensure_test_databases(db_names: &[String]) {
         _ => None,
     };
 
-    // Drop+create each worker DB in parallel — independent operations on
-    // distinct names, no shared state. The drop guarantees a clean
-    // baseline because `before_each` only clears collections the test
-    // file knows about; without the drop, collections created by past
-    // runs (or by a freshly added test) would leak across runs and cause
-    // non-deterministic failures. SoliDB serialises drops on its side
-    // (~500ms each), so this phase is always slowest at high `--jobs`.
-    std::thread::scope(|s| {
-        let handles: Vec<_> = databases
-            .iter()
-            .map(|database| {
-                let host = &host;
-                let auth_header = &auth_header;
-                s.spawn(move || {
-                    let started = std::time::Instant::now();
-                    // Drop errors are expected (404 when the DB doesn't
-                    // exist yet) — only the create result matters.
-                    let drop_url = format!("{}/_api/database/{}", host, database);
-                    let mut drop_req =
-                        solilang::interpreter::builtins::http_class::ureq_agent().delete(&drop_url);
-                    if let Some(auth) = auth_header {
-                        drop_req = drop_req.set("Authorization", auth);
-                    }
-                    let _ = drop_req.call();
+    // Reset the base worker DB first: its collection list becomes the
+    // template for newly-created sibling worker DBs. Pre-creating the
+    // collections here — before any spec runs — matters because SoliDB
+    // serializes collection creation engine-wide (~180ms each, an OPTIONS
+    // file rewrite per RocksDB column family op). Left to the lazy
+    // auto-create path, a first `--jobs 16` run creates hundreds of
+    // collections in the middle of requests and random specs blow past
+    // the 10s HTTP timeouts.
+    let base_database = databases[0];
+    let base_started = std::time::Instant::now();
+    let base_outcome = prepare_test_database(&host, &auth_header, base_database, &[]);
+    print_reset_outcome(base_database, base_started.elapsed(), &base_outcome);
 
-                    let create_url = format!("{}/_api/database", host);
-                    let payload = format!(r#"{{"name":"{}"}}"#, database);
-                    let mut create_req = solilang::interpreter::builtins::http_class::ureq_agent()
-                        .post(&create_url)
-                        .set("Content-Type", "application/json");
-                    if let Some(auth) = auth_header {
-                        create_req = create_req.set("Authorization", auth);
+    let template_collections: Vec<(String, String)> =
+        list_collections(&host, &auth_header, base_database)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
+    // Remaining worker DBs in parallel — independent operations on
+    // distinct names, no shared state. The reset guarantees a row-free
+    // baseline because `before_each` only clears collections the test
+    // file knows about; without it, rows written by past runs (or by a
+    // freshly added test) would leak across runs and cause
+    // non-deterministic failures.
+    let mut pending_creates: Vec<(String, Vec<(String, String)>)> = Vec::new();
+    if databases.len() > 1 {
+        std::thread::scope(|s| {
+            let handles: Vec<_> = databases[1..]
+                .iter()
+                .map(|database| {
+                    let host = &host;
+                    let auth_header = &auth_header;
+                    let template_collections = &template_collections;
+                    s.spawn(move || {
+                        let started = std::time::Instant::now();
+                        let outcome = prepare_test_database(
+                            host,
+                            auth_header,
+                            database,
+                            template_collections,
+                        );
+                        (*database, started.elapsed(), outcome)
+                    })
+                })
+                .collect();
+
+            for handle in handles {
+                let (database, elapsed, outcome) = handle.join().unwrap();
+                print_reset_outcome(database, elapsed, &outcome);
+                if let Ok((_, missing)) = outcome {
+                    if !missing.is_empty() {
+                        pending_creates.push((database.clone(), missing));
                     }
-                    let create_error = create_req.send_string(&payload).err();
-                    (*database, started.elapsed(), create_error)
+                }
+            }
+        });
+    }
+
+    // Create missing collections through ONE sequential queue. SoliDB
+    // serializes column-family creation engine-wide (each is an OPTIONS
+    // file rewrite, ~200ms+), so parallel creates only pile requests up
+    // behind the lock until they time out client-side. Sequential is the
+    // same total server time without the queueing failures. This is a
+    // one-time cost per new worker DB; later runs truncate instead.
+    let total_creates: usize = pending_creates.iter().map(|(_, names)| names.len()).sum();
+    if total_creates > 0 {
+        println!(
+            "Creating {} missing collection(s) (one-time setup for new worker DBs)...",
+            total_creates
+        );
+        let create_started = std::time::Instant::now();
+        let mut created = 0usize;
+        for (database, names) in &pending_creates {
+            for (name, collection_type) in names {
+                match create_collection(&host, &auth_header, database, name, collection_type) {
+                    Ok(()) => created += 1,
+                    // Not fatal: the lazy auto-create path covers any
+                    // collection we fail to pre-create here.
+                    Err(err) => println!("  ⚠ {}/{}: {}", database, name, err),
+                }
+            }
+        }
+        println!(
+            "  ✓ {}/{} collection(s) created ({}ms)",
+            created,
+            total_creates,
+            create_started.elapsed().as_millis()
+        );
+    }
+    println!();
+}
+
+/// Outcome of preparing one worker DB: human-readable detail plus the
+/// `(name, type)` collections still to create through the sequential queue.
+type PrepareOutcome = Result<(String, Vec<(String, String)>), String>;
+
+fn print_reset_outcome(database: &str, elapsed: std::time::Duration, outcome: &PrepareOutcome) {
+    match outcome {
+        Ok((detail, missing)) if missing.is_empty() => {
+            println!("  ✓ {} {} ({}ms)", database, detail, elapsed.as_millis())
+        }
+        Ok((detail, missing)) => println!(
+            "  ✓ {} {} ({}ms, {} collection(s) to create)",
+            database,
+            detail,
+            elapsed.as_millis(),
+            missing.len()
+        ),
+        // 401 without configured credentials is the normal state for
+        // projects that don't use SoliDB (e.g. pure-language suites) —
+        // note it dimly instead of flagging a failure.
+        Err(err)
+            if err.contains("status code 401") && std::env::var("SOLIDB_USERNAME").is_err() =>
+        {
+            println!(
+                "  - {} skipped (SoliDB credentials not configured)",
+                database
+            )
+        }
+        Err(err) => println!(
+            "  ✗ {} — {} (tests against this DB may fail)",
+            database, err
+        ),
+    }
+}
+
+/// Reset one worker database to an empty baseline.
+///
+/// Truncating every collection (a RocksDB range tombstone, ~1-25ms each,
+/// issued in parallel) is dramatically cheaper than dropping the database:
+/// SoliDB drops the underlying column families one at a time with a manifest
+/// fsync each (~175ms per collection — 7+ seconds on a 41-collection app
+/// DB). So when the database already exists we truncate its collections and
+/// only create the database when it's missing. Collections left behind by
+/// removed tests survive as empty shells, which is harmless — the baseline
+/// we need is "no rows", not "no collections". Set `SOLI_TEST_FRESH_DB=1`
+/// to force the old drop+recreate when a schema-level reset is wanted
+/// (e.g. after reworking migrations or indexes).
+fn prepare_test_database(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    template_collections: &[(String, String)],
+) -> PrepareOutcome {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let with_auth = |mut req: ureq::Request| {
+        if let Some(auth) = auth_header {
+            req = req.set("Authorization", auth);
+        }
+        req
+    };
+
+    if std::env::var("SOLI_TEST_FRESH_DB").as_deref() == Ok("1") {
+        // Drop errors are expected (404 when the DB doesn't exist yet) —
+        // only the create result matters.
+        let drop_url = format!("{}/_api/database/{}", host, database);
+        let _ = with_auth(agent.delete(&drop_url)).call();
+        create_test_database(host, &with_auth, database)?;
+        return Ok((
+            "recreated (SOLI_TEST_FRESH_DB)".to_string(),
+            template_collections.to_vec(),
+        ));
+    }
+
+    let Some(existing) = list_collections(host, auth_header, database)? else {
+        // First run: the database doesn't exist yet. The template
+        // collections get created afterwards through the sequential
+        // create queue, so they don't get auto-created one by one in
+        // the middle of specs.
+        create_test_database(host, &with_auth, database)?;
+        return Ok(("created".to_string(), template_collections.to_vec()));
+    };
+
+    // A collection whose type diverges from the base DB's (e.g. a "blob"
+    // collection that was pre-created as plain "document" by an older
+    // runner) can't be repaired by truncate — drop it and queue a
+    // correctly-typed recreate.
+    let template_types: std::collections::HashMap<&str, &str> = template_collections
+        .iter()
+        .map(|(name, collection_type)| (name.as_str(), collection_type.as_str()))
+        .collect();
+    let (mismatched, keep): (Vec<_>, Vec<_>) = existing.iter().partition(|(name, actual_type)| {
+        template_types
+            .get(name.as_str())
+            .is_some_and(|expected| *expected != actual_type.as_str())
+    });
+
+    for (name, _) in &mismatched {
+        let delete_url = format!("{}/_api/database/{}/collection/{}", host, database, name);
+        with_auth(agent.delete(&delete_url))
+            .call()
+            .map_err(|err| format!("drop mistyped {} failed: {}", name, err))?;
+    }
+
+    let truncate_errors: Vec<String> = std::thread::scope(|s| {
+        let handles: Vec<_> = keep
+            .iter()
+            .map(|(collection, _)| {
+                let with_auth = &with_auth;
+                s.spawn(move || {
+                    let truncate_url = format!(
+                        "{}/_api/database/{}/collection/{}/truncate",
+                        host, database, collection
+                    );
+                    with_auth(agent.put(&truncate_url))
+                        .call()
+                        .map(|_| ())
+                        .map_err(|err| format!("truncate {} failed: {}", collection, err))
                 })
             })
             .collect();
-
-        for handle in handles {
-            let (database, elapsed, create_error) = handle.join().unwrap();
-            match create_error {
-                None => println!("  ✓ {} ({}ms)", database, elapsed.as_millis()),
-                Some(err) => println!(
-                    "  ✗ {} — create failed: {} (tests against this DB may fail)",
-                    database, err
-                ),
-            }
-        }
+        handles
+            .into_iter()
+            .filter_map(|handle| handle.join().unwrap().err())
+            .collect()
     });
-    println!();
+
+    if let Some(first_error) = truncate_errors.first() {
+        return Err(format!(
+            "{} ({} of {} truncates failed)",
+            first_error,
+            truncate_errors.len(),
+            keep.len()
+        ));
+    }
+
+    // Converge on the base DB's schema: a worker DB that predates a newly
+    // added model would otherwise auto-create the collection mid-spec.
+    let existing_names: std::collections::HashSet<&str> =
+        keep.iter().map(|(name, _)| name.as_str()).collect();
+    let missing: Vec<(String, String)> = template_collections
+        .iter()
+        .filter(|(name, _)| !existing_names.contains(name.as_str()))
+        .cloned()
+        .collect();
+
+    let mut detail = if keep.is_empty() {
+        "already empty".to_string()
+    } else {
+        format!("truncated {} collection(s)", keep.len())
+    };
+    if !mismatched.is_empty() {
+        detail.push_str(&format!(", dropped {} mistyped", mismatched.len()));
+    }
+    Ok((detail, missing))
+}
+
+/// List a database's collections as `(name, type)` pairs — type is
+/// "document", "edge", or "blob" and MUST survive into pre-created
+/// worker-DB collections (a blob upload against a "document"-typed
+/// collection is a 400). `Ok(None)` means the database doesn't exist.
+fn list_collections(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+) -> Result<Option<Vec<(String, String)>>, String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let list_url = format!("{}/_api/database/{}/collection", host, database);
+    let mut req = agent.get(&list_url);
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    let response = match req.call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(404, _)) => return Ok(None),
+        Err(err) => return Err(format!("list collections failed: {}", err)),
+    };
+    let body = response
+        .into_string()
+        .map_err(|err| format!("list collections failed: {}", err))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|err| format!("list collections failed: {}", err))?;
+    Ok(Some(
+        json["collections"]
+            .as_array()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| {
+                        let name = entry["name"].as_str()?.to_string();
+                        let collection_type =
+                            entry["type"].as_str().unwrap_or("document").to_string();
+                        Some((name, collection_type))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    ))
+}
+
+/// Create one collection with an explicit type. 409 (already exists)
+/// counts as success.
+fn create_collection(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collection: &str,
+    collection_type: &str,
+) -> Result<(), String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let create_url = format!("{}/_api/database/{}/collection", host, database);
+    let payload = format!(
+        r#"{{"name":"{}","type":"{}"}}"#,
+        collection, collection_type
+    );
+    let mut req = agent
+        .post(&create_url)
+        .set("Content-Type", "application/json");
+    if let Some(auth) = auth_header.as_ref() {
+        req = req.set("Authorization", auth);
+    }
+    match req.send_string(&payload) {
+        Ok(_) | Err(ureq::Error::Status(409, _)) => Ok(()),
+        Err(err) => Err(format!("create failed: {}", err)),
+    }
+}
+
+fn create_test_database(
+    host: &str,
+    with_auth: &dyn Fn(ureq::Request) -> ureq::Request,
+    database: &str,
+) -> Result<(), String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let create_url = format!("{}/_api/database", host);
+    let payload = format!(r#"{{"name":"{}"}}"#, database);
+    with_auth(
+        agent
+            .post(&create_url)
+            .set("Content-Type", "application/json"),
+    )
+    .send_string(&payload)
+    .map_err(|err| format!("create failed: {}", err))?;
+    Ok(())
 }
 
 pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {

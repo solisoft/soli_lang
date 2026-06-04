@@ -115,6 +115,23 @@ static JWT_CACHE: Mutex<Option<CachedJwt>> = Mutex::new(None);
 /// long request that crosses the boundary doesn't 401 mid-flight.
 const JWT_REFRESH_LEEWAY_SECS: u64 = 60;
 
+/// Epoch seconds of the last failed `/auth/login` attempt (0 = none).
+/// SolidB rate-limits logins per client IP (20/min); a process whose login
+/// fails once used to retry on EVERY query, which kept the shared
+/// 127.0.0.1 bucket full and poisoned every other local process — a
+/// self-sustaining 400 storm under `soli test --jobs N`. Back off instead:
+/// after a failure we serve the basic-auth fallback for
+/// `JWT_LOGIN_BACKOFF_SECS` before trying to log in again.
+static LAST_LOGIN_FAILURE_EPOCH: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+const JWT_LOGIN_BACKOFF_SECS: u64 = 30;
+
+/// `SOLIDB_JWT` (a token minted by a parent process, e.g. the test runner
+/// minting ONE token for all its test-server children) is consumed at most
+/// once: after `force_refresh_jwt_token()` we must do a real login, not
+/// re-seed the same possibly-revoked token in a loop.
+static ENV_JWT_CONSUMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Cached DB config - initialized on first use.
 static CACHED_DB_CONFIG: OnceLock<CachedDbConfig> = OnceLock::new();
 
@@ -228,20 +245,48 @@ fn needs_jwt_refresh(cache: Option<&CachedJwt>, now: u64) -> bool {
 /// fall back to) — callers in `crud.rs` then drop to API key or basic
 /// auth.
 pub fn get_jwt_token() -> Option<String> {
+    use std::sync::atomic::Ordering;
+
     let mut cache = JWT_CACHE.lock().ok()?;
-    if needs_jwt_refresh(cache.as_ref(), now_epoch()) {
-        if let Some(fresh) = login_for_token() {
-            *cache = Some(fresh);
-        } else if cache.is_none() {
-            // No prior token and login failed → tell the caller to fall
-            // back. We don't cache the failure: the next call will retry,
-            // matching the behaviour of a transient network blip rather
-            // than the original "cache None forever" footgun.
-            return None;
+    let now = now_epoch();
+
+    // Seed from SOLIDB_JWT once: a parent process (the test runner) mints
+    // one token and hands it to all children so N parallel boots don't
+    // make N `/auth/login` calls from the same IP.
+    if cache.is_none() && !ENV_JWT_CONSUMED.swap(true, Ordering::Relaxed) {
+        if let Ok(token) = std::env::var("SOLIDB_JWT") {
+            if !token.is_empty() {
+                let exp_epoch = jwt_exp(&token);
+                if exp_epoch == 0 || exp_epoch > now + JWT_REFRESH_LEEWAY_SECS {
+                    *cache = Some(CachedJwt { token, exp_epoch });
+                }
+            }
         }
-        // Else: we have an old token and the refresh failed. Keep
-        // serving the old one; the 401-retry path will trigger
-        // `force_refresh_jwt_token()` on the next failed request.
+    }
+
+    if needs_jwt_refresh(cache.as_ref(), now) {
+        let last_failure = LAST_LOGIN_FAILURE_EPOCH.load(Ordering::Relaxed);
+        if last_failure != 0 && now < last_failure + JWT_LOGIN_BACKOFF_SECS {
+            // Recent login failure → don't hammer /auth/login on every
+            // query (that's what keeps SolidB's per-IP rate limit bucket
+            // full). Serve the old token if there is one, else fall back.
+            return cache.as_ref().map(|e| e.token.clone());
+        }
+        if let Some(fresh) = login_for_token() {
+            LAST_LOGIN_FAILURE_EPOCH.store(0, Ordering::Relaxed);
+            *cache = Some(fresh);
+        } else {
+            // Remember the failure so the next JWT_LOGIN_BACKOFF_SECS of
+            // queries go straight to the basic-auth fallback instead of
+            // retrying the login each time.
+            LAST_LOGIN_FAILURE_EPOCH.store(now, Ordering::Relaxed);
+            if cache.is_none() {
+                return None;
+            }
+            // Else: we have an old token and the refresh failed. Keep
+            // serving the old one; the 401-retry path will trigger
+            // `force_refresh_jwt_token()` on the next failed request.
+        }
     }
     cache.as_ref().map(|e| e.token.clone())
 }
