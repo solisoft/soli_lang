@@ -347,6 +347,8 @@ pub fn register_expectation_class(env: &mut Environment) {
         all_methods_cache: RefCell::new(None),
         all_native_methods_cache: RefCell::new(None),
         primitive: None,
+        vm_methods: Rc::new(RefCell::new(HashMap::new())),
+        vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
     };
 
     env.define(

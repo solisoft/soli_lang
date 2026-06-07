@@ -36,27 +36,7 @@ impl Interpreter {
         let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
 
         // Initialize fields from class field declarations (including inherited fields)
-        fn initialize_fields(
-            interpreter: &mut Interpreter,
-            class: &crate::interpreter::value::Class,
-            instance: &Rc<std::cell::RefCell<crate::interpreter::value::Instance>>,
-        ) -> RuntimeResult<()> {
-            // First initialize fields from superclass
-            if let Some(ref superclass) = class.superclass {
-                initialize_fields(interpreter, superclass, instance)?;
-            }
-            // Then initialize fields from this class
-            for (field_name, field_initializer) in &class.fields {
-                let value = if let Some(init_expr) = field_initializer {
-                    interpreter.evaluate(init_expr)?
-                } else {
-                    Value::Null
-                };
-                instance.borrow_mut().set(field_name.clone(), value);
-            }
-            Ok(())
-        }
-        initialize_fields(self, &class, &instance)?;
+        self.initialize_instance_fields(&class, &instance)?;
 
         // Call constructor if present
         if let Some(ctor) = class.find_constructor() {
@@ -147,5 +127,29 @@ impl Interpreter {
         }
 
         Ok(Value::Instance(instance))
+    }
+
+    /// Initialize instance fields from class field declarations, including
+    /// inherited fields (superclass first so subclass defaults win). Used by
+    /// `evaluate_new` and by `call_value`/`call_value_with_named` for the
+    /// bare `Person(...)` call form, so both instantiation styles see the
+    /// same defaults.
+    pub(crate) fn initialize_instance_fields(
+        &mut self,
+        class: &crate::interpreter::value::Class,
+        instance: &Rc<RefCell<Instance>>,
+    ) -> RuntimeResult<()> {
+        if let Some(ref superclass) = class.superclass {
+            self.initialize_instance_fields(superclass, instance)?;
+        }
+        for (field_name, field_initializer) in &class.fields {
+            let value = if let Some(init_expr) = field_initializer {
+                self.evaluate(init_expr)?
+            } else {
+                Value::Null
+            };
+            instance.borrow_mut().set(field_name.clone(), value);
+        }
+        Ok(())
     }
 }

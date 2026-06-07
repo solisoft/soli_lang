@@ -218,12 +218,18 @@ impl Compiler {
                 self.compile_expr(expr)?;
                 self.emit(Op::TryEnd, line);
                 let rescue_jump = self.emit(Op::Jump(0), line);
+                // Catch target: the Pop that discards the pushed exception
+                // value, then the fallback expression. The offset is measured
+                // from the instruction after TryBegin (see the TryBegin
+                // handler) — it used to be computed after the fallback, which
+                // landed the handler past it and made the exception value the
+                // rescue result.
+                let catch_start = self.current_offset();
                 self.emit(Op::Pop, line);
                 self.compile_expr(fallback)?;
-                let rescue_offset = self.current_offset() - try_begin - 1;
                 self.patch_jump(rescue_jump);
                 if let Op::TryBegin(ref mut co, _) = self.proto.chunk.code[try_begin] {
-                    *co = rescue_offset as u16;
+                    *co = (catch_start - try_begin - 1) as u16;
                 }
             }
             ExprKind::CompoundAssign {
@@ -389,6 +395,54 @@ impl Compiler {
                         return self.compile_json_stringify(arguments, line);
                     }
                 }
+            }
+        }
+
+        // `super(...)` / `super.method(...)` — dispatch against the
+        // *defining* class's superclass at runtime (the CallSuper* handlers
+        // read the class recorded on the call frame). `this` goes in the
+        // callee slot, per the method calling convention.
+        if matches!(callee.kind, ExprKind::Super) {
+            self.compile_this(line)?;
+            let mut argc = 0u8;
+            for arg in arguments {
+                match arg {
+                    Argument::Positional(expr) => {
+                        self.compile_expr(expr)?;
+                        argc += 1;
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            "super(...) supports positional arguments only",
+                            callee.span,
+                        ))
+                    }
+                }
+            }
+            self.emit(Op::CallSuperInit(argc), line);
+            return Ok(());
+        }
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if matches!(object.kind, ExprKind::Super) {
+                self.compile_this(line)?;
+                let mut argc = 0u8;
+                for arg in arguments {
+                    match arg {
+                        Argument::Positional(expr) => {
+                            self.compile_expr(expr)?;
+                            argc += 1;
+                        }
+                        _ => {
+                            return Err(CompileError::new(
+                                "super.method(...) supports positional arguments only",
+                                callee.span,
+                            ))
+                        }
+                    }
+                }
+                let name_idx = self.add_string_constant(name);
+                self.emit(Op::CallSuperMethod(name_idx, argc), line);
+                return Ok(());
             }
         }
 

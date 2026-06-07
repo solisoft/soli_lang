@@ -301,6 +301,31 @@ const CASES: &[(&str, &str)] = &[
         "instance_method_call",
         "class C { x: Int\n  new(x) { this.x = x }\n  fn get() { return this.x } }\nlet c = C(42)\nprint(c.get())",
     ),
+    (
+        // super() ctor chaining + super.method() through a 3-level
+        // hierarchy — resolves against the *defining* class's superclass
+        // (frame class context), not the instance's class.
+        "super_init_and_method",
+        "class A { t: String\n  new(t) { this.t = t }\n  fn d() { return \"A(\" + this.t + \")\" } }\nclass B extends A { new(t) { super(t + \"b\") }\n  fn d() { return \"B[\" + super.d() + \"]\" } }\nclass C extends B { new(t) { super(t + \"c\") }\n  fn d() { return \"C{\" + super.d() + \"}\" } }\nprint(C(\"x\").d())",
+    ),
+    (
+        // Field initializers apply in both instantiation forms.
+        "field_initializer_defaults",
+        "class S { theme: String = \"dark\"\n  size: Int = 25 }\nlet s = S()\nprint(s.theme)\nprint(s.size)",
+    ),
+    (
+        // Native-method errors route through the active rescue handler in
+        // the VM (run() wraps run_dispatch and re-throws via
+        // throw_exception) — they used to abort the whole program.
+        "rescue_native_error",
+        "print(\"zz\".hex rescue \"caught\")",
+    ),
+    (
+        // …and through try/catch, binding the error text like the
+        // tree-walker.
+        "try_catch_native_error",
+        "try { print(\"zz\".hex) } catch (e) { print(\"caught\") }",
+    ),
 ];
 
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
@@ -322,17 +347,15 @@ const KNOWN_DIVERGENT: &[&str] = &[
     "match_var_binding",
     "match_array_pattern",
     "match_hash_pattern",
-    // #14 — user-class instance method calls (`obj.method()`) are unsupported by
-    //   the VM's CallMethod (it errors → interpreter fallback). Production OOP
-    //   controller dispatch uses a separate bound-method path; this is the
-    //   generic in-handler method-call path.
-    "instance_method_call",
     // Fixed and locked in by this harness:
     //   #5  for-with-index (ForIter index)   — compiler now maintains the counter
     //   #6  assignment inside catch          — TryBegin catch_ip off-by-one
     //   #7  range bounds (a..b exclusive)     — VM range ops now exclusive
     //   #8  `||=` panic (let-from-local)      — removed unsafe GetLocal2 fusion
     //   #10 return inside catch               — TryBegin catch_ip off-by-one
+    //   #14 instance_method_call              — VmClosure methods stored on
+    //        Class.vm_methods; ctor ("init") + methods dispatch with the
+    //        receiver in the callee slot as `this`
 ];
 
 /// Run `source` through the soli binary; `vm` selects the bytecode VM with

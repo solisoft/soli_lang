@@ -125,55 +125,16 @@ pub fn run_vm(
 
     let mut vm_instance = vm::Vm::new();
 
-    // Register builtins
-    use interpreter::value::{NativeFunction, Value as V};
-    vm_instance.globals.insert(
-        "print".to_string(),
-        V::NativeFunction(NativeFunction::new("print", None, |args| {
-            let output: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
-            println!("{}", output.join(" "));
-            Ok(V::Null)
-        })),
-    );
-    vm_instance.globals.insert(
-        "puts".to_string(),
-        V::NativeFunction(NativeFunction::new("puts", None, |args| {
-            let output: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
-            println!("{}", output.join(" "));
-            Ok(V::Null)
-        })),
-    );
-    vm_instance.globals.insert(
-        "len".to_string(),
-        V::NativeFunction(NativeFunction::new("len", Some(1), |args| match &args[0] {
-            V::String(s) => Ok(V::Int(s.len() as i64)),
-            V::Array(arr) => Ok(V::Int(arr.borrow().len() as i64)),
-            V::Hash(hash) => Ok(V::Int(hash.borrow().len() as i64)),
-            _ => Ok(V::Int(0)),
-        })),
-    );
-    vm_instance.globals.insert(
-        "str".to_string(),
-        V::NativeFunction(NativeFunction::new("str", Some(1), |args| {
-            Ok(V::String(format!("{}", args[0]).into()))
-        })),
-    );
-    vm_instance.globals.insert(
-        "type_of".to_string(),
-        V::NativeFunction(NativeFunction::new("type_of", Some(1), |args| {
-            Ok(V::String(args[0].type_name().to_string().into()))
-        })),
-    );
-    vm_instance.globals.insert(
-        "clock".to_string(),
-        V::NativeFunction(NativeFunction::new("clock", Some(0), |_args| {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default();
-            Ok(V::Float(now.as_secs_f64()))
-        })),
-    );
+    // Seed the VM with the full builtin environment, exactly like a
+    // production serve worker: build an interpreter (which registers every
+    // builtin function and native class — DateTime, Duration, HTTP, …) and
+    // copy its globals across. Keeps `--vm` a faithful simulator of
+    // production-mode execution instead of a hand-rolled subset.
+    let interpreter = interpreter::Interpreter::new();
+    let all_globals = interpreter.environment.borrow().get_all_bindings();
+    for (name, value) in all_globals {
+        vm_instance.globals.insert(name, value);
+    }
 
     // Execute the compiled module
     vm_instance.execute(&module.main)?;

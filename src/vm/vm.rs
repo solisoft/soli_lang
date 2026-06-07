@@ -24,6 +24,11 @@ pub struct CallFrame {
     pub ip: usize,
     /// Base index into the value stack for this frame's locals.
     pub stack_base: usize,
+    /// The class that *defines* the method this frame is executing, when
+    /// known (set by compiled-method dispatch). `super` resolves against
+    /// this class's superclass — not the instance's class, which would
+    /// loop on multi-level hierarchies.
+    pub class: Option<Rc<crate::interpreter::value::Class>>,
 }
 
 /// An exception handler pushed by TryBegin.
@@ -108,6 +113,7 @@ impl Vm {
             closure,
             ip: 0,
             stack_base: 0,
+            class: None,
         });
 
         self.run()
@@ -115,7 +121,7 @@ impl Vm {
 
     /// Get the current source span (only call on error paths).
     #[cold]
-    fn current_span(&self) -> Span {
+    pub(crate) fn current_span(&self) -> Span {
         let frame = self.frames.last().unwrap();
         let ip = frame.ip.saturating_sub(1);
         let line = frame
@@ -140,7 +146,35 @@ impl Vm {
     }
 
     /// Run the dispatch loop.
+    /// Execute until the program completes or an error escapes.
+    ///
+    /// RuntimeErrors raised by ops (native methods, type errors, missing
+    /// properties) are routed through the innermost active `try`/`rescue`
+    /// handler — matching the tree-walker, where `catch (e)` binds the
+    /// error text. Without an active handler the error propagates (which
+    /// is what serve-mode's interpreter fallback relies on).
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
+        loop {
+            let err = match self.run_dispatch() {
+                Ok(value) => return Ok(value),
+                Err(err) => err,
+            };
+            // Same gating as throw_exception: handlers at or below
+            // return_depth belong to an outer native invocation (e.g.
+            // array.map's callback driver) that must see a Rust Err.
+            let catchable = self
+                .exception_handlers
+                .last()
+                .is_some_and(|handler| handler.frame_depth > self.return_depth);
+            if !catchable || err.is_engine_fallback() {
+                return Err(err);
+            }
+            let span = err.span();
+            self.throw_exception(Value::String(format!("{}", err).into()), span)?;
+        }
+    }
+
+    fn run_dispatch(&mut self) -> Result<Value, RuntimeError> {
         let _guard = VmTimingGuard::new();
         loop {
             // Fetch opcode and advance IP in a scoped borrow
@@ -389,6 +423,9 @@ impl Vm {
                     match val {
                         Value::Int(n) => self.stack.push(Value::Int(-n)),
                         Value::Float(n) => self.stack.push(Value::Float(-n)),
+                        Value::Decimal(d) => self.stack.push(Value::Decimal(
+                            crate::interpreter::value::DecimalValue(-d.0, d.1),
+                        )),
                         _ => {
                             return Err(RuntimeError::type_error(
                                 format!("Cannot negate {}", val.type_name()),
@@ -503,8 +540,37 @@ impl Vm {
 
                 // --- Functions ---
                 Op::Call(argc) => {
-                    let span = self.current_span();
-                    self.call_value(argc as usize, span)?;
+                    let argc = argc as usize;
+                    let callee_idx = self.stack.len() - 1 - argc;
+                    // Inline VmClosure fast path: no eager span (it's only
+                    // needed on the cold arity-error branch) and no
+                    // call_value double dispatch — this is the hot path for
+                    // every compiled function call (e.g. recursion).
+                    if let Value::VmClosure(closure) = &self.stack[callee_idx] {
+                        let closure = closure.clone();
+                        let arity = closure.proto.arity as usize;
+                        let total_params = closure.proto.param_names.len();
+                        if argc < arity || argc > total_params {
+                            return Err(RuntimeError::wrong_arity(
+                                total_params,
+                                argc,
+                                self.current_span(),
+                            ));
+                        }
+                        for _ in argc..total_params {
+                            self.stack.push(Value::Null);
+                        }
+                        let stack_base = self.stack.len() - total_params - 1;
+                        self.frames.push(CallFrame {
+                            closure,
+                            ip: 0,
+                            stack_base,
+                            class: None,
+                        });
+                    } else {
+                        let span = self.current_span();
+                        self.call_value(argc, span)?;
+                    }
                 }
                 Op::CallGlobal(name_idx, argc) => {
                     // Combined GetGlobal + Call: lookup global, push, and call in one step
@@ -641,12 +707,7 @@ impl Vm {
                             }
                         }
                         Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
-                            // Slow path: use GetProperty + Call semantics
-                            let span = self.current_span();
-                            let object = self.stack[receiver_idx].clone();
-                            let method_val = self.op_get_property(&object, name, span)?;
-                            self.stack[receiver_idx] = method_val;
-                            self.call_value(argc, span)?;
+                            self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                         Value::Array(_) => {
                             // Fast path for common zero-arg array methods
@@ -726,12 +787,22 @@ impl Vm {
                                 self.stack.push(result);
                             }
                         }
-                        _ => {
+                        Value::Int(_)
+                        | Value::Float(_)
+                        | Value::Bool(_)
+                        | Value::Null
+                        | Value::Decimal(_) => {
+                            let receiver = self.stack[receiver_idx].clone();
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                             let span = self.current_span();
-                            let object = self.stack[receiver_idx].clone();
-                            let method_val = self.op_get_property(&object, name, span)?;
-                            self.stack[receiver_idx] = method_val;
-                            self.call_value(argc, span)?;
+                            self.stack.truncate(receiver_idx);
+                            let result =
+                                self.vm_call_primitive_method(&receiver, name, &args, span)?;
+                            self.stack.push(result);
+                        }
+                        _ => {
+                            self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                     }
                 }
@@ -856,13 +927,23 @@ impl Vm {
                             let result = self.vm_call_hash_method(&hash, name, &args, span)?;
                             self.stack.push(result);
                         }
+                        Value::Int(_)
+                        | Value::Float(_)
+                        | Value::Bool(_)
+                        | Value::Null
+                        | Value::Decimal(_) => {
+                            let receiver = self.stack[receiver_idx].clone();
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                            let span = self.current_span();
+                            self.stack.truncate(receiver_idx);
+                            let result =
+                                self.vm_call_primitive_method(&receiver, name, &args, span)?;
+                            self.stack.push(result);
+                        }
                         _ => {
                             // Class instances, closures: fall back to property dispatch
-                            let span = self.current_span();
-                            let object = self.stack[receiver_idx].clone();
-                            let method_val = self.op_get_property(&object, name, span)?;
-                            self.stack[receiver_idx] = method_val;
-                            self.call_value(argc, span)?;
+                            self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                     }
                 }
@@ -1456,6 +1537,70 @@ impl Vm {
                     let _name = self.read_string_constant_owned(idx);
                     let _this = self.stack.pop().unwrap();
                     self.stack.push(Value::Null);
+                }
+                Op::CallSuperInit(argc) => {
+                    let argc = argc as usize;
+                    let span = self.current_span();
+                    let receiver_idx = self.stack.len() - 1 - argc;
+                    let superclass = self.frame_superclass(span)?;
+                    // Compiled superclass constructor — `this` is already in
+                    // the callee slot; "init" returns `this`.
+                    if let Some((init, defining_class)) =
+                        superclass.find_vm_method_with_class("init")
+                    {
+                        self.call_closure_in_class(init, argc, span, Some(defining_class))?;
+                    } else if let Some(ctor) = superclass.find_constructor() {
+                        // Tree-walking superclass constructor: JIT-compile,
+                        // run to completion, evaluate to `this`.
+                        let this_val = self.stack[receiver_idx].clone();
+                        self.run_jit_method_to_completion(&ctor, argc, span)?;
+                        self.push(this_val);
+                    } else {
+                        // No superclass constructor: drop args, evaluate to
+                        // `this` (matching tree-walker behavior).
+                        self.stack.truncate(receiver_idx + 1);
+                    }
+                }
+                Op::CallSuperMethod(name_idx, argc) => {
+                    let argc = argc as usize;
+                    let span = self.current_span();
+                    let receiver_idx = self.stack.len() - 1 - argc;
+                    let name = self.read_string_constant_owned(name_idx);
+                    let superclass = self.frame_superclass(span)?;
+                    if let Some((closure, defining_class)) =
+                        superclass.find_vm_method_with_class(&name)
+                    {
+                        self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
+                    } else if let Some(method) = superclass.find_method(&name) {
+                        // Tree-walking method (e.g. a class copied from
+                        // interpreter globals): JIT and run re-entrantly.
+                        let result = self.run_jit_method_to_completion(&method, argc, span)?;
+                        self.push(result);
+                    } else if let Some(native) = superclass.find_native_method(&name) {
+                        // Native method: bind the receiver and call.
+                        let receiver = self.stack[receiver_idx].clone();
+                        if let Value::Instance(ref inst) = receiver {
+                            let bound = crate::interpreter::executor::access::member::bind_native_method_to_instance(
+                                inst,
+                                &superclass.name,
+                                &name,
+                                &native,
+                            );
+                            self.stack[receiver_idx] = bound;
+                            self.call_value(argc, span)?;
+                        } else {
+                            return Err(RuntimeError::type_error(
+                                "super method called on non-instance",
+                                span,
+                            ));
+                        }
+                    } else {
+                        return Err(RuntimeError::NoSuchProperty {
+                            value_type: format!("super({})", superclass.name),
+                            property: name,
+                            span,
+                        });
+                    }
                 }
                 Op::Field(idx) => {
                     let name = self.read_string_constant_owned(idx);
@@ -2153,6 +2298,9 @@ impl Vm {
                     let result = match val {
                         Value::Int(n) => Value::Int(-n),
                         Value::Float(n) => Value::Float(-n),
+                        Value::Decimal(d) => {
+                            Value::Decimal(crate::interpreter::value::DecimalValue(-d.0, d.1))
+                        }
                         _ => {
                             return Err(RuntimeError::type_error(
                                 format!("Cannot negate {}", val.type_name()),
@@ -3075,6 +3223,372 @@ mod tests {
         assert!(r.is_ok());
         let r = compile_and_run("let x = [1, 2, 3].inspect;");
         assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_vm_int_zero_arg_methods() {
+        // Bare member access resolves through int_member_access.
+        assert_eq!(
+            compile_and_get_global("let n = -42; let x = n.abs;", "x"),
+            Value::Int(42)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 4; let x = n.even?;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 255; let x = n.to_s;", "x"),
+            Value::String("255".into())
+        );
+        // `n.to_s()` with parens dispatches through call_int_method_impl.
+        assert_eq!(
+            compile_and_get_global("let n = 255; let x = n.to_s();", "x"),
+            Value::String("255".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 65; let x = n.chr;", "x"),
+            Value::String("A".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 42; let x = n.class;", "x"),
+            Value::String("int".into())
+        );
+        // Parens on a direct-return zero-arg method behaves like the bare
+        // form — Ruby-style, matching the tree-walker's evaluate_call.
+        assert_eq!(
+            compile_and_get_global("let n = -42; let x = n.abs();", "x"),
+            Value::Int(42)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 42; let x = n.to_f();", "x"),
+            Value::Float(42.0)
+        );
+        // Unknown property on a primitive errors (tree-walker parity) —
+        // bare and parens forms both.
+        let r = compile_and_run("let n = 42; let x = n.frobnicate;");
+        assert!(r.is_err());
+        let r = compile_and_run("let n = 42; let x = n.frobnicate();");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_vm_float_methods() {
+        assert_eq!(
+            compile_and_get_global("let f = -3.7; let x = f.abs;", "x"),
+            Value::Float(3.7)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.7; let x = f.ceil;", "x"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.7; let x = f.round;", "x"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.7; let x = f.round();", "x"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.14159; let x = f.round(2);", "x"),
+            Value::Float(3.14)
+        );
+        // Ruby-style decimal rounding, not binary-float artifact (38.99).
+        assert_eq!(
+            compile_and_get_global("let f = 38.995; let x = f.round(2);", "x"),
+            Value::Float(39.0)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.5; let x = f.between?(3, 4);", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.5; let x = f.clamp(0, 3.0);", "x"),
+            Value::Float(3.0)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.5; let x = f.is_a?(\"float\");", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let f = 3.5; let x = f.class;", "x"),
+            Value::String("float".into())
+        );
+    }
+
+    #[test]
+    fn test_vm_bool_null_methods() {
+        assert_eq!(
+            compile_and_get_global("let b = true; let x = b.to_i;", "x"),
+            Value::Int(1)
+        );
+        assert_eq!(
+            compile_and_get_global("let b = false; let x = b.blank?;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let b = true; let x = b.is_a?(\"bool\");", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = null; let x = n.nil?;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = null; let x = n.to_s;", "x"),
+            Value::String("".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let n = null; let x = n.to_i;", "x"),
+            Value::Int(0)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = null; let x = n.is_a?(\"null\");", "x"),
+            Value::Bool(true)
+        );
+        // Unknown property on null still errors (tree-walker parity) — a
+        // null receiver must not silently swallow typo'd member access.
+        let r = compile_and_run("let n = null; let x = n.address;");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_vm_native_instance_method_binding() {
+        // Native instance methods (DateTime/Duration pattern) must receive
+        // the instance as args[0] — op_get_property binds the receiver via
+        // bind_native_method_to_instance. Bare access on a zero-arg native
+        // auto-invokes (op_get_property_member), parens form goes through
+        // CallMethod; both must see the receiver.
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_methods.insert(
+            "val".to_string(),
+            Rc::new(NativeFunction::new("Box.val", Some(0), |args| {
+                match args.first() {
+                    Some(Value::Instance(inst)) => Ok(inst
+                        .borrow()
+                        .fields
+                        .get("v")
+                        .cloned()
+                        .unwrap_or(Value::Null)),
+                    _ => Err("Box.val called without receiver".to_string()),
+                }
+            })),
+        );
+        let class = Rc::new(Class {
+            name: "Box".to_string(),
+            native_methods,
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        instance.fields.insert("v".to_string(), Value::Int(7));
+        let obj = Value::Instance(Rc::new(RefCell::new(instance)));
+
+        for source in ["let x = obj.val();", "let x = obj.val;"] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.globals.insert("obj".to_string(), obj.clone());
+            vm.execute(&module.main).expect("vm error");
+            assert_eq!(vm.globals.get("x"), Some(&Value::Int(7)), "{}", source);
+        }
+    }
+
+    #[test]
+    fn test_vm_model_static_receives_class() {
+        // Native statics on Model subclasses expect the class as args[0]
+        // (collection resolution) — op_get_property binds it via
+        // bind_native_static_to_model_class.
+        use crate::interpreter::value::Class;
+        use std::collections::HashMap;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_static_methods.insert(
+            "collection_name".to_string(),
+            Rc::new(NativeFunction::new(
+                "Model.collection_name",
+                None,
+                |args| match args.first() {
+                    Some(Value::Class(class)) => Ok(Value::String(class.name.clone().into())),
+                    _ => Err("collection_name called without class receiver".to_string()),
+                },
+            )),
+        );
+        let user_class = Rc::new(Class {
+            name: "User".to_string(),
+            superclass: Some(model_base),
+            native_static_methods,
+            ..Default::default()
+        });
+
+        let source = "let x = User.collection_name();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals
+            .insert("User".to_string(), Value::Class(user_class));
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(vm.globals.get("x"), Some(&Value::String("User".into())));
+    }
+
+    #[test]
+    fn test_vm_model_instance_method_is_uncatchable_fallback() {
+        // Model instance mutators are deliberately punted to the
+        // tree-walker (lifecycle callbacks only fire there). The punt must
+        // be an EngineFallback error that try/rescue CANNOT swallow —
+        // otherwise `try { record.save() } catch` would skip the fallback
+        // and the callbacks with it.
+        use crate::interpreter::value::{Class, Instance};
+        use std::collections::HashMap;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_methods.insert(
+            "save".to_string(),
+            Rc::new(NativeFunction::new("Model.save", None, |_| {
+                Ok(Value::Bool(true))
+            })),
+        );
+        let record_class = Rc::new(Class {
+            name: "User".to_string(),
+            superclass: Some(model_base),
+            native_methods,
+            ..Default::default()
+        });
+        let record = Value::Instance(Rc::new(RefCell::new(Instance::new(record_class))));
+
+        for source in [
+            "let x = record.save();",
+            "let x = \"start\"\ntry { record.save() } catch (e) { x = \"caught\" }",
+            "let x = record.save() rescue \"caught\";",
+        ] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.globals.insert("record".to_string(), record.clone());
+            let result = vm.execute(&module.main);
+            match result {
+                Err(err) => assert!(err.is_engine_fallback(), "{}: {}", source, err),
+                Ok(_) => panic!("{}: expected EngineFallback, got Ok", source),
+            }
+        }
+    }
+
+    #[test]
+    fn test_vm_decimal_methods() {
+        assert_eq!(
+            compile_and_get_global("let d = 3.7D; let x = d.round;", "x"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            compile_and_get_global("let d = 3.14159D; let x = d.round(2).to_s;", "x"),
+            Value::String("3.14".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let d = 3.5D; let x = d.between?(3, 4);", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let d = 3.5D; let x = d.is_a?(\"decimal\");", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let d = -2.5D; let x = d.negative?;", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let d = 2.5D; let x = d.class;", "x"),
+            Value::String("decimal".into())
+        );
+    }
+
+    #[test]
+    fn test_vm_int_to_s_radix() {
+        assert_eq!(
+            compile_and_get_global("let n = 255; let x = n.to_s(16);", "x"),
+            Value::String("ff".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 255; let x = n.to_string(2);", "x"),
+            Value::String("11111111".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let n = -255; let x = n.to_s(16);", "x"),
+            Value::String("-ff".into())
+        );
+        // Out-of-range base is a runtime error
+        let r = compile_and_run("let n = 255; let x = n.to_s(1);");
+        assert!(r.is_err());
+        let r = compile_and_run("let n = 255; let x = n.to_s(37);");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_vm_int_with_args_methods() {
+        assert_eq!(
+            compile_and_get_global("let n = 12; let x = n.gcd(8);", "x"),
+            Value::Int(4)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 4; let x = n.lcm(6);", "x"),
+            Value::Int(12)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 2; let x = n.pow(10);", "x"),
+            Value::Int(1024)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 5; let x = n.between?(1, 10);", "x"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 15; let x = n.clamp(0, 10);", "x"),
+            Value::Int(10)
+        );
+        assert_eq!(
+            compile_and_get_global("let n = 42; let x = n.is_a?(\"int\");", "x"),
+            Value::Bool(true)
+        );
+        // Unknown int method errors
+        let r = compile_and_run("let n = 42; let x = n.frobnicate(1);");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_vm_int_closure_methods() {
+        assert_eq!(
+            compile_and_get_global(
+                "let sum = 0; let n = 5; n.times(fn(i) { sum = sum + i; }); let x = sum;",
+                "x"
+            ),
+            Value::Int(10)
+        );
+        assert_eq!(
+            compile_and_get_global(
+                "let sum = 0; let n = 1; n.upto(4, fn(i) { sum = sum + i; }); let x = sum;",
+                "x"
+            ),
+            Value::Int(10)
+        );
+        assert_eq!(
+            compile_and_get_global(
+                "let last = 0; let n = 3; n.downto(1, fn(i) { last = i; }); let x = last;",
+                "x"
+            ),
+            Value::Int(1)
+        );
     }
 
     #[test]

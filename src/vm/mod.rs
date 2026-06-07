@@ -21,6 +21,8 @@ pub mod vm_calls;
 pub mod vm_classes;
 pub mod vm_exceptions;
 pub mod vm_hash_methods;
+pub mod vm_int_methods;
+pub mod vm_primitive_methods;
 pub mod vm_string_methods;
 
 pub use chunk::{CompiledModule, FunctionProto};

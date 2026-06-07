@@ -127,6 +127,16 @@ describe("Duration Between", fn() {
         assert(dur.total_hours() > 0);
     });
 
+    test("between returns the actual magnitude in seconds", fn() {
+        // Regression: `_ts` is nanoseconds — between used to store the
+        // raw nano diff as seconds (1 hour came back as ~1e9 hours).
+        let dt1 = DateTime.parse("2024-01-15T10:00:00Z");
+        let dt2 = DateTime.parse("2024-01-15T11:00:00Z");
+        let dur = Duration.between(dt1, dt2);
+        assert_eq(dur.total_seconds(), 3600);
+        assert_eq(dur.total_hours(), 1);
+    });
+
     test("between same datetime gives zero", fn() {
         let dt = DateTime.parse("2024-01-15T10:00:00Z");
         let dur = Duration.between(dt, dt);

@@ -113,6 +113,18 @@ impl TypeChecker {
                 Ok(Type::Class(class))
             }
             Type::Any | Type::Unknown => Ok(Type::Any),
+            // `s.length()` — empty parens on a member whose type already
+            // collapsed to the method's return type (bare zero-arg methods
+            // auto-invoke at runtime, see collapse_zero_arg_method). The
+            // runtime treats the call form like the bare form; mirror it.
+            _ if arguments.is_empty()
+                && matches!(
+                    callee.kind,
+                    ExprKind::Member { .. } | ExprKind::SafeMember { .. }
+                ) =>
+            {
+                Ok(callee_type)
+            }
             _ => Err(TypeError::NotCallable(format!("{}", callee_type), span)),
         }
     }

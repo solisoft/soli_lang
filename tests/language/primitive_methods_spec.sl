@@ -244,6 +244,59 @@ describe("Int method dispatch (with args)", fn() {
         }
         assert(caught);
     });
+
+    test("to_s without args returns decimal string", fn() {
+        assert_eq((255).to_s, "255");
+        assert_eq((255).to_s(), "255");
+        assert_eq((-7).to_string, "-7");
+    });
+
+    test("to_s with base converts radix", fn() {
+        assert_eq((255).to_s(16), "ff");
+        assert_eq((255).to_s(2), "11111111");
+        assert_eq((255).to_s(8), "377");
+        assert_eq((255).to_s(10), "255");
+        assert_eq((35).to_s(36), "z");
+        assert_eq((0).to_s(16), "0");
+        assert_eq((255).to_string(16), "ff");
+    });
+
+    test("to_s with base handles negative numbers", fn() {
+        assert_eq((-255).to_s(16), "-ff");
+        assert_eq((-9223372036854775807 - 1).to_s(16), "-8000000000000000");
+    });
+
+    test("to_s round-trips with String.hex", fn() {
+        assert_eq("ff".hex.to_s(16), "ff");
+    });
+
+    test("to_s with out-of-range base throws", fn() {
+        let caught = false;
+        try {
+            (255).to_s(1);
+        } catch (e) {
+            caught = true;
+        }
+        assert(caught);
+
+        caught = false;
+        try {
+            (255).to_s(37);
+        } catch (e) {
+            caught = true;
+        }
+        assert(caught);
+    });
+
+    test("to_s with non-integer base throws", fn() {
+        let caught = false;
+        try {
+            (255).to_s("x");
+        } catch (e) {
+            caught = true;
+        }
+        assert(caught);
+    });
 });
 
 describe("Float method dispatch", fn() {

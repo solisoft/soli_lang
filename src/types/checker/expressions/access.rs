@@ -27,10 +27,10 @@ impl TypeChecker {
                         return Ok(field.ty.clone());
                     }
                     if let Some(method) = class_def.find_method(name) {
-                        return Ok(Type::Function {
+                        return Ok(collapse_zero_arg_method(Type::Function {
                             params: method.params.iter().map(|(_, t)| t.clone()).collect(),
                             return_type: Box::new(method.return_type.clone()),
-                        });
+                        }));
                     }
                     // Model subclasses have native_static_methods (where, all, includes, join, etc.)
                     // that are only known at runtime. Allow any member access on Model subclasses.
@@ -38,13 +38,27 @@ impl TypeChecker {
                         return Ok(Type::Any);
                     }
                 }
+                // Universal methods available on every value at runtime.
+                match name {
+                    "class" | "inspect" | "to_s" | "to_string" => return Ok(Type::String),
+                    "nil?" | "blank?" | "present?" => return Ok(Type::Bool),
+                    "is_a?" => {
+                        return Ok(Type::Function {
+                            params: vec![Type::String],
+                            return_type: Box::new(Type::Bool),
+                        })
+                    }
+                    _ => {}
+                }
                 Err(TypeError::NoSuchMember {
                     type_name: class.name,
                     member: name.to_string(),
                     span,
                 })
             }
-            Type::Array(inner_type) => self.check_array_method(&inner_type, name, span),
+            Type::Array(inner_type) => self
+                .check_array_method(&inner_type, name, span)
+                .map(collapse_zero_arg_method),
             Type::Hash {
                 key_type,
                 value_type,
@@ -52,13 +66,15 @@ impl TypeChecker {
                 // First check if it's a known method
                 if let Ok(method_type) = self.check_hash_method(&key_type, &value_type, name, span)
                 {
-                    return Ok(method_type);
+                    return Ok(collapse_zero_arg_method(method_type));
                 }
                 // If not a method, treat as property access - return value_type
                 // (hash.key returns the value type for any key)
                 Ok((*value_type).clone())
             }
-            Type::String => self.check_string_method(name, span),
+            Type::String => self
+                .check_string_method(name, span)
+                .map(collapse_zero_arg_method),
             Type::Any | Type::Unknown => Ok(Type::Any),
             // Primitive types support methods via the OO method dispatch system
             Type::Int | Type::Float | Type::Bool | Type::Null | Type::Decimal(_) | Type::Symbol => {
@@ -500,5 +516,19 @@ impl TypeChecker {
                 span,
             }),
         }
+    }
+}
+
+/// Zero-arg builtin/class methods auto-invoke on bare member access at
+/// runtime (`s.length` evaluates to an Int, not a function), so type them
+/// as their return type. The explicit call form (`s.length()`) is accepted
+/// by the empty-args member-call leniency in `check_call_expr`.
+fn collapse_zero_arg_method(ty: Type) -> Type {
+    match ty {
+        Type::Function {
+            params,
+            return_type,
+        } if params.is_empty() => *return_type,
+        other => other,
     }
 }

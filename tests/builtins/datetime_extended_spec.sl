@@ -171,4 +171,15 @@ describe("DateTime Arithmetic - Extended", fn() {
         assert_eq(later.hour(), 11);
         assert_eq(later.minute(), 15);
     });
+
+    test("chained results keep the full method map", fn() {
+        // Regression: instances returned by add_days/add_hours used to
+        // carry a partial method snapshot — `dt.add_days(3).format(...)`
+        // failed with "Cannot access property 'format'".
+        let dt = DateTime.parse("2024-01-15T10:00:00Z");
+        assert_eq(dt.add_days(3).format("%Y-%m-%d"), "2024-01-18");
+        assert_eq(dt.add_days(1).add_days(1).add_hours(2).day(), 17);
+        assert_eq(dt.subtract_days(1).format("%Y-%m-%d"), "2024-01-14");
+        assert_eq(dt.add_days(2).beginning_of_day().end_of_month().month(), 1);
+    });
 });

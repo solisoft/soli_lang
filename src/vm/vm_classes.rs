@@ -1,10 +1,10 @@
 //! Class operations for the VM: property access, inheritance, instantiation.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, HashKey, Instance, Value, ValueMethod};
+use crate::interpreter::executor::Interpreter;
+use crate::interpreter::value::{Class, HashKey, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -45,21 +45,82 @@ impl Vm {
         }
         match object {
             Value::Instance(inst) => {
-                let inst = inst.borrow();
+                let inst_ref = inst.borrow();
                 // Check instance fields first
-                if let Some(val) = inst.fields.get(name) {
+                if let Some(val) = inst_ref.fields.get(name) {
                     return Ok(val.clone());
                 }
                 // Check class methods
-                if let Some(method) = inst.class.find_method(name) {
+                if let Some(method) = inst_ref.class.find_method(name) {
                     return Ok(Value::Function(method));
                 }
-                // Check native methods
-                if let Some(native) = inst.class.find_native_method(name) {
-                    return Ok(Value::NativeFunction((*native).clone()));
+                // Check native methods — bind to the instance so the wrapper
+                // prepends the receiver (e.g. `DateTime.year` reads `args[0]`
+                // as the instance). Same binding the tree-walker performs.
+                //
+                // EXCEPT Model subclasses: lifecycle callbacks (`before_save`
+                // etc.) only fire through the tree-walker's interceptors in
+                // `executor/calls/function.rs`. If the VM ran `record.save()`
+                // natively it would silently skip them — so leave model
+                // instance natives unbound: the call errors and serve mode
+                // falls back to the tree-walker, which fires the callbacks.
+                // Remove this carve-out once callbacks run inside the natives
+                // (Bug B in the vm-model-callback-gaps plan).
+                if let Some(native) = inst_ref.class.find_native_method(name) {
+                    if inst_ref.class.is_model_subclass() {
+                        // Deliberate VM punt (see the comment above): an
+                        // EngineFallback error bypasses try/rescue routing so
+                        // a user-level catch can't swallow it — serve mode
+                        // re-runs the handler on the tree-walker, where the
+                        // lifecycle callbacks fire.
+                        return Err(RuntimeError::EngineFallback(
+                            format!("model instance method '{}'", name),
+                            span,
+                        ));
+                    }
+                    let class_name = inst_ref.class.name.clone();
+                    let native = native.clone();
+                    drop(inst_ref);
+                    return Ok(
+                        crate::interpreter::executor::access::member::bind_native_method_to_instance(
+                            inst, &class_name, name, &native,
+                        ),
+                    );
+                }
+                // Universal members — mirror the tree-walker's
+                // instance_member_access.
+                match name {
+                    "class" => {
+                        return Ok(Value::String(inst_ref.class.name.clone().into()));
+                    }
+                    "nil?" | "blank?" => return Ok(Value::Bool(false)),
+                    "present?" => return Ok(Value::Bool(true)),
+                    "is_a?" => {
+                        let inst_clone = inst.clone();
+                        return Ok(Value::NativeFunction(NativeFunction::new(
+                            "is_a?",
+                            Some(1),
+                            move |args: Vec<Value>| -> Result<Value, String> {
+                                let class_name = match args.first() {
+                                    Some(Value::String(s)) => s.clone(),
+                                    _ => return Err("is_a? expects a string argument".to_string()),
+                                };
+                                let inst_ref = inst_clone.borrow();
+                                let mut current: Option<&Class> = Some(&inst_ref.class);
+                                while let Some(c) = current {
+                                    if c.name == class_name.as_ref() {
+                                        return Ok(Value::Bool(true));
+                                    }
+                                    current = c.superclass.as_deref();
+                                }
+                                Ok(Value::Bool(false))
+                            },
+                        )));
+                    }
+                    _ => {}
                 }
                 Err(RuntimeError::NoSuchProperty {
-                    value_type: inst.class.name.clone(),
+                    value_type: inst_ref.class.name.clone(),
                     property: name.to_string(),
                     span,
                 })
@@ -73,8 +134,17 @@ impl Vm {
                 if let Some(method) = class.find_static_method(name) {
                     return Ok(Value::Function(method));
                 }
-                // Native static method
+                // Native static method — Model subclass statics expect the
+                // class as args[0] (collection resolution); bind it like the
+                // tree-walker does. Plain statics (DateTime.now) stay raw.
                 if let Some(native) = class.find_native_static_method(name) {
+                    if class.is_model_subclass() {
+                        return Ok(
+                            crate::interpreter::executor::access::member::bind_native_static_to_model_class(
+                                object, name, &native,
+                            ),
+                        );
+                    }
                     return Ok(Value::NativeFunction((*native).clone()));
                 }
                 // Nested class
@@ -117,6 +187,16 @@ impl Vm {
                     }))
                 }
             }
+            // Primitive member access shares the tree-walker's tables:
+            // zero-arg methods evaluate directly, with-args methods come
+            // back as a ValueMethod (invoked via CallMethod or, when
+            // zero-arg-callable like `round`/`to_s`, auto-invoked by
+            // op_get_property_member), and unknown names error.
+            Value::Int(n) => Interpreter::int_member_access(*n, name, span),
+            Value::Float(n) => Interpreter::float_member_access(*n, name, span),
+            Value::Bool(b) => Interpreter::bool_member_access(*b, name, span),
+            Value::Null => Interpreter::null_member_access(name, span),
+            Value::Decimal(d) => Interpreter::decimal_member_access(d, name, span),
             Value::Symbol(s) => match name {
                 "to_s" | "to_string" => Ok(Value::String(s.clone())),
                 "inspect" => Ok(Value::String(format!(":{}", s).into())),
@@ -174,7 +254,50 @@ impl Vm {
         name: &str,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // Compiled (VmClosure) instance methods: bare access auto-invokes
+        // the zero-arg form with the receiver as `this`, mirroring the
+        // tree-walker's auto-invoke of zero-arg class methods. Instance
+        // fields shadow methods, matching op_get_property's lookup order.
+        if let Value::Instance(inst) = object {
+            let inst_ref = inst.borrow();
+            if !inst_ref.fields.contains_key(name) {
+                let lookup = {
+                    let class = inst_ref.class.clone();
+                    class.find_vm_method_with_class(name)
+                };
+                if let Some((closure, defining_class)) = lookup {
+                    drop(inst_ref);
+                    if closure.proto.arity == 0 {
+                        self.push(object.clone());
+                        let saved_depth = self.return_depth;
+                        let frames_before = self.frames.len();
+                        self.return_depth = frames_before;
+                        let result = (|| -> Result<Value, RuntimeError> {
+                            self.call_closure_in_class(closure, 0, span, Some(defining_class))?;
+                            if self.frames.len() == frames_before {
+                                Ok(self.pop())
+                            } else {
+                                self.run()
+                            }
+                        })();
+                        self.return_depth = saved_depth;
+                        return result;
+                    }
+                }
+            }
+        }
         let val = self.op_get_property(object, name, span)?;
+        // Native methods (DateTime/Duration/Model instance wrappers, static
+        // class methods like `DateTime.now`): bare access auto-invokes
+        // zero-arg / auto-invocable functions — mirroring the tree-walker's
+        // try_auto_invoke Member-context rule. Bound instance wrappers
+        // already carry their receiver in the closure.
+        if let Value::NativeFunction(func) = &val {
+            if func.is_auto_invocable || func.arity == Some(0) {
+                return (func.func)(Vec::new()).map_err(|msg| RuntimeError::new(msg, span));
+            }
+            return Ok(val);
+        }
         let invoke = match &val {
             Value::Method(m)
                 if crate::interpreter::executor::calls::method_registry::is_zero_arg_method(
@@ -191,6 +314,13 @@ impl Vm {
                 Value::Array(arr) => self.vm_call_array_method(arr, &method_name, &[], span),
                 Value::String(s) => self.vm_call_string_method(s, &method_name, &[], span),
                 Value::Hash(h) => self.vm_call_hash_method(h, &method_name, &[], span),
+                Value::Int(_)
+                | Value::Float(_)
+                | Value::Bool(_)
+                | Value::Null
+                | Value::Decimal(_) => {
+                    self.vm_call_primitive_method(&receiver, &method_name, &[], span)
+                }
                 _ => Ok(val),
             },
             None => Ok(val),
@@ -253,7 +383,7 @@ impl Vm {
         // Since Class is in an Rc, we need to create a new one.
         // The class was just created by Op::Class, so we replace the top of stack.
         if let Value::Class(sub) = subclass_val {
-            let new_class = Class::new(
+            let mut new_class = Class::new(
                 sub.name.clone(),
                 Some(superclass.clone()),
                 sub.methods.borrow().clone(),
@@ -265,6 +395,9 @@ impl Vm {
                 sub.constructor.clone(),
                 sub.nested_classes.clone(),
             );
+            // Preserve the shared bytecode-method maps across rebuilds.
+            new_class.vm_methods = sub.vm_methods.clone();
+            new_class.vm_static_methods = sub.vm_static_methods.clone();
             // Replace the class on top of the stack
             let top = self.stack.len() - 1;
             self.stack[top] = Value::Class(Rc::new(new_class));
@@ -298,9 +431,23 @@ impl Vm {
                 let mut static_methods = current.static_methods.clone();
 
                 match method {
-                    Value::VmClosure(_closure) => {
-                        // VmClosure methods will be dispatched by the VM at call time.
-                        // TODO: Add vm_methods field to Class for native VM method storage
+                    Value::VmClosure(closure) => {
+                        // Bytecode methods from compile_class_decl. The maps
+                        // are shared `Rc`s, so no class rebuild is needed —
+                        // and the constructor ("init") plus instance methods
+                        // become dispatchable via find_vm_method.
+                        if is_static {
+                            current
+                                .vm_static_methods
+                                .borrow_mut()
+                                .insert(name.to_string(), closure);
+                        } else {
+                            current
+                                .vm_methods
+                                .borrow_mut()
+                                .insert(name.to_string(), closure);
+                        }
+                        return Ok(());
                     }
                     Value::Function(func) => {
                         if is_static {
@@ -312,7 +459,7 @@ impl Vm {
                     _ => {}
                 }
 
-                let new_class = Class::new(
+                let mut new_class = Class::new(
                     current.name.clone(),
                     current.superclass.clone(),
                     current.methods.borrow().clone(),
@@ -324,6 +471,9 @@ impl Vm {
                     current.constructor.clone(),
                     current.nested_classes.clone(),
                 );
+                // Preserve the shared bytecode-method maps across rebuilds.
+                new_class.vm_methods = current.vm_methods.clone();
+                new_class.vm_static_methods = current.vm_static_methods.clone();
                 self.stack[top] = Value::Class(Rc::new(new_class));
             }
             Ok(())
@@ -341,28 +491,10 @@ impl Vm {
         let class_val = self.stack[callee_idx].clone();
 
         match class_val {
-            Value::Class(class) => {
-                let instance = Instance::new(class.clone());
-                let instance_val = Value::Instance(Rc::new(RefCell::new(instance)));
-
-                // Replace class with instance on the stack
-                self.stack[callee_idx] = instance_val.clone();
-
-                // Initialize fields from field declarations
-                // (Field initializers are compiled into the constructor)
-
-                // Call constructor if it exists
-                if let Some(_constructor) = class.find_constructor() {
-                    // Constructor dispatch — VM constructors stored as VmClosures
-                }
-
-                // Pop unused arguments
-                for _ in 0..argc {
-                    self.pop();
-                }
-
-                Ok(())
-            }
+            // Same protocol as calling the class value directly — runs the
+            // compiled "init" constructor (or JIT-compiles a tree-walking
+            // one) with the instance bound as `this`.
+            Value::Class(class) => self.call_class(&class, argc, span),
             _ => Err(RuntimeError::NotAClass(
                 class_val.type_name().to_string(),
                 span,

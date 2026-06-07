@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
-use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, Instance, NativeFunction, Value};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -110,11 +110,25 @@ impl Vm {
     }
 
     #[inline]
-    fn call_closure(
+    pub(crate) fn call_closure(
         &mut self,
         closure: Rc<VmClosure>,
         argc: usize,
         span: Span,
+    ) -> Result<(), RuntimeError> {
+        self.call_closure_in_class(closure, argc, span, None)
+    }
+
+    /// Like `call_closure`, but records the class that defines the method on
+    /// the frame so `super` inside it can resolve against the defining
+    /// class's superclass.
+    #[inline]
+    pub(crate) fn call_closure_in_class(
+        &mut self,
+        closure: Rc<VmClosure>,
+        argc: usize,
+        span: Span,
+        class: Option<Rc<Class>>,
     ) -> Result<(), RuntimeError> {
         let arity = closure.proto.arity as usize;
         let total_params = closure.proto.param_names.len();
@@ -137,6 +151,7 @@ impl Vm {
             closure,
             ip: 0,
             stack_base,
+            class,
         });
 
         Ok(())
@@ -198,37 +213,154 @@ impl Vm {
         self.call_closure(closure, argc, span)
     }
 
-    fn call_class(
+    pub(crate) fn call_class(
         &mut self,
         class: &Rc<Class>,
         argc: usize,
-        _span: Span,
+        span: Span,
     ) -> Result<(), RuntimeError> {
-        // Create an instance
-        let instance = Instance::new(class.clone());
-        let instance_val = Value::Instance(Rc::new(RefCell::new(instance)));
-
-        // Replace the class on the stack with the instance
         let callee_idx = self.stack.len() - 1 - argc;
-        self.stack[callee_idx] = instance_val.clone();
+        let instance_val = Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
 
-        // Call the constructor if one exists
-        if let Some(ref _constructor) = class.constructor {
-            // Constructor dispatch — VM constructors stored as VmClosures
+        // Bytecode constructor (classes compiled in the VM): registered as
+        // "init" by compile_constructor and returns `this`, so the frame's
+        // return value is already the instance. The instance takes the
+        // callee slot → it becomes slot 0 (`this`) under the method calling
+        // convention.
+        if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
+            self.stack[callee_idx] = instance_val;
+            return self.call_closure_in_class(ctor, argc, span, Some(defining_class));
         }
 
-        // Look for VM constructor method
-        // This would be set during class compilation
+        // Tree-walking constructor (classes copied from interpreter globals,
+        // e.g. native classes in serve mode): JIT-compile as a method, run
+        // it to completion, discard its return value, and yield the instance.
+        if let Some(ctor) = class.find_constructor() {
+            let proto = jit_compile_method(&ctor, self.globals.keys().cloned())
+                .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+            let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+            self.stack[callee_idx] = instance_val.clone();
+            let saved_depth = self.return_depth;
+            let frames_before = self.frames.len();
+            self.return_depth = frames_before;
+            let outcome = (|| -> Result<(), RuntimeError> {
+                self.call_closure(closure, argc, span)?;
+                if self.frames.len() != frames_before {
+                    self.run()?; // discard the constructor's return value
+                }
+                Ok(())
+            })();
+            self.return_depth = saved_depth;
+            outcome?;
+            self.push(instance_val);
+            return Ok(());
+        }
 
-        // If no constructor and args were provided, error
-        if argc > 0 {
-            // Pop the unused arguments
-            for _ in 0..argc {
-                self.pop();
+        // No constructor: drop any args (tree-walker parity) and yield the
+        // instance.
+        self.stack.truncate(callee_idx);
+        self.push(instance_val);
+        Ok(())
+    }
+
+    /// Resolve the superclass of the class defining the currently executing
+    /// method — the target of `super` dispatch (CallSuperInit /
+    /// CallSuperMethod).
+    pub(crate) fn frame_superclass(&self, span: Span) -> Result<Rc<Class>, RuntimeError> {
+        self.frames
+            .last()
+            .and_then(|frame| frame.class.clone())
+            .and_then(|class| class.superclass.clone())
+            .ok_or_else(|| {
+                RuntimeError::type_error("super used outside of a subclass method", span)
+            })
+    }
+
+    /// JIT-compile a tree-walking method and run it to completion with the
+    /// receiver already in the callee slot (`[this, args…]`). Returns the
+    /// method's return value; the stack is left at the callee slot.
+    pub(crate) fn run_jit_method_to_completion(
+        &mut self,
+        method: &Rc<Function>,
+        argc: usize,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let proto = jit_compile_method(method, self.globals.keys().cloned())
+            .map_err(|e| RuntimeError::new(format!("VM JIT compile error: {}", e), span))?;
+        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        let saved_depth = self.return_depth;
+        let frames_before = self.frames.len();
+        self.return_depth = frames_before;
+        let result = (|| -> Result<Value, RuntimeError> {
+            self.call_closure(closure, argc, span)?;
+            if self.frames.len() == frames_before {
+                Ok(self.pop())
+            } else {
+                self.run()
             }
-            // Push instance back
-        }
+        })();
+        self.return_depth = saved_depth;
+        result
+    }
 
+    /// Shared CallMethod/CallMethodById slow path for instance/class/other
+    /// receivers. Compiled (VmClosure) methods run under the method calling
+    /// convention — the receiver stays in the callee slot and becomes
+    /// `this` — and empty-parens calls on plain values behave like bare
+    /// access (tree-walker parity). Everything else goes through property
+    /// lookup + call_value.
+    pub(crate) fn call_method_slow_path(
+        &mut self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+    ) -> Result<(), RuntimeError> {
+        let compiled = match &self.stack[receiver_idx] {
+            Value::Instance(inst) => {
+                let class = inst.borrow().class.clone();
+                class.find_vm_method_with_class(name)
+            }
+            // Statics compile as plain functions; the class value left in
+            // the callee slot is ignored by the bytecode.
+            Value::Class(class) => class
+                .find_vm_static_method(name)
+                .map(|closure| (closure, class.clone())),
+            _ => None,
+        };
+        if let Some((closure, defining_class)) = compiled {
+            // Hot path for compiled method calls — span is computed only on
+            // the cold arity-error branch.
+            let arity = closure.proto.arity as usize;
+            let total_params = closure.proto.param_names.len();
+            if argc < arity || argc > total_params {
+                return Err(RuntimeError::wrong_arity(
+                    total_params,
+                    argc,
+                    self.current_span(),
+                ));
+            }
+            for _ in argc..total_params {
+                self.stack.push(Value::Null);
+            }
+            let stack_base = self.stack.len() - total_params - 1;
+            self.frames.push(CallFrame {
+                closure,
+                ip: 0,
+                stack_base,
+                class: Some(defining_class),
+            });
+            return Ok(());
+        }
+        let span = self.current_span();
+        let object = self.stack[receiver_idx].clone();
+        let method_val = self.op_get_property(&object, name, span)?;
+        if argc == 0 && !method_val.is_callable() {
+            self.stack.truncate(receiver_idx);
+            self.stack.push(method_val);
+        } else {
+            self.stack[receiver_idx] = method_val;
+            self.call_value(argc, span)?;
+        }
         Ok(())
     }
 
@@ -238,97 +370,30 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        // Stack layout: [receiver, arg1, .., argN] — take the args off the
+        // top first, then the receiver, and delegate to the same per-type
+        // dispatchers CallMethod uses so stored bound methods (e.g.
+        // `m = arr.contains; m(5)`) behave identically to direct calls.
+        let args = self.stack.split_off(self.stack.len() - argc);
         let receiver = self.pop();
 
-        match &receiver {
-            Value::Array(arr) => {
-                let result = {
-                    let items = arr.borrow();
-                    match method_name {
-                        "length" | "len" => Value::Int(items.len() as i64),
-                        "contains" | "include?" => {
-                            if argc != 1 {
-                                return Err(RuntimeError::wrong_arity(1, argc, span));
-                            }
-                            let target = self.pop();
-                            let found = items.iter().any(|v| v == &target);
-                            Value::Bool(found)
-                        }
-                        "empty?" => Value::Bool(items.is_empty()),
-                        "first" => items.first().cloned().unwrap_or(Value::Null),
-                        "last" => items.last().cloned().unwrap_or(Value::Null),
-                        "reverse" => {
-                            let mut reversed = items.clone();
-                            reversed.reverse();
-                            Value::Array(Rc::new(RefCell::new(reversed)))
-                        }
-                        _ => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: "Array".to_string(),
-                                property: method_name.to_string(),
-                                span,
-                            })
-                        }
-                    }
-                };
-                self.push(result);
-                Ok(())
+        let result = match &receiver {
+            Value::Array(arr) => self.vm_call_array_method(arr, method_name, &args, span)?,
+            Value::String(s) => self.vm_call_string_method(s.as_ref(), method_name, &args, span)?,
+            Value::Hash(hash) => self.vm_call_hash_method(hash, method_name, &args, span)?,
+            Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Null | Value::Decimal(_) => {
+                self.vm_call_primitive_method(&receiver, method_name, &args, span)?
             }
-            Value::String(s) => {
-                let result = match method_name {
-                    "length" | "len" => Value::Int(s.len() as i64),
-                    _ => {
-                        return Err(RuntimeError::NoSuchProperty {
-                            value_type: "String".to_string(),
-                            property: method_name.to_string(),
-                            span,
-                        })
-                    }
-                };
-                self.push(result);
-                Ok(())
+            _ => {
+                return Err(RuntimeError::NoSuchProperty {
+                    value_type: receiver.type_name(),
+                    property: method_name.to_string(),
+                    span,
+                })
             }
-            Value::Hash(hash) => {
-                let result = {
-                    let mut borrow = hash.borrow_mut();
-                    match method_name {
-                        "length" | "len" => Value::Int(borrow.len() as i64),
-                        "keys" => {
-                            let keys: Vec<Value> = borrow
-                                .keys()
-                                .filter_map(|k| match k {
-                                    HashKey::String(s) => Some(Value::String(s.clone())),
-                                    _ => None,
-                                })
-                                .collect();
-                            Value::Array(Rc::new(RefCell::new(keys)))
-                        }
-                        "values" => {
-                            let values: Vec<Value> = borrow.values().cloned().collect();
-                            Value::Array(Rc::new(RefCell::new(values)))
-                        }
-                        "clear" => {
-                            borrow.clear();
-                            Value::Null
-                        }
-                        _ => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: "Hash".to_string(),
-                                property: method_name.to_string(),
-                                span,
-                            })
-                        }
-                    }
-                };
-                self.push(result);
-                Ok(())
-            }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: receiver.type_name(),
-                property: method_name.to_string(),
-                span,
-            }),
-        }
+        };
+        self.push(result);
+        Ok(())
     }
 
     /// Call a global function by name (used by server integration).

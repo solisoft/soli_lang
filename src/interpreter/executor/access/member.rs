@@ -63,6 +63,62 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
     ))
 }
 
+/// Bind a class's native method to an instance: the returned wrapper
+/// prepends the receiver as the first argument before delegating, which is
+/// the calling convention native instance methods expect (e.g.
+/// `DateTime.year` reads `args[0]` as the instance). Shared by the
+/// tree-walker (`instance_member_access`) and the VM (`op_get_property`).
+///
+/// The underlying method's auto-invoke flag is preserved so variadic
+/// zero-or-optional-arg methods (e.g. `save`, which is `None`-arity to
+/// allow `save({...})`) still fire on bare `inst.save`. Without this the
+/// wrapper defaults to non-auto-invocable and `c.save` returns the function
+/// value instead of calling it.
+pub(crate) fn bind_native_method_to_instance(
+    inst: &Rc<RefCell<Instance>>,
+    class_name: &str,
+    name: &str,
+    native_method: &Rc<NativeFunction>,
+) -> Value {
+    let native_method_clone = native_method.clone();
+    let instance_clone = inst.clone();
+    let mut wrapper = NativeFunction::new(
+        format!("{}.{}", class_name, name),
+        native_method.arity,
+        move |args| {
+            let mut new_args = vec![Value::Instance(instance_clone.clone())];
+            new_args.extend(args.iter().cloned());
+            (native_method_clone.func)(new_args)
+        },
+    );
+    wrapper.is_auto_invocable = native_method.is_auto_invocable;
+    Value::NativeFunction(wrapper)
+}
+
+/// Bind a Model subclass's native static method to the class value: model
+/// statics (`User.create`, `User.where`, …) expect the class as `args[0]`
+/// so they can resolve the collection. Shared by the tree-walker
+/// (`class_member_access`) and the VM (`op_get_property`).
+pub(crate) fn bind_native_static_to_model_class(
+    class_val: &Value,
+    name: &str,
+    native_method: &Rc<NativeFunction>,
+) -> Value {
+    let class_val = class_val.clone();
+    let original_func = native_method.func.clone();
+    let bound_func = NativeFunction {
+        name: format!("bound_{}", name),
+        arity: None, // Variadic - don't check arity at VM level
+        func: Rc::new(move |args| {
+            let mut full_args = vec![class_val.clone()];
+            full_args.extend(args);
+            original_func(full_args)
+        }),
+        is_auto_invocable: native_method.is_auto_invocable,
+    };
+    Value::NativeFunction(bound_func)
+}
+
 /// Auto-generated method on a model with `uploader(field, ...)`. Maps a
 /// member name like `attach_photo` to `(UploaderMethod::Attach, "photo")`,
 /// `photo_url` to `(UploaderMethod::Url, "photo")`, etc. Returns `None` if
@@ -1115,25 +1171,14 @@ impl Interpreter {
         // Then check for native method
         if let Some(native_method) = inst_ref.class.find_native_method(name) {
             let class_name = inst_ref.class.name.clone();
-            let native_method_clone = native_method.clone();
+            let native_method = native_method.clone();
             drop(inst_ref);
-            let instance_clone = inst.clone();
-            // Preserve the underlying method's auto-invoke flag so variadic
-            // zero-or-optional-arg methods (e.g. `save`, which is `None`-arity
-            // to allow `save({...})`) still fire on bare `inst.save`. Without
-            // this the wrapper defaults to non-auto-invocable and `c.save`
-            // returns the function value instead of calling it.
-            let mut wrapper = NativeFunction::new(
-                format!("{}.{}", class_name, name),
-                native_method.arity,
-                move |args| {
-                    let mut new_args = vec![Value::Instance(instance_clone.clone())];
-                    new_args.extend(args.iter().cloned());
-                    (native_method_clone.func)(new_args)
-                },
-            );
-            wrapper.is_auto_invocable = native_method.is_auto_invocable;
-            return Ok(Value::NativeFunction(wrapper));
+            return Ok(bind_native_method_to_instance(
+                &inst,
+                &class_name,
+                name,
+                &native_method,
+            ));
         }
 
         // Then check for user-defined method
@@ -1260,22 +1305,11 @@ impl Interpreter {
         }
         if let Some(native_method) = class.find_native_static_method(name) {
             if class.is_model_subclass() {
-                let class_val = class_val.clone();
-                let method_name = name.to_string();
-                let original_func = native_method.func.clone();
-                let is_auto_invocable = native_method.is_auto_invocable;
-
-                let bound_func = NativeFunction {
-                    name: format!("bound_{}", method_name),
-                    arity: None, // Variadic - don't check arity at VM level
-                    func: Rc::new(move |args| {
-                        let mut full_args = vec![class_val.clone()];
-                        full_args.extend(args);
-                        original_func(full_args)
-                    }),
-                    is_auto_invocable,
-                };
-                return Ok(Value::NativeFunction(bound_func));
+                return Ok(bind_native_static_to_model_class(
+                    class_val,
+                    name,
+                    &native_method,
+                ));
             }
             return Ok(Value::NativeFunction((*native_method).clone()));
         }
@@ -1915,7 +1949,7 @@ impl Interpreter {
         }
     }
 
-    fn int_member_access(n: i64, name: &str, span: Span) -> RuntimeResult<Value> {
+    pub(crate) fn int_member_access(n: i64, name: &str, span: Span) -> RuntimeResult<Value> {
         // User-defined methods registered via `Int.class_eval { define_method ... }`
         // win over builtins. Gated by an atomic bit so this is a no-op when no
         // user methods exist anywhere in the process.
@@ -1933,7 +1967,6 @@ impl Interpreter {
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
-            "to_s" | "to_string" => Ok(Value::String(n.to_string().into())),
             "to_f" | "to_float" => Ok(Value::Float(n as f64)),
             "inspect" => Ok(Value::String(n.to_string().into())),
             "abs" => Ok(Value::Int(n.abs())),
@@ -1963,9 +1996,11 @@ impl Interpreter {
             // Zero-arg sugar (auto-invoked)
             "succ" | "next" => Ok(Value::Int(n + 1)),
             "pred" => Ok(Value::Int(n - 1)),
-            // Methods with args (return ValueMethod)
+            // Methods with args (return ValueMethod).
+            // `to_s`/`to_string` with 0 args is auto-invoked via
+            // is_zero_arg_builtin_method; with 1 arg it's a radix conversion.
             "times" | "upto" | "downto" | "pow" | "gcd" | "lcm" | "between?" | "clamp"
-            | "is_a?" | "divmod" => Ok(Value::Method(ValueMethod {
+            | "is_a?" | "divmod" | "to_s" | "to_string" => Ok(Value::Method(ValueMethod {
                 receiver: Box::new(Value::Int(n)),
                 method_name: name.to_string(),
             })),
@@ -1977,7 +2012,7 @@ impl Interpreter {
         }
     }
 
-    fn float_member_access(n: f64, name: &str, span: Span) -> RuntimeResult<Value> {
+    pub(crate) fn float_member_access(n: f64, name: &str, span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
@@ -2027,7 +2062,7 @@ impl Interpreter {
         }
     }
 
-    fn bool_member_access(b: bool, name: &str, span: Span) -> RuntimeResult<Value> {
+    pub(crate) fn bool_member_access(b: bool, name: &str, span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
@@ -2057,7 +2092,7 @@ impl Interpreter {
         }
     }
 
-    fn null_member_access(name: &str, span: Span) -> RuntimeResult<Value> {
+    pub(crate) fn null_member_access(name: &str, span: Span) -> RuntimeResult<Value> {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
@@ -2120,7 +2155,7 @@ impl Interpreter {
         }
     }
 
-    fn decimal_member_access(
+    pub(crate) fn decimal_member_access(
         d: &crate::interpreter::value::DecimalValue,
         name: &str,
         span: Span,

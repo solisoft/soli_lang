@@ -128,6 +128,13 @@ pub enum Op {
     GetThis,
     /// Push a super reference.
     GetSuper(u16),
+    /// `super(args…)` inside a constructor: run the defining class's
+    /// superclass constructor with `this` (already in the callee slot) and
+    /// `argc` args.
+    CallSuperInit(u8),
+    /// `super.method(args…)`: dispatch `method` (name constant) on the
+    /// defining class's superclass with `this` in the callee slot.
+    CallSuperMethod(u16, u8),
     /// Add a field with initializer to a class. Name from constant index.
     Field(u16),
     /// Add a static field with initializer to a class. Name from constant index.

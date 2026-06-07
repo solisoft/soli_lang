@@ -209,6 +209,16 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));
         }
+        Op::CallSuperInit(argc) => {
+            out.push_str(&format!("CALL_SUPER_INIT    argc={}", argc));
+        }
+        Op::CallSuperMethod(idx, argc) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_SUPER_METHOD {:>5} ({}) argc={}",
+                idx, name, argc
+            ));
+        }
         Op::CallMethodById(idx, argc, mid) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(

@@ -2,9 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(lang):** `Int#to_s(base)` — Ruby-style radix conversion for bases 2–36: `255.to_s(16)` → `"ff"`, `255.to_s(2)` → `"11111111"` (lowercase digits, leading `-` for negatives, `i64::MIN`-safe). Complements the existing `"ff".hex` reverse direction
+* **feat(lang):** explicit empty parens on zero-arg builtin methods now work in both engines (`n.abs()`, `x.to_f()`, `dt.year()`) — previously "Cannot call non-function value" on primitives while collections accepted them; the type checker also types bare zero-arg member access as the method's return type (`s.length` is an `Int`, matching runtime auto-invoke)
+
+### VM engine parity
+
+The bytecode VM (production mode) now runs whole categories of code that previously errored and silently fell back to the tree-walking interpreter per request:
+
+* **fix(vm):** primitive method dispatch (Int, Float, Bool, Null, Decimal) — `n.to_s(16)`, `f.round(2)`, `d.between?(...)`, `times`/`upto`/`downto` with closures, all via `call_*_method_impl` dispatchers shared with the tree-walker, so engines can't drift. Decimal negation (`-2.5D`) also fixed
+* **fix(vm):** native instance classes (DateTime, Duration, …) — native methods are bound to their receiver via the same wrappers the tree-walker uses (the VM used to call them with the receiver missing from `args[0]`); Model-subclass *statics* (`User.where`, …) get the class bound and run on the VM. Model instance mutators (`record.save()`) deliberately raise an uncatchable `EngineFallback` so serve mode still re-runs them on the interpreter, where lifecycle callbacks fire
+* **fix(vm):** user-defined classes work in VM scripts — compiled constructors and methods were silently dropped by `op_add_method` (`Person("Alice")` produced an empty instance). Constructors (incl. synthetic ones for field defaults), `this`-bound methods, statics, universal members (`class`, `is_a?`, `nil?`) and field assignment all dispatch natively now
+* **fix(vm):** `super(...)` constructor chaining and `super.method(...)` — call frames record the *defining* class so multi-level hierarchies resolve correctly instead of looping
+* **fix(vm):** `try`/`catch`/`rescue` now catch native-method errors (the run loop routes `RuntimeError`s through active handlers, binding the error text like the tree-walker). Also fixes a `rescue` compiler bug where the catch offset pointed past the fallback — the exception value leaked out as the rescue result even for user-level `throw`
+* **fix(vm):** stored bound methods called with arguments (`m = arr.contains; m(5)`) read the wrong stack slot as the receiver
+* **fix(cli):** `soli run --vm` seeds the VM from the full builtin environment like a production serve worker (was a 6-function hand-rolled subset where even `DateTime` was undefined) — `--vm` is now a faithful production simulator
+
 ### Fixes
 
+* **fix(lang):** bare `Person(...)` instantiation now applies class field initializers (`role: String = "guest"`) — previously only the `new Person(...)` form did
+* **fix(datetime):** chained DateTime results keep the full method map — `dt.add_days(3).format(...)` failed with "Cannot access property 'format'" because each method captured a half-built method-map snapshot; all DateTime/Duration instances now share one complete class
+* **fix(datetime):** `Duration.between` stored the raw *nanosecond* diff as seconds — a 1-hour span read back as ~10⁹ hours via `total_hours`/`humanize`
+* **fix(types):** DateTime/Duration checker whitelists synced with the runtime (`beginning_of_*`, `end_of_*`, `humanize` were rejected at check time); universal methods (`class`, `nil?`, `is_a?`, …) accepted on built-in class instances; empty-parens calls on zero-arg members type-check
+
 * **fix(test):** `soli test --jobs N` no longer storms SoliDB's `/auth/login` — the runner logs in once and hands the JWT to every test-server child via `SOLIDB_JWT`, and a failed login backs off 30s instead of retrying on every query. Previously N parallel boots tripped SoliDB's per-IP login rate limit (20/min, shared `127.0.0.1` bucket) and a single failure became a self-sustaining 400 storm (475+ warnings per suite) that randomly pushed specs past their 10s HTTP timeouts
+
 * **fix(test):** pre-created worker-DB collections keep their SoliDB type (`document`/`edge`/`blob`) — blob uploads (`doc_files`, `card_attachments`, …) 400'd against collections pre-created as plain documents; type mismatches are detected and repaired (drop + correctly-typed recreate)
 
 * **fix(serve):** WebSocket upgrades work again — the h1/h2c auto-detect change (1cc2a7a, v1.8.3) served connections with hyper's plain `serve_connection`, which never performs the HTTP/1.1 protocol upgrade after a 101: every WebSocket (`/ws/*` routes, LiveView, live reload, presence) died with `[WS] WebSocket handshake error: Handshake not finished` and clients reconnect-looped forever. Now uses `serve_connection_with_upgrades` (h2 streams unaffected); covered by an e2e echo round-trip test
@@ -12,6 +35,8 @@
 
 ### Performance
 
+* **perf(vm):** function and method calls are ~30% faster on call-heavy code — the VmClosure call fast path is inlined in `Op::Call` and compiled-method dispatch (the source span is computed only on the cold arity-error branch instead of every call, and the `call_value` double dispatch is gone); fib(32): 0.72s → 0.51s
+* **perf(datetime):** DateTime/Duration methods that return instances no longer rebuild a full `Class` per result (a dozen allocations + a ~30-entry method-map clone each) — all instances share one `Rc<Class>`; ~25% faster DateTime-heavy code in both engines
 * **perf(test):** per-run test database reset is ~200× faster — collections are truncated (a 1-25ms range delete each, in parallel) instead of dropping + recreating the whole database (~180ms *per collection*, serialized inside SoliDB: 7.3s on a 41-collection app). `SOLI_TEST_FRESH_DB=1` forces the old drop+recreate when a schema-level reset is wanted
 * **perf(test):** new worker DBs pre-create the base DB's collections through one sequential queue *before* specs run, instead of lazily mid-request — a first `--jobs 16` run no longer blows random specs past the 10s timeout while SoliDB serializes hundreds of collection creations. The reset phase now reports per-DB progress (truncate/create counts and timings) instead of running silently
 * **perf(value):** Soli strings now use `SoliStr = ecow::EcoString` in `Value::String`/`Value::Symbol`/`HashKey`/VM constants — strings ≤15 bytes are stored inline (constructing them no longer touches the heap) and longer strings are refcounted with O(1) clone. Passing/reading large strings (rendered partials, request bodies, template data) no longer deep-copies: ~5× faster on a 64KB-string passing benchmark; ~+17% server throughput on realistic browser-header requests

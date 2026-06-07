@@ -43,9 +43,22 @@ impl Compiler {
             self.compile_method(method, line)?;
         }
 
-        // Compile constructor
+        // Compile constructor. Field initializers are baked into the
+        // constructor bytecode, so a class without one but with instance
+        // field defaults gets a synthetic zero-arg init.
         if let Some(ref ctor) = decl.constructor {
             self.compile_constructor(ctor, &decl.fields, line)?;
+        } else if decl
+            .fields
+            .iter()
+            .any(|f| !f.is_static && f.initializer.is_some())
+        {
+            let synthetic = ConstructorDecl {
+                params: Vec::new(),
+                body: Vec::new(),
+                span: decl.span,
+            };
+            self.compile_constructor(&synthetic, &decl.fields, line)?;
         }
 
         // Compile static block

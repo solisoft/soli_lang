@@ -790,6 +790,31 @@ impl TypeEnvironment {
                 is_static: false,
             },
         );
+        // Period-boundary helpers — zero-arg, return a new DateTime.
+        // Keep in sync with `datetime_class.rs` registrations.
+        for name in [
+            "beginning_of_day",
+            "beginning_of_hour",
+            "beginning_of_minute",
+            "beginning_of_month",
+            "beginning_of_year",
+            "end_of_day",
+            "end_of_hour",
+            "end_of_minute",
+            "end_of_month",
+            "end_of_year",
+        ] {
+            datetime_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: vec![],
+                    return_type: Type::Class(ClassType::new("DateTime".to_string())),
+                    is_private: false,
+                    is_static: false,
+                },
+            );
+        }
         self.classes.insert("DateTime".to_string(), datetime_class);
 
         // Duration class
@@ -959,6 +984,16 @@ impl TypeEnvironment {
             "to_string".to_string(),
             MethodInfo {
                 name: "to_string".to_string(),
+                params: vec![],
+                return_type: Type::String,
+                is_private: false,
+                is_static: false,
+            },
+        );
+        duration_class.methods.insert(
+            "humanize".to_string(),
+            MethodInfo {
+                name: "humanize".to_string(),
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,

@@ -249,6 +249,14 @@ pub enum RuntimeError {
     #[error("Cannot instantiate '{0}' at {1}")]
     NotAClass(String, Span),
 
+    /// The VM deliberately refuses this operation so the serve-mode
+    /// interpreter fallback handles it (e.g. Model instance mutators, whose
+    /// lifecycle callbacks only fire in the tree-walker). NOT routed through
+    /// `try`/`rescue` handlers — a user-level catch must never swallow it,
+    /// or the fallback (and the callbacks) would be skipped.
+    #[error("{0} requires the interpreter at {1}")]
+    EngineFallback(String, Span),
+
     #[error("{message} at {span}")]
     General { message: String, span: Span },
 
@@ -358,6 +366,7 @@ impl RuntimeError {
             Self::IndexOutOfBounds { span, .. } => *span,
             Self::NoSuchProperty { span, .. } => *span,
             Self::NotAClass(_, span) => *span,
+            Self::EngineFallback(_, span) => *span,
             Self::General { span, .. } => *span,
             Self::Breakpoint { span, .. } => *span,
             Self::WithEnv { span, .. } => *span,
@@ -367,6 +376,12 @@ impl RuntimeError {
     /// Check if this is a breakpoint error.
     pub fn is_breakpoint(&self) -> bool {
         matches!(self, Self::Breakpoint { .. })
+    }
+
+    /// True when the VM deliberately punted this operation to the
+    /// tree-walking interpreter. Must bypass `try`/`rescue` routing.
+    pub fn is_engine_fallback(&self) -> bool {
+        matches!(self, Self::EngineFallback(..))
     }
 
     /// Get the environment JSON from a breakpoint or WithEnv error.

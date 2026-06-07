@@ -405,6 +405,22 @@ impl Value {
         None
     }
 
+    /// Whether calling this value with `()` can dispatch somewhere — i.e.
+    /// it is a function-like value rather than plain data. Used by both
+    /// engines to treat `obj.m()` like `obj.m` when the member access
+    /// already evaluated to a plain value (zero-arg builtins on primitives).
+    pub fn is_callable(&self) -> bool {
+        matches!(
+            self,
+            Value::Function(_)
+                | Value::NativeFunction(_)
+                | Value::Class(_)
+                | Value::Method(_)
+                | Value::VmClosure(_)
+                | Value::Super(_)
+        )
+    }
+
     pub fn type_name(&self) -> String {
         match self {
             Value::Int(_) => "int".to_string(),
@@ -1071,6 +1087,14 @@ pub struct Class {
     /// to the per-type user-method overlay rather than `methods`, since primitive
     /// dispatch in `member.rs` and the VM does not consult `Class.methods`.
     pub primitive: Option<PrimType>,
+    /// Bytecode instance methods, registered by `Op::Method` when a class is
+    /// compiled in the VM (`compile_class_decl`). The constructor lands here
+    /// under the name `"init"` (it returns `this`). `Rc` so the per-method
+    /// class rebuilds in `op_add_method` share one map.
+    pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>>>>,
+    /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
+    /// as plain functions (no `this` slot).
+    pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>>>>,
 }
 
 impl Default for Class {
@@ -1091,6 +1115,8 @@ impl Default for Class {
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
+            vm_methods: Rc::new(RefCell::new(HashMap::new())),
+            vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 }
@@ -1126,7 +1152,48 @@ impl Class {
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
+            vm_methods: Rc::new(RefCell::new(HashMap::new())),
+            vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
         }
+    }
+
+    /// Find a bytecode instance method in this class or its superclass chain.
+    pub fn find_vm_method(&self, name: &str) -> Option<Rc<VmClosure>> {
+        if let Some(closure) = self.vm_methods.borrow().get(name) {
+            return Some(closure.clone());
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_vm_method(name))
+    }
+
+    /// Like `find_vm_method`, but also returns the class that defines the
+    /// method — the VM stores it on the call frame so `super` inside the
+    /// method resolves against the *defining* class's superclass (not the
+    /// instance's class, which would loop on multi-level hierarchies).
+    pub fn find_vm_method_with_class(
+        self: &Rc<Self>,
+        name: &str,
+    ) -> Option<(Rc<VmClosure>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.vm_methods.borrow().get(name).cloned();
+            if let Some(closure) = found {
+                return Some((closure, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// Find a bytecode static method in this class or its superclass chain.
+    pub fn find_vm_static_method(&self, name: &str) -> Option<Rc<VmClosure>> {
+        if let Some(closure) = self.vm_static_methods.borrow().get(name) {
+            return Some(closure.clone());
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_vm_static_method(name))
     }
 
     /// Find a constructor in this class or its superclass chain.

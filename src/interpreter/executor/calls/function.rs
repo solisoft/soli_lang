@@ -150,6 +150,21 @@ impl Interpreter {
             return Ok(Value::Null);
         }
 
+        // `n.abs()` / `x.to_f()` — explicit empty parens on a member whose
+        // access already evaluated to a plain value (primitive zero-arg
+        // builtins return their result directly). Treat the parens form
+        // like the bare form, Ruby-style, instead of "cannot call
+        // non-function value". Only member callees: `5()` stays an error.
+        if arguments.is_empty()
+            && matches!(
+                callee.kind,
+                ExprKind::Member { .. } | ExprKind::SafeMember { .. }
+            )
+            && !callee_val.is_callable()
+        {
+            return Ok(callee_val);
+        }
+
         // Common fast path: all-positional arguments (no named, no block),
         // and the callee is a value `call_value` can dispatch (Function,
         // NativeFunction, Class, Method). Value::Super is specifically
@@ -1367,6 +1382,7 @@ impl Interpreter {
             Value::Class(class) => {
                 // Class instantiation
                 let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                self.initialize_instance_fields(&class, &instance)?;
 
                 if let Some(ref ctor) = class.constructor {
                     let required_arity = ctor.arity();
@@ -1641,6 +1657,7 @@ impl Interpreter {
 
             Value::Class(class) => {
                 let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                self.initialize_instance_fields(&class, &instance)?;
 
                 if let Some(ref ctor) = class.constructor {
                     let required_arity = ctor.arity();

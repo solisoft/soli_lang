@@ -13,6 +13,31 @@ use super::i18n::helpers::{get_locale as i18n_get_locale, interpolate, lookup_tr
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
 
+thread_local! {
+    /// Complete instance classes for DateTime/Duration values, filled at
+    /// the end of `register_datetime_and_duration_classes`. Methods that
+    /// construct result instances read these at call time, so chained
+    /// results always carry the full method map — snapshot clones of the
+    /// half-built map used to drop later-registered methods (e.g.
+    /// `dt.add_days(3).format(...)` failed because `format` was missing
+    /// from `add_days`'s captured map). Sharing one `Rc<Class>` also
+    /// avoids rebuilding a Class per returned instance.
+    static DATETIME_INSTANCE_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
+    static DURATION_INSTANCE_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
+}
+
+fn datetime_instance_class() -> Result<Rc<Class>, String> {
+    DATETIME_INSTANCE_CLASS
+        .with(|c| c.borrow().clone())
+        .ok_or_else(|| "DateTime class not registered on this thread".to_string())
+}
+
+fn duration_instance_class() -> Result<Rc<Class>, String> {
+    DURATION_INSTANCE_CLASS
+        .with(|c| c.borrow().clone())
+        .ok_or_else(|| "Duration class not registered on this thread".to_string())
+}
+
 fn weekday_name(wday: chrono::Weekday) -> String {
     match wday {
         chrono::Weekday::Mon => "Monday",
@@ -552,17 +577,11 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // Clone for use in instance methods that create new DateTime instances
-    let dt_methods_for_add_days = dt_native_methods.clone();
-    let dt_methods_for_add_hours = dt_native_methods.clone();
-    let dt_methods_for_add_minutes = dt_native_methods.clone();
-    let dt_methods_for_subtract_days = dt_native_methods.clone();
-    let dt_methods_for_format = dt_native_methods.clone();
 
     // Add instance methods that create new DateTime instances
     dt_native_methods.insert(
         "add_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_days", Some(1), {
-            let methods = dt_methods_for_add_days;
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -577,19 +596,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 match ts {
                     Some(Value::Int(t)) => {
                         let new_ts = t + days * 86400 * 1_000_000_000;
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -602,7 +609,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "add_hours".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_hours", Some(1), {
-            let methods = dt_methods_for_add_hours;
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -617,19 +623,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 match ts {
                     Some(Value::Int(t)) => {
                         let new_ts = t + hours * 3600 * 1_000_000_000;
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -642,7 +636,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "add_minutes".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_minutes", Some(1), {
-            let methods = dt_methods_for_add_minutes;
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -657,19 +650,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 match ts {
                     Some(Value::Int(t)) => {
                         let new_ts = t + minutes * 60 * 1_000_000_000;
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -682,7 +663,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "subtract_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.subtract_days", Some(1), {
-            let methods = dt_methods_for_subtract_days;
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -697,19 +677,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 match ts {
                     Some(Value::Int(t)) => {
                         let new_ts = t - days * 86400 * 1_000_000_000;
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -722,7 +690,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "format".to_string(),
         Rc::new(NativeFunction::new("DateTime.format", None, {
-            let _methods = dt_methods_for_format;
             move |args| {
                 // args: [this, format_string] or [this, format_string, locale]
                 if args.len() < 2 || args.len() > 3 {
@@ -772,7 +739,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // Clone for boundary instance methods
-    let dt_methods_for_boundaries = dt_native_methods.clone();
 
     dt_native_methods.insert(
         "beginning_of_minute".to_string(),
@@ -780,7 +746,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.beginning_of_minute",
             Some(0),
             {
-                let methods = dt_methods_for_boundaries.clone();
                 move |args| {
                     let this = match args.first() {
                         Some(Value::Instance(inst)) => inst,
@@ -806,19 +771,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                     "Failed to compute beginning_of_minute".to_string()
                                 })?;
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            let mut inst = Instance::new(Rc::new(Class {
-                                name: "DateTime".to_string(),
-                                superclass: None,
-                                methods: Rc::new(RefCell::new(HashMap::new())),
-                                static_methods: HashMap::new(),
-                                native_static_methods: HashMap::new(),
-                                native_methods: methods.clone(),
-                                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                                fields: HashMap::new(),
-                                constructor: None,
-                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                                ..Default::default()
-                            }));
+                            let mut inst = Instance::new(datetime_instance_class()?);
                             inst.set("_ts".to_string(), Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
@@ -832,7 +785,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "end_of_minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_minute", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -852,19 +804,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .and_then(|d| d.with_nanosecond(999_000_000))
                             .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -880,7 +820,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.beginning_of_hour",
             Some(0),
             {
-                let methods = dt_methods_for_boundaries.clone();
                 move |args| {
                     let this = match args.first() {
                         Some(Value::Instance(inst)) => inst,
@@ -905,19 +844,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                 .and_then(|d| d.with_nanosecond(0))
                                 .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            let mut inst = Instance::new(Rc::new(Class {
-                                name: "DateTime".to_string(),
-                                superclass: None,
-                                methods: Rc::new(RefCell::new(HashMap::new())),
-                                static_methods: HashMap::new(),
-                                native_static_methods: HashMap::new(),
-                                native_methods: methods.clone(),
-                                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                                fields: HashMap::new(),
-                                constructor: None,
-                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                                ..Default::default()
-                            }));
+                            let mut inst = Instance::new(datetime_instance_class()?);
                             inst.set("_ts".to_string(), Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
@@ -931,7 +858,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "end_of_hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_hour", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -952,19 +878,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .and_then(|d| d.with_nanosecond(999_000_000))
                             .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -977,7 +891,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "beginning_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.beginning_of_day", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -1001,19 +914,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .and_then(|d| d.with_nanosecond(0))
                             .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -1026,7 +927,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "end_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_day", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -1048,19 +948,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .and_then(|d| d.with_nanosecond(999_000_000))
                             .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -1076,7 +964,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.beginning_of_month",
             Some(0),
             {
-                let methods = dt_methods_for_boundaries.clone();
                 move |args| {
                     let this = match args.first() {
                         Some(Value::Instance(inst)) => inst,
@@ -1103,19 +990,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                 })?;
                             let boundary = Local.from_local_datetime(&naive).unwrap();
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            let mut inst = Instance::new(Rc::new(Class {
-                                name: "DateTime".to_string(),
-                                superclass: None,
-                                methods: Rc::new(RefCell::new(HashMap::new())),
-                                static_methods: HashMap::new(),
-                                native_static_methods: HashMap::new(),
-                                native_methods: methods.clone(),
-                                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                                fields: HashMap::new(),
-                                constructor: None,
-                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                                ..Default::default()
-                            }));
+                            let mut inst = Instance::new(datetime_instance_class()?);
                             inst.set("_ts".to_string(), Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
@@ -1129,7 +1004,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "end_of_month".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_month", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -1157,19 +1031,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute end_of_month".to_string())?;
                         let boundary = Local.from_local_datetime(&naive).unwrap();
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -1185,7 +1047,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.beginning_of_year",
             Some(0),
             {
-                let methods = dt_methods_for_boundaries.clone();
                 move |args| {
                     let this = match args.first() {
                         Some(Value::Instance(inst)) => inst,
@@ -1210,19 +1071,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                                 .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?;
                             let boundary = Local.from_local_datetime(&naive).unwrap();
                             let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                            let mut inst = Instance::new(Rc::new(Class {
-                                name: "DateTime".to_string(),
-                                superclass: None,
-                                methods: Rc::new(RefCell::new(HashMap::new())),
-                                static_methods: HashMap::new(),
-                                native_static_methods: HashMap::new(),
-                                native_methods: methods.clone(),
-                                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                                fields: HashMap::new(),
-                                constructor: None,
-                                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                                ..Default::default()
-                            }));
+                            let mut inst = Instance::new(datetime_instance_class()?);
                             inst.set("_ts".to_string(), Value::Int(new_ts));
                             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                         }
@@ -1236,7 +1085,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "end_of_year".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_year", Some(0), {
-            let methods = dt_methods_for_boundaries.clone();
             move |args| {
                 let this = match args.first() {
                     Some(Value::Instance(inst)) => inst,
@@ -1259,19 +1107,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                             .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
                         let boundary = Local.from_local_datetime(&naive).unwrap();
                         let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-                        let mut inst = Instance::new(Rc::new(Class {
-                            name: "DateTime".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: methods.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
+                        let mut inst = Instance::new(datetime_instance_class()?);
                         inst.set("_ts".to_string(), Value::Int(new_ts));
                         Ok(Value::Instance(Rc::new(RefCell::new(inst))))
                     }
@@ -1282,17 +1118,6 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // Clone for use in static methods
-    let dt_methods_for_now = dt_native_methods.clone();
-    let dt_methods_for_utc = dt_native_methods.clone();
-    let dt_methods_for_parse = dt_native_methods.clone();
-    let dt_methods_for_epoch = dt_native_methods.clone();
-    let dt_methods_for_from_unix = dt_native_methods.clone();
-    let dur_methods_for_between = dur_native_methods.clone();
-    let dur_methods_for_seconds = dur_native_methods.clone();
-    let dur_methods_for_minutes = dur_native_methods.clone();
-    let dur_methods_for_hours = dur_native_methods.clone();
-    let dur_methods_for_days = dur_native_methods.clone();
-    let dur_methods_for_weeks = dur_native_methods.clone();
 
     // Create DateTime static methods
     let mut dt_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
@@ -1302,19 +1127,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "now".to_string(),
         Rc::new(NativeFunction::new("DateTime.now", Some(0), move |_args| {
             let now = Local::now();
-            let mut inst = Instance::new(Rc::new(Class {
-                name: "DateTime".to_string(),
-                superclass: None,
-                methods: Rc::new(RefCell::new(HashMap::new())),
-                static_methods: HashMap::new(),
-                native_static_methods: HashMap::new(),
-                native_methods: dt_methods_for_now.clone(),
-                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                fields: HashMap::new(),
-                constructor: None,
-                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                ..Default::default()
-            }));
+            let mut inst = Instance::new(datetime_instance_class()?);
             inst.set(
                 "_ts".to_string(),
                 Value::Int(now.timestamp() * 1_000_000_000),
@@ -1327,19 +1140,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "utc".to_string(),
         Rc::new(NativeFunction::new("DateTime.utc", Some(0), move |_args| {
             let now = chrono::Utc::now();
-            let mut inst = Instance::new(Rc::new(Class {
-                name: "DateTime".to_string(),
-                superclass: None,
-                methods: Rc::new(RefCell::new(HashMap::new())),
-                static_methods: HashMap::new(),
-                native_static_methods: HashMap::new(),
-                native_methods: dt_methods_for_utc.clone(),
-                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                fields: HashMap::new(),
-                constructor: None,
-                nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                ..Default::default()
-            }));
+            let mut inst = Instance::new(datetime_instance_class()?);
             inst.set(
                 "_ts".to_string(),
                 Value::Int(now.timestamp_nanos_opt().unwrap_or(0)),
@@ -1359,19 +1160,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     _ => return Err("DateTime.parse() requires string".to_string()),
                 };
                 let timestamp = parse_datetime_string(&s)?;
-                let mut inst = Instance::new(Rc::new(Class {
-                    name: "DateTime".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: dt_methods_for_parse.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut inst = Instance::new(datetime_instance_class()?);
                 inst.set("_ts".to_string(), Value::Int(timestamp));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             },
@@ -1403,19 +1192,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.epoch",
             Some(0),
             move |_args| {
-                let mut inst = Instance::new(Rc::new(Class {
-                    name: "DateTime".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: dt_methods_for_epoch.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut inst = Instance::new(datetime_instance_class()?);
                 inst.set("_ts".to_string(), Value::Int(0));
                 Ok(Value::Instance(Rc::new(RefCell::new(inst))))
             },
@@ -1434,26 +1211,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             // Use checked multiplication to avoid overflow
             let ts_nanos = ts.checked_mul(1_000_000_000)
                 .ok_or_else(|| "DateTime.from_unix(): timestamp overflow (value too large, expected seconds not milliseconds)".to_string())?;
-            let mut inst = Instance::new(Rc::new(Class {
-                name: "DateTime".to_string(),
-                superclass: None,
-                methods: Rc::new(RefCell::new(HashMap::new())),
-                static_methods: HashMap::new(),
-                native_static_methods: HashMap::new(),
-                native_methods: dt_methods_for_from_unix.clone(),
-                static_fields: Rc::new(RefCell::new(HashMap::new())),
-                fields: HashMap::new(),
-                constructor: None,
-        nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                ..Default::default()
-            }));
+            let mut inst = Instance::new(datetime_instance_class()?);
             inst.set("_ts".to_string(), Value::Int(ts_nanos));
             Ok(Value::Instance(Rc::new(RefCell::new(inst))))
         })),
     );
 
     // Create DateTime class
-    let date_time_class = Class {
+    let date_time_class = Rc::new(Class {
         name: "DateTime".to_string(),
         superclass: None,
         methods: Rc::new(RefCell::new(HashMap::new())),
@@ -1465,11 +1230,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
         ..Default::default()
-    };
-    env.define(
-        "DateTime".to_string(),
-        Value::Class(Rc::new(date_time_class)),
-    );
+    });
+    // Every DateTime instance — including results of chained calls like
+    // `dt.add_days(3)` — shares this complete class via the thread-local.
+    DATETIME_INSTANCE_CLASS.with(|c| {
+        *c.borrow_mut() = Some(date_time_class.clone());
+    });
+    env.define("DateTime".to_string(), Value::Class(date_time_class));
 
     // Create Duration static methods
     let mut dur_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
@@ -1492,20 +1259,12 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let ts2 = dt2.borrow().fields.get("_ts").cloned();
                 match (ts1, ts2) {
                     (Some(Value::Int(t1)), Some(Value::Int(t2))) => {
-                        let mut dur = Instance::new(Rc::new(Class {
-                            name: "Duration".to_string(),
-                            superclass: None,
-                            methods: Rc::new(RefCell::new(HashMap::new())),
-                            static_methods: HashMap::new(),
-                            native_static_methods: HashMap::new(),
-                            native_methods: dur_methods_for_between.clone(),
-                            static_fields: Rc::new(RefCell::new(HashMap::new())),
-                            fields: HashMap::new(),
-                            constructor: None,
-                            nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                            ..Default::default()
-                        }));
-                        dur.set("seconds".to_string(), Value::Float((t2 - t1) as f64));
+                        let mut dur = Instance::new(duration_instance_class()?);
+                        // `_ts` is in nanoseconds; Duration stores seconds.
+                        dur.set(
+                            "seconds".to_string(),
+                            Value::Float((t2 - t1) as f64 / 1_000_000_000.0),
+                        );
                         Ok(Value::Instance(Rc::new(RefCell::new(dur))))
                     }
                     _ => Err("DateTime missing internal timestamp".to_string()),
@@ -1518,26 +1277,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "of_seconds".to_string(),
         Rc::new(NativeFunction::new("Duration.of_seconds", Some(1), {
-            let methods = dur_methods_for_seconds.clone();
             move |args| {
                 let s = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.of_seconds() requires number".to_string()),
                 };
-                let mut dur = Instance::new(Rc::new(Class {
-                    name: "Duration".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: methods.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut dur = Instance::new(duration_instance_class()?);
                 dur.set("seconds".to_string(), Value::Float(s));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
@@ -1548,26 +1294,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "of_minutes".to_string(),
         Rc::new(NativeFunction::new("Duration.of_minutes", Some(1), {
-            let methods = dur_methods_for_minutes.clone();
             move |args| {
                 let m = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.of_minutes() requires number".to_string()),
                 };
-                let mut dur = Instance::new(Rc::new(Class {
-                    name: "Duration".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: methods.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut dur = Instance::new(duration_instance_class()?);
                 dur.set("seconds".to_string(), Value::Float(m * 60.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
@@ -1578,26 +1311,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "of_hours".to_string(),
         Rc::new(NativeFunction::new("Duration.of_hours", Some(1), {
-            let methods = dur_methods_for_hours.clone();
             move |args| {
                 let h = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.of_hours() requires number".to_string()),
                 };
-                let mut dur = Instance::new(Rc::new(Class {
-                    name: "Duration".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: methods.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut dur = Instance::new(duration_instance_class()?);
                 dur.set("seconds".to_string(), Value::Float(h * 3600.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
@@ -1608,26 +1328,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "of_days".to_string(),
         Rc::new(NativeFunction::new("Duration.of_days", Some(1), {
-            let methods = dur_methods_for_days.clone();
             move |args| {
                 let d = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.of_days() requires number".to_string()),
                 };
-                let mut dur = Instance::new(Rc::new(Class {
-                    name: "Duration".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: methods.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut dur = Instance::new(duration_instance_class()?);
                 dur.set("seconds".to_string(), Value::Float(d * 86400.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
@@ -1638,26 +1345,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dur_static_methods.insert(
         "of_weeks".to_string(),
         Rc::new(NativeFunction::new("Duration.of_weeks", Some(1), {
-            let methods = dur_methods_for_weeks.clone();
             move |args| {
                 let w = match args.first() {
                     Some(Value::Float(f)) => *f,
                     Some(Value::Int(i)) => *i as f64,
                     _ => return Err("Duration.of_weeks() requires number".to_string()),
                 };
-                let mut dur = Instance::new(Rc::new(Class {
-                    name: "Duration".to_string(),
-                    superclass: None,
-                    methods: Rc::new(RefCell::new(HashMap::new())),
-                    static_methods: HashMap::new(),
-                    native_static_methods: HashMap::new(),
-                    native_methods: methods.clone(),
-                    static_fields: Rc::new(RefCell::new(HashMap::new())),
-                    fields: HashMap::new(),
-                    constructor: None,
-                    nested_classes: Rc::new(RefCell::new(HashMap::new())),
-                    ..Default::default()
-                }));
+                let mut dur = Instance::new(duration_instance_class()?);
                 dur.set("seconds".to_string(), Value::Float(w * 86400.0 * 7.0));
                 Ok(Value::Instance(Rc::new(RefCell::new(dur))))
             }
@@ -1687,21 +1381,23 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // Create Duration class
-    let duration_class = Class {
+    let duration_class = Rc::new(Class {
         name: "Duration".to_string(),
         superclass: None,
         methods: Rc::new(RefCell::new(HashMap::new())),
         static_methods: HashMap::new(),
         native_static_methods: dur_static_methods,
-        native_methods: HashMap::new(),
+        native_methods: dur_native_methods,
         static_fields: Rc::new(RefCell::new(HashMap::new())),
         fields: HashMap::new(),
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
         ..Default::default()
-    };
-    env.define(
-        "Duration".to_string(),
-        Value::Class(Rc::new(duration_class)),
-    );
+    });
+    // Every Duration instance shares this complete class via the
+    // thread-local — same scheme as DateTime above.
+    DURATION_INSTANCE_CLASS.with(|c| {
+        *c.borrow_mut() = Some(duration_class.clone());
+    });
+    env.define("Duration".to_string(), Value::Class(duration_class));
 }
