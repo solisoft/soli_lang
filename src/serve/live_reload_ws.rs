@@ -185,9 +185,15 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             }
         }
 
-        // Remove extra old nodes
+        // Remove extra old nodes — but never Alpine-managed trees hanging off
+        // <body> (x-teleport clones live there; the fresh server HTML doesn't
+        // contain them, so a naive removal kills every teleported modal).
         while (oldParent.childNodes.length > newNodes.length) {
-            oldParent.removeChild(oldParent.lastChild);
+            var last = oldParent.lastChild;
+            if (oldParent === document.body && last.nodeType === 1 && last._x_dataStack) {
+                break;
+            }
+            oldParent.removeChild(last);
         }
     }
 
@@ -217,9 +223,13 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
     }
 
     function morphAttributes(oldEl, newEl) {
-        // Remove old attributes not in new
+        // Remove old attributes not in new. `style` is exempt: Alpine's
+        // x-show stores its hidden state as an inline display:none — wiping
+        // it pops every closed modal/overlay open on reload (the component is
+        // already initialized, so x-show never re-evaluates to re-hide it).
         var oldAttrs = Array.from(oldEl.attributes);
         for (var i = 0; i < oldAttrs.length; i++) {
+            if (oldAttrs[i].name === 'style') continue;
             if (!newEl.hasAttribute(oldAttrs[i].name)) {
                 oldEl.removeAttribute(oldAttrs[i].name);
             }
@@ -262,6 +272,16 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             return response.text();
         })
         .then(function(html) {
+            // Pages with Alpine teleports can't be morphed safely: the
+            // teleported clones at the end of <body> and their <template>
+            // sources fall out of sync (the live clone keeps the old scope,
+            // the morphed template re-teleports a dead one). A full reload is
+            // always correct, and [x-cloak] prevents any modal flash.
+            if (document.querySelector('template[x-teleport]')) {
+                window.location.reload();
+                return;
+            }
+
             // Parse the new HTML
             var parser = new DOMParser();
             var newDoc = parser.parseFromString(html, 'text/html');
