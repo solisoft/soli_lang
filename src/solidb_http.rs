@@ -942,7 +942,7 @@ impl SoliDBClient {
         let db = self.get_db()?;
         let payload = serde_json::json!({
             "name": name,
-            "schedule": expr,
+            "cron_expression": expr,
             "handler": handler,
             "args": args,
             "callback_url": callback_url,

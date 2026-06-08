@@ -503,7 +503,7 @@ fn cron_schedule(args: Vec<Value>) -> Result<Value, String> {
     let id = match existing_id {
         Some(id) => {
             let fields = serde_json::json!({
-                "schedule": expr,
+                "cron_expression": expr,
                 "handler": handler,
                 "args": payload,
                 "callback_url": callback,
