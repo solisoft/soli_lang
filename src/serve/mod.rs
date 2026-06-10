@@ -3472,20 +3472,30 @@ fn handle_websocket_event(
                 });
             }
 
-            // Process broadcast_room action
+            // Process broadcast_room action: fan the payload out to everyone in
+            // the connection's most-recently-joined room (sender included — the
+            // client filters its own echo). When the SAME return also carries a
+            // `join`, that channel is the most recent one and we use it directly
+            // (the async join above may not have landed in the registry yet);
+            // otherwise we look up the connection's current rooms. Previously
+            // this only fired when `join` was present in the same return, so a
+            // bare `{ "broadcast_room": ... }` (e.g. a move frame after the
+            // initial join) was silently dropped.
             if let Some(ref msg) = action.broadcast_room {
-                // broadcast_room expects format "channel:message" or just message to all joined channels
-                // For simplicity, we'll broadcast to all channels this connection has joined
-                if let Some(ref join_channel) = action.join {
-                    let registry_clone = registry.clone();
-                    let channel_clone = join_channel.clone();
-                    let msg_clone = msg.clone();
-                    runtime_handle.spawn(async move {
+                let registry_clone = registry.clone();
+                let msg_clone = msg.clone();
+                let join_channel = action.join.clone();
+                runtime_handle.spawn(async move {
+                    let target = match join_channel {
+                        Some(channel) => Some(channel),
+                        None => registry_clone.most_recent_channel(&connection_id).await,
+                    };
+                    if let Some(channel) = target {
                         registry_clone
-                            .broadcast_to_channel(&channel_clone, &msg_clone)
+                            .broadcast_to_channel(&channel, &msg_clone)
                             .await;
-                    });
-                }
+                    }
+                });
             }
 
             // Process close action

@@ -191,6 +191,19 @@ impl WebSocketRegistry {
         }
     }
 
+    /// The channel a connection most recently joined, if any.
+    ///
+    /// `channels` is pushed in join order (see `join_channel`), so the last
+    /// element is the most-recently-joined room. Used by the `broadcast_room`
+    /// handler action to fan a frame out to "the connection's most recently
+    /// joined room" without the handler having to name the channel.
+    pub async fn most_recent_channel(&self, connection_id: &Uuid) -> Option<String> {
+        let connections = self.connections.lock().await;
+        connections
+            .get(connection_id)
+            .and_then(|conn| conn.channels.last().cloned())
+    }
+
     /// Join a connection to a channel.
     pub async fn join_channel(&self, connection_id: &Uuid, channel: &str) {
         let mut connections = self.connections.lock().await;
@@ -1113,6 +1126,63 @@ mod tests {
         assert_eq!(registry.get_channel_ids("room:lobby").await.len(), 1);
         assert_eq!(registry.get_channel_ids("room:general").await.len(), 1);
         assert_eq!(registry.get_channel_ids("room:private").await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_most_recent_channel_tracks_join_order() {
+        let registry = WebSocketRegistry::new();
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        let conn = WebSocketConnection::new(Arc::new(tx));
+        let conn_id = conn.id;
+        registry.register(conn).await;
+
+        // No rooms yet.
+        assert_eq!(registry.most_recent_channel(&conn_id).await, None);
+
+        // Most-recent follows join order (last wins).
+        registry.join_channel(&conn_id, "gather:c1").await;
+        assert_eq!(
+            registry.most_recent_channel(&conn_id).await,
+            Some("gather:c1".to_string())
+        );
+        registry.join_channel(&conn_id, "user:u1").await;
+        assert_eq!(
+            registry.most_recent_channel(&conn_id).await,
+            Some("user:u1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_room_reaches_peer_in_same_room() {
+        // Regression: a bare `{ "broadcast_room": ... }` (move frame, no `join`)
+        // must reach every OTHER connection in the room. The dispatch resolves
+        // the target via most_recent_channel + broadcast_to_channel; this proves
+        // a peer actually receives the frame.
+        let registry = WebSocketRegistry::new();
+        let (tx_a, _rx_a) = tokio::sync::mpsc::channel(8);
+        let (tx_b, mut rx_b) = tokio::sync::mpsc::channel(8);
+        let conn_a = WebSocketConnection::new(Arc::new(tx_a));
+        let conn_b = WebSocketConnection::new(Arc::new(tx_b));
+        let id_a = conn_a.id;
+        let id_b = conn_b.id;
+        registry.register(conn_a).await;
+        registry.register(conn_b).await;
+        registry.join_channel(&id_a, "gather:c1").await;
+        registry.join_channel(&id_b, "gather:c1").await;
+
+        // A sends a move frame: resolve A's room, then fan out to it.
+        let room = registry.most_recent_channel(&id_a).await.unwrap();
+        assert_eq!(room, "gather:c1");
+        registry
+            .broadcast_to_channel(&room, r#"{"kind":"gather-move","from":"a"}"#)
+            .await;
+
+        // B receives it.
+        let got = rx_b.try_recv().expect("peer should receive the move frame");
+        match got.unwrap() {
+            Message::Text(t) => assert!(t.contains("gather-move")),
+            other => panic!("unexpected frame: {other:?}"),
+        }
     }
 
     #[tokio::test]
