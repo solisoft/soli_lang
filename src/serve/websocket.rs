@@ -645,6 +645,12 @@ pub struct WebSocketHandlerAction {
     pub broadcast: Option<String>,
     /// Broadcast to a channel
     pub broadcast_room: Option<String>,
+    /// Broadcast to an explicitly named channel: (channel, message).
+    /// Unlike `broadcast_room` (the connection's most-recently-joined room),
+    /// this addresses ANY channel in the registry — e.g. a per-user channel
+    /// joined on a different socket path. Handler form:
+    /// `{ "broadcast_channel": { "channel": "user:42", "message": <payload> } }`
+    pub broadcast_channel: Option<(String, String)>,
     /// Close the connection
     pub close: Option<String>,
     /// Track presence: {channel, user_id, ...extra meta}
@@ -670,6 +676,7 @@ impl WebSocketHandlerAction {
             send: None,
             broadcast: None,
             broadcast_room: None,
+            broadcast_channel: None,
             close: None,
             track: None,
             untrack: None,
@@ -703,6 +710,24 @@ impl WebSocketHandlerAction {
                         }
                         "broadcast_room" => {
                             action.broadcast_room = action_payload_to_string(v);
+                        }
+                        "broadcast_channel" => {
+                            // { "channel": "...", "message": <string|hash> }
+                            if let Value::Hash(bc) = v {
+                                let bc = bc.borrow();
+                                let channel = bc.get(&HashKey::String("channel".into())).and_then(
+                                    |c| match c {
+                                        Value::String(s) => Some(s.to_string()),
+                                        _ => None,
+                                    },
+                                );
+                                let message = bc
+                                    .get(&HashKey::String("message".into()))
+                                    .and_then(action_payload_to_string);
+                                if let (Some(channel), Some(message)) = (channel, message) {
+                                    action.broadcast_channel = Some((channel, message));
+                                }
+                            }
                         }
                         "close" => {
                             if let Value::String(s) = v {
@@ -1126,6 +1151,32 @@ mod tests {
         assert_eq!(registry.get_channel_ids("room:lobby").await.len(), 1);
         assert_eq!(registry.get_channel_ids("room:general").await.len(), 1);
         assert_eq!(registry.get_channel_ids("room:private").await.len(), 1);
+    }
+
+    #[test]
+    fn test_handler_action_from_value_broadcast_channel() {
+        let mut inner: HashPairs = HashPairs::default();
+        inner.insert(
+            HashKey::String("channel".into()),
+            Value::String("user:42".to_string().into()),
+        );
+        inner.insert(
+            HashKey::String("message".into()),
+            Value::String(r#"{"kind":"rtc-signal"}"#.to_string().into()),
+        );
+        let mut outer: HashPairs = HashPairs::default();
+        outer.insert(
+            HashKey::String("broadcast_channel".into()),
+            Value::Hash(Rc::new(RefCell::new(inner))),
+        );
+        let action = WebSocketHandlerAction::from_value(&Value::Hash(Rc::new(RefCell::new(outer))));
+        assert_eq!(
+            action.broadcast_channel,
+            Some((
+                "user:42".to_string(),
+                r#"{"kind":"rtc-signal"}"#.to_string()
+            ))
+        );
     }
 
     #[tokio::test]

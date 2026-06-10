@@ -3498,6 +3498,21 @@ fn handle_websocket_event(
                 });
             }
 
+            // Process broadcast_channel action: deliver to an explicitly named
+            // channel. The registry's channels are server-wide, so a handler on
+            // one socket path can address a room joined on another (e.g. a
+            // per-user channel on the shared app socket).
+            if let Some((ref channel, ref msg)) = action.broadcast_channel {
+                let registry_clone = registry.clone();
+                let channel_clone = channel.clone();
+                let msg_clone = msg.clone();
+                runtime_handle.spawn(async move {
+                    registry_clone
+                        .broadcast_to_channel(&channel_clone, &msg_clone)
+                        .await;
+                });
+            }
+
             // Process close action
             if let Some(ref reason) = action.close {
                 let registry_clone = registry.clone();
