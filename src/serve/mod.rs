@@ -743,7 +743,8 @@ fn run_hyper_server_worker_pool(
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     let shutdown_flag_for_tokio = shutdown_flag.clone();
 
-    // Per-worker queues eliminate receiver contention
+    // Single shared queue drained by all workers: any free worker pulls the
+    // next request, so a request is never stranded behind a busy worker.
     let worker_queues = Arc::new(WorkerQueues::new(num_workers, capacity_per_worker));
     let worker_queues_for_tokio = worker_queues.clone();
 
@@ -1295,8 +1296,40 @@ fn run_hyper_server_worker_pool(
     // Must be after .env loading and DB config init.
     crate::interpreter::builtins::model::core::init_jwt_token();
 
+    // Partition the pool into HTTP and realtime (WS/LiveView) workers so a
+    // burst of realtime events can't starve HTTP request handling and a slow
+    // HTTP handler can't delay presence/move broadcasts. `SOLI_WS_WORKERS`
+    // (default 1) reserves that many threads for realtime, clamped so at least
+    // one HTTP worker always remains. With a single total worker the split
+    // collapses (num_rt_workers == 0) and that one worker drains every channel,
+    // preserving the prior single-worker behavior.
+    let requested_rt_workers = std::env::var("SOLI_WS_WORKERS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1);
+    let num_rt_workers = requested_rt_workers.min(num_workers.saturating_sub(1));
+    let num_http_workers = num_workers - num_rt_workers;
+    let split_realtime = num_rt_workers > 0;
+    if split_realtime {
+        println!(
+            "Worker pool: {} HTTP + {} realtime (WS/LiveView)",
+            num_http_workers, num_rt_workers
+        );
+    }
+
     for i in 0..num_workers {
-        // Each worker gets its own dedicated receiver (no contention!)
+        // Role for this worker. When the pool isn't split, every worker drains
+        // all channels (prior behavior). Otherwise the first `num_http_workers`
+        // serve HTTP and the rest serve realtime events exclusively.
+        let (http_enabled, realtime_enabled, role_label) = if !split_realtime {
+            (true, true, "worker")
+        } else if i < num_http_workers {
+            (true, false, "worker")
+        } else {
+            (false, true, "rt-worker")
+        };
+        // Every worker shares the one queue (clones of the same receiver),
+        // competing to pull whichever request is next.
         let work_rx = worker_queues.get_receiver(i);
         let models_dir = models_dir.clone();
         let middleware_dir = middleware_dir.clone();
@@ -1313,7 +1346,7 @@ fn run_hyper_server_worker_pool(
         let routes_file = routes_file.clone();
         let jobs_dir = jobs_dir.clone();
 
-        let builder = thread::Builder::new().name(format!("worker-{}", i));
+        let builder = thread::Builder::new().name(format!("{}-{}", role_label, i));
         let handler = builder.spawn(move || {
             // Set tokio runtime handle for this worker thread (used by HTTP builtins)
             set_tokio_handle(runtime_handle.clone());
@@ -1359,6 +1392,8 @@ fn run_hyper_server_worker_pool(
                         routes_file,
                         dev_mode,
                         jobs_dir,
+                        http_enabled,
+                        realtime_enabled,
                     );
                 }));
 
@@ -1452,6 +1487,11 @@ fn worker_loop(
     routes_file: PathBuf,
     dev_mode: bool,
     jobs_dir: PathBuf,
+    // Pool role. HTTP workers drain `work_rx`; realtime workers drain the
+    // WS/LiveView event channels. When the pool isn't split (single-worker
+    // deployments) both are true and one worker drains everything.
+    http_enabled: bool,
+    realtime_enabled: bool,
 ) {
     // Initialize routes in this worker thread
     set_worker_routes(routes);
@@ -1569,9 +1609,12 @@ fn worker_loop(
         None
     };
 
-    let mut ws_event_rx_inner = Some(ws_event_rx);
-    let ws_registry_inner = Some(ws_registry);
-    let mut lv_event_rx_inner = Some(lv_event_rx);
+    // Realtime workers drain these; HTTP-only workers leave them `None` so the
+    // `if let Some(..)` guards below skip WS/LiveView entirely, and the `select`
+    // never offers them an event channel.
+    let mut ws_event_rx_inner = realtime_enabled.then_some(ws_event_rx);
+    let ws_registry_inner = realtime_enabled.then_some(ws_registry);
+    let mut lv_event_rx_inner = realtime_enabled.then_some(lv_event_rx);
 
     // Track last seen hot reload versions
     let mut last_controllers_version = hot_reload_versions.controllers.load(Ordering::Acquire);
@@ -1762,17 +1805,20 @@ fn worker_loop(
         }
 
         // Batch process HTTP requests using try_recv for non-blocking drain
-        for _ in 0..server_constants::BATCH_SIZE {
-            match work_rx.try_recv() {
-                Ok(mut data) => {
-                    let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
-                    let _ = data.response_tx.send(resp_data);
-                }
-                Err(channel::TryRecvError::Empty) => {
-                    break;
-                }
-                Err(channel::TryRecvError::Disconnected) => {
-                    return;
+        // (HTTP workers only; realtime workers never touch the request queue).
+        if http_enabled {
+            for _ in 0..server_constants::BATCH_SIZE {
+                match work_rx.try_recv() {
+                    Ok(mut data) => {
+                        let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
+                        let _ = data.response_tx.send(resp_data);
+                    }
+                    Err(channel::TryRecvError::Empty) => {
+                        break;
+                    }
+                    Err(channel::TryRecvError::Disconnected) => {
+                        return;
+                    }
                 }
             }
         }
@@ -1782,7 +1828,7 @@ fn worker_loop(
         // on any channel (or timeout fires for dev-mode hot reload checks).
         {
             let mut sel = channel::Select::new();
-            let work_idx = sel.recv(&work_rx);
+            let work_idx = http_enabled.then(|| sel.recv(&work_rx));
             let ws_idx = ws_event_rx_inner
                 .as_ref()
                 .filter(|_| ws_registry_inner.is_some())
@@ -1799,7 +1845,7 @@ fn worker_loop(
 
             if let Ok(oper) = result {
                 let idx = oper.index();
-                if idx == work_idx {
+                if Some(idx) == work_idx {
                     if let Ok(mut data) = oper.recv(&work_rx) {
                         // Check hot reload before handling
                         if dev_mode {

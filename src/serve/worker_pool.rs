@@ -2,12 +2,10 @@
 //!
 //! This module provides worker pool management structures including:
 //! - Hot reload version counters (shared between file watcher and workers)
-//! - Per-worker request queues for lock-free request distribution
-//!
+//! - A single shared request queue drained by all workers
 
 use crossbeam::channel;
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 use crate::serve::RequestData;
 
@@ -47,68 +45,64 @@ impl HotReloadVersions {
     }
 }
 
-/// Per-worker queue for distributing requests without contention.
-/// Each worker has its own dedicated channel, eliminating receiver contention.
+/// A single shared request queue drained by every worker.
+///
+/// crossbeam's bounded channel is multi-producer / multi-consumer: each worker
+/// clones the same receiver and competes to pull the next request. Whichever
+/// worker is free grabs it, so a request is never stranded behind a worker
+/// parked in a slow handler while siblings sit idle.
+///
+/// This replaces an earlier per-worker design (one private channel per worker,
+/// round-robin sends across them). That design avoided receiver contention but
+/// caused head-of-line blocking: a request was committed to worker
+/// `counter % N` at enqueue time regardless of whether that worker was busy, so
+/// it could wait seconds in a busy worker's private queue even when other
+/// workers were idle. The in-handler access-log timer only starts once a worker
+/// dequeues, so that queue wait was invisible in the logs (fast "Nms" line, slow
+/// wall-clock). A single shared queue removes the stranding entirely; receiver
+/// contention on crossbeam's bounded MPMC is negligible at our request rates.
 pub(crate) struct WorkerQueues {
-    senders: Arc<[channel::Sender<RequestData>]>,
-    receivers: Vec<channel::Receiver<RequestData>>,
-    /// Shared round-robin counter across all senders for even distribution.
-    next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    sender: channel::Sender<RequestData>,
+    receiver: channel::Receiver<RequestData>,
 }
 
 impl WorkerQueues {
     pub(crate) fn new(num_workers: usize, capacity_per_worker: usize) -> Self {
-        let mut senders_vec = Vec::with_capacity(num_workers);
-        let mut receivers = Vec::with_capacity(num_workers);
-
-        for _ in 0..num_workers {
-            let (tx, rx) = channel::bounded(capacity_per_worker);
-            senders_vec.push(tx);
-            receivers.push(rx);
-        }
-
-        Self {
-            senders: senders_vec.into(),
-            receivers,
-            next_worker: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        }
+        // Keep the same total backpressure capacity as the old per-worker
+        // queues (num_workers * capacity_per_worker), just in one shared buffer.
+        let (sender, receiver) = channel::bounded(num_workers * capacity_per_worker);
+        Self { sender, receiver }
     }
 
-    /// Get a sender that round-robins across workers (lock-free).
-    /// All senders share the same counter for even distribution across connections.
-    /// Cloning the Arc is extremely cheap (no allocation, just refcount bump).
+    /// Get a sender into the shared queue. Cloning a crossbeam `Sender` is cheap.
     pub(crate) fn get_sender(&self) -> WorkerSender {
         WorkerSender {
-            senders: Arc::clone(&self.senders),
-            next_worker: self.next_worker.clone(),
+            sender: self.sender.clone(),
         }
     }
 
-    /// Get the receiver for a specific worker
-    pub(crate) fn get_receiver(&self, worker_id: usize) -> channel::Receiver<RequestData> {
-        self.receivers[worker_id].clone()
+    /// Get a receiver for a worker. Every worker shares the one queue, so the
+    /// returned receivers are clones of the same channel end; `worker_id` is
+    /// accepted for call-site symmetry but does not select a private queue.
+    pub(crate) fn get_receiver(&self, _worker_id: usize) -> channel::Receiver<RequestData> {
+        self.receiver.clone()
     }
 }
 
-/// A sender that distributes requests across workers using round-robin
+/// A sender into the shared worker queue.
 #[derive(Clone)]
 pub(crate) struct WorkerSender {
-    senders: Arc<[channel::Sender<RequestData>]>,
-    next_worker: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    sender: channel::Sender<RequestData>,
 }
 
 impl WorkerSender {
-    /// Non-blocking try_send - returns the data back if the target queue is full.
+    /// Non-blocking try_send - returns the data back if the queue is full.
     /// Used from async context to avoid blocking tokio worker threads.
     #[allow(clippy::result_large_err)]
     pub(crate) fn try_send(
         &self,
         data: RequestData,
     ) -> Result<(), channel::TrySendError<RequestData>> {
-        let worker = self
-            .next_worker
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            % self.senders.len();
-        self.senders[worker].try_send(data)
+        self.sender.try_send(data)
     }
 }
