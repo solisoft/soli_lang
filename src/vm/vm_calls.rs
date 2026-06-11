@@ -147,12 +147,7 @@ impl Vm {
 
         let stack_base = self.stack.len() - total_params - 1;
 
-        self.frames.push(CallFrame {
-            closure,
-            ip: 0,
-            stack_base,
-            class,
-        });
+        self.frames.push(CallFrame::new(closure, stack_base, class));
 
         Ok(())
     }
@@ -343,12 +338,8 @@ impl Vm {
                 self.stack.push(Value::Null);
             }
             let stack_base = self.stack.len() - total_params - 1;
-            self.frames.push(CallFrame {
-                closure,
-                ip: 0,
-                stack_base,
-                class: Some(defining_class),
-            });
+            self.frames
+                .push(CallFrame::new(closure, stack_base, Some(defining_class)));
             return Ok(());
         }
         let span = self.current_span();

@@ -117,6 +117,105 @@ impl Interpreter {
         }
     }
 
+    /// Call an array method on the receiver's `Rc<RefCell<Vec<Value>>>`:
+    /// mutating methods operate on the cell, the borrowed/pure tiers run on
+    /// a live borrow, and only closure-taking iterators pay the snapshot
+    /// clone. Shared by `call_method` (Value::Method dispatch) and the
+    /// direct `arr.method(args)` fast path in `evaluate_call`.
+    pub(crate) fn call_array_method_on_rc(
+        &mut self,
+        arr: &Rc<RefCell<Vec<Value>>>,
+        method_name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        match method_name {
+            "push" | "pop" | "clear" | "concat" => {
+                // Mutating methods need the original Rc<RefCell>
+                match method_name {
+                    "push" => {
+                        if arguments.len() != 1 {
+                            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+                        }
+                        arr.borrow_mut().push(arguments[0].clone());
+                        Ok(Value::Null)
+                    }
+                    "pop" => {
+                        if !arguments.is_empty() {
+                            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                        }
+                        arr.borrow_mut()
+                            .pop()
+                            .ok_or_else(|| RuntimeError::type_error("pop on empty array", span))
+                    }
+                    "clear" => {
+                        if !arguments.is_empty() {
+                            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                        }
+                        arr.borrow_mut().clear();
+                        Ok(Value::Null)
+                    }
+                    "concat" => {
+                        // Validate every argument before mutating so a
+                        // bad arg (or `arr.concat(arr)`) doesn't leave
+                        // the receiver in a half-extended state.
+                        let mut to_append: Vec<Value> = Vec::new();
+                        for arg in arguments.iter() {
+                            let other = match arg {
+                                Value::Array(other_arr) => other_arr.borrow().clone(),
+                                Value::Instance(inst) => {
+                                    match inst.borrow().fields.get("__value").cloned() {
+                                        Some(Value::Array(other_arr)) => other_arr.borrow().clone(),
+                                        _ => {
+                                            return Err(RuntimeError::type_error(
+                                                "Array.concat() argument must be an Array",
+                                                span,
+                                            ))
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    return Err(RuntimeError::type_error(
+                                        "Array.concat() argument must be an Array",
+                                        span,
+                                    ))
+                                }
+                            };
+                            to_append.extend(other);
+                        }
+                        arr.borrow_mut().extend(to_append);
+                        Ok(Value::Array(arr.clone()))
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => {
+                {
+                    let items = arr.borrow();
+                    if let Some(result) =
+                        self.call_array_method_borrowed(&items, method_name, &arguments, span)
+                    {
+                        return result;
+                    }
+                    // Methods that never run user code can work
+                    // directly on the live borrow — no re-entrant
+                    // mutation of `arr` is possible, so the O(n)
+                    // snapshot clone below is only needed for the
+                    // closure-taking iterators.
+                    if !Self::array_method_runs_user_code(method_name) {
+                        return self.call_array_method(&items, method_name, arguments, span);
+                    }
+                }
+                // Closure-taking methods iterate over a snapshot so a
+                // user closure mutating the receiver mid-iteration
+                // (`arr.push(...)` inside `map`) stays well-defined
+                // instead of panicking on a RefCell double-borrow.
+                let items = arr.borrow().clone();
+                self.call_array_method(&items, method_name, arguments, span)
+            }
+        }
+    }
+
     /// Call a method on a Value.
     pub(crate) fn call_method(
         &mut self,
@@ -126,112 +225,7 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         match *method.receiver {
             Value::Array(ref arr) => {
-                match method.method_name.as_str() {
-                    "push" | "pop" | "clear" | "concat" => {
-                        // Mutating methods need the original Rc<RefCell>
-                        match method.method_name.as_str() {
-                            "push" => {
-                                if arguments.len() != 1 {
-                                    return Err(RuntimeError::wrong_arity(
-                                        1,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                arr.borrow_mut().push(arguments[0].clone());
-                                Ok(Value::Null)
-                            }
-                            "pop" => {
-                                if !arguments.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(
-                                        0,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                arr.borrow_mut().pop().ok_or_else(|| {
-                                    RuntimeError::type_error("pop on empty array", span)
-                                })
-                            }
-                            "clear" => {
-                                if !arguments.is_empty() {
-                                    return Err(RuntimeError::wrong_arity(
-                                        0,
-                                        arguments.len(),
-                                        span,
-                                    ));
-                                }
-                                arr.borrow_mut().clear();
-                                Ok(Value::Null)
-                            }
-                            "concat" => {
-                                // Validate every argument before mutating so a
-                                // bad arg (or `arr.concat(arr)`) doesn't leave
-                                // the receiver in a half-extended state.
-                                let mut to_append: Vec<Value> = Vec::new();
-                                for arg in arguments.iter() {
-                                    let other =
-                                        match arg {
-                                            Value::Array(other_arr) => other_arr.borrow().clone(),
-                                            Value::Instance(inst) => {
-                                                match inst.borrow().fields.get("__value").cloned() {
-                                                    Some(Value::Array(other_arr)) => {
-                                                        other_arr.borrow().clone()
-                                                    }
-                                                    _ => return Err(RuntimeError::type_error(
-                                                        "Array.concat() argument must be an Array",
-                                                        span,
-                                                    )),
-                                                }
-                                            }
-                                            _ => {
-                                                return Err(RuntimeError::type_error(
-                                                    "Array.concat() argument must be an Array",
-                                                    span,
-                                                ))
-                                            }
-                                        };
-                                    to_append.extend(other);
-                                }
-                                arr.borrow_mut().extend(to_append);
-                                Ok(Value::Array(arr.clone()))
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => {
-                        {
-                            let items = arr.borrow();
-                            if let Some(result) = self.call_array_method_borrowed(
-                                &items,
-                                &method.method_name,
-                                &arguments,
-                                span,
-                            ) {
-                                return result;
-                            }
-                            // Methods that never run user code can work
-                            // directly on the live borrow — no re-entrant
-                            // mutation of `arr` is possible, so the O(n)
-                            // snapshot clone below is only needed for the
-                            // closure-taking iterators.
-                            if !Self::array_method_runs_user_code(&method.method_name) {
-                                return self.call_array_method(
-                                    &items,
-                                    &method.method_name,
-                                    arguments,
-                                    span,
-                                );
-                            }
-                        }
-                        // Closure-taking methods iterate over a snapshot so a
-                        // user closure mutating the receiver mid-iteration
-                        // (`arr.push(...)` inside `map`) stays well-defined
-                        // instead of panicking on a RefCell double-borrow.
-                        let items = arr.borrow().clone();
-                        self.call_array_method(&items, &method.method_name, arguments, span)
-                    }
-                }
+                self.call_array_method_on_rc(arr, &method.method_name, arguments, span)
             }
             Value::Hash(ref hash) => {
                 self.call_hash_method_on_rc(hash, &method.method_name, arguments, span)
@@ -378,6 +372,7 @@ impl Interpreter {
                 | "one?"
                 | "count"
                 | "reject"
+                | "sort"
                 | "sort_by"
         )
     }

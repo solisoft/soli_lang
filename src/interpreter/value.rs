@@ -1077,11 +1077,12 @@ pub struct Class {
     pub static_const_fields: HashSet<String>,
     /// Flattened method cache for O(1) lookups including inherited methods.
     /// This is computed lazily on first access and includes all methods from the inheritance chain.
+    /// ahash-keyed: `find_method` probes this once per method call.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
-    pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>>>>,
+    pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>, AHasher>>>,
     /// Flattened native method cache for O(1) lookups.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
-    pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>>>>,
+    pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>, AHasher>>>,
     /// `Some` when this Class represents a Soli primitive type (Int, Float, etc.).
     /// `class_eval` / `define_method` on a primitive-tagged class route writes
     /// to the per-type user-method overlay rather than `methods`, since primitive
@@ -1090,11 +1091,12 @@ pub struct Class {
     /// Bytecode instance methods, registered by `Op::Method` when a class is
     /// compiled in the VM (`compile_class_decl`). The constructor lands here
     /// under the name `"init"` (it returns `this`). `Rc` so the per-method
-    /// class rebuilds in `op_add_method` share one map.
-    pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>>>>,
+    /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
+    /// probes this on every compiled instance-method call.
+    pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
-    pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>>>>,
+    pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
     /// Memoized result of [`Class::is_model_subclass`]. The superclass chain
     /// and class names are fixed at construction, so the walk's result can
     /// never change for a given `Class` value. Instance member access checks
@@ -1124,8 +1126,8 @@ impl Default for Class {
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
-            vm_methods: Rc::new(RefCell::new(HashMap::new())),
-            vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
         }
     }
@@ -1162,8 +1164,8 @@ impl Class {
             all_methods_cache: RefCell::new(None),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
-            vm_methods: Rc::new(RefCell::new(HashMap::new())),
-            vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
         }
     }
@@ -1226,7 +1228,7 @@ impl Class {
         }
 
         // Build flattened method map
-        let mut all_methods = HashMap::new();
+        let mut all_methods = HashMap::default();
 
         // First, get methods from superclass (if any)
         if let Some(ref superclass) = self.superclass {
@@ -1253,7 +1255,7 @@ impl Class {
         }
 
         // Build flattened native method map
-        let mut all_native_methods = HashMap::new();
+        let mut all_native_methods = HashMap::default();
 
         // First, get native methods from superclass (if any)
         if let Some(ref superclass) = self.superclass {

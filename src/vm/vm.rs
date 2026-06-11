@@ -29,6 +29,37 @@ pub struct CallFrame {
     /// this class's superclass — not the instance's class, which would
     /// loop on multi-level hierarchies.
     pub class: Option<Rc<crate::interpreter::value::Class>>,
+    /// Cached raw pointer to `closure.proto.chunk.code` — the dispatch
+    /// loop's op fetch runs once per instruction, and going through
+    /// `closure → proto → chunk → code[ip]` cost three pointer hops plus a
+    /// bounds check every time. SAFETY: the frame's own `closure` Rc keeps
+    /// the code vec alive for the frame's whole lifetime, and chunks are
+    /// never mutated after compilation.
+    code: *const Op,
+    /// Length of the cached code slice (`ip >= code_len` ends the frame).
+    code_len: usize,
+}
+
+impl CallFrame {
+    /// Build a frame for `closure` starting at ip 0, caching the raw code
+    /// pointer for the dispatch loop's per-op fetch.
+    #[inline]
+    pub fn new(
+        closure: Rc<VmClosure>,
+        stack_base: usize,
+        class: Option<Rc<crate::interpreter::value::Class>>,
+    ) -> Self {
+        let code = closure.proto.chunk.code.as_ptr();
+        let code_len = closure.proto.chunk.code.len();
+        Self {
+            closure,
+            ip: 0,
+            stack_base,
+            class,
+            code,
+            code_len,
+        }
+    }
 }
 
 /// An exception handler pushed by TryBegin.
@@ -109,12 +140,7 @@ impl Vm {
         let closure = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
         self.push(Value::VmClosure(closure.clone()));
 
-        self.frames.push(CallFrame {
-            closure,
-            ip: 0,
-            stack_base: 0,
-            class: None,
-        });
+        self.frames.push(CallFrame::new(closure, 0, None));
 
         self.run()
     }
@@ -177,14 +203,20 @@ impl Vm {
     fn run_dispatch(&mut self) -> Result<Value, RuntimeError> {
         let _guard = VmTimingGuard::new();
         loop {
-            // Fetch opcode and advance IP in a scoped borrow
+            // Fetch opcode and advance IP in a scoped borrow. Uses the
+            // frame's cached code pointer — the closure→proto→chunk→code[ip]
+            // chain cost three pointer hops plus a bounds check on every
+            // executed instruction.
             let op = {
                 let frame = self.frames.last_mut().unwrap();
                 let ip = frame.ip;
-                if ip >= frame.closure.proto.chunk.code.len() {
+                if ip >= frame.code_len {
                     return Ok(Value::Null);
                 }
-                let op = frame.closure.proto.chunk.code[ip];
+                // SAFETY: `code`/`code_len` cache `closure.proto.chunk.code`,
+                // which the frame's own Rc keeps alive; `ip < code_len` was
+                // just checked, and chunks are immutable after compilation.
+                let op = unsafe { *frame.code.add(ip) };
                 frame.ip = ip + 1;
                 op
             };
@@ -561,12 +593,7 @@ impl Vm {
                             self.stack.push(Value::Null);
                         }
                         let stack_base = self.stack.len() - total_params - 1;
-                        self.frames.push(CallFrame {
-                            closure,
-                            ip: 0,
-                            stack_base,
-                            class: None,
-                        });
+                        self.frames.push(CallFrame::new(closure, stack_base, None));
                     } else {
                         let span = self.current_span();
                         self.call_value(argc, span)?;
@@ -1479,15 +1506,64 @@ impl Vm {
 
                 // --- Properties ---
                 Op::GetProperty(idx) => {
-                    let name = self.read_string_constant_owned(idx);
                     let object = self.stack.pop().unwrap();
+                    // Fast path: instance-field hit. Fields shadow methods
+                    // (op_get_property's documented order), so a present key
+                    // fully decides the access — no name copy, no span, and
+                    // a single ahash probe instead of the contains_key +
+                    // method-walk + re-probe of the general path.
+                    if let Value::Instance(inst) = &object {
+                        let hit = {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[idx as usize] {
+                                Constant::String(name) => {
+                                    inst.borrow().fields.get(name.as_ref()).cloned()
+                                }
+                                _ => None,
+                            }
+                        };
+                        if let Some(val) = hit {
+                            self.stack.push(val);
+                            continue;
+                        }
+                    }
+                    let name = self.read_string_constant_owned(idx);
                     let span = self.current_span();
                     let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);
                 }
                 Op::SetProperty(idx) => {
-                    let name = self.read_string_constant_owned(idx);
                     let value = self.stack.pop().unwrap();
+                    // Fast path: in-place update of an EXISTING instance
+                    // field — no name copy, no span. First-time sets (key
+                    // absent) fall through to the general path, which needs
+                    // the owned name for the insert anyway.
+                    let updated = {
+                        let object = self.stack.last().unwrap();
+                        if let Value::Instance(inst) = object {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[idx as usize] {
+                                Constant::String(name) => {
+                                    let mut inst_mut = inst.borrow_mut();
+                                    if let Some(slot) = inst_mut.fields.get_mut(name.as_ref()) {
+                                        *slot = value.clone();
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        }
+                    };
+                    if updated {
+                        self.stack.pop(); // pop object
+                        self.stack.push(value);
+                        continue;
+                    }
+                    let name = self.read_string_constant_owned(idx);
                     let object = self.stack.last().unwrap().clone();
                     let span = self.current_span();
                     self.op_set_property(&object, &name, value.clone(), span)?;
