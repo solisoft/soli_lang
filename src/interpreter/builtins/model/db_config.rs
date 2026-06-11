@@ -373,6 +373,98 @@ pub fn db_url(path: &str) -> String {
     format!("{}{}{}", DB_CONFIG.scheme, DB_CONFIG.host, path)
 }
 
+/// Spawn a periodic keep-warm ping against the model DB on the server's
+/// long-lived runtime. Rationale: pooled connections in the shared reqwest
+/// client are retired after `db_pool_idle_secs()` of idleness, and the next
+/// query then pays a fresh DNS + TCP (+ TLS for remote hosts) connect
+/// mid-request — the source of intermittent 400ms+ latency spikes on
+/// low-traffic servers. A read-only `RETURN 1` cursor query, fired
+/// comfortably inside the idle window, keeps a live connection pooled at
+/// all times and doubles as an early detector for a dropped/half-open
+/// socket (the warmer eats the reconnect, not a user request).
+///
+/// The first tick fires immediately, which also gives the model DB a boot
+/// warmup (previously only the SoliDB *session* store pre-warmed; the first
+/// model query still paid the cold connect).
+///
+/// Logs only on state transitions (ok→fail, fail→ok) so an unreachable or
+/// unconfigured DB doesn't spam one line per tick. Disable with
+/// `SOLI_DB_KEEP_WARM=0`.
+pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
+    if std::env::var("SOLI_DB_KEEP_WARM").as_deref() == Ok("0") {
+        return;
+    }
+    let idle_secs = crate::interpreter::builtins::http_class::db_pool_idle_secs();
+    // Ping well before the pool would retire the idle connection, and never
+    // slower than 60s so NAT/LB idle state stays fresh too.
+    let interval_secs = idle_secs.saturating_sub(10).clamp(5, 60);
+    handle.spawn(async move {
+        let mut interval =
+            tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut was_ok = true;
+        loop {
+            interval.tick().await;
+            let url = get_cursor_url();
+            let client = crate::interpreter::builtins::http_class::get_http_client();
+            let mut request = client
+                .post(&url)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .body(br#"{"query":"RETURN 1"}"#.to_vec());
+            // Same auth priority as the query path in crud.rs: JWT > API key
+            // > basic auth. `get_jwt_token()` can do a synchronous re-login
+            // when the cached token nears expiry — that's once per ~24h on a
+            // multi-thread runtime, acceptable here.
+            if let Some(jwt) = get_jwt_token() {
+                request = request.header("Authorization", format!("Bearer {}", jwt));
+            } else if let Some(key) = get_api_key() {
+                request = request.header("x-api-key", key);
+            } else if let Some(basic) = get_basic_auth() {
+                request = request.header("Authorization", basic);
+            }
+            let outcome: Result<(), String> = match request.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    // Drain the body so the connection returns cleanly to
+                    // the pool — the whole point of the exercise.
+                    let _ = resp.bytes().await;
+                    if status.is_success() {
+                        Ok(())
+                    } else {
+                        Err(format!("HTTP {}", status))
+                    }
+                }
+                Err(e) => Err(e.to_string()),
+            };
+            match outcome {
+                Ok(()) => {
+                    if !was_ok {
+                        eprintln!(
+                            "{} DB keep-warm: connection to {} recovered",
+                            crate::serve::log_timestamp(),
+                            DB_CONFIG.host
+                        );
+                    }
+                    was_ok = true;
+                }
+                Err(e) => {
+                    if was_ok {
+                        eprintln!(
+                            "{} DB keep-warm: ping to {} failed ({}); will retry every {}s silently",
+                            crate::serve::log_timestamp(),
+                            DB_CONFIG.host,
+                            e,
+                            interval_secs
+                        );
+                    }
+                    was_ok = false;
+                }
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -442,6 +442,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         primitive: None,
         vm_methods: Rc::new(RefCell::new(HashMap::new())),
         vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
+        model_subclass_memo: std::cell::Cell::new(None),
     };
 
     let expectation_class_rc = Rc::new(expectation_class);

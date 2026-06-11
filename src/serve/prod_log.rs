@@ -27,6 +27,17 @@
 //! Turning on any of `query`/`http`/`timing` implies `access` so the
 //! detail block has a request line to anchor to. The legacy
 //! `SOLI_REQUEST_LOG=1` still works as an alias for the `access` channel.
+//!
+//! ## Slow-request mode (`SOLI_SLOW_REQUEST_MS`)
+//!
+//! `SOLI_LOG=all` prints a block for *every* request — too noisy to leave
+//! on in production. `SOLI_SLOW_REQUEST_MS=<ms>` instead emits the full
+//! detail block (all channels, plus the queue-wait split) only for
+//! requests whose total time (queue wait + handler) crosses the
+//! threshold. It composes with `SOLI_LOG`: explicitly requested channels
+//! still print for every request; the threshold only adds the `[SLOW]`
+//! full-detail block on top. With `SOLI_SLOW_REQUEST_MS` alone, fast
+//! requests log nothing at all.
 
 use std::sync::OnceLock;
 
@@ -40,6 +51,13 @@ pub struct LogChannels {
     pub http: bool,
     /// Middleware / view / phase timing breakdown.
     pub timing: bool,
+    /// `SOLI_SLOW_REQUEST_MS`: when set, a request whose total time
+    /// (queue wait + handler) reaches this many ms emits the full detail
+    /// block regardless of which channels were requested. The four bools
+    /// above stay "what SOLI_LOG asked for" — collection gating uses the
+    /// `collect_*` helpers so slow mode records detail without printing
+    /// it for fast requests.
+    pub slow_ms: Option<f64>,
 }
 
 impl LogChannels {
@@ -47,18 +65,40 @@ impl LogChannels {
     /// timer and the thread-local buffer clearing are worth their cost.
     #[inline]
     pub fn any(&self) -> bool {
-        self.access || self.query || self.http || self.timing
+        self.access || self.query || self.http || self.timing || self.slow_ms.is_some()
     }
 
     /// True if any *detail* channel (beyond the bare access line) is on.
     #[inline]
     pub fn has_detail(&self) -> bool {
-        self.query || self.http || self.timing
+        self.query || self.http || self.timing || self.slow_ms.is_some()
+    }
+
+    /// Should the per-query AQL log collect? (Printed per request only if
+    /// `query` was requested; slow mode prints it just for slow requests.)
+    #[inline]
+    pub fn collect_query(&self) -> bool {
+        self.query || self.slow_ms.is_some()
+    }
+
+    /// Should the outgoing-HTTP log collect?
+    #[inline]
+    pub fn collect_http(&self) -> bool {
+        self.http || self.slow_ms.is_some()
+    }
+
+    /// Should the middleware/view/phase timers collect?
+    #[inline]
+    pub fn collect_timing(&self) -> bool {
+        self.timing || self.slow_ms.is_some()
     }
 }
 
-fn parse(soli_log: Option<&str>, request_log: bool) -> LogChannels {
-    let mut ch = LogChannels::default();
+fn parse(soli_log: Option<&str>, request_log: bool, slow_ms: Option<f64>) -> LogChannels {
+    let mut ch = LogChannels {
+        slow_ms: slow_ms.filter(|&v| v > 0.0),
+        ..LogChannels::default()
+    };
 
     if let Some(raw) = soli_log {
         for token in raw.split(',') {
@@ -87,8 +127,11 @@ fn parse(soli_log: Option<&str>, request_log: bool) -> LogChannels {
     }
 
     // A detail channel without the access line would print orphaned
-    // blocks with no request to anchor them — fold access in.
-    if ch.has_detail() {
+    // blocks with no request to anchor them — fold access in. Only the
+    // explicit SOLI_LOG channels count here: slow mode alone must NOT
+    // turn on the per-request access line (it prints nothing until a
+    // request crosses the threshold).
+    if ch.query || ch.http || ch.timing {
         ch.access = true;
     }
 
@@ -103,7 +146,10 @@ pub fn channels() -> LogChannels {
         let request_log = std::env::var("SOLI_REQUEST_LOG")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
-        parse(soli_log.as_deref(), request_log)
+        let slow_ms = std::env::var("SOLI_SLOW_REQUEST_MS")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok());
+        parse(soli_log.as_deref(), request_log, slow_ms)
     })
 }
 
@@ -117,15 +163,58 @@ fn one_line(query: &str) -> String {
 ///
 /// `dev_mode` callers already inject the dev bar from the same snapshots;
 /// this is the production path, gated on the `SOLI_LOG` channels.
-pub fn emit(method: &str, path: &str, status: u16, elapsed_ms: f64, ch: LogChannels) {
+///
+/// `queue_ms` is the time the request waited in the worker queue before a
+/// worker picked it up (None when the enqueue timestamp wasn't captured).
+/// The slow threshold compares against queue + handler so a request stuck
+/// behind a busy worker is caught even when the handler itself was fast.
+pub fn emit(
+    method: &str,
+    path: &str,
+    status: u16,
+    elapsed_ms: f64,
+    queue_ms: Option<f64>,
+    ch: LogChannels,
+) {
     use std::fmt::Write;
+
+    let total_ms = elapsed_ms + queue_ms.unwrap_or(0.0);
+    let slow_hit = ch.slow_ms.is_some_and(|t| total_ms >= t);
+    if !slow_hit && !ch.access {
+        return;
+    }
+
+    // A slow hit prints every detail section regardless of which channels
+    // SOLI_LOG asked for — the whole point is a full picture of where the
+    // time went, without the operator having to turn on per-request noise.
+    let ch = if slow_hit {
+        LogChannels {
+            access: true,
+            query: true,
+            http: true,
+            timing: true,
+            slow_ms: ch.slow_ms,
+        }
+    } else {
+        ch
+    };
 
     let mut out = String::with_capacity(256);
     let _ = write!(
         out,
-        "[LOG] {} {} - {} ({:.3}ms)",
-        method, path, status, elapsed_ms
+        "[{}] {} {} - {} ({:.3}ms",
+        if slow_hit { "SLOW" } else { "LOG" },
+        method,
+        path,
+        status,
+        elapsed_ms
     );
+    match queue_ms {
+        Some(q) => {
+            let _ = write!(out, " + {:.3}ms queue)", q);
+        }
+        None => out.push(')'),
+    }
 
     if ch.query {
         let queries = crate::interpreter::builtins::model::query_log::snapshot();
@@ -222,39 +311,65 @@ mod tests {
 
     #[test]
     fn parses_named_channels() {
-        let ch = parse(Some("query,http"), false);
+        let ch = parse(Some("query,http"), false, None);
         assert!(ch.query && ch.http && ch.access);
         assert!(!ch.timing);
     }
 
     #[test]
     fn all_enables_everything() {
-        let ch = parse(Some("all"), false);
+        let ch = parse(Some("all"), false, None);
         assert!(ch.access && ch.query && ch.http && ch.timing);
     }
 
     #[test]
     fn detail_channel_implies_access() {
-        let ch = parse(Some("timing"), false);
+        let ch = parse(Some("timing"), false, None);
         assert!(ch.access && ch.timing);
     }
 
     #[test]
     fn request_log_alias_enables_access_only() {
-        let ch = parse(None, true);
+        let ch = parse(None, true, None);
         assert!(ch.access);
         assert!(!ch.has_detail());
     }
 
     #[test]
     fn empty_env_is_all_off() {
-        let ch = parse(None, false);
+        let ch = parse(None, false, None);
         assert!(!ch.any());
     }
 
     #[test]
     fn aliases_resolve() {
-        let ch = parse(Some("queries, db , phases"), false);
+        let ch = parse(Some("queries, db , phases"), false, None);
         assert!(ch.query && ch.timing);
+    }
+
+    #[test]
+    fn slow_mode_alone_collects_but_prints_nothing_for_fast_requests() {
+        let ch = parse(None, false, Some(400.0));
+        // Collection must be on (the slow block needs the buffers filled)…
+        assert!(ch.any() && ch.has_detail());
+        assert!(ch.collect_query() && ch.collect_http() && ch.collect_timing());
+        // …but no per-request output channel was requested.
+        assert!(!ch.access && !ch.query && !ch.http && !ch.timing);
+        assert_eq!(ch.slow_ms, Some(400.0));
+    }
+
+    #[test]
+    fn slow_mode_composes_with_explicit_channels() {
+        let ch = parse(Some("access"), false, Some(100.0));
+        assert!(ch.access);
+        assert!(!ch.query && !ch.http && !ch.timing);
+        assert!(ch.collect_query(), "slow mode still collects detail");
+        assert_eq!(ch.slow_ms, Some(100.0));
+    }
+
+    #[test]
+    fn zero_or_negative_slow_threshold_is_ignored() {
+        assert_eq!(parse(None, false, Some(0.0)).slow_ms, None);
+        assert_eq!(parse(None, false, Some(-5.0)).slow_ms, None);
     }
 }

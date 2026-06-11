@@ -24,6 +24,9 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 |----------|---------|---------|
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
 | `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration), `http` (outgoing `HTTP.*` calls), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
+| `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
+| `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections in the internal HTTP client. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. | `90` |
+| `SOLI_DB_KEEP_WARM` | Set to `0` to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (`SOLIDB_HOST` or credentials set). | enabled |
 | `SOLI_PREFETCH` | Controls hover prefetch injection. Set `off`, `false`, `0`, or `no` to disable. | enabled |
 | `SOLI_PREFETCH_TTL` | Freshness window (seconds, clamped 1–300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip — keeps prefetch working behind a CDN. | `30` |
 | `SOLI_DEFAULT_URL_HOST` | Host used by `*_url` route helpers outside an active request. | unset |
@@ -70,6 +73,43 @@ A request with `SOLI_LOG=query,http,timing` prints:
 The whole block is written with a single `println!` so concurrent worker
 threads never interleave their output. Bind variables and HTTP URLs are
 scrubbed of secret-bearing values before they reach the log.
+
+### Slow-request logging (`SOLI_SLOW_REQUEST_MS`)
+
+`SOLI_LOG=all` prints a block for every request — too noisy to leave on in
+production. `SOLI_SLOW_REQUEST_MS` instead emits the full detail block only
+for requests whose total time (queue wait + handler) crosses the threshold,
+and nothing at all for fast ones:
+
+```bash
+# Log a full breakdown only for requests slower than 100ms
+SOLI_SLOW_REQUEST_MS=100 soli serve
+```
+
+```text
+[SLOW] GET /gather/map - 200 (412.480ms + 0.320ms queue)
+  db: 3 queries (398.210ms)
+    (395.110ms) FOR p IN pins FILTER p.board == @v0 RETURN p binds={"v0":"x"}
+    ...
+  timing:
+    view gather/map (10.050ms)
+```
+
+The access line shows handler time plus the time the request waited in the
+worker queue before being picked up, so a request stuck behind a busy worker
+is distinguishable from a genuinely slow handler. It composes with
+`SOLI_LOG`: explicitly requested channels still print for every request; the
+threshold adds the `[SLOW]` block on top.
+
+### DB connection keep-warm
+
+Pooled SoliDB connections idle out after `SOLI_DB_POOL_IDLE_SECS` (default
+90s). On a quiet server, a request arriving after a longer gap used to pay a
+fresh DNS + TCP (+ TLS for remote hosts) connect mid-request — visible as
+intermittent latency spikes. When a DB is configured, `soli serve` now runs
+a periodic read-only `RETURN 1` ping that keeps a live connection pooled at
+all times (and pre-warms the model DB at boot). Disable it with
+`SOLI_DB_KEEP_WARM=0`.
 
 ## Hardening
 

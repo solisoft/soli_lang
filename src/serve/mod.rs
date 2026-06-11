@@ -287,6 +287,11 @@ pub(crate) struct RequestData {
     /// rotating `X-Forwarded-For` per request would mint a fresh
     /// rate-limit bucket each time and bypass the limiter entirely.
     pub(crate) peer_ip: String,
+    /// When request logging is active (`SOLI_LOG` / `SOLI_SLOW_REQUEST_MS`),
+    /// the instant the hyper handler enqueued this request — the worker
+    /// diffs it at handling time to expose queue wait. `None` when logging
+    /// is off so the no-logging hot path keeps zero clock reads.
+    pub(crate) enqueued_at: Option<std::time::Instant>,
     pub(crate) response_tx: oneshot::Sender<ResponseData>,
 }
 
@@ -1197,6 +1202,26 @@ fn run_hyper_server_worker_pool(
                     println!("   ✓ Signaled routes reload to all workers");
                 }
 
+                // Bump the generation LAST (Release) so a worker that
+                // observes it (Acquire) also observes every per-kind bump
+                // above. Workers only scan the individual counters when
+                // this one moved. A bump where no individual counter moved
+                // (e.g. the static_files special case) is harmless — the
+                // scan just finds nothing to do.
+                if controllers_changed
+                    || middleware_changed
+                    || helpers_changed
+                    || models_changed
+                    || jobs_changed
+                    || views_changed
+                    || static_files_changed
+                    || routes_changed
+                {
+                    hot_reload_versions_for_watcher
+                        .generation
+                        .fetch_add(1, Ordering::Release);
+                }
+
                 // Notify browser for live reload (with cooldown to prevent loops)
                 let should_reload = match last_reload_time {
                     Some(last_time) => {
@@ -1295,6 +1320,22 @@ fn run_hyper_server_worker_pool(
     // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
     // Must be after .env loading and DB config init.
     crate::interpreter::builtins::model::core::init_jwt_token();
+
+    // Keep the model-DB connection pool warm. Pooled connections idle out
+    // after `SOLI_DB_POOL_IDLE_SECS` (default 90s); on a quiet server the
+    // next request then paid a cold DNS + TCP (+ TLS) connect mid-request —
+    // intermittent 400ms+ spikes. A periodic read-only ping keeps a live
+    // connection pooled (first tick also pre-warms the model DB at boot,
+    // which only the session store did before). Only spawned when a DB is
+    // explicitly configured: with none of these env vars set the app either
+    // has no DB or talks to a loopback default, where a cold connect is
+    // sub-millisecond anyway.
+    let db_configured = std::env::var("SOLIDB_HOST").is_ok()
+        || std::env::var("SOLIDB_USERNAME").is_ok()
+        || std::env::var("SOLIDB_API_KEY").is_ok();
+    if db_configured {
+        crate::interpreter::builtins::model::db_config::spawn_db_keep_warm(&runtime_handle);
+    }
 
     // Partition the pool into HTTP and realtime (WS/LiveView) workers so a
     // burst of realtime events can't starve HTTP request handling and a slow
@@ -1515,15 +1556,17 @@ fn worker_loop(
     // Off in production unless an operator opts a channel in via SOLI_LOG;
     // otherwise the gate is a single relaxed atomic load.
     let log_channels = prod_log::channels();
-    crate::interpreter::builtins::model::query_log::set_enabled(dev_mode || log_channels.query);
+    crate::interpreter::builtins::model::query_log::set_enabled(
+        dev_mode || log_channels.collect_query(),
+    );
 
     // Same for outgoing HTTP.* calls — feeds the dev bar's "http" panel.
-    crate::interpreter::builtins::http_log::set_enabled(dev_mode || log_channels.http);
+    crate::interpreter::builtins::http_log::set_enabled(dev_mode || log_channels.collect_http());
 
     // Phase timers (middleware/view) for the render-breakdown panel.
-    phase_log::set_enabled(dev_mode || log_channels.timing);
-    middleware_log::set_enabled(dev_mode || log_channels.timing);
-    view_log::set_enabled(dev_mode || log_channels.timing);
+    phase_log::set_enabled(dev_mode || log_channels.collect_timing());
+    middleware_log::set_enabled(dev_mode || log_channels.collect_timing());
+    view_log::set_enabled(dev_mode || log_channels.collect_timing());
     // The span flamegraph stays dev-only — it's a visualization the prod
     // log block doesn't consume, and it's the heaviest of the gates.
     span_log::set_enabled(dev_mode);
@@ -1617,6 +1660,7 @@ fn worker_loop(
     let mut lv_event_rx_inner = realtime_enabled.then_some(lv_event_rx);
 
     // Track last seen hot reload versions
+    let mut last_generation = hot_reload_versions.generation.load(Ordering::Acquire);
     let mut last_controllers_version = hot_reload_versions.controllers.load(Ordering::Acquire);
     let mut last_middleware_version = hot_reload_versions.middleware.load(Ordering::Acquire);
     let mut last_helpers_version = hot_reload_versions.helpers.load(Ordering::Acquire);
@@ -1627,15 +1671,49 @@ fn worker_loop(
     let mut last_jobs_version = hot_reload_versions.jobs.load(Ordering::Acquire);
 
     loop {
-        // Check for hot reload (lock-free version check)
-        let current_controllers = hot_reload_versions.controllers.load(Ordering::Acquire);
-        let current_middleware = hot_reload_versions.middleware.load(Ordering::Acquire);
-        let current_helpers = hot_reload_versions.helpers.load(Ordering::Acquire);
-        let current_models = hot_reload_versions.models.load(Ordering::Acquire);
-        let current_views = hot_reload_versions.views.load(Ordering::Acquire);
-        let current_static_files = hot_reload_versions.static_files.load(Ordering::Acquire);
-        let current_routes = hot_reload_versions.routes.load(Ordering::Acquire);
-        let current_jobs = hot_reload_versions.jobs.load(Ordering::Acquire);
+        // Check for hot reload via the single generation counter: one
+        // Acquire load per tick in the steady state. Only when it moved
+        // (the watcher bumps it last, with Release, after the per-kind
+        // counters) do we scan the individual versions below.
+        let current_generation = hot_reload_versions.generation.load(Ordering::Acquire);
+        let scan_versions = current_generation != last_generation;
+        last_generation = current_generation;
+
+        let (
+            current_controllers,
+            current_middleware,
+            current_helpers,
+            current_models,
+            current_views,
+            current_static_files,
+            current_routes,
+            current_jobs,
+        ) = if scan_versions {
+            (
+                hot_reload_versions.controllers.load(Ordering::Acquire),
+                hot_reload_versions.middleware.load(Ordering::Acquire),
+                hot_reload_versions.helpers.load(Ordering::Acquire),
+                hot_reload_versions.models.load(Ordering::Acquire),
+                hot_reload_versions.views.load(Ordering::Acquire),
+                hot_reload_versions.static_files.load(Ordering::Acquire),
+                hot_reload_versions.routes.load(Ordering::Acquire),
+                hot_reload_versions.jobs.load(Ordering::Acquire),
+            )
+        } else {
+            // Unchanged generation → report the last-seen values so every
+            // per-kind `!=` check below is false without touching the
+            // shared cache lines.
+            (
+                last_controllers_version,
+                last_middleware_version,
+                last_helpers_version,
+                last_models_version,
+                last_views_version,
+                last_static_files_version,
+                last_routes_version,
+                last_jobs_version,
+            )
+        };
 
         if current_controllers != last_controllers_version {
             last_controllers_version = current_controllers;
@@ -2641,6 +2719,7 @@ async fn handle_hyper_request(
         multipart_form,
         multipart_files,
         peer_ip: peer_addr.ip().to_string(),
+        enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
         response_tx,
     };
 
@@ -5257,6 +5336,16 @@ fn handle_request(
         None
     };
 
+    // Queue wait: time between the hyper handler enqueueing the request and
+    // this worker picking it up. Only captured when logging is active (the
+    // enqueue timestamp is None otherwise).
+    let queue_ms = match (data.enqueued_at, start_time) {
+        (Some(enqueued), Some(start)) => {
+            Some(start.saturating_duration_since(enqueued).as_secs_f64() * 1000.0)
+        }
+        _ => None,
+    };
+
     // Independent timer for the dev bar. Always on when dev_mode is on so the
     // injected bar can show server-side render time. Cheap when off.
     let dev_started = if dev_mode { Some(Instant::now()) } else { None };
@@ -5637,12 +5726,16 @@ fn handle_request(
                 );
             } else {
                 // Production: emit the access line plus whatever detail
-                // channels the operator enabled via SOLI_LOG.
+                // channels the operator enabled via SOLI_LOG. `emit` also
+                // gates the SOLI_SLOW_REQUEST_MS full-detail block on
+                // queue + handler time and prints nothing for fast
+                // requests when only the slow threshold is configured.
                 prod_log::emit(
                     method.as_ref(),
                     path.as_str(),
                     resp.status,
                     elapsed_ms,
+                    queue_ms,
                     log_channels,
                 );
             }

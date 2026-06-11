@@ -1,6 +1,6 @@
 //! Runtime values for the Solilang interpreter.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -1095,6 +1095,15 @@ pub struct Class {
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>>>>,
+    /// Memoized result of [`Class::is_model_subclass`]. The superclass chain
+    /// and class names are fixed at construction, so the walk's result can
+    /// never change for a given `Class` value. Instance member access checks
+    /// model-ness up to four times per access — without this memo each check
+    /// re-walks the whole superclass chain with string compares.
+    /// `pub` only so `..Default::default()` struct-update construction works
+    /// outside this module — always leave it `Cell::new(None)`; reading goes
+    /// through [`Class::is_model_subclass`].
+    pub model_subclass_memo: Cell<Option<bool>>,
 }
 
 impl Default for Class {
@@ -1117,6 +1126,7 @@ impl Default for Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::new())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            model_subclass_memo: Cell::new(None),
         }
     }
 }
@@ -1154,6 +1164,7 @@ impl Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::new())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::new())),
+            model_subclass_memo: Cell::new(None),
         }
     }
 
@@ -1300,29 +1311,40 @@ impl Class {
     }
 
     /// Check if this class is a subclass of Model (directly or indirectly).
+    /// Memoized — the superclass chain is fixed at construction, and this is
+    /// called several times per instance member access.
     pub fn is_model_subclass(&self) -> bool {
-        if self.name == "Model" {
-            return true;
+        if let Some(cached) = self.model_subclass_memo.get() {
+            return cached;
         }
-        if let Some(ref superclass) = self.superclass {
-            return superclass.is_model_subclass();
-        }
-        false
+        let result = if self.name == "Model" {
+            true
+        } else {
+            self.superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.is_model_subclass())
+        };
+        self.model_subclass_memo.set(Some(result));
+        result
     }
 }
 
 /// A class instance.
+///
+/// `fields` uses ahash (like globals and hash literals) — instance field
+/// probes happen on every member access, and the std default SipHash was
+/// measurably slower on that hot path.
 #[derive(Debug, Clone)]
 pub struct Instance {
     pub class: Rc<Class>,
-    pub fields: HashMap<String, Value>,
+    pub fields: HashMap<String, Value, AHasher>,
 }
 
 impl Instance {
     pub fn new(class: Rc<Class>) -> Self {
         Self {
             class,
-            fields: HashMap::new(),
+            fields: HashMap::default(),
         }
     }
 

@@ -79,7 +79,71 @@ fn persist_events_for(
     }
 }
 
+/// Member names handled inline by `instance_member_access` before any
+/// field/method lookup (the "universal methods" match at its top). The
+/// direct instance-method call fast path must never claim these. Keep in
+/// sync with that match — a name missing here would shadow the universal
+/// behavior with a user method of the same name (which the slow path
+/// resolves the other way around).
+fn is_universal_instance_member(name: &str) -> bool {
+    matches!(
+        name,
+        "inspect"
+            | "class"
+            | "is_a?"
+            | "nil?"
+            | "blank?"
+            | "present?"
+            | "respond_to?"
+            | "send"
+            | "instance_variables"
+            | "instance_variable_get"
+            | "instance_variable_set"
+            | "define_method"
+            | "alias_method"
+            | "instance_eval"
+            | "methods"
+    )
+}
+
 impl Interpreter {
+    /// Direct invocation of a user-defined instance method: same
+    /// arity/default handling as `call_value`'s `Function` arm, then
+    /// `call_function_with_this` binds the receiver and executes the
+    /// method body in place — no bound-`Function` allocation and no deep
+    /// clone of the body AST (the dominant cost of the old route).
+    pub(crate) fn invoke_instance_method(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        method: &Rc<crate::interpreter::value::Function>,
+        mut arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let required_arity = method.arity();
+        let full_arity = method.full_arity();
+
+        if arguments.len() < required_arity {
+            return Err(RuntimeError::wrong_arity(
+                required_arity,
+                arguments.len(),
+                span,
+            ));
+        }
+        if arguments.len() > full_arity {
+            return Err(RuntimeError::wrong_arity(full_arity, arguments.len(), span));
+        }
+        while arguments.len() < full_arity {
+            if let Some(default_expr) = method.param_default_value(arguments.len()) {
+                let default_value = self.evaluate(default_expr)?;
+                arguments.push(default_value);
+            } else {
+                return Err(RuntimeError::wrong_arity(full_arity, arguments.len(), span));
+            }
+        }
+
+        self.call_function_with_this(method, Some(Value::Instance(inst.clone())), arguments)
+    }
+
     /// Evaluate a function call expression.
     pub(crate) fn evaluate_call(
         &mut self,
@@ -143,7 +207,61 @@ impl Interpreter {
 
         // Bypass auto-invoke for callees so that func() gets the raw
         // function reference, not the auto-invoked result.
-        let callee_val = self.evaluate_callee(callee)?;
+        //
+        // For `obj.method(args)` where `obj` evaluates to a non-model
+        // instance with a user-defined method of that name (and the name
+        // is neither a universal member nor shadowed by a field), skip the
+        // member-access route entirely: it would allocate a bound
+        // `Function` whose construction deep-clones the whole method body
+        // AST on every call. `invoke_instance_method` executes the class's
+        // shared method directly with `this` bound in the call env.
+        // Models keep the slow path (relations/uploaders/translations
+        // resolve before methods there). The receiver is evaluated exactly
+        // once either way — on fallback we finish the member resolution on
+        // the already-evaluated value.
+        let callee_val = match &callee.kind {
+            ExprKind::Member { object, name }
+                // Mirror `evaluate_member`'s template-lenient `@ivar`
+                // special case: that path must stay on the slow route.
+                if !(matches!(object.kind, ExprKind::This)
+                    && crate::interpreter::executor::template_lenient_vars_enabled()
+                    && self.environment.borrow().get("this").is_none()) =>
+            {
+                let obj_val = self.evaluate(object)?;
+                if let Value::Instance(inst) = &obj_val {
+                    if !is_universal_instance_member(name) {
+                        let direct_method = {
+                            let inst_ref = inst.borrow();
+                            if !inst_ref.class.is_model_subclass()
+                                && !inst_ref.fields.contains_key(name.as_str())
+                            {
+                                inst_ref.class.find_method(name)
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(method) = direct_method {
+                            let all_positional = arguments
+                                .iter()
+                                .all(|a| matches!(a, Argument::Positional(_)));
+                            if all_positional {
+                                let mut arg_values = Vec::with_capacity(arguments.len());
+                                for arg in arguments {
+                                    if let Argument::Positional(expr) = arg {
+                                        arg_values.push(self.evaluate(expr)?);
+                                    }
+                                }
+                                return self.invoke_instance_method(
+                                    inst, &method, arg_values, span,
+                                );
+                            }
+                        }
+                    }
+                }
+                self.evaluate_member_on_value(obj_val, name, callee.span)?
+            }
+            _ => self.evaluate_callee(callee)?,
+        };
 
         // Safe navigation: if &.method() and object was null, propagate null
         if matches!(callee.kind, ExprKind::SafeMember { .. }) && matches!(callee_val, Value::Null) {

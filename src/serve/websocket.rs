@@ -141,9 +141,10 @@ impl WebSocketRegistry {
         }
     }
 
-    /// Generate a unique phx_ref for presence tracking.
+    /// Generate a unique phx_ref for presence tracking. Relaxed is enough:
+    /// the counter only needs uniqueness, it doesn't order anything.
     fn next_ref(&self) -> String {
-        self.ref_counter.fetch_add(1, Ordering::SeqCst).to_string()
+        self.ref_counter.fetch_add(1, Ordering::Relaxed).to_string()
     }
 
     /// Register a new connection.
@@ -236,12 +237,23 @@ impl WebSocketRegistry {
         }
     }
 
+    // NOTE on locking discipline for the send paths below: each
+    // per-connection `sender` is a *bounded* mpsc channel, so `send().await`
+    // can park until the peer's writer task drains a slot. Holding the
+    // `connections` mutex across that await would let one slow/stalled
+    // client block every other WS operation (joins, presence, other
+    // broadcasts). All senders are therefore cloned out under the lock
+    // (cheap `Arc` bump) and the actual sends happen lock-free.
+
     /// Send a message to a specific connection.
     pub async fn send_to(&self, id: &Uuid, message: &str) -> Result<(), tungstenite::Error> {
-        let connections = self.connections.lock().await;
-        if let Some(conn) = connections.get(id) {
+        let sender = {
+            let connections = self.connections.lock().await;
+            connections.get(id).map(|conn| conn.sender.clone())
+        };
+        if let Some(sender) = sender {
             let msg = Message::text(message);
-            if let Err(_e) = conn.sender.send(Ok(msg)).await {
+            if let Err(_e) = sender.send(Ok(msg)).await {
                 return Err(tungstenite::Error::ConnectionClosed);
             }
         }
@@ -250,37 +262,44 @@ impl WebSocketRegistry {
 
     /// Broadcast a message to all connections.
     pub async fn broadcast_all(&self, message: &str) {
-        let connections = self.connections.lock().await;
+        let senders: Vec<_> = {
+            let connections = self.connections.lock().await;
+            connections.values().map(|c| c.sender.clone()).collect()
+        };
         let msg = Message::text(message);
-        for conn in connections.values() {
-            let _ = conn.sender.send(Ok(msg.clone())).await;
+        for sender in senders {
+            let _ = sender.send(Ok(msg.clone())).await;
         }
     }
 
     /// Broadcast a message to all connections in a channel.
     pub async fn broadcast_to_channel(&self, channel: &str, message: &str) {
         let channel_ids = self.get_channel_ids(channel).await;
-        let connections = self.connections.lock().await;
+        let senders: Vec<_> = {
+            let connections = self.connections.lock().await;
+            channel_ids
+                .iter()
+                .filter_map(|id| connections.get(id).map(|c| c.sender.clone()))
+                .collect()
+        };
         let msg = Message::text(message);
-        for id in channel_ids {
-            if let Some(conn) = connections.get(&id) {
-                let _ = conn.sender.send(Ok(msg.clone())).await;
-            }
+        for sender in senders {
+            let _ = sender.send(Ok(msg.clone())).await;
         }
     }
 
     /// Close a specific connection.
     pub async fn close(&self, id: &Uuid, reason: &str) {
-        let connections = self.connections.lock().await;
-        if let Some(conn) = connections.get(id) {
+        let sender = {
+            let connections = self.connections.lock().await;
+            connections.get(id).map(|conn| conn.sender.clone())
+        };
+        if let Some(sender) = sender {
             let close_frame = tungstenite::protocol::CloseFrame {
                 code: tungstenite::protocol::frame::coding::CloseCode::Normal,
                 reason: std::borrow::Cow::Owned(reason.to_string()),
             };
-            let _ = conn
-                .sender
-                .send(Ok(Message::Close(Some(close_frame))))
-                .await;
+            let _ = sender.send(Ok(Message::Close(Some(close_frame)))).await;
         }
     }
 
@@ -509,16 +528,20 @@ impl WebSocketRegistry {
     }
 
     /// Broadcast a message to all connections in a channel except one.
+    /// Same clone-then-send locking discipline as `broadcast_to_channel`.
     pub async fn broadcast_to_channel_except(&self, channel: &str, message: &str, except: &Uuid) {
         let channel_ids = self.get_channel_ids(channel).await;
-        let connections = self.connections.lock().await;
+        let senders: Vec<_> = {
+            let connections = self.connections.lock().await;
+            channel_ids
+                .iter()
+                .filter(|id| *id != except)
+                .filter_map(|id| connections.get(id).map(|c| c.sender.clone()))
+                .collect()
+        };
         let msg = Message::text(message);
-        for id in channel_ids {
-            if id != *except {
-                if let Some(conn) = connections.get(&id) {
-                    let _ = conn.sender.send(Ok(msg.clone())).await;
-                }
-            }
+        for sender in senders {
+            let _ = sender.send(Ok(msg.clone())).await;
         }
     }
 

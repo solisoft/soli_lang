@@ -46,6 +46,9 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                 <tbody class="divide-y divide-white/5 text-gray-400">
                     <tr><td class="py-3 px-4"><code>SOLI_REQUEST_LOG</code></td><td class="py-3 px-4">Enables per-request <code>[LOG] METHOD PATH - STATUS (Xms)</code> lines on stdout when set to <code>1</code> or <code>true</code>. Always on under <code>--dev</code>. Alias for <code>SOLI_LOG=access</code>.</td><td class="py-3 px-4"><code>false</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_LOG</code></td><td class="py-3 px-4">Comma-separated production log channels: <code>access</code> (the request line), <code>query</code> (AQL queries with binds &plus; duration), <code>http</code> (outgoing <code>HTTP.*</code> calls), <code>timing</code> (middleware/view/phase breakdown), or <code>all</code>. Each detail channel prints an indented block under the access line and implies <code>access</code>. Surfaces the rich per-request diagnostics &mdash; otherwise gated to <code>--dev</code> &mdash; without paying for full dev mode.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_SLOW_REQUEST_MS</code></td><td class="py-3 px-4">Slow-request threshold in milliseconds. A request whose total time (queue wait &plus; handler) reaches it prints a full <code>[SLOW]</code> detail block &mdash; every <code>SOLI_LOG</code> channel plus the queue-wait split &mdash; while faster requests stay silent. Composes with <code>SOLI_LOG</code>.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DB_POOL_IDLE_SECS</code></td><td class="py-3 px-4">Idle lifetime (seconds) of pooled SoliDB connections in the internal HTTP client. A retired idle connection means the next query pays a fresh DNS &plus; TCP (&plus; TLS) connect mid-request.</td><td class="py-3 px-4"><code>90</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_DB_KEEP_WARM</code></td><td class="py-3 px-4">Set to <code>0</code> to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (<code>SOLIDB_HOST</code> or credentials set).</td><td class="py-3 px-4">enabled</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PREFETCH</code></td><td class="py-3 px-4">Controls hover prefetch injection. Set <code>off</code>, <code>false</code>, <code>0</code>, or <code>no</code> to disable.</td><td class="py-3 px-4">enabled</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_PREFETCH_TTL</code></td><td class="py-3 px-4">Freshness window (seconds, clamped 1&ndash;300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip &mdash; keeps prefetch working behind a CDN.</td><td class="py-3 px-4"><code>30</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_DEFAULT_URL_HOST</code></td><td class="py-3 px-4">Host used by <code>*_url</code> route helpers outside an active request.</td><td class="py-3 px-4">unset</td></tr>
@@ -82,6 +85,27 @@ SOLI_LOG=all soli serve</code></pre>
       view posts/_card (1.200ms)</code></pre>
         <p class="text-gray-400">
             The whole block is written with a single <code>println!</code> so concurrent worker threads never interleave their output. Bind variables and HTTP URLs are scrubbed of secret-bearing values before they reach the log.
+        </p>
+
+        <h3 class="text-xl font-bold text-white mt-8 mb-4">Slow-request logging (<code>SOLI_SLOW_REQUEST_MS</code>)</h3>
+        <p class="text-gray-400 mb-4">
+            <code>SOLI_LOG=all</code> prints a block for every request &mdash; too noisy to leave on in production. <code>SOLI_SLOW_REQUEST_MS</code> instead emits the full detail block only for requests whose total time (queue wait &plus; handler) crosses the threshold, and nothing at all for fast ones:
+        </p>
+        <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code># Log a full breakdown only for requests slower than 100ms
+SOLI_SLOW_REQUEST_MS=100 soli serve</code></pre>
+        <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>[SLOW] GET /gather/map - 200 (412.480ms + 0.320ms queue)
+  db: 3 queries (398.210ms)
+    (395.110ms) FOR p IN pins FILTER p.board == @v0 RETURN p binds={"v0":"x"}
+    ...
+  timing:
+    view gather/map (10.050ms)</code></pre>
+        <p class="text-gray-400 mb-4">
+            The access line shows handler time plus the time the request waited in the worker queue before being picked up, so a request stuck behind a busy worker is distinguishable from a genuinely slow handler. It composes with <code>SOLI_LOG</code>: explicitly requested channels still print for every request; the threshold adds the <code>[SLOW]</code> block on top.
+        </p>
+
+        <h3 class="text-xl font-bold text-white mt-8 mb-4">DB connection keep-warm</h3>
+        <p class="text-gray-400">
+            Pooled SoliDB connections idle out after <code>SOLI_DB_POOL_IDLE_SECS</code> (default 90s). On a quiet server, a request arriving after a longer gap used to pay a fresh DNS &plus; TCP (&plus; TLS for remote hosts) connect mid-request &mdash; visible as intermittent latency spikes. When a DB is configured, <code>soli serve</code> now runs a periodic read-only <code>RETURN 1</code> ping that keeps a live connection pooled at all times (and pre-warms the model DB at boot). Disable it with <code>SOLI_DB_KEEP_WARM=0</code>.
         </p>
     </section>
 

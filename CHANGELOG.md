@@ -2,10 +2,23 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(interpreter):** direct instance-method invocation — `obj.method(args)` on non-model instances now binds `this` straight into the call environment instead of allocating a bound `Function` whose construction deep-cloned the entire method body AST on every call. Monomorphic method calls **−52%**, polymorphic call sites **−40%** (criterion, new `inline_cache` bench group). The bound-`Function` path remains for method-as-value (`f = obj.m`), named-argument calls, and model instances
+* **perf(interpreter):** `is_model_subclass()` memoized on `Class` (was up to four superclass-chain walks with string compares per instance member access); instance fields switched from std `HashMap`/SipHash to ahash (hot property reads −6%)
+* **perf(interpreter):** array methods that never run user closures (`sort`, `take`, `sum`, `flatten`, set ops, `pluck`, …) now execute on a live borrow instead of an O(n) snapshot clone; closure-taking iterators (`map`, `each`, …) keep snapshot semantics so mutating the receiver mid-iteration stays well-defined
+* **perf(serve):** SoliDB connection keep-warm — pooled DB connections idled out after 5s, so on a quiet server any request after a gap paid a fresh DNS + TCP (+ TLS) connect mid-request: intermittent ~400ms latency spikes. Pool idle is now 90s (`SOLI_DB_POOL_IDLE_SECS`) and serve mode runs a periodic read-only ping that keeps a live connection pooled and pre-warms the model DB at boot (previously only the SoliDB session store pre-warmed). Disable with `SOLI_DB_KEEP_WARM=0`
+* **perf(serve):** hot-reload version checks collapsed to a single generation-counter load per worker tick (was eight Acquire loads); WS presence ref counter relaxed ordering
+
 ### Added
 
+* **feat(serve):** `SOLI_SLOW_REQUEST_MS` — production slow-request logging: a request whose total time (queue wait + handler) crosses the threshold prints a full `[SLOW]` detail block (every `SOLI_LOG` channel plus the queue-wait split); faster requests stay silent. Composes with `SOLI_LOG`. The access line now shows queue wait (`(12.3ms + 0.4ms queue)`) when request logging is active, so a request stuck behind a busy worker is distinguishable from a slow handler
 * **feat(lang):** `Int#to_s(base)` — Ruby-style radix conversion for bases 2–36: `255.to_s(16)` → `"ff"`, `255.to_s(2)` → `"11111111"` (lowercase digits, leading `-` for negatives, `i64::MIN`-safe). Complements the existing `"ff".hex` reverse direction
 * **feat(lang):** explicit empty parens on zero-arg builtin methods now work in both engines (`n.abs()`, `x.to_f()`, `dt.year()`) — previously "Cannot call non-function value" on primitives while collections accepted them; the type checker also types bare zero-arg member access as the method's return type (`s.length` is an `Int`, matching runtime auto-invoke)
+
+### Fixed
+
+* **fix(serve):** WebSocket registry no longer holds the connections lock across `send().await` in `send_to` / `broadcast_all` / `broadcast_to_channel` / `broadcast_to_channel_except` / `close` — one slow or stalled client could block every other WS/LiveView operation (joins, presence, other broadcasts). Senders are cloned out under the lock and sends happen lock-free
 
 ### VM engine parity
 

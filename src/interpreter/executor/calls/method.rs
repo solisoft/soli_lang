@@ -210,7 +210,24 @@ impl Interpreter {
                             ) {
                                 return result;
                             }
+                            // Methods that never run user code can work
+                            // directly on the live borrow — no re-entrant
+                            // mutation of `arr` is possible, so the O(n)
+                            // snapshot clone below is only needed for the
+                            // closure-taking iterators.
+                            if !Self::array_method_runs_user_code(&method.method_name) {
+                                return self.call_array_method(
+                                    &items,
+                                    &method.method_name,
+                                    arguments,
+                                    span,
+                                );
+                            }
                         }
+                        // Closure-taking methods iterate over a snapshot so a
+                        // user closure mutating the receiver mid-iteration
+                        // (`arr.push(...)` inside `map`) stays well-defined
+                        // instead of panicking on a RefCell double-borrow.
                         let items = arr.borrow().clone();
                         self.call_array_method(&items, &method.method_name, arguments, span)
                     }
@@ -333,6 +350,36 @@ impl Interpreter {
         }
 
         self.call_value(helper, forwarded, span)
+    }
+
+    /// Array methods that invoke a user-supplied closure while iterating.
+    /// These must operate on a SNAPSHOT of the array: the closure can
+    /// re-entrantly mutate the receiver (`arr.push(...)` inside `map`),
+    /// which would panic on a RefCell double-borrow under a live borrow.
+    /// Everything else in `call_array_method` is pure Rust and is invoked
+    /// on the live borrow, skipping the O(n) snapshot clone. Keep this
+    /// list in sync with `call_array_method`: when adding a new
+    /// closure-taking method there, add it here too — omitting one is a
+    /// runtime panic when a closure mutates the receiver, not a perf bug.
+    fn array_method_runs_user_code(name: &str) -> bool {
+        matches!(
+            name,
+            "map"
+                | "filter"
+                | "select"
+                | "each"
+                | "each_with_index"
+                | "reduce"
+                | "fold"
+                | "find"
+                | "any?"
+                | "all?"
+                | "none?"
+                | "one?"
+                | "count"
+                | "reject"
+                | "sort_by"
+        )
     }
 
     fn call_array_method_borrowed(

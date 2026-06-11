@@ -12,6 +12,11 @@ use crate::serve::RequestData;
 /// Hot reload version counters - shared between file watcher and workers.
 /// Workers periodically check if versions changed and reload accordingly.
 pub(crate) struct HotReloadVersions {
+    /// Bumped (after the per-kind counters, with Release ordering) whenever
+    /// ANY of the counters below changes. Workers check this one counter
+    /// per loop tick and only scan the individual versions when it moved,
+    /// instead of eight Acquire loads per tick.
+    pub generation: AtomicU64,
     /// Incremented when controllers change
     pub controllers: AtomicU64,
     /// Incremented when middleware changes
@@ -33,6 +38,7 @@ pub(crate) struct HotReloadVersions {
 impl HotReloadVersions {
     pub(crate) fn new() -> Self {
         Self {
+            generation: AtomicU64::new(0),
             controllers: AtomicU64::new(0),
             middleware: AtomicU64::new(0),
             views: AtomicU64::new(0),

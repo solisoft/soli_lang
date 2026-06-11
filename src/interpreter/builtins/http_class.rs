@@ -359,6 +359,25 @@ fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
     })
 }
 
+/// Idle lifetime for pooled connections in the internal SoliDB client
+/// (`SOLI_DB_POOL_IDLE_SECS`, default 90). A retired idle connection means
+/// the next DB query pays a fresh DNS + TCP (+ TLS for a remote host)
+/// connect — observed as request-latency spikes (~40ms → 400ms+) on
+/// low-traffic servers whenever the gap between requests exceeded the old
+/// 5s idle window. The keep-warm ping (`model::db_config::spawn_db_keep_warm`)
+/// is sized from this value so a pooled connection stays alive between
+/// sparse requests.
+pub fn db_pool_idle_secs() -> u64 {
+    static SECS: OnceLock<u64> = OnceLock::new();
+    *SECS.get_or_init(|| {
+        std::env::var("SOLI_DB_POOL_IDLE_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(90)
+            .max(1)
+    })
+}
+
 /// Internal HTTP client — used by Model queries and SoliDB's HTTP path.
 /// URL is operator-configured (`SOLIDB_HOST`, typically loopback in dev
 /// and a private hostname behind a VPC in production), so the SSRF
@@ -377,12 +396,16 @@ pub fn get_http_client() -> &'static Client {
             .connect_timeout(std::time::Duration::from_secs(5))
             // Keep-alive pooling IS worth it: a typical page fires several
             // queries, and reusing one connection across them avoids a TCP
-            // setup (syscalls + CPU) per query — which matters on a small,
-            // CPU-bound VPS with a co-located (loopback) SoliDB. The idle
-            // timeout is kept short so a connection the peer/intermediary
-            // silently dropped is retired quickly rather than handed back as a
-            // half-open socket that stalls the next request.
-            .pool_idle_timeout(std::time::Duration::from_secs(5))
+            // setup (syscalls + CPU) per query. The idle timeout was once 5s
+            // so a connection the peer/intermediary silently dropped would be
+            // retired quickly — but that meant ANY >5s gap between requests
+            // forced a cold DNS+TCP+TLS connect mid-request (400ms+ spikes on
+            // quiet servers). It is now 90s (SOLI_DB_POOL_IDLE_SECS) and the
+            // half-open-socket concern is handled by the periodic keep-warm
+            // ping (`spawn_db_keep_warm`), which exercises the pooled
+            // connection well inside both this window and typical NAT/LB
+            // idle limits, plus the tcp_keepalive probe below.
+            .pool_idle_timeout(std::time::Duration::from_secs(db_pool_idle_secs()))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .redirect(build_ssrf_redirect_policy())

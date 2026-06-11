@@ -79,6 +79,26 @@ fn oop_benchmarks(c: &mut Criterion) {
     group.finish();
 }
 
+/// Inline-cache-targeted benchmarks: hot monomorphic property reads,
+/// hot monomorphic method calls, and a polymorphic call site.
+fn inline_cache_benchmarks(c: &mut Criterion) {
+    let mut group = c.benchmark_group("inline_cache");
+
+    group.bench_function("prop_read_hot", |b| {
+        b.iter(|| run_benchmark_file(black_box("prop_read_hot")))
+    });
+
+    group.bench_function("method_call_hot", |b| {
+        b.iter(|| run_benchmark_file(black_box("method_call_hot")))
+    });
+
+    group.bench_function("poly_call", |b| {
+        b.iter(|| run_benchmark_file(black_box("poly_call")))
+    });
+
+    group.finish();
+}
+
 fn pipeline_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("pipeline");
 
@@ -167,6 +187,7 @@ criterion_group!(
     loop_benchmarks,
     collection_benchmarks,
     oop_benchmarks,
+    inline_cache_benchmarks,
     pipeline_benchmarks,
     string_benchmarks,
     parsing_benchmarks,

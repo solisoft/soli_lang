@@ -240,7 +240,7 @@ impl Interpreter {
     }
 
     /// Shared member access logic on an already-evaluated value.
-    fn evaluate_member_on_value(
+    pub(crate) fn evaluate_member_on_value(
         &mut self,
         obj_val: Value,
         name: &str,
@@ -336,8 +336,6 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
-        let _class_name = inst.borrow().class.name.clone();
-
         // Universal methods on instances
         match name {
             "inspect" => {

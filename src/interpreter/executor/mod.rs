@@ -509,12 +509,31 @@ impl Interpreter {
         func: &Function,
         arguments: Vec<Value>,
     ) -> RuntimeResult<Value> {
+        self.call_function_with_this(func, None, arguments)
+    }
+
+    /// Like [`Self::call_function`], but optionally binds `this` directly in
+    /// the call environment. This is the direct instance-method invocation
+    /// path: the caller passes the class's method `Rc<Function>` as-is plus
+    /// the receiver, instead of allocating a bound `Function` whose
+    /// construction deep-clones the entire method body AST per call (the old
+    /// `instance_member_access` → `call_value` route, still used when a
+    /// method is accessed as a value rather than called).
+    pub(crate) fn call_function_with_this(
+        &mut self,
+        func: &Function,
+        this: Option<Value>,
+        arguments: Vec<Value>,
+    ) -> RuntimeResult<Value> {
         // Push stack frame with the function's source path (where it was defined)
         let span = func.span.unwrap_or_else(|| Span::new(0, 0, 1, 1));
         self.push_frame(&func.name, span, func.source_path.clone());
 
         // Try to take the cached call env; on a recursive call the slot is
-        // None and we fall back to allocating a fresh one.
+        // None and we fall back to allocating a fresh one. For instance
+        // methods the slot lives on the class's shared method `Rc`, so the
+        // env is reused across receivers — `reset_for_call` wipes all
+        // bindings (including the previous `this`) before rebinding.
         let call_env_rc = match func.cached_env.borrow_mut().take() {
             Some(cached) => {
                 cached.borrow_mut().reset_for_call();
@@ -527,6 +546,9 @@ impl Interpreter {
 
         {
             let mut call_env_inner = call_env_rc.borrow_mut();
+            if let Some(this_val) = this {
+                call_env_inner.define("this".to_string(), this_val);
+            }
             for (param, value) in func.params.iter().zip(arguments) {
                 call_env_inner.define(param.name.clone(), value);
             }
