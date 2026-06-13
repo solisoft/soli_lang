@@ -305,6 +305,14 @@ SOLI_NAV=off soli serve .
 
 **Script semantics after a swap:** inline `<script>` tags in the new body re-execute on every visit (that's what page-specific init wants). External `<script src>` tags execute **once per URL** for the lifetime of the browser tab — so `alpine.min.js` and `htmx.min.js` in your layout never double-evaluate. Scripts run **sequentially in document order**, each external awaited before the next script executes — the same guarantee the parser gives on a full load, so an inline `tailwind.config = {...}` right after the Tailwind CDN script still finds `tailwind` defined. Only after the whole chain settles does the framework call `Alpine.initTree(document.body)` and `htmx.process(document.body)` — so Alpine components whose `x-data` scope is registered by a page-specific bundle initialize correctly, and `hx-*` attributes in the new body just work.
 
+**Persistent elements (`data-soli-permanent`):** the body swap tears down the old DOM and builds the new page fresh — fine for server-rendered content, but it destroys live client-side widgets that aren't reflected in the server HTML (a map with its rendered tiles, a playing `<video>`, a rich-text editor with unsaved state). Tag such an element with `data-soli-permanent` and an `id`, and the framework lifts the **live** element out of the old body and grafts it over the matching placeholder in the new one — untouched, never reparsed — so the widget keeps running across the navigation with no teardown, no re-initialization, no flicker:
+
+```erb
+<div id="gather-map" data-soli-permanent></div>
+```
+
+The element persists only between pages that **both** declare it (same `id` + `data-soli-permanent`); navigate to a page without the matching placeholder and it's discarded with the old body. Any inline `<script>` *inside* a permanent element is carried over live and is **not** re-executed on the swap (it already ran). This is the right tool when re-initializing on `soli:load` would mean an expensive rebuild — prefer it over the re-init hook for maps and media players.
+
 **History and scrolling:** back/forward are handled via `popstate` with a refetch — which the ETag machinery answers with a cheap `304`, served from the browser's HTTP cache. Scroll position is restored on back-navigation; forward visits scroll to the top (or to the `#fragment` target if the link had one).
 
 **View Transitions (opt-in):** add the same meta tag Turbo uses and swaps animate with the [View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API) in supporting browsers:

@@ -357,6 +357,19 @@ mod tests {
     }
 
     #[test]
+    fn script_preserves_permanent_elements_across_swap() {
+        // [data-soli-permanent] elements must be lifted out of the old body and
+        // grafted over their placeholder in the new one, so a live widget (map,
+        // media player) survives navigation instead of being rebuilt. Their
+        // inline scripts must NOT be re-run by executeScripts (already ran).
+        assert!(NAV_SCRIPT.contains("data-soli-permanent"));
+        assert!(
+            NAV_SCRIPT.contains("closest(\"[data-soli-permanent]\")"),
+            "scripts inside a permanent element must be skipped on re-execution"
+        );
+    }
+
+    #[test]
     fn script_prefetches_with_purpose_header() {
         // The hover prefetch must announce itself so the server's existing
         // is_prefetch_request() detection answers with private, max-age=TTL.

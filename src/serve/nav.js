@@ -415,6 +415,20 @@
             if (!SKIP_META.test(key)) document.head.appendChild(document.adoptNode(m));
         });
 
+        // ---- permanent elements ----
+        // Elements tagged [data-soli-permanent] (with an id) are lifted out of
+        // the outgoing body and grafted over the matching placeholder in the
+        // incoming one, untouched — so a live widget (a map, a media/video
+        // player, an editor) keeps running across navigation instead of being
+        // torn down and rebuilt. Persists only between pages that BOTH declare
+        // the element (Turbo's data-turbo-permanent semantics): if the new page
+        // has no matching placeholder, the node leaves with the old body.
+        // Collected BEFORE Alpine.destroyTree below so its subtree survives.
+        var permanents = [];
+        document.querySelectorAll("[data-soli-permanent][id]").forEach(function (el) {
+            permanents.push(el);
+        });
+
         // ---- body swap ----
         if (window.Alpine && window.Alpine.destroyTree) {
             try { window.Alpine.destroyTree(document.body); } catch (e) { /* older 3.x */ }
@@ -423,6 +437,16 @@
         // flag, so attaching them executes nothing — executeScripts revives
         // them afterwards, one by one, in document order.
         var newBody = document.adoptNode(doc.body);
+        // Graft each surviving permanent node over its placeholder in the new
+        // body. Moving a node still parented in the live document.body into
+        // newBody detaches it cleanly, so it's gone before the replaceChild
+        // discards the old body. No matching placeholder → node is dropped.
+        permanents.forEach(function (node) {
+            var placeholder = newBody.querySelector(
+                "#" + (window.CSS && CSS.escape ? CSS.escape(node.id) : node.id) + "[data-soli-permanent]"
+            );
+            if (placeholder) placeholder.parentNode.replaceChild(node, placeholder);
+        });
         // Alpine's global MutationObserver auto-initializes any subtree
         // added to the document — i.e. on this replaceChild, before the new
         // page's scripts have run, so x-data components those scripts
@@ -447,6 +471,9 @@
     function executeScripts(root) {
         var queue = [];
         root.querySelectorAll("script").forEach(function (old) {
+            // Scripts inside a permanent element are carried over live and have
+            // already executed — re-running them would double-fire.
+            if (old.closest("[data-soli-permanent]")) return;
             var type = old.getAttribute("type");
             if (type && !/javascript|module/.test(type)) return; // data blocks etc.
             var src = old.getAttribute("src");
