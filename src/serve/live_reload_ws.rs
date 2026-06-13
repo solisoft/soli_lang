@@ -287,6 +287,18 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             var newDoc = parser.parseFromString(html, 'text/html');
             var timestamp = Date.now();
 
+            // Import-map pages can't be morphed: the page's behavior lives in
+            // module scripts (e.g. `import "three"`) that only execute once per
+            // src and can't be re-run by swapping DOM nodes, while the map
+            // itself can't be re-registered into a live document. Morphing
+            // would leave the new markup wired to stale/never-run module code.
+            // A full reload re-parses the map natively and is always correct.
+            if (document.querySelector('script[type="importmap"]') ||
+                newDoc.querySelector('script[type="importmap"]')) {
+                window.location.reload();
+                return;
+            }
+
             // Update stylesheets - replace old with new, using cache busting
             var oldStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
             var newStyles = Array.from(newDoc.querySelectorAll('link[rel="stylesheet"]'));

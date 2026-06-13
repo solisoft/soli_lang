@@ -3366,8 +3366,8 @@ mod tests {
             Value::Int(4)
         );
         assert_eq!(
-            compile_and_get_global("let f = 3.14159; let x = f.round(2);", "x"),
-            Value::Float(3.14)
+            compile_and_get_global("let f = 1.23456; let x = f.round(2);", "x"),
+            Value::Float(1.23)
         );
         // Ruby-style decimal rounding, not binary-float artifact (38.99).
         assert_eq!(

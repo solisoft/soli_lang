@@ -32,6 +32,17 @@
     }
     if (metaOff(document)) return;
 
+    function importMapText(doc) {
+        var m = doc.querySelector('script[type="importmap"]');
+        return m ? (m.textContent || "").replace(/\s+/g, " ").trim() : "";
+    }
+    // True when `doc` carries an import map the current page doesn't already
+    // have registered — the one case a body swap can't honor (see render()).
+    function newImportMap(doc) {
+        var incoming = importMapText(doc);
+        return !!incoming && incoming !== importMapText(document);
+    }
+
     // Config attributes stamped on our own <script> tag by the server.
     var me = document.querySelector('script[src^="/__soli/nav.js"]');
     var prefetchOn = !(me && me.getAttribute("data-prefetch") === "off");
@@ -282,6 +293,13 @@
         // Teleported Alpine trees (clones at the end of <body>) can't survive
         // a body swap — same reasoning as the live-reload morpher.
         if (document.querySelector("template[x-teleport]")) { location.assign(page.url); return; }
+        // Import maps must exist before any module script loads, and can't be
+        // reliably registered into a live document after the fact — so a page
+        // that introduces an <script type="importmap"> the current page lacks
+        // can't be body-swapped: its module scripts' bare imports (e.g.
+        // `import "three"`) would fail to resolve and the page renders blank.
+        // Hand off to a real navigation so the browser parses the map natively.
+        if (newImportMap(doc)) { location.assign(page.url); return; }
 
         var ev = new CustomEvent("soli:before-render", {
             cancelable: true,
