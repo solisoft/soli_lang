@@ -13,6 +13,7 @@ pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 mod middleware;
 pub mod middleware_log;
+pub mod nav;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
@@ -1317,6 +1318,14 @@ fn run_hyper_server_worker_pool(
     // a transiently-unreachable session DB is logged, never fatal.
     crate::interpreter::builtins::session::get_current_store().warm();
 
+    // Keep that session connection warm. `warm()` above is a one-shot boot
+    // ping; on a quiet server a network-backed session store's pooled
+    // connection still idles out between requests (the model DB keep-warm
+    // below only pings the model host), so the next request pays a cold
+    // reconnect — surfacing as intermittent latency spikes on trivial routes
+    // like a `/session/ping` heartbeat. No-op for in-memory/disk drivers.
+    crate::interpreter::builtins::session::spawn_session_keep_warm();
+
     // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
     // Must be after .env loading and DB config init.
     crate::interpreter::builtins::model::core::init_jwt_token();
@@ -2535,6 +2544,11 @@ async fn handle_hyper_request(
     // strict-CSP apps can use `<script src>` instead of inline JS.
     if path == "/__soli/prefetch.js" && method == "GET" {
         return Ok(prefetch::handle_prefetch_js());
+    }
+
+    // Framework-bundled instant-navigation script (body swap + pushState).
+    if path == "/__soli/nav.js" && method == "GET" {
+        return Ok(nav::handle_nav_js());
     }
 
     // Handle live reload SSE endpoint

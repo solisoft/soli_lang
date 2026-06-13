@@ -557,9 +557,18 @@ pub fn html_response(body: String, status: i64) -> Value {
         body
     };
 
-    // Inject hover-prefetch script tag unless the user opted out via
-    // `SOLI_PREFETCH=off`. The JS itself is served at /__soli/prefetch.js.
-    let body = if crate::serve::prefetch::is_enabled() {
+    // Inject the instant-navigation script (body swap + pushState) unless
+    // disabled via `SOLI_NAV=off`. Nav subsumes hover prefetching with its own
+    // in-memory cache (a fetch() can't consume `<link rel="prefetch">`
+    // entries), so the two scripts are mutually exclusive: prefetch.js is only
+    // injected when nav is off, restoring the previous behavior unchanged.
+    let nav_on = crate::serve::nav::is_enabled();
+    let body = if nav_on {
+        crate::serve::nav::inject_nav_tag(&body)
+    } else {
+        body
+    };
+    let body = if !nav_on && crate::serve::prefetch::is_enabled() {
         crate::serve::prefetch::inject_prefetch_tag(&body)
     } else {
         body

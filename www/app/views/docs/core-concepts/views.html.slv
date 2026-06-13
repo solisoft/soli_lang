@@ -553,6 +553,101 @@ end</code></pre>
             <li>Per-request <code>Set-Cookie</code> headers (flash messages, CSRF rotation) can cause some browsers to ignore the cache entry even with good <code>Cache-Control</code>. The prefetch still warms the TCP/TLS connection and server-side caches, so the click is at least faster.</li>
         </ul>
     </div>
+
+    <h3 class="text-xl font-semibold text-white mb-4">Instant Navigation</h3>
+    <p class="text-gray-400 mb-4">
+        On top of hover preloading, Soli auto-injects an instant-navigation script (served at <code>/__soli/nav.js</code>) into every HTML response. It intercepts same-origin link clicks, fetches the target page in the background, and <strong class="text-white">swaps <code>&lt;body&gt;</code> in place</strong> &mdash; merging the new page's <code>&lt;title&gt;</code>, stylesheets, and <code>meta</code> tags &mdash; while managing the URL bar with <code>pushState</code>. The result is Turbo-Drive-style navigation: your CSS and JS stay loaded, Alpine and htmx stay booted, and clicks render near-instantly, all while the app remains plain server-rendered HTML.
+    </p>
+    <p class="text-gray-400 mb-6">
+        When instant navigation is on, it <strong class="text-white">takes over hover prefetching</strong>: a JavaScript <code>fetch()</code> can't consume <code>&lt;link rel="prefetch"&gt;</code> entries (browser cache partitioning), so <code>nav.js</code> prefetches hovered links into its own in-memory cache with the same ergonomics (65&nbsp;ms debounce, <code>touchstart</code>, <code>data-no-prefetch</code>, save-data/2G skip). Its prefetch requests carry <code>Purpose: prefetch</code>, so all the Hover Preload caching machinery &mdash; <code>SOLI_PREFETCH_TTL</code>, the ETag/304 revalidation, the CDN notes &mdash; applies unchanged. <code>SOLI_PREFETCH=off</code> disables the hover warming without disabling click swapping.
+    </p>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Which clicks are intercepted?</strong> Only plain left-clicks on same-origin GET links. Everything else falls through to the browser:</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">New-tab intent.</strong> Modifier keys (<code>Cmd</code>/<code>Ctrl</code>/<code>Shift</code>/<code>Alt</code>), middle/right clicks, <code>target="_blank"</code>, and <code>download</code> links are skipped.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">Same-origin GET only.</strong> Cross-origin, <code>mailto:</code>/<code>tel:</code>, and <code>&lt;a data-method="post"&gt;</code> links fall through.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">htmx owns its links.</strong> Anything with an <code>hx-*</code>/<code>data-hx-*</code> attribute or inside <code>[hx-boost]</code> is never intercepted &mdash; nor is a click your own handler already <code>preventDefault()</code>ed.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <p class="text-sm text-gray-400"><strong class="text-white">Native anchors.</strong> Same-page <code>#fragment</code> links keep the browser's native anchor scroll.</p>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Opt out</strong> per link, per container, per page, or globally:</p>
+    <pre data-filename="Example"><code class="language-erb text-sm">&lt;!-- Per link, or per container --&gt;
+&lt;a href="/legacy-page" data-no-nav&gt;Legacy page&lt;/a&gt;
+&lt;section data-no-nav&gt; ... &lt;/section&gt;
+
+&lt;!-- Per page (both the current page and any page navigated to) --&gt;
+&lt;meta name="soli-nav" content="off"&gt;</code></pre>
+    <pre data-filename="shell"><code class="language-bash text-sm"># Globally — restores plain hover preloading (prefetch.js)
+SOLI_NAV=off soli serve .</code></pre>
+
+    <p class="text-gray-400 mb-2 mt-6"><strong class="text-white">Lifecycle events</strong> fire on <code>document</code> so you can hook in:</p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm text-left">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-300">
+                    <th class="py-2 pr-4">Event</th>
+                    <th class="py-2 pr-4">Cancelable</th>
+                    <th class="py-2">When</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5">
+                    <td class="py-2 pr-4"><code>soli:visit</code></td>
+                    <td class="py-2 pr-4">yes &mdash; cancel to force a full navigation</td>
+                    <td class="py-2">Before a visit starts; <code>detail.url</code></td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-2 pr-4"><code>soli:before-render</code></td>
+                    <td class="py-2 pr-4">yes &mdash; cancel to force a full navigation</td>
+                    <td class="py-2">After fetch, before the swap; <code>detail.newDocument</code></td>
+                </tr>
+                <tr>
+                    <td class="py-2 pr-4"><code>soli:load</code></td>
+                    <td class="py-2 pr-4">no</td>
+                    <td class="py-2">After every swap &mdash; the re-initialization hook</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4">
+        <p class="text-emerald-200/80 text-sm">
+            <strong><code>DOMContentLoaded</code> keeps working.</strong> The event itself fires once per document and never again after a swap &mdash; but inline scripts re-executed by a visit routinely register <code>DOMContentLoaded</code>/<code>load</code> listeners, so the framework <em>replays</em> them: once the event has already fired, registering a listener for it invokes the listener immediately (the same semantics as jQuery's <code>.ready()</code>). Your existing init code &mdash; sliders, lightboxes, anything wrapped in <code>DOMContentLoaded</code> &mdash; works after swaps without changes. The same replay covers <code>alpine:init</code>/<code>alpine:initialized</code>: a page-specific bundle first executed by a swap that registers components with <code>document.addEventListener("alpine:init", () =&gt; Alpine.data(...))</code> works unchanged. For code in <strong>external</strong> scripts (which execute once per tab, not per visit), hook <code>soli:load</code> to re-initialize per navigation.
+        </p>
+    </div>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Re-initializing from an external script</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-html text-sm">&lt;script&gt;
+  function initWidgets() { /* ... */ }
+  document.addEventListener("soli:load", initWidgets);  // fires after every swap
+  initWidgets();                                        // first full load
+&lt;/script&gt;</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Script semantics after a swap:</strong> inline <code>&lt;script&gt;</code> tags in the new body re-execute on every visit (that's what page-specific init wants). External <code>&lt;script src&gt;</code> tags execute <strong class="text-white">once per URL</strong> for the lifetime of the browser tab &mdash; so <code>alpine.min.js</code> and <code>htmx.min.js</code> in your layout never double-evaluate. Scripts run <strong class="text-white">sequentially in document order</strong>, each external awaited before the next script executes &mdash; the same guarantee the parser gives on a full load, so an inline <code>tailwind.config = {...}</code> right after the Tailwind CDN script still finds <code>tailwind</code> defined. Only after the whole chain settles does the framework call <code>Alpine.initTree(document.body)</code> and <code>htmx.process(document.body)</code> &mdash; so Alpine components whose <code>x-data</code> scope is registered by a page-specific bundle initialize correctly, and <code>hx-*</code> attributes in the new body just work.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">History and scrolling:</strong> back/forward are handled via <code>popstate</code> with a refetch &mdash; which the ETag machinery answers with a cheap <code>304</code>, served from the browser's HTTP cache. Scroll position is restored on back-navigation; forward visits scroll to the top (or to the <code>#fragment</code> target if the link had one).
+    </p>
+    <p class="text-gray-400 mb-2"><strong class="text-white">View Transitions (opt-in):</strong> add the same meta tag Turbo uses and swaps animate with the View Transition API in supporting browsers:</p>
+    <pre data-filename="Layout &lt;head&gt;"><code class="language-html text-sm">&lt;meta name="view-transition" content="same-origin"&gt;</code></pre>
+
+    <div class="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-8 mt-6">
+        <p class="text-emerald-200/80 text-sm">
+            <strong>Graceful degradation:</strong> non-HTML responses (downloads, JSON), fetch failures, redirects that leave the origin, and pages using Alpine <code>x-teleport</code> all fall back to a normal full navigation automatically. Error pages (404/500) that render HTML are swapped in like any other page, with the URL updated to the final response URL.
+        </p>
+    </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>

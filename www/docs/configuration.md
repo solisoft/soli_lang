@@ -27,7 +27,8 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 | `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
 | `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections in the internal HTTP client. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. | `90` |
 | `SOLI_DB_KEEP_WARM` | Set to `0` to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (`SOLIDB_HOST` or credentials set). | enabled |
-| `SOLI_PREFETCH` | Controls hover prefetch injection. Set `off`, `false`, `0`, or `no` to disable. | enabled |
+| `SOLI_NAV` | Controls instant-navigation injection (link clicks fetch + swap `<body>` in place instead of a full page load). Set `off`, `false`, `0`, or `no` to disable and fall back to plain hover prefetch. | enabled |
+| `SOLI_PREFETCH` | Controls hover prefetch injection (and hover warming inside instant navigation). Set `off`, `false`, `0`, or `no` to disable. | enabled |
 | `SOLI_PREFETCH_TTL` | Freshness window (seconds, clamped 1–300) for a prefetched HTML response, so the click reuses it without a revalidation round-trip — keeps prefetch working behind a CDN. | `30` |
 | `SOLI_DEFAULT_URL_HOST` | Host used by `*_url` route helpers outside an active request. | unset |
 | `SOLI_DEFAULT_URL_SCHEME` | Scheme used with `SOLI_DEFAULT_URL_HOST`. | `http` |

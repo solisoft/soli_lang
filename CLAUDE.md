@@ -475,11 +475,16 @@ cargo fmt
 After making changes to the Rust interpreter, deploy the new `soli` binary locally so dev projects pick it up:
 
 ```bash
-cargo install --path .   # rebuild + install the `soli` binary into ~/.cargo/bin
-pdev                     # restart the local Soli dev server with the new binary
+cargo install --path . --locked   # rebuild + install the `soli` binary into ~/.cargo/bin
+pdev                              # restart the local Soli dev server with the new binary
 ```
 
 Run both whenever a change in `src/` needs to be exercised through a running Soli app (dev bar, builtins, server behavior, etc.).
+
+`--locked` is required: unlike `cargo build`/`cargo test`, `cargo install` ignores
+`Cargo.lock` by default and re-resolves dependencies to their newest versions —
+which can pull in a release whose MSRV is above the installed rustc (e.g. `time`
+0.3.48 fails with an E0119 coherence error on rustc 1.95).
 
 ## Releasing
 

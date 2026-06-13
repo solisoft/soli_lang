@@ -254,6 +254,67 @@ end
 - **POST/PUT/DELETE responses** aren't cached regardless, so nothing special is needed there.
 - Per-request **`Set-Cookie`** headers (flash messages, CSRF token rotation) can cause some browsers to ignore the cache entry even with good `Cache-Control`. In that case the prefetch still warms the TCP/TLS connection and any server-side caches, so the click is at least faster.
 
+### Instant Navigation
+
+On top of hover preloading, Soli auto-injects an instant-navigation script (served at `/__soli/nav.js`) into every HTML response. It intercepts same-origin link clicks, fetches the target page in the background, and **swaps `<body>` in place** — merging the new page's `<title>`, stylesheets, and `meta` tags — while managing the URL bar with `pushState`. The result is Turbo-Drive-style navigation: your CSS and JS stay loaded, Alpine and htmx stay booted, and clicks render near-instantly, all while the app remains plain server-rendered HTML.
+
+When instant navigation is on, it **takes over hover prefetching**: a JavaScript `fetch()` can't consume `<link rel="prefetch">` entries (browser cache partitioning), so `nav.js` prefetches hovered links into its own in-memory cache with the same ergonomics (65 ms debounce, `touchstart`, `data-no-prefetch`, save-data/2G skip). Its prefetch requests carry `Purpose: prefetch`, so all the [Hover Preload](#hover-preload) caching machinery — `SOLI_PREFETCH_TTL`, the ETag/304 revalidation, the CDN notes — applies unchanged. `SOLI_PREFETCH=off` disables the hover warming without disabling click swapping.
+
+**Which clicks are intercepted?** Only plain left-clicks on same-origin GET links. Everything else falls through to the browser:
+
+- Modifier keys (`Cmd`/`Ctrl`/`Shift`/`Alt` — open-in-new-tab intent), middle/right clicks.
+- Cross-origin links, `mailto:`/`tel:`/`javascript:`, `target="_blank"` (any target ≠ `_self`), `download` links.
+- `<a data-method="post">` and friends (non-GET link helpers).
+- Links carrying any `hx-*`/`data-hx-*` attribute or inside `[hx-boost]` — htmx owns those.
+- Anything that already called `preventDefault()` (Alpine `@click.prevent`, your own handlers).
+- Same-page `#fragment` links (native anchor scroll).
+
+**Opt out:**
+
+```erb
+<!-- Per link, or per container -->
+<a href="/legacy-page" data-no-nav>Legacy page</a>
+<section data-no-nav> ... </section>
+
+<!-- Per page (both the current page and any page navigated to) -->
+<meta name="soli-nav" content="off">
+```
+
+```bash
+# Globally — restores plain hover preloading (prefetch.js)
+SOLI_NAV=off soli serve .
+```
+
+**Lifecycle events** fire on `document` so you can hook in:
+
+| Event | Cancelable | When |
+|-------|-----------|------|
+| `soli:visit` | yes — cancel to force a full navigation | Before a visit starts; `detail.url` |
+| `soli:before-render` | yes — cancel to force a full navigation | After fetch, before the swap; `detail.newDocument` |
+| `soli:load` | no | After every swap — the re-initialization hook |
+
+**`DOMContentLoaded` keeps working.** The event itself fires once per document and never again after a swap — but inline scripts re-executed by a visit routinely register `DOMContentLoaded`/`load` listeners, so the framework *replays* them: once the event has already fired, registering a listener for it invokes the listener immediately (the same semantics as jQuery's `.ready()`). Your existing init code — sliders, lightboxes, anything wrapped in `DOMContentLoaded` — works after swaps without changes. The same replay covers `alpine:init`/`alpine:initialized`: a page-specific bundle first executed by a swap that registers components with `document.addEventListener("alpine:init", () => Alpine.data(...))` works unchanged. For code in **external** scripts (which execute once per tab, not per visit), hook `soli:load` to re-initialize per navigation:
+
+```html
+<script>
+  function initWidgets() { /* ... */ }
+  document.addEventListener("soli:load", initWidgets);  // fires after every swap
+  initWidgets();                                        // first full load
+</script>
+```
+
+**Script semantics after a swap:** inline `<script>` tags in the new body re-execute on every visit (that's what page-specific init wants). External `<script src>` tags execute **once per URL** for the lifetime of the browser tab — so `alpine.min.js` and `htmx.min.js` in your layout never double-evaluate. Scripts run **sequentially in document order**, each external awaited before the next script executes — the same guarantee the parser gives on a full load, so an inline `tailwind.config = {...}` right after the Tailwind CDN script still finds `tailwind` defined. Only after the whole chain settles does the framework call `Alpine.initTree(document.body)` and `htmx.process(document.body)` — so Alpine components whose `x-data` scope is registered by a page-specific bundle initialize correctly, and `hx-*` attributes in the new body just work.
+
+**History and scrolling:** back/forward are handled via `popstate` with a refetch — which the ETag machinery answers with a cheap `304`, served from the browser's HTTP cache. Scroll position is restored on back-navigation; forward visits scroll to the top (or to the `#fragment` target if the link had one).
+
+**View Transitions (opt-in):** add the same meta tag Turbo uses and swaps animate with the [View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API) in supporting browsers:
+
+```html
+<meta name="view-transition" content="same-origin">
+```
+
+**Graceful degradation:** non-HTML responses (downloads, JSON), fetch failures, redirects that leave the origin, and pages using Alpine `x-teleport` all fall back to a normal full navigation automatically. Error pages (404/500) that render HTML are swapped in like any other page, with the URL updated to the final response URL.
+
 ### DateTime Functions
 
 These functions help you work with dates and times in templates.

@@ -302,6 +302,14 @@ impl SessionStore for SolidbSessionStore {
         "solidb"
     }
 
+    /// Read-only `RETURN 1` over the pooled connection — keeps the shared
+    /// HTTP client's keep-alive to the session host from idling out. See
+    /// `session::spawn_session_keep_warm`.
+    fn warm_ping(&self) -> Result<(), String> {
+        let client = self.create_client().map_err(|e| e.to_string())?;
+        client.ping().map(|_| ()).map_err(|e| e.to_string())
+    }
+
     /// Pre-open the SoliDB connection at boot so the first real request
     /// doesn't pay a cold-start. `ensure_session` runs at the top of every
     /// request, so on a fresh boot the session store would otherwise open the

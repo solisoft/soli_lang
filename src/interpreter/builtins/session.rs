@@ -100,6 +100,85 @@ pub trait SessionStore: Send + Sync {
     /// overrides it with a cheap read-only round-trip. Must never write or
     /// mutate any session state — see `SolidbSessionStore::warm`.
     fn warm(&self) {}
+
+    /// One read-only round-trip that exercises the backing store's pooled
+    /// connection so it never idles out between requests. Called periodically
+    /// by `spawn_session_keep_warm`. Defaults to a no-op (`Ok`) for stores
+    /// with no network backend; network-backed stores override it. Like
+    /// `warm`, this MUST never write or mutate session state.
+    fn warm_ping(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// Keep the session store's pooled connection alive on a quiet server.
+///
+/// The session store shares the model DB's HTTP client pool (`get_http_client`),
+/// but `spawn_db_keep_warm` only pings the *model* DB host. When the session
+/// DB is a different host — or a SoliKV store with its own TCP pool — nothing
+/// exercises that connection. It idles out (client `pool_idle_timeout`, a
+/// NAT/LB cutoff, or the peer closing keep-alive) and the next request pays a
+/// cold reconnect: DNS + TCP + TLS for SoliDB. That surfaces as intermittent
+/// latency spikes on otherwise-trivial routes (e.g. a `/session/ping`
+/// heartbeat jumping from ~6ms to ~70ms).
+///
+/// This mirrors `spawn_db_keep_warm`: a periodic read-only ping, well inside
+/// the pool idle window and typical NAT/LB limits. Only spawned for
+/// network-backed drivers; the in-memory/disk stores have nothing to warm.
+/// Disable with `SOLI_SESSION_KEEP_WARM=0`. Logs only on state transitions
+/// (ok→fail, fail→ok) so an unreachable store doesn't spam one line per tick.
+pub fn spawn_session_keep_warm() {
+    if std::env::var("SOLI_SESSION_KEEP_WARM").as_deref() == Ok("0") {
+        return;
+    }
+    let store = get_current_store();
+    // Only network-backed stores hold a connection that can go cold.
+    if !matches!(store.driver_name(), "solidb" | "solikv") {
+        return;
+    }
+    // The SoliDB session store reuses the shared HTTP client, so the same
+    // pool-idle window governs it; ping well before that, and never slower
+    // than 60s so NAT/LB idle state (relevant to SoliKV's own pool too) stays
+    // fresh. Matches `spawn_db_keep_warm`'s cadence.
+    let idle_secs = crate::interpreter::builtins::http_class::db_pool_idle_secs();
+    let interval_secs = idle_secs.saturating_sub(10).clamp(5, 60);
+    let driver = store.driver_name();
+    // A dedicated OS thread (not a tokio task): `warm_ping` is blocking for
+    // both drivers — SoliDB's `ping` drives the shared async client via
+    // `block_on`, and SoliKV's pool is synchronous TCP.
+    std::thread::Builder::new()
+        .name("session-keep-warm".to_string())
+        .spawn(move || {
+            let mut was_ok = true;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(interval_secs));
+                match store.warm_ping() {
+                    Ok(()) => {
+                        if !was_ok {
+                            eprintln!(
+                                "{} Session keep-warm ({}): connection recovered",
+                                crate::serve::log_timestamp(),
+                                driver
+                            );
+                        }
+                        was_ok = true;
+                    }
+                    Err(e) => {
+                        if was_ok {
+                            eprintln!(
+                                "{} Session keep-warm ({}): ping failed ({}); retrying every {}s silently",
+                                crate::serve::log_timestamp(),
+                                driver,
+                                e,
+                                interval_secs
+                            );
+                        }
+                        was_ok = false;
+                    }
+                }
+            }
+        })
+        .ok();
 }
 
 // SEC-038a: the previous `SessionStoreManager` cached one Arc<dyn SessionStore>

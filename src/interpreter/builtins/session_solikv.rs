@@ -181,6 +181,13 @@ impl SessionStore for SolikvSessionStore {
     fn driver_name(&self) -> &'static str {
         "solikv"
     }
+
+    /// `PING` over a pooled TCP connection — exercises the SoliKV pool so a
+    /// NAT/LB or server-side idle cutoff doesn't silently drop the socket
+    /// between requests. See `session::spawn_session_keep_warm`.
+    fn warm_ping(&self) -> Result<(), String> {
+        self.pool.execute(&["PING"]).map(|_| ())
+    }
 }
 
 #[cfg(test)]

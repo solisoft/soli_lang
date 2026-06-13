@@ -43,7 +43,8 @@ fn prefetch_tag() -> &'static str {
 
 /// FNV-1a 64-bit over the embedded script bytes. Cheap, deterministic per
 /// binary, collision-free for our single-file cache-buster use case.
-fn fnv1a_64(bytes: &[u8]) -> u64 {
+/// Shared with `serve::nav` for its own script tag.
+pub(crate) fn fnv1a_64(bytes: &[u8]) -> u64 {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
     let mut hash = FNV_OFFSET;
@@ -125,12 +126,18 @@ where
 /// Default window: 30s — long enough to bridge hover→click, short enough to
 /// bound staleness. Override with `SOLI_PREFETCH_TTL` (seconds, clamped 1..=300).
 pub fn prefetch_cache_control() -> String {
-    let ttl = std::env::var("SOLI_PREFETCH_TTL")
+    format!("private, max-age={}", prefetch_ttl())
+}
+
+/// The prefetch freshness window in seconds (`SOLI_PREFETCH_TTL`, clamped
+/// 1..=300, default 30). Also stamped on the nav script tag so the client's
+/// in-memory prefetch cache expires in step with the server's `max-age`.
+pub(crate) fn prefetch_ttl() -> u64 {
+    std::env::var("SOLI_PREFETCH_TTL")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .map(|secs| secs.clamp(1, 300))
-        .unwrap_or(30);
-    format!("private, max-age={}", ttl)
+        .unwrap_or(30)
 }
 
 /// HTTP handler for `GET /__soli/prefetch.js`. Returns the bundled script with
