@@ -321,7 +321,7 @@ The element persists only between pages that **both** declare it (same `id` + `d
 <meta name="view-transition" content="same-origin">
 ```
 
-**Graceful degradation:** non-HTML responses (downloads, JSON), fetch failures, redirects that leave the origin, and pages using Alpine `x-teleport` all fall back to a normal full navigation automatically. Error pages (404/500) that render HTML are swapped in like any other page, with the URL updated to the final response URL.
+**Graceful degradation:** non-HTML responses (downloads, JSON), fetch failures, and redirects that leave the origin all fall back to a normal full navigation automatically. (Alpine `x-teleport` pages swap fine — the swap destroys the old Alpine tree, which runs each teleport's cleanup, before replacing the body and re-initializing.) Error pages (404/500) that render HTML are swapped in like any other page, with the URL updated to the final response URL.
 
 ### DateTime Functions
 

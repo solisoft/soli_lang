@@ -308,8 +308,10 @@ mod tests {
         assert!(NAV_SCRIPT.contains("startViewTransition"));
         assert!(NAV_SCRIPT.contains("meta[name=\"view-transition\"][content=\"same-origin\"]"));
         assert!(
-            NAV_SCRIPT.contains("template[x-teleport]"),
-            "teleported Alpine pages must bail to a full navigation"
+            NAV_SCRIPT.contains("destroyTree(document.body)"),
+            "the swap must destroy the old Alpine tree (running x-teleport cleanups) \
+             before replacing the body, so teleport pages swap cleanly instead of \
+             bailing to a full navigation"
         );
     }
 

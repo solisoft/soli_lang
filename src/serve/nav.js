@@ -290,9 +290,14 @@
 
         // The target page refuses swapping — honor it with a real navigation.
         if (metaOff(doc)) { location.assign(page.url); return; }
-        // Teleported Alpine trees (clones at the end of <body>) can't survive
-        // a body swap — same reasoning as the live-reload morpher.
-        if (document.querySelector("template[x-teleport]")) { location.assign(page.url); return; }
+        // NOTE: unlike the live-reload morpher, instant-nav does NOT bail on
+        // Alpine x-teleport. A morph keeps the old <body> and reconciles it, so
+        // teleported clones and their <template> sources desync. A swap instead
+        // calls Alpine.destroyTree(document.body) (see swap()) — which runs each
+        // teleport's registered cleanup and removes its clone — then replaces
+        // the whole body and re-runs initTree, re-teleporting fresh. So teleport
+        // pages swap cleanly; bailing here forced a full reload (and tore down
+        // any data-soli-permanent widget) on every card/modal page for nothing.
         // Import maps must exist before any module script loads, and can't be
         // reliably registered into a live document after the fact — so a page
         // that introduces an <script type="importmap"> the current page lacks
