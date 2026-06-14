@@ -15,6 +15,35 @@ use std::rc::Rc;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
+// Per-thread cache of fully-built translation tables, keyed by locale.
+//
+// App-level i18n (e.g. Bonfire's `app/helpers/locale_<code>.sl`) returns each
+// locale's table as a hash *literal* from a Soli helper function, so every
+// `tr()` call rebuilds a multi-thousand-entry hash from scratch. On a page
+// with hundreds-to-thousands of `tr()` calls that table rebuild dominates the
+// render. View helpers run in an isolated, per-thread environment (only
+// builtins + sibling helper fns are in scope — no classes, no module state),
+// so the app cannot memoize this itself; these two builtins give it a place to
+// stash the built table. `Value` is `!Send` (Rc-backed), so the cache is
+// thread-local — it lives exactly as long as the per-thread helper env and is
+// built at most once per locale per worker thread. Cloning a cached
+// `Value::Hash` is an `Rc` bump, so reads are O(1) — which also means every
+// reader shares the same interior `RefCell`; treat a cached table as
+// read-only (mutating it would leak into later readers on the same thread).
+// The cache is unbounded by design: the intended caller stashes a handful of
+// locale tables, so there is no eviction. Don't drive it with unbounded
+// distinct keys.
+thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
+    static TABLE_CACHE: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
+}
+
+/// Drop the per-thread translation-table cache. Called on helper hot-reload so
+/// edits to `app/helpers/locale_*.sl` take effect without restarting `--dev`.
+pub fn clear_table_cache() {
+    TABLE_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
 fn get_locale() -> String {
     helpers::get_locale()
 }
@@ -438,6 +467,57 @@ pub fn register_i18n_class(env: &mut Environment) {
         })),
     );
 
+    // I18n.cached_table(locale) - Return the cached translation table for
+    // `locale`, or null if nothing has been cached yet on this thread. Lets
+    // view helpers memoize an expensively-built locale hash across `tr()`
+    // calls (see TABLE_CACHE above). The returned hash shares the cache's
+    // interior cell — treat it as read-only.
+    i18n_static_methods.insert(
+        "cached_table".to_string(),
+        Rc::new(NativeFunction::new("I18n.cached_table", Some(1), |args| {
+            let locale = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "I18n.cached_table expects a locale string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            TABLE_CACHE
+                .with(|cache| Ok(cache.borrow().get(&locale).cloned().unwrap_or(Value::Null)))
+        })),
+    );
+
+    // I18n.cache_table(locale, table) - Stash `table` (a hash) as the cached
+    // translation table for `locale` on this thread and return it, so the
+    // caller can `return I18n.cache_table(locale, build())` in one line.
+    i18n_static_methods.insert(
+        "cache_table".to_string(),
+        Rc::new(NativeFunction::new("I18n.cache_table", Some(2), |args| {
+            let locale = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "I18n.cache_table expects a locale string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            if !matches!(&args[1], Value::Hash(_)) {
+                return Err(format!(
+                    "I18n.cache_table expects a hash table, got {}",
+                    args[1].type_name()
+                ));
+            }
+            let table = args[1].clone();
+            TABLE_CACHE.with(|cache| {
+                cache.borrow_mut().insert(locale, table.clone());
+            });
+            Ok(table)
+        })),
+    );
+
     // Create the I18n class
     let i18n_class = Class {
         name: "I18n".to_string(),
@@ -454,4 +534,80 @@ pub fn register_i18n_class(env: &mut Environment) {
     };
 
     env.define("I18n".to_string(), Value::Class(Rc::new(i18n_class)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::hash_from_pairs;
+
+    // Pull a registered I18n static native fn so we can call it directly.
+    fn static_fn(env: &Environment, name: &str) -> Rc<NativeFunction> {
+        match env.get("I18n") {
+            Some(Value::Class(class)) => class
+                .native_static_methods
+                .get(name)
+                .unwrap_or_else(|| panic!("I18n.{name} not registered"))
+                .clone(),
+            other => panic!("expected I18n class, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cache_round_trip_and_clear() {
+        // Thread-local cache: start clean so we don't inherit another test's
+        // entries on this worker thread.
+        clear_table_cache();
+
+        let mut env = Environment::new();
+        register_i18n_class(&mut env);
+        let cache_table = static_fn(&env, "cache_table");
+        let cached_table = static_fn(&env, "cached_table");
+
+        // Miss before anything is stored.
+        assert!(matches!(
+            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            Value::Null
+        ));
+
+        // cache_table stores and echoes the table back.
+        let table = hash_from_pairs(vec![("greeting", Value::String("hi".into()))]);
+        let stored = (cache_table.func)(vec![Value::String("zz-test".into()), table]).unwrap();
+        assert!(matches!(stored, Value::Hash(_)));
+
+        // cached_table now returns the same table; a different locale stays a miss.
+        assert!(matches!(
+            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            Value::Hash(_)
+        ));
+        assert!(matches!(
+            (cached_table.func)(vec![Value::String("zz-other".into())]).unwrap(),
+            Value::Null
+        ));
+
+        // Hot-reload contract: clearing empties the cache.
+        clear_table_cache();
+        assert!(matches!(
+            (cached_table.func)(vec![Value::String("zz-test".into())]).unwrap(),
+            Value::Null
+        ));
+    }
+
+    #[test]
+    fn cache_table_rejects_bad_args() {
+        let mut env = Environment::new();
+        register_i18n_class(&mut env);
+        let cache_table = static_fn(&env, "cache_table");
+        let cached_table = static_fn(&env, "cached_table");
+
+        // Non-string locale.
+        assert!((cached_table.func)(vec![Value::Int(1)]).is_err());
+        // Non-hash table.
+        let err = (cache_table.func)(vec![
+            Value::String("zz-test".into()),
+            Value::String("not-a-hash".into()),
+        ])
+        .unwrap_err();
+        assert!(err.contains("expects a hash table"), "got: {err}");
+    }
 }

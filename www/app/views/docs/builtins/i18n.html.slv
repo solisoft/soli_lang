@@ -217,6 +217,54 @@ dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
         </section>
     </section>
 
+    <!-- Caching -->
+    <section id="section-caching" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Translation Table Cache</h2>
+        <p class="text-gray-400 mb-6">A per-worker-thread cache for app-level i18n. When each locale's translation table is produced by an expensive call (e.g. a view helper returning a large hash literal), build it once per thread instead of on every lookup. View helpers run in an isolated per-thread environment with nowhere to memoize, so these give them a place to stash the table. The cache is cleared automatically when view helpers hot-reload in <code class="text-amber-400">--dev</code>.</p>
+
+        <section id="def-i18n-cache-table" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-i18n-cache-table" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.cache_table(locale, table)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Stash a translation table in the per-thread cache, keyed by locale, and return it.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String</code> - Cache key (a locale code)</div>
+                    <div><code class="text-amber-400">table</code> : <code class="text-purple-400">Hash</code> - The translation table to store</div>
+                </div>
+                <p class="text-gray-400 mt-3 mb-3">Returns the same table, so you can return it inline.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">def locale_table(locale)
+    cached = I18n.cached_table(locale)
+    return cached unless cached.nil?
+    return I18n.cache_table(locale, build_table(locale))  # built once per thread
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="def-i18n-cached-table" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-i18n-cached-table" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">I18n.cached_table(locale)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">Return the table cached for this locale on the current thread, or <code class="text-amber-400">null</code> on a miss. The returned hash shares the cache's storage - treat it as read-only.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">locale</code> : <code class="text-purple-400">String</code> - Cache key (a locale code)</div>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.cache_table("fr", { "greeting": "Bonjour" })
+I18n.cached_table("fr")   # { "greeting": "Bonjour" }
+I18n.cached_table("ja")   # null  (nothing cached for "ja" yet)</code></pre>
+            </div>
+        </section>
+    </section>
+
     <!-- Example -->
     <section id="section-example" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Complete Example</h2>

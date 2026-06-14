@@ -1772,6 +1772,9 @@ fn worker_loop(
             last_helpers_version = current_helpers;
             // Clear and reload view helpers
             crate::interpreter::builtins::template::clear_view_helpers();
+            // Drop any cached translation tables — a locale_*.sl edit must be
+            // reflected on the next render rather than serving the stale table.
+            crate::interpreter::builtins::i18n::clear_table_cache();
             if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir)
             {
                 eprintln!("Worker {}: Error reloading view helpers: {}", worker_id, e);

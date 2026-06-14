@@ -233,3 +233,48 @@ describe("I18n.format_date", fn() {
         I18n.set_locale(original);
     });
 });
+
+describe("I18n.cache_table and I18n.cached_table", fn() {
+    // Synthetic locale codes ("zz*") keep these independent of any real
+    // locale another test might cache on this thread.
+    test("cached_table returns null before anything is cached", fn() {
+        assert_eq(I18n.cached_table("zz-fresh"), null);
+    });
+
+    test("cache_table stores and returns the table, cached_table reads it back", fn() {
+        let table = { "greeting": "hi", "bye": "ciao" };
+        let returned = I18n.cache_table("zz1", table);
+        assert_eq(returned["greeting"], "hi");
+
+        let fetched = I18n.cached_table("zz1");
+        assert(fetched != null);
+        assert_eq(fetched["greeting"], "hi");
+        assert_eq(fetched["bye"], "ciao");
+    });
+
+    test("locales are cached independently", fn() {
+        I18n.cache_table("zz2", { "k": "two" });
+        assert_eq(I18n.cached_table("zz1")["greeting"], "hi");
+        assert_eq(I18n.cached_table("zz2")["k"], "two");
+    });
+
+    test("cached_table rejects a non-string locale", fn() {
+        let failed = false;
+        try {
+            I18n.cached_table(123);
+        } catch e {
+            failed = true;
+        }
+        assert(failed);
+    });
+
+    test("cache_table rejects a non-hash table", fn() {
+        let failed = false;
+        try {
+            I18n.cache_table("zz3", "not-a-hash");
+        } catch e {
+            failed = true;
+        }
+        assert(failed);
+    });
+});

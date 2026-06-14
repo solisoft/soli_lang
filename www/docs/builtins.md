@@ -3592,6 +3592,43 @@ I18n.format_date(ts, "fr")  # "15/01/2024"
 I18n.format_date(ts, "de")  # "15.01.2024"
 ```
 
+### I18n.cache_table(locale, table)
+
+Stashes a translation `table` (a hash) in a per-worker-thread cache, keyed by `locale`, and returns it. Built for app-level i18n where each locale's table is produced by an expensive call (e.g. a view helper that returns a large hash literal). View helpers run in an isolated per-thread environment with nowhere to memoize, so this gives them a place to build the table once per thread instead of on every lookup.
+
+The cache is thread-local and cleared automatically when view helpers hot-reload (`--dev`), so editing a translation file takes effect on the next render.
+
+**Parameters:**
+- `locale` (String) - Cache key (a locale code).
+- `table` (Hash) - The translation table to store.
+
+**Returns:** Hash - the same `table`, so you can `return I18n.cache_table(locale, build())` in one line.
+
+**Example:**
+```soli
+def locale_table(locale)
+    cached = I18n.cached_table(locale)
+    return cached unless cached.nil?
+    return I18n.cache_table(locale, build_table(locale))  # built once per thread
+end
+```
+
+### I18n.cached_table(locale)
+
+Returns the table previously stored for `locale` via `I18n.cache_table`, or `null` if nothing has been cached yet on the current thread. The returned hash shares the cache's storage — treat it as read-only.
+
+**Parameters:**
+- `locale` (String) - Cache key (a locale code).
+
+**Returns:** Hash, or `null` on a miss.
+
+**Example:**
+```soli
+I18n.cache_table("fr", { "greeting": "Bonjour" })
+I18n.cached_table("fr")   # { "greeting": "Bonjour" }
+I18n.cached_table("ja")   # null  (nothing cached for "ja" yet)
+```
+
 ---
 
 ## Control Flow
