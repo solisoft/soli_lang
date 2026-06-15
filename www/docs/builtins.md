@@ -760,6 +760,9 @@ Performs an HTTP GET request.
 - `url` (String) - The URL to fetch
 - `options` (Hash, optional) - Request options
   - `headers` (Hash) - Custom headers
+  - `timeout` (Int|Float) - Per-call timeout in **seconds**, overriding the
+    default 30s client timeout for this request only. Fractional seconds are
+    allowed (`0.5`). Must be positive.
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
@@ -769,6 +772,9 @@ response = HTTP.get("https://api.example.com/data")
 if response["status"] == 200
   println(response["body"])
 end
+
+# Give a slow upstream at most 5 seconds before giving up.
+fast = HTTP.get("https://api.example.com/slow", { "timeout": 5 })
 ```
 
 ### HTTP.post(url, body, options?)
@@ -779,6 +785,7 @@ Performs an HTTP POST request.
 - `url` (String) - The URL to post to
 - `body` (String|Hash) - The request body
 - `options` (Hash, optional) - Request options
+  - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
@@ -789,6 +796,9 @@ response = HTTP.post(
   "name=Alice&email=alice@example.com",
   { "headers": { "Content-Type": "application/x-www-form-urlencoded" } }
 )
+
+# A per-call timeout works on every HTTP.* method.
+response = HTTP.post("https://api.example.com/users", { "name": "Alice" }, { "timeout": 10 })
 ```
 
 ### HTTP.post_json(url, data, options?)
@@ -831,20 +841,29 @@ println(data["body"]["name"])
 PUT / PATCH / DELETE / HEAD counterparts to `HTTP.get` and `HTTP.post`. JSON
 variants (`HTTP.put_json`, `HTTP.patch_json`) serialize the body automatically.
 
-### HTTP.request(method, url, options?)
+### HTTP.request(method, url, headers?, body?)
 
 Performs a custom HTTP request.
 
 **Parameters:**
 - `method` (String) - HTTP method (GET, POST, PUT, PATCH, DELETE, etc.)
 - `url` (String) - The URL
-- `options` (Hash, optional) - Request options (`body`, `headers`, ...)
+- `headers` (Hash, optional) - Request headers. A `timeout` key (Int|Float
+  seconds) in this hash is consumed as the per-call timeout rather than being
+  sent as a header.
+- `body` (String|Hash, optional) - The request body
 
 **Returns:** Hash - Response object
 
 **Example:**
 ```soli
 response = HTTP.request("DELETE", "https://api.example.com/users/1")
+
+# Custom headers plus a 3-second per-call timeout.
+response = HTTP.request("GET", "https://api.example.com/slow", {
+  "Authorization": "Bearer " + token,
+  "timeout": 3
+})
 ```
 
 ### HTTP Status Helpers
@@ -876,12 +895,15 @@ Checks if response status is 4xx.
 
 Checks if response status is 5xx.
 
-### HTTP.get_all(urls)
+### HTTP.get_all(urls, options?)
 
 Performs multiple GET requests in parallel.
 
 **Parameters:**
 - `urls` (Array) - Array of URLs to fetch
+- `options` (Hash, optional) - Request options applied to every request in the
+  batch
+  - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
 
 **Returns:** Array - Array of response bodies as strings (or `{"error": ...}` hashes for failed requests)
 
@@ -891,14 +913,22 @@ responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
 ])
+
+# Cap every request in the batch at 5 seconds.
+responses = HTTP.get_all([
+  "https://api.example.com/users",
+  "https://api.example.com/posts"
+], { "timeout": 5 })
 ```
 
-### HTTP.get_all_json(urls)
+### HTTP.get_all_json(urls, options?)
 
 Performs multiple GET requests in parallel and parses each response body as JSON. Equivalent to mapping `HTTP.get_json` over an array of URLs, but executed concurrently.
 
 **Parameters:**
 - `urls` (Array) - Array of URLs to fetch
+- `options` (Hash, optional) - Request options applied to every request in the
+  batch (`timeout`, in seconds)
 
 **Returns:** Array - Array of parsed JSON values (or `{"error": ...}` hashes for failed requests / non-2xx responses / unparseable bodies)
 
@@ -921,14 +951,16 @@ if posts.has_key("error") {
 Performs multiple custom requests in parallel.
 
 **Parameters:**
-- `requests` (Array) - Array of request hashes with `method`, `url`, and optional `options`
+- `requests` (Array) - Array of request hashes with `method`, `url`, optional
+  `headers`, optional `body`, and an optional per-request `timeout` (Int|Float
+  seconds)
 
 **Returns:** Array - Array of response objects
 
 **Example:**
 ```soli
 responses = HTTP.parallel([
-  { "method": "GET", "url": "https://api.example.com/users" },
+  { "method": "GET", "url": "https://api.example.com/users", "timeout": 5 },
   { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])
 ```

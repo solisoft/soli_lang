@@ -70,7 +70,20 @@ response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.get("https://api.example.com/users")
 if resp["status"] == 200
   println(resp["body"])
-end</code></pre>
+end
+
+# Per-call timeout in seconds (overrides the 30s default for this request).
+resp = HTTP.get("https://api.example.com/slow", { "timeout": 5 })</code></pre>
+            <div class="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4 text-sm text-gray-300">
+                <strong class="text-indigo-300">Per-call timeout.</strong>
+                Every <code class="text-amber-400">HTTP.*</code> method accepts a
+                <code class="text-amber-400">timeout</code> key (in <strong>seconds</strong>, as an
+                <code class="text-amber-400">Int</code> or <code class="text-amber-400">Float</code>) in its trailing
+                options hash. It overrides the default 30s client timeout for that one request and must be positive;
+                a fractional value such as <code class="text-amber-400">0.5</code> is allowed. For
+                <code class="text-amber-400">HTTP.request</code>, the <code class="text-amber-400">timeout</code> key
+                lives in the headers hash and is consumed rather than sent as a header.
+            </div>
         </section>
 
         <section id="def-http-post" class="scroll-mt-20 mb-6">
@@ -146,7 +159,7 @@ println(resp["headers"])</code></pre>
 
         <section id="def-http-get-json" class="scroll-mt-20 mb-6">
             <a href="#def-http-get-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">HTTP.get_json(url)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.get_json(url, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
@@ -158,7 +171,7 @@ println(data["body"]["name"])</code></pre>
 
         <section id="def-http-post-json" class="scroll-mt-20 mb-6">
             <a href="#def-http-post-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">HTTP.post_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.post_json(url, data, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
@@ -172,7 +185,7 @@ println(data["body"]["name"])</code></pre>
 
         <section id="def-http-put-json" class="scroll-mt-20 mb-6">
             <a href="#def-http-put-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">HTTP.put_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.put_json(url, data, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
@@ -186,7 +199,7 @@ println(data["body"]["name"])</code></pre>
 
         <section id="def-http-patch-json" class="scroll-mt-20 mb-6">
             <a href="#def-http-patch-json" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">HTTP.patch_json(url, data)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.patch_json(url, data, options?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
@@ -205,14 +218,17 @@ println(data["body"]["name"])</code></pre>
 
         <section id="def-http-request" class="scroll-mt-20 mb-6">
             <a href="#def-http-request" class="group flex items-center gap-2 mb-3">
-                <code class="text-lg font-mono text-indigo-400">HTTP.request(method, url, options?)</code>
+                <code class="text-lg font-mono text-indigo-400">HTTP.request(method, url, headers?, body?)</code>
                 <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.).</p>
+            <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("DELETE", "https://api.example.com/users/1")
-resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</code></pre>
+resp = HTTP.request("PATCH", url, headers, json)
+
+# Custom header plus a 3-second per-call timeout.
+resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout": 3 })</code></pre>
         </section>
     </section>
 
@@ -311,28 +327,34 @@ resp = HTTP.request("PATCH", url, { "body": json, "headers": headers })</code></
         <section id="def-http-get-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl border border-white/10 p-5">
                 <a bg-white/5 href="#def-http-get-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all(urls)</code>
+                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all(urls, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (e.g. <code class="text-amber-400">{ "timeout": 5 }</code>) applies to every request in the batch.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
-])</code></pre>
+])
+
+# Cap every request in the batch at 5 seconds.
+responses = HTTP.get_all([
+  "https://api.example.com/users",
+  "https://api.example.com/posts"
+], { "timeout": 5 })</code></pre>
             </div>
         </section>
 
         <section id="def-http-get-all-json" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-http-get-all-json" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all_json(urls)</code>
+                    <code class="text-lg font-mono text-indigo-400">HTTP.get_all_json(urls, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel and parse each body as JSON. Failed requests, non-2xx responses, or unparseable bodies appear as <code>{"error": ...}</code> hashes.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel and parse each body as JSON. Failed requests, non-2xx responses, or unparseable bodies appear as <code>{"error": ...}</code> hashes. Accepts the same optional trailing options hash (<code class="text-amber-400">timeout</code>, in seconds) as <code class="text-amber-400">HTTP.get_all</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all_json([
   "https://api.example.com/users.json",
   "https://api.example.com/posts.json"
@@ -353,9 +375,9 @@ if users.has_key("error") {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel.</p>
+                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel. Each request hash accepts <code class="text-amber-400">method</code>, <code class="text-amber-400">url</code>, optional <code class="text-amber-400">headers</code>, optional <code class="text-amber-400">body</code>, and an optional per-request <code class="text-amber-400">timeout</code> (seconds).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.parallel([
-  { "method": "GET", "url": "https://api.example.com/users" },
+  { "method": "GET", "url": "https://api.example.com/users", "timeout": 5 },
   { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
 ])</code></pre>
             </div>

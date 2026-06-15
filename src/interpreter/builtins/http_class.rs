@@ -574,6 +574,54 @@ fn value_to_json(value: &Value) -> Result<String, String> {
     crate::interpreter::value::stringify_to_string(value)
 }
 
+/// Per-call request timeout. Reads a `timeout` key (in **seconds**, given as
+/// an `Int` or `Float`) from an options hash and converts it to a `Duration`,
+/// overriding the client-wide 30s default for this one request. Returns
+/// `Ok(None)` when no options hash is supplied, it isn't a hash, or it has no
+/// `timeout` key (or the key is null) — in which case the client default
+/// applies. A non-numeric or non-positive value is a hard error so a typo
+/// fails loudly instead of being silently ignored.
+fn extract_timeout(options: Option<&Value>) -> Result<Option<std::time::Duration>, String> {
+    let Some(Value::Hash(hash)) = options else {
+        return Ok(None);
+    };
+    let hash = hash.borrow();
+    let raw = match hash.get(&HashKey::String("timeout".into())) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    let secs = match raw {
+        Value::Int(n) => *n as f64,
+        Value::Float(f) => *f,
+        Value::Null => return Ok(None),
+        other => {
+            return Err(format!(
+                "HTTP timeout must be a number of seconds, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    if !secs.is_finite() || secs <= 0.0 {
+        return Err(format!(
+            "HTTP timeout must be a positive number of seconds, got {}",
+            secs
+        ));
+    }
+    Ok(Some(std::time::Duration::from_secs_f64(secs)))
+}
+
+/// Apply an optional per-call timeout to a request builder, leaving it
+/// untouched (client default applies) when `None`.
+fn apply_timeout(
+    builder: reqwest::RequestBuilder,
+    timeout: Option<std::time::Duration>,
+) -> reqwest::RequestBuilder {
+    match timeout {
+        Some(d) => builder.timeout(d),
+        None => builder,
+    }
+}
+
 /// Send a reqwest request, recording method/url/status/duration in the
 /// per-request HTTP log when dev mode is on. Returns the response on success
 /// or the original error string on failure.
@@ -644,7 +692,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "get".to_string(),
-        Rc::new(NativeFunction::new("HTTP.get", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.get", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.get() requires a URL".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -657,11 +708,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
+            let timeout = extract_timeout(args.get(1))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("GET", &url, client.get(&*url)).await?;
+                        let resp =
+                            send_logged("GET", &url, apply_timeout(client.get(&*url), timeout))
+                                .await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -678,8 +733,7 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .get(&*url)
+                            let resp = apply_timeout(client.get(&*url), timeout)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -699,7 +753,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "post".to_string(),
-        Rc::new(NativeFunction::new("HTTP.post", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.post", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.post() requires a URL and body".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -729,14 +786,19 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .post(&*url)
-                            .header("Content-Type", content_type)
-                            .body(body.to_string());
+                        let req = apply_timeout(
+                            client
+                                .post(&*url)
+                                .header("Content-Type", content_type)
+                                .body(body.to_string()),
+                            timeout,
+                        );
                         let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
@@ -754,13 +816,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .post(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string())
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .post(&*url)
+                                    .header("Content-Type", content_type)
+                                    .body(body.to_string()),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -777,7 +842,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "put".to_string(),
-        Rc::new(NativeFunction::new("HTTP.put", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.put", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.put() requires a URL and body".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -807,14 +875,19 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .put(&*url)
-                            .header("Content-Type", content_type)
-                            .body(body.to_string());
+                        let req = apply_timeout(
+                            client
+                                .put(&*url)
+                                .header("Content-Type", content_type)
+                                .body(body.to_string()),
+                            timeout,
+                        );
                         let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
@@ -832,13 +905,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .put(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string())
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .put(&*url)
+                                    .header("Content-Type", content_type)
+                                    .body(body.to_string()),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -855,7 +931,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "patch".to_string(),
-        Rc::new(NativeFunction::new("HTTP.patch", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.patch", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.patch() requires a URL and body".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -885,14 +964,19 @@ pub fn register_http_class(env: &mut Environment) {
                 "text/plain".to_string()
             };
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .patch(&*url)
-                            .header("Content-Type", content_type)
-                            .body(body.to_string());
+                        let req = apply_timeout(
+                            client
+                                .patch(&*url)
+                                .header("Content-Type", content_type)
+                                .body(body.to_string()),
+                            timeout,
+                        );
                         let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
@@ -910,13 +994,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .patch(&*url)
-                                .header("Content-Type", content_type)
-                                .body(body.to_string())
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .patch(&*url)
+                                    .header("Content-Type", content_type)
+                                    .body(body.to_string()),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -933,7 +1020,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "delete".to_string(),
-        Rc::new(NativeFunction::new("HTTP.delete", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.delete", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.delete() requires a URL".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -946,11 +1036,18 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
+            let timeout = extract_timeout(args.get(1))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("DELETE", &url, client.delete(&*url)).await?;
+                        let resp = send_logged(
+                            "DELETE",
+                            &url,
+                            apply_timeout(client.delete(&*url), timeout),
+                        )
+                        .await?;
 
                         let status = resp.status();
                         if !status.is_success() {
@@ -967,8 +1064,7 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .delete(&*url)
+                            let resp = apply_timeout(client.delete(&*url), timeout)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -988,7 +1084,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "head".to_string(),
-        Rc::new(NativeFunction::new("HTTP.head", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.head", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.head() requires a URL".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -1001,11 +1100,15 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
+            let timeout = extract_timeout(args.get(1))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let resp = send_logged("HEAD", &url, client.head(&*url)).await?;
+                        let resp =
+                            send_logged("HEAD", &url, apply_timeout(client.head(&*url), timeout))
+                                .await?;
                         let status = resp.status().as_u16();
                         Ok(format!(
                             "{} {}",
@@ -1020,8 +1123,7 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .head(&*url)
+                            let resp = apply_timeout(client.head(&*url), timeout)
                                 .send()
                                 .await
                                 .map_err(|e| format!("HTTP request failed: {}", e))?;
@@ -1041,7 +1143,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "get_json".to_string(),
-        Rc::new(NativeFunction::new("HTTP.get_json", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.get_json", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.get_json() requires a URL".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -1054,11 +1159,16 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
+            let timeout = extract_timeout(args.get(1))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client.get(&*url).header("Accept", "application/json");
+                        let req = apply_timeout(
+                            client.get(&*url).header("Accept", "application/json"),
+                            timeout,
+                        );
                         let resp = send_logged("GET", &url, req).await?;
 
                         let status = resp.status();
@@ -1080,12 +1190,13 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .get(&*url)
-                                .header("Accept", "application/json")
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client.get(&*url).header("Accept", "application/json"),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1102,7 +1213,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "post_json".to_string(),
-        Rc::new(NativeFunction::new("HTTP.post_json", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.post_json", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.post_json() requires a URL and data".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -1117,14 +1231,19 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .post(&*url)
-                            .header("Content-Type", "application/json")
-                            .body(json_body);
+                        let req = apply_timeout(
+                            client
+                                .post(&*url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body),
+                            timeout,
+                        );
                         let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
@@ -1146,13 +1265,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .post(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body)
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .post(&*url)
+                                    .header("Content-Type", "application/json")
+                                    .body(json_body),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1169,7 +1291,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "put_json".to_string(),
-        Rc::new(NativeFunction::new("HTTP.put_json", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.put_json", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.put_json() requires a URL and data".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -1184,14 +1309,19 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .put(&*url)
-                            .header("Content-Type", "application/json")
-                            .body(json_body);
+                        let req = apply_timeout(
+                            client
+                                .put(&*url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body),
+                            timeout,
+                        );
                         let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
@@ -1213,13 +1343,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .put(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body)
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .put(&*url)
+                                    .header("Content-Type", "application/json")
+                                    .body(json_body),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1236,7 +1369,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "patch_json".to_string(),
-        Rc::new(NativeFunction::new("HTTP.patch_json", Some(2), |args| {
+        Rc::new(NativeFunction::new("HTTP.patch_json", None, |args| {
+            if args.len() < 2 {
+                return Err("HTTP.patch_json() requires a URL and data".to_string());
+            }
             let url = match &args[0] {
                 Value::String(s) => s.clone(),
                 other => {
@@ -1251,14 +1387,19 @@ pub fn register_http_class(env: &mut Environment) {
 
             let json_body = value_to_json(&args[1])?;
 
+            let timeout = extract_timeout(args.get(2))?;
+
             match get_tokio_handle() {
                 Some(rt) => {
                     let client = get_user_http_client().clone();
                     match http_block_on(&rt, async move {
-                        let req = client
-                            .patch(&*url)
-                            .header("Content-Type", "application/json")
-                            .body(json_body);
+                        let req = apply_timeout(
+                            client
+                                .patch(&*url)
+                                .header("Content-Type", "application/json")
+                                .body(json_body),
+                            timeout,
+                        );
                         let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
@@ -1280,13 +1421,16 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
-                            let resp = client
-                                .patch(&*url)
-                                .header("Content-Type", "application/json")
-                                .body(json_body)
-                                .send()
-                                .await
-                                .map_err(|e| format!("HTTP request failed: {}", e))?;
+                            let resp = apply_timeout(
+                                client
+                                    .patch(&*url)
+                                    .header("Content-Type", "application/json")
+                                    .body(json_body),
+                                timeout,
+                            )
+                            .send()
+                            .await
+                            .map_err(|e| format!("HTTP request failed: {}", e))?;
                             let status = resp.status();
                             if !status.is_success() {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
@@ -1330,6 +1474,10 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
+            // The 3rd arg is a flat headers hash. A `timeout` key (seconds) is
+            // pulled out as the per-call timeout rather than sent as a header.
+            let timeout = extract_timeout(args.get(2))?;
+
             let mut headers_vec: Vec<(String, String)> = Vec::new();
             if args.len() > 2 {
                 if let Value::Hash(headers) = &args[2] {
@@ -1338,6 +1486,9 @@ pub fn register_http_class(env: &mut Environment) {
                             HashKey::String(s) => s.clone(),
                             _ => continue,
                         };
+                        if key_str.as_ref() == "timeout" {
+                            continue;
+                        }
                         let value_str = match value {
                             Value::String(s) => s.clone(),
                             _ => format!("{}", value).into(),
@@ -1383,6 +1534,7 @@ pub fn register_http_class(env: &mut Environment) {
                             request = request.body(body);
                         }
 
+                        let request = apply_timeout(request, timeout);
                         let resp = send_logged(&method_clone, &url, request).await?;
 
                         let status = resp.status().as_u16();
@@ -1437,6 +1589,7 @@ pub fn register_http_class(env: &mut Environment) {
                                     request = request.body(body);
                                 }
 
+                                let request = apply_timeout(request, timeout);
                                 let resp = request
                                     .send()
                                     .await
@@ -1506,7 +1659,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "get_all".to_string(),
-        Rc::new(NativeFunction::new("HTTP.get_all", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.get_all", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.get_all() requires an array of URLs".to_string());
+            }
             let urls = match &args[0] {
                 Value::Array(arr) => {
                     let mut url_strings = Vec::new();
@@ -1545,7 +1701,11 @@ pub fn register_http_class(env: &mut Environment) {
                 validate_url_for_ssrf(u)?;
             }
 
-            let results = run_parallel_gets(urls);
+            // Optional trailing options hash applies one timeout to every
+            // request in the batch.
+            let timeout = extract_timeout(args.get(1))?;
+
+            let results = run_parallel_gets(urls, timeout);
 
             let values: Vec<Value> = results
                 .into_iter()
@@ -1561,7 +1721,10 @@ pub fn register_http_class(env: &mut Environment) {
 
     http_static_methods.insert(
         "get_all_json".to_string(),
-        Rc::new(NativeFunction::new("HTTP.get_all_json", Some(1), |args| {
+        Rc::new(NativeFunction::new("HTTP.get_all_json", None, |args| {
+            if args.is_empty() {
+                return Err("HTTP.get_all_json() requires an array of URLs".to_string());
+            }
             let urls = match &args[0] {
                 Value::Array(arr) => {
                     let mut url_strings = Vec::new();
@@ -1600,7 +1763,11 @@ pub fn register_http_class(env: &mut Environment) {
                 validate_url_for_ssrf(u)?;
             }
 
-            let results = run_parallel_gets_json(urls);
+            // Optional trailing options hash applies one timeout to every
+            // request in the batch.
+            let timeout = extract_timeout(args.get(1))?;
+
+            let results = run_parallel_gets_json(urls, timeout);
 
             let values: Vec<Value> = results
                 .into_iter()
@@ -1716,6 +1883,7 @@ struct RequestConfig {
     url: String,
     headers: Vec<(String, String)>,
     body: Option<String>,
+    timeout: Option<std::time::Duration>,
 }
 
 struct HttpResponse {
@@ -1732,6 +1900,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             url: url.clone().to_string(),
             headers: vec![],
             body: None,
+            timeout: None,
         }),
         Value::Hash(hash) => {
             let hash = hash.borrow();
@@ -1739,6 +1908,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             let mut method = "GET".to_string();
             let mut headers = vec![];
             let mut body = None;
+            let timeout = extract_timeout(Some(value))?;
 
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
@@ -1778,6 +1948,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
                 url: url.to_string(),
                 headers,
                 body: body.map(|s| s.to_string()),
+                timeout,
             })
         }
         other => Err(format!(
@@ -1818,7 +1989,10 @@ fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
     }
 }
 
-fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
+fn run_parallel_gets(
+    urls: Vec<String>,
+    timeout: Option<std::time::Duration>,
+) -> Vec<Result<String, String>> {
     // SEC-020: process at most `parallel_max_concurrency()` URLs at a time.
     // Each chunk fully completes before the next starts so we never hold
     // more than that many OS threads alive.
@@ -1844,8 +2018,7 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
                         let (status, body): (u16, Result<String, String>) =
                             match run_user_http_request::<_, _, (u16, Result<String, String>)>(
                                 move |client| async move {
-                                    let resp = client
-                                        .get(&url_for_call)
+                                    let resp = apply_timeout(client.get(&url_for_call), timeout)
                                         .send()
                                         .await
                                         .map_err(|e| format!("Request failed: {}", e))?;
@@ -1902,7 +2075,10 @@ fn run_parallel_gets(urls: Vec<String>) -> Vec<Result<String, String>> {
     results
 }
 
-fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
+fn run_parallel_gets_json(
+    urls: Vec<String>,
+    timeout: Option<std::time::Duration>,
+) -> Vec<Result<Value, String>> {
     // Fetch bodies on worker threads, then parse JSON on the main thread —
     // `Value` is `!Send` (contains Rc), so JSON parsing can't happen inside
     // the spawned threads.
@@ -1928,12 +2104,15 @@ fn run_parallel_gets_json(urls: Vec<String>) -> Vec<Result<Value, String>> {
                         let (status, body): (u16, Result<String, String>) =
                             match run_user_http_request::<_, _, (u16, Result<String, String>)>(
                                 move |client| async move {
-                                    let resp = client
-                                        .get(&url_for_call)
-                                        .header("Accept", "application/json")
-                                        .send()
-                                        .await
-                                        .map_err(|e| format!("Request failed: {}", e))?;
+                                    let resp = apply_timeout(
+                                        client
+                                            .get(&url_for_call)
+                                            .header("Accept", "application/json"),
+                                        timeout,
+                                    )
+                                    .send()
+                                    .await
+                                    .map_err(|e| format!("Request failed: {}", e))?;
                                     let code = resp.status().as_u16();
                                     if !resp.status().is_success() {
                                         let body =
@@ -2077,6 +2256,7 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
             request = request.body(body);
         }
 
+        let request = apply_timeout(request, config.timeout);
         let resp = request
             .send()
             .await
@@ -2263,7 +2443,7 @@ mod parallel_logging_tests {
         // get_all
         http_log::clear();
         let urls = vec![url("/a"), url("/b"), url("/c")];
-        let _ = run_parallel_gets(urls.clone());
+        let _ = run_parallel_gets(urls.clone(), None);
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 3, "get_all should record 3 entries");
         for (i, entry) in snap.iter().enumerate() {
@@ -2276,7 +2456,7 @@ mod parallel_logging_tests {
         // get_all_json
         http_log::clear();
         let urls = vec![url("/x"), url("/y")];
-        let _ = run_parallel_gets_json(urls.clone());
+        let _ = run_parallel_gets_json(urls.clone(), None);
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 2, "get_all_json should record 2 entries");
         for (i, entry) in snap.iter().enumerate() {
@@ -2293,12 +2473,14 @@ mod parallel_logging_tests {
                 url: url("/g"),
                 headers: vec![],
                 body: None,
+                timeout: None,
             },
             RequestConfig {
                 method: "POST".to_string(),
                 url: url("/p"),
                 headers: vec![],
                 body: Some("{}".to_string()),
+                timeout: None,
             },
         ];
         let _ = run_parallel_requests(configs);
@@ -2314,7 +2496,7 @@ mod parallel_logging_tests {
         let dead_listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let dead_port = dead_listener.local_addr().unwrap().port();
         drop(dead_listener);
-        let _ = run_parallel_gets(vec![format!("http://127.0.0.1:{}/", dead_port)]);
+        let _ = run_parallel_gets(vec![format!("http://127.0.0.1:{}/", dead_port)], None);
         let snap = http_log::snapshot();
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].status, 0);
@@ -2324,7 +2506,7 @@ mod parallel_logging_tests {
         // short-circuit when neither dev log is enabled.
         http_log::set_enabled(false);
         http_log::clear();
-        let _ = run_parallel_gets(vec![url("/d1"), url("/d2")]);
+        let _ = run_parallel_gets(vec![url("/d1"), url("/d2")], None);
         let snap = http_log::snapshot();
         assert_eq!(
             snap.len(),
@@ -2596,5 +2778,115 @@ mod parallel_logging_tests {
                 Err(e) => e,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod per_call_timeout_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn opts(pairs: Vec<(&str, Value)>) -> Value {
+        let mut h = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(HashKey::String(k.into()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(h)))
+    }
+
+    #[test]
+    fn extract_timeout_parses_int_and_float_seconds() {
+        let h = opts(vec![("timeout", Value::Int(5))]);
+        assert_eq!(
+            extract_timeout(Some(&h)).unwrap(),
+            Some(std::time::Duration::from_secs(5))
+        );
+
+        let h = opts(vec![("timeout", Value::Float(0.25))]);
+        assert_eq!(
+            extract_timeout(Some(&h)).unwrap(),
+            Some(std::time::Duration::from_millis(250))
+        );
+    }
+
+    #[test]
+    fn extract_timeout_absent_or_null_is_none() {
+        // No options hash at all.
+        assert_eq!(extract_timeout(None).unwrap(), None);
+        // Hash present but no `timeout` key.
+        let h = opts(vec![("headers", opts(vec![]))]);
+        assert_eq!(extract_timeout(Some(&h)).unwrap(), None);
+        // Explicit null falls back to the client default.
+        let h = opts(vec![("timeout", Value::Null)]);
+        assert_eq!(extract_timeout(Some(&h)).unwrap(), None);
+        // A non-hash arg is ignored, not an error.
+        assert_eq!(
+            extract_timeout(Some(&Value::String("x".into()))).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_timeout_rejects_bad_values() {
+        for bad in [Value::Int(0), Value::Int(-3), Value::Float(-1.0)] {
+            let h = opts(vec![("timeout", bad)]);
+            assert!(
+                extract_timeout(Some(&h)).is_err(),
+                "non-positive timeout should error"
+            );
+        }
+        let h = opts(vec![("timeout", Value::String("nope".into()))]);
+        assert!(
+            extract_timeout(Some(&h)).is_err(),
+            "non-numeric timeout should error"
+        );
+    }
+
+    /// A server that accepts the connection and reads the request but never
+    /// replies, so the only way the client returns is via the per-call
+    /// timeout. The handler thread sleeps well past the test's timeout and is
+    /// reaped when the process exits.
+    fn spawn_stalling_server() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                thread::spawn(move || {
+                    let mut s = stream;
+                    let mut buf = [0u8; 1024];
+                    let _ = s.read(&mut buf);
+                    thread::sleep(std::time::Duration::from_secs(30));
+                    let _ = s.write_all(b"");
+                });
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn short_timeout_aborts_slow_request() {
+        let port = spawn_stalling_server();
+        let url = format!("http://127.0.0.1:{}/", port);
+        let started = std::time::Instant::now();
+        let results = run_parallel_gets(vec![url], Some(std::time::Duration::from_millis(300)));
+        let elapsed = started.elapsed();
+
+        assert_eq!(results.len(), 1);
+        results[0]
+            .as_ref()
+            .expect_err("a short per-call timeout should error out");
+        // The connect succeeds (the server accepts), so the request can only
+        // return via the per-call deadline. Returning around the configured
+        // 300ms — and far under the client-wide 30s default — proves the
+        // per-call timeout fired rather than a connect refusal or the client
+        // default. (reqwest's top-level error string is generic, so we assert
+        // on timing rather than message text.)
+        assert!(
+            elapsed >= std::time::Duration::from_millis(200)
+                && elapsed < std::time::Duration::from_secs(5),
+            "expected the request to abort near the 300ms per-call timeout, took {:?}",
+            elapsed
+        );
     }
 }
