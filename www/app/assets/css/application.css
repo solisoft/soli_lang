@@ -1,6 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Content is auto-detected: v4 scans the whole project (respecting .gitignore,
+   skipping node_modules / binaries), so .slv views and .sl source are covered
+   without an explicit source list — which can silently drop classes. */
+
+@theme {
+    --color-primary: #4f46e5;
+    --color-secondary: #10b981;
+}
 
 @layer components {
     .btn {

@@ -236,14 +236,6 @@ pub fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
     )
 }
 
-/// Create Tailwind config file
-pub fn create_tailwind_config(app_path: &Path) -> Result<(), String> {
-    write_file(
-        &app_path.join("tailwind.config.js"),
-        app::TAILWIND_CONFIG_TEMPLATE,
-    )
-}
-
 /// Create package.json
 pub fn create_package_json(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join("package.json"), &app::package_json(name))
@@ -603,7 +595,6 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_nested_claude_mds(app_path)?;
     create_bundled_docs(app_path)?;
     create_dot_claude(app_path)?;
-    create_tailwind_config(app_path)?;
     create_package_json(app_path, name)?;
     create_soli_toml(app_path, name)?;
     ProgressDisplay::done();

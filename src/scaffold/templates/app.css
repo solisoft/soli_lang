@@ -1,7 +1,15 @@
-/* Tailwind CSS directives */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind CSS v4 — CSS-first config (no tailwind.config.js needed) */
+@import "tailwindcss";
+
+/* Content is auto-detected: v4 scans the whole project (respecting .gitignore,
+   skipping node_modules / binaries), so views, Soli source, and JS are all
+   covered without an explicit source list. */
+
+/* Theme tokens — extend Tailwind's defaults */
+@theme {
+    --font-sans: Inter, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+}
 
 /* Base styles */
 @layer base {

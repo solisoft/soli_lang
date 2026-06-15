@@ -9,7 +9,7 @@ use solilang::scaffold::app_generator::{
     create_application_helper, create_claude_md, create_css_file, create_directories,
     create_env_file, create_gitignore, create_home_controller, create_index_view, create_layout,
     create_package_json, create_readme, create_routes_file, create_sample_middleware,
-    create_soli_toml, create_tailwind_config, replace_placeholders, write_file,
+    create_soli_toml, replace_placeholders, write_file,
 };
 
 fn fresh() -> tempfile::TempDir {
@@ -153,14 +153,6 @@ fn create_env_gitignore_claude_helpers_middleware() {
         .filter_map(Result::ok)
         .collect();
     assert!(!mw.is_empty(), "no middleware file created");
-}
-
-#[test]
-fn create_tailwind_config_writes_file() {
-    let tmp = fresh();
-    setup_app(tmp.path());
-    create_tailwind_config(tmp.path()).expect("tailwind ok");
-    assert!(tmp.path().join("tailwind.config.js").exists());
 }
 
 #[test]

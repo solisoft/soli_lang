@@ -42,9 +42,6 @@ pub const CORS_MIDDLEWARE_TEMPLATE: &str = include_str!("cors.sl");
 /// Auth middleware template
 pub const AUTH_MIDDLEWARE_TEMPLATE: &str = include_str!("auth.sl");
 
-/// Tailwind config template
-pub const TAILWIND_CONFIG_TEMPLATE: &str = include_str!("tailwind.config.js");
-
 /// Generate package.json content
 pub fn package_json(name: &str) -> String {
     format!(
@@ -53,11 +50,11 @@ pub fn package_json(name: &str) -> String {
   "version": "1.0.0",
   "description": "A Soli MVC application",
   "scripts": {{
-    "build:css": "npx tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css",
-    "watch:css": "npx tailwindcss -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
+    "build:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css",
+    "watch:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
   }},
   "devDependencies": {{
-    "tailwindcss": "^3.4.0"
+    "@tailwindcss/cli": "^4.3.1"
   }}
 }}
 "#,
@@ -133,8 +130,7 @@ soli serve . -d
 │   ├── js/
 │   └── images/
 ├── tests/               # Test files
-├── package.json         # npm dependencies
-└── tailwind.config.js   # Tailwind configuration
+└── package.json         # npm dependencies (Tailwind config is CSS-first, in application.css)
 ```
 
 ## Database Migrations

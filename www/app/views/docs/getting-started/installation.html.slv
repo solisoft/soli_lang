@@ -169,14 +169,13 @@ soli serve . --dev</code></pre>
 │   └── migrations/           # Database migrations
 ├── public/                   # Static files
 │   ├── css/
-│   │   ├── app.css           # Source (Tailwind directives)
+│   │   ├── app.css           # Source (Tailwind v4, CSS-first config)
 │   │   └── output.css        # Compiled CSS
 │   ├── js/
 │   └── images/
 ├── tests/                    # Test files
 ├── .env                      # Environment variables
-├── package.json              # Node.js dependencies
-└── tailwind.config.js        # Tailwind configuration</code></pre>
+└── package.json              # Node.js dependencies</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Production Deployment</h2>
 

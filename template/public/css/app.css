@@ -1,3 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Content is auto-detected: v4 scans the whole project (respecting .gitignore,
+   skipping node_modules / binaries), so views, Soli source, and JS are covered
+   without an explicit source list. */
+
+@theme {
+    --font-sans: Inter, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+}
