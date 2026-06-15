@@ -3588,6 +3588,11 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `smell/deep-nesting` | Nesting depth should not exceed 4 levels |
 | `smell/duplicate-methods` | A class should not have two methods with the same name |
 | `smell/dangerous-server-builtin` | Calls to `db_query_raw`, `Trusted.*`, `System.shell` / `System.shell_sync`, or backtick command substitution from `app/controllers/`, `app/middleware/`, or `app/views/`. Suggests the safe alternative: parameterised `@sdbql{ ... #{value} ... }`, the jailed `File.*` API, or `System.run([...])` with an argv array. Models, migrations, and tests are out of scope. |
+| `style/redundant-model-import` | No `import "../models/*.sl"` inside `app/controllers/` — models are auto-loaded |
+| `idiom/nil-comparison` | Prefer `.nil?` / `.present?` over `== null` / `!= null` |
+| `idiom/prefer-blank` | Prefer `.blank?` / `.present?` over comparing to an empty string (`.blank?` also covers nil) |
+| `idiom/prefer-includes` | Replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?` |
+| `idiom/manual-find-guard` | Drop the nil-check after `Model.find` — it raises on a miss (handled as a 404); use `find_by`/`first_by` for "or nil" |
 
 ### Suppressing Warnings
 

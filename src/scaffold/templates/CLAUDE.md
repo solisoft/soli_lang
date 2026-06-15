@@ -475,6 +475,9 @@ Key rules:
 - `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`, `smell/dangerous-server-builtin` (flags `db_query_raw` / `Trusted.*` / `System.shell` / backticks in `app/controllers/`, `app/middleware/`, `app/views/`)
 - `smell/deep-nesting` (≤4 levels)
 - `smell/undefined-local` — reads of a name never assigned in scope (catches typos)
+- `idiom/nil-comparison`, `idiom/prefer-blank` — prefer `.nil?`/`.present?`/`.blank?` over `== null` / `== ""`
+- `idiom/prefer-includes` — replace 3+ same-value `==`/`!=` comparisons with `.includes?`
+- `idiom/manual-find-guard` — drop the nil-check after `Model.find` (it raises; use `find_by`/`first_by` for "or nil")
 
 ## Common commands
 

@@ -162,6 +162,54 @@ end</code></pre>
                 <p class="text-gray-400 mt-2">Models, migrations, and tests are out of scope &mdash; those layers legitimately use these APIs against operator-controlled data.</p>
             </div>
         </div>
+
+        <!-- Idiom Rules -->
+        <h3 class="text-lg font-semibold text-white mb-3">Idioms</h3>
+        <p class="text-gray-400 mb-4">These flag code that is correct but un-idiomatic &mdash; the Soli-specific patterns that read better with a builtin.</p>
+        <div class="space-y-4 mb-8">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">idiom/nil-comparison</code>
+                <p class="text-gray-400 mt-2">Prefer <code class="text-indigo-400">.nil?</code> / <code class="text-indigo-400">.present?</code> over comparing to <code>null</code>.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
+if user == null end
+return user != null
+
+# Good
+if user.nil? end
+return user.present?</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">idiom/prefer-blank</code>
+                <p class="text-gray-400 mt-2">Prefer <code class="text-indigo-400">.blank?</code> / <code class="text-indigo-400">.present?</code> over comparing to an empty string. <code>.blank?</code> also covers the nil case.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
+if name == "" end
+
+# Good
+if name.blank? end</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">idiom/prefer-includes</code>
+                <p class="text-gray-400 mt-2">Replace a chain of 3+ comparisons of the same value with <code class="text-indigo-400">.includes?</code>.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad
+status == "up" || status == "late" || status == "overdue"
+
+# Good
+["up", "late", "overdue"].includes?(status)</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-indigo-400 font-mono text-sm">idiom/manual-find-guard</code>
+                <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-indigo-400">find_by</code> / <code class="text-indigo-400">first_by</code> when you want a nil result.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># Bad - dead code: .find already raised
+post = Post.find(id)
+return not_found() if post.nil?
+
+# Good
+post = Post.find(id)</code></pre>
+            </div>
+        </div>
     </section>
 
     <!-- Suppressing Warnings -->

@@ -36,7 +36,25 @@ impl Linter {
                 }
             }
 
-            ExprKind::Binary { left, right, .. } => {
+            ExprKind::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                rules::idiom::check_nil_comparison(
+                    left,
+                    *operator,
+                    right,
+                    expr.span,
+                    &mut self.diagnostics,
+                );
+                rules::idiom::check_prefer_blank(
+                    left,
+                    *operator,
+                    right,
+                    expr.span,
+                    &mut self.diagnostics,
+                );
                 self.lint_expr(left);
                 self.lint_expr(right);
             }
@@ -103,9 +121,27 @@ impl Linter {
                 self.lint_expr(value);
             }
 
-            ExprKind::LogicalAnd { left, right }
-            | ExprKind::LogicalOr { left, right }
-            | ExprKind::NullishCoalescing { left, right } => {
+            ExprKind::LogicalOr { .. } | ExprKind::LogicalAnd { .. } => {
+                // Flatten the chain to its leaf operands so the includes check
+                // sees the whole `a || b || c` (or `a && b && c`) at once and
+                // fires exactly once, at the chain root. We then lint each leaf
+                // directly rather than recursing through the nested logical
+                // nodes (which would re-run the check on every sub-chain).
+                let is_or = matches!(expr.kind, ExprKind::LogicalOr { .. });
+                let mut operands = Vec::new();
+                flatten_logical(expr, is_or, &mut operands);
+                rules::idiom::check_prefer_includes(
+                    &operands,
+                    is_or,
+                    expr.span,
+                    &mut self.diagnostics,
+                );
+                for operand in operands {
+                    self.lint_expr(operand);
+                }
+            }
+
+            ExprKind::NullishCoalescing { left, right } => {
                 self.lint_expr(left);
                 self.lint_expr(right);
             }
@@ -214,5 +250,22 @@ impl Linter {
                 Argument::Block(expr) => self.lint_expr(expr),
             }
         }
+    }
+}
+
+/// Flatten a left-associative `||` (or `&&`) chain into its leaf operands.
+/// `is_or` selects which logical node to descend through; a node of the other
+/// kind is treated as an opaque leaf so we never mix `&&` and `||` levels.
+fn flatten_logical<'a>(expr: &'a Expr, is_or: bool, out: &mut Vec<&'a Expr>) {
+    match &expr.kind {
+        ExprKind::LogicalOr { left, right } if is_or => {
+            flatten_logical(left, is_or, out);
+            flatten_logical(right, is_or, out);
+        }
+        ExprKind::LogicalAnd { left, right } if !is_or => {
+            flatten_logical(left, is_or, out);
+            flatten_logical(right, is_or, out);
+        }
+        _ => out.push(expr),
     }
 }

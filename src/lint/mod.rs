@@ -145,6 +145,7 @@ impl Linter {
 
     fn lint_body(&mut self, stmts: &[crate::ast::Stmt]) {
         rules::smell::check_unreachable_code(stmts, &mut self.diagnostics);
+        rules::idiom::check_manual_find_guard(stmts, &mut self.diagnostics);
         for stmt in stmts {
             self.lint_stmt(stmt);
         }

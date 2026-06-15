@@ -1,3 +1,4 @@
+pub mod idiom;
 pub mod naming;
 pub mod scope;
 pub mod security;

@@ -31,7 +31,7 @@ fn authenticate(req: Any) -> Any {
         provided_key = headers["X-Api-Key"];
     }
 
-    if (provided_key == "") {
+    if (provided_key.blank?) {
         if (has_key(headers, "x-api-key")) {
             provided_key = headers["x-api-key"];
         }
