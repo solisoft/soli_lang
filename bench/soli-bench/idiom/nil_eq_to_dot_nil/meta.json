@@ -1,0 +1,1 @@
+{"id":"idiom.nil_eq_to_dot_nil","suite":"idiom","name":"nil_eq_to_dot_nil","weight":1.0,"tags":["style","nil"],"lint_rules":["idiom/nil-comparison"]}

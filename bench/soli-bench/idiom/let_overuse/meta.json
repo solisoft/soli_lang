@@ -1,0 +1,1 @@
+{"id":"idiom.let_overuse","suite":"idiom","name":"let_overuse","weight":1.0,"tags":["style","let"],"lint_rules":["smell/undefined-local"]}

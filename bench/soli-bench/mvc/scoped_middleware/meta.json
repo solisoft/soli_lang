@@ -1,0 +1,1 @@
+{"id":"mvc.scoped_middleware","suite":"mvc","name":"scoped_middleware","weight":2.5,"tags":["middleware","scope"],"lint_rules":[]}

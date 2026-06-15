@@ -1,0 +1,1 @@
+{"id":"idiom.includes_check","suite":"idiom","name":"includes_check","weight":1.0,"tags":["style","membership"],"lint_rules":["idiom/prefer-includes"]}

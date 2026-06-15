@@ -1,0 +1,8 @@
+{
+  "id": "core.group_by_array",
+  "suite": "core",
+  "name": "group_by_array",
+  "weight": 1.0,
+  "tags": ["array", "higher-order"],
+  "lint_rules": []
+}

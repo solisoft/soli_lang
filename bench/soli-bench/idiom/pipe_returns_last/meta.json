@@ -1,0 +1,1 @@
+{"id":"idiom.pipe_returns_last","suite":"idiom","name":"pipe_returns_last","weight":1.0,"tags":["idiom","pipeline"],"lint_rules":["smell/deep-nesting"]}
