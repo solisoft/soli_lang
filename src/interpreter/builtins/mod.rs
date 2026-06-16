@@ -181,6 +181,38 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         Value::NativeFunction(NativeFunction::new("puts", None, println_impl)),
     );
 
+    // __sdql_exec(query, binds) — runtime backing for `@sdbql{ ... }` blocks.
+    // The tree-walking interpreter executes the block inline; the VM compiler
+    // lowers a block to a call to this global instead (it cannot inline the
+    // query against the live environment). `binds` is a hash of bare
+    // interpolation variable name -> value. Both paths funnel into the shared
+    // `run_sdql_block` so the two runtimes stay identical.
+    env.define(
+        "__sdql_exec".to_string(),
+        Value::NativeFunction(NativeFunction::new("__sdql_exec", None, |args| {
+            let query = match args.first() {
+                Some(Value::String(s)) => s.as_ref().to_string(),
+                _ => {
+                    return Err(
+                        "__sdql_exec expects an SDBQL query string as its first argument"
+                            .to_string(),
+                    )
+                }
+            };
+            let mut binds: Vec<(String, Value)> = Vec::new();
+            if let Some(Value::Hash(hash)) = args.get(1) {
+                for (key, value) in hash.borrow().iter() {
+                    if let crate::interpreter::value::HashKey::String(name) = key {
+                        binds.push((name.to_string(), value.clone()));
+                    }
+                }
+            }
+            Ok(crate::interpreter::executor::literals::run_sdql_block(
+                &query, &binds,
+            ))
+        })),
+    );
+
     // break() - Trigger a breakpoint for debugging (opens dev page with REPL)
     env.define(
         "break".to_string(),

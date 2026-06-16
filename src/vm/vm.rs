@@ -2961,6 +2961,60 @@ mod tests {
         assert_eq!(result, Value::Int(14));
     }
 
+    // Regression: `@sdbql{ ... #{var} ... }` must lower to a resolvable
+    // `__sdql_exec(query, binds)` call in the VM. Before this was wired, the
+    // compiler emitted a call to an unregistered global and JIT'd code (jobs,
+    // controller actions) blew up with "Undefined variable '__sdql_exec'".
+    // We stub __sdql_exec to capture its arguments and assert the raw query
+    // and the binds hash (var name -> value) arrive intact.
+    #[test]
+    fn test_vm_sdql_block_lowers_to_sdql_exec_with_binds() {
+        use crate::interpreter::value::HashKey;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let source = "let room = 7; \
+             let rows = @sdbql{ FOR c IN comments FILTER c.id == #{room} RETURN c };";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+
+        let captured: Rc<RefCell<Option<(String, Vec<(String, i64)>)>>> =
+            Rc::new(RefCell::new(None));
+        let sink = captured.clone();
+
+        let mut vm = Vm::new();
+        vm.globals.insert(
+            "__sdql_exec".to_string(),
+            Value::NativeFunction(NativeFunction::new("__sdql_exec", None, move |args| {
+                let query = match args.first() {
+                    Some(Value::String(s)) => s.as_ref().to_string(),
+                    _ => String::new(),
+                };
+                let mut binds = Vec::new();
+                if let Some(Value::Hash(hash)) = args.get(1) {
+                    for (key, value) in hash.borrow().iter() {
+                        if let (HashKey::String(name), Value::Int(n)) = (key, value) {
+                            binds.push((name.to_string(), *n));
+                        }
+                    }
+                }
+                *sink.borrow_mut() = Some((query, binds));
+                Ok(Value::Array(Rc::new(RefCell::new(vec![]))))
+            })),
+        );
+
+        vm.execute(&module.main).expect("vm error");
+
+        let captured = captured.borrow();
+        let (query, binds) = captured.as_ref().expect("__sdql_exec was invoked");
+        assert!(
+            query.contains("FOR c IN comments") && query.contains("#{room}"),
+            "raw query (placeholders intact) should reach the builtin, got: {query}"
+        );
+        assert_eq!(binds, &vec![("room".to_string(), 7i64)]);
+    }
+
     #[test]
     fn test_vm_variables() {
         let result = compile_and_get_global("let x = 10; let y = x + 5;", "y");

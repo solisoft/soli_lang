@@ -915,18 +915,41 @@ impl Compiler {
         interpolations: &[crate::ast::expr::SdqlInterpolation],
         line: usize,
     ) -> CompileResult<()> {
-        // For now, just compile the query as a string constant
-        // The runtime will handle interpolations
-        // TODO: Implement proper interpolation handling
-        let _ = interpolations; // suppress warning for now
-        self.emit_constant(Constant::String(query.to_string().into()), line);
-
-        // Emit a call to a builtin function to execute the SDBQL
-        // For now, we'll use a placeholder - will be implemented later
-        // This will call the runtime function that executes the query
+        // Lower `@sdbql{ ... #{var} ... }` to `__sdql_exec(query, binds)`. The
+        // raw query string and a `{ "var": value }` binds hash are passed to
+        // the global builtin, which rewrites `#{var}` -> `@var` and runs the
+        // query (see `register_builtins` / `run_sdql_block`). We can't inline
+        // the interpolations here the way the tree-walker does because their
+        // values aren't known until runtime — so we resolve each as a normal
+        // variable load and hand the lot to the builtin.
+        //
+        // Stack discipline for the trailing `Call(2)`: callee first, then the
+        // two args (query, binds), so the binds hash must be built *after* the
+        // query is pushed.
         let fn_idx = self.add_string_constant("__sdql_exec");
         self.emit(Op::GetGlobal(fn_idx), line);
-        self.emit(Op::Call(1), line);
+
+        self.emit_constant(Constant::String(query.to_string().into()), line);
+
+        let mut pair_count: u16 = 0;
+        for interp in interpolations {
+            let var_name = interp
+                .expr
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .trim();
+            if var_name.is_empty() {
+                continue;
+            }
+            // key: the bare variable name
+            self.emit_constant(Constant::String(var_name.to_string().into()), line);
+            // value: the variable's current binding
+            self.compile_variable_get(var_name, line)?;
+            pair_count += 1;
+        }
+        self.emit(Op::Hash(pair_count), line);
+
+        self.emit(Op::Call(2), line);
 
         Ok(())
     }

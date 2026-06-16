@@ -1,7 +1,7 @@
 //! Tree-walking interpreter for Solilang.
 
 mod expressions;
-mod literals;
+pub(crate) mod literals;
 mod loop_capture;
 mod operators;
 mod pattern_matching;

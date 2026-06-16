@@ -15,40 +15,19 @@ impl Interpreter {
         interpolations: &Vec<crate::ast::expr::SdqlInterpolation>,
         _span: Span,
     ) -> RuntimeResult<Value> {
-        use crate::interpreter::builtins::model::crud::exec_async_query;
-
-        let mut processed_query = query.to_string();
-        let mut bind_vars = std::collections::HashMap::new();
-
+        // Resolve each `#{var}` interpolation to its current value. Only
+        // variables that actually exist in scope are bound (matching the
+        // original behavior); a missing one leaves its placeholder in the
+        // query, which the store rejects.
+        let mut binds: Vec<(String, Value)> = Vec::new();
         for interp in interpolations {
             let expr_str = interp.expr.trim_start_matches('{').trim_end_matches('}');
             let var_name = expr_str.trim();
-
             if let Some(value) = self.environment.borrow().get(var_name) {
-                let json_value = value_to_json(&value);
-                bind_vars.insert(var_name.to_string(), json_value);
-
-                let placeholder = format!("#{{{}}}", var_name);
-                let sdbql_var = format!("@{}", var_name);
-                processed_query = processed_query.replace(&placeholder, &sdbql_var);
+                binds.push((var_name.to_string(), value));
             }
         }
-
-        if bind_vars.is_empty() {
-            Ok(exec_async_query(processed_query))
-        } else {
-            use crate::interpreter::builtins::model::crud::exec_async_query_with_binds;
-            match exec_async_query_with_binds(processed_query, Some(bind_vars)) {
-                Ok(results) => {
-                    use crate::interpreter::builtins::model::crud::json_to_value;
-                    use std::cell::RefCell;
-                    use std::rc::Rc;
-                    let values: Vec<Value> = results.iter().map(json_to_value).collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(values))))
-                }
-                Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
-            }
-        }
+        Ok(run_sdql_block(query, &binds))
     }
 
     /// Evaluate an interpolated string expression.
@@ -122,6 +101,41 @@ impl Interpreter {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Null, Value::Null) => true,
             _ => false,
+        }
+    }
+}
+
+/// Execute an `@sdbql{ ... }` block. Shared by the tree-walking interpreter
+/// (`evaluate_sdql_block`) and the VM's `__sdql_exec` builtin so both runtimes
+/// behave identically. `binds` maps each bare interpolation variable name to
+/// its runtime value; every `#{name}` placeholder in `query` is rewritten to a
+/// `@name` AQL bind param. Empty binds → no-bind execution. On a query error
+/// the result is a `"Error: ..."` string (callers guard with `type(rows)`).
+pub(crate) fn run_sdql_block(query: &str, binds: &[(String, Value)]) -> Value {
+    use crate::interpreter::builtins::model::crud::{
+        exec_async_query, exec_async_query_with_binds, json_to_value,
+    };
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut processed_query = query.to_string();
+    let mut bind_vars = std::collections::HashMap::new();
+    for (var_name, value) in binds {
+        bind_vars.insert(var_name.clone(), value_to_json(value));
+        let placeholder = format!("#{{{}}}", var_name);
+        let sdbql_var = format!("@{}", var_name);
+        processed_query = processed_query.replace(&placeholder, &sdbql_var);
+    }
+
+    if bind_vars.is_empty() {
+        exec_async_query(processed_query)
+    } else {
+        match exec_async_query_with_binds(processed_query, Some(bind_vars)) {
+            Ok(results) => {
+                let values: Vec<Value> = results.iter().map(json_to_value).collect();
+                Value::Array(Rc::new(RefCell::new(values)))
+            }
+            Err(e) => Value::String(format!("Error: {}", e).into()),
         }
     }
 }
