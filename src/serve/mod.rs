@@ -1311,19 +1311,23 @@ fn run_hyper_server_worker_pool(
     set_tokio_handle(runtime_handle.clone());
 
     // Pre-warm the session store's backend connection (no-op for in-memory /
-    // disk). Without this the SoliDB session driver opens the process's first
-    // connection inside `ensure_session` on the first request, which stalls to
-    // the HTTP client timeout (~10s) before recovering. Warming here, on the
-    // idle runtime, anchors a live pooled connection up front. Best-effort:
-    // a transiently-unreachable session DB is logged, never fatal.
-    crate::interpreter::builtins::session::get_current_store().warm();
+    // disk) AND drive the `/up` readiness signal. Without warming, the SoliDB
+    // session driver opens the process's first connection inside
+    // `ensure_session` on the first request, which stalls to the HTTP client
+    // timeout (~10s) before recovering. The readiness probe anchors a live
+    // pooled connection up front (retrying until the store is reachable) and
+    // only reports the slot "ready" at `/up` once a session round-trip
+    // succeeds — so soli-proxy's blue/green deploy keeps serving the old slot
+    // until the new one can actually serve, instead of promoting it on a bare
+    // liveness 200 and switching traffic into the cold-connection window.
+    crate::interpreter::builtins::session::spawn_session_readiness_probe();
 
-    // Keep that session connection warm. `warm()` above is a one-shot boot
-    // ping; on a quiet server a network-backed session store's pooled
-    // connection still idles out between requests (the model DB keep-warm
-    // below only pings the model host), so the next request pays a cold
-    // reconnect — surfacing as intermittent latency spikes on trivial routes
-    // like a `/session/ping` heartbeat. No-op for in-memory/disk drivers.
+    // Keep that session connection warm. The readiness probe above performs
+    // the one-shot boot warm; on a quiet server a network-backed session
+    // store's pooled connection still idles out between requests (the model DB
+    // keep-warm below only pings the model host), so the next request pays a
+    // cold reconnect — surfacing as intermittent latency spikes on trivial
+    // routes like a `/session/ping` heartbeat. No-op for in-memory/disk.
     crate::interpreter::builtins::session::spawn_session_keep_warm();
 
     // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
@@ -5349,6 +5353,29 @@ fn handle_request(
 
     let method = &data.method;
     let path = &data.path;
+
+    // Built-in readiness probe for blue/green deploys (soli-proxy's health
+    // gate). Returns 503 until the session store's backing connection has been
+    // warmed, and 200 afterwards. A liveness-only health check (a bare 200
+    // from a freshly-booted slot) promotes the slot before its first session
+    // round-trip can complete, so traffic switches into the cold-connection
+    // window and requests stall to the HTTP client timeout. Gating promotion
+    // on this endpoint keeps the old slot serving until the new one is truly
+    // ready. Answered here, before any session/cookie work, so the probe never
+    // creates a session or touches the store. Apps should not define their own
+    // `/up` route — this built-in shadows it.
+    if path == "/up" {
+        let ready = crate::interpreter::builtins::session::session_store_ready();
+        return ResponseData {
+            status: if ready { 200 } else { 503 },
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+            body: if ready {
+                b"ready".to_vec()
+            } else {
+                b"warming".to_vec()
+            },
+        };
+    }
 
     // Check if request logging is enabled. `--dev` implies access logging —
     // operators expect every route to show up in the terminal without setting

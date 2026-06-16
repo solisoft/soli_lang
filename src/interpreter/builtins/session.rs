@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -94,18 +94,12 @@ pub trait SessionStore: Send + Sync {
     fn cleanup(&self);
     fn driver_name(&self) -> &'static str;
 
-    /// Open a connection to the backing store ahead of the first request,
-    /// so request handlers don't pay a cold-start. Defaults to a no-op for
-    /// stores with no network backend (in-memory, disk); the SoliDB store
-    /// overrides it with a cheap read-only round-trip. Must never write or
-    /// mutate any session state — see `SolidbSessionStore::warm`.
-    fn warm(&self) {}
-
     /// One read-only round-trip that exercises the backing store's pooled
-    /// connection so it never idles out between requests. Called periodically
-    /// by `spawn_session_keep_warm`. Defaults to a no-op (`Ok`) for stores
-    /// with no network backend; network-backed stores override it. Like
-    /// `warm`, this MUST never write or mutate session state.
+    /// connection. Used both to anchor the connection at boot (via
+    /// `spawn_session_readiness_probe`) and to keep it from idling out between
+    /// requests (via `spawn_session_keep_warm`). Defaults to a no-op (`Ok`)
+    /// for stores with no network backend; network-backed stores override it.
+    /// MUST never write or mutate any session state.
     fn warm_ping(&self) -> Result<(), String> {
         Ok(())
     }
@@ -174,6 +168,97 @@ pub fn spawn_session_keep_warm() {
                             );
                         }
                         was_ok = false;
+                    }
+                }
+            }
+        })
+        .ok();
+}
+
+/// Whether the session store's backing connection has been warmed (an initial
+/// round-trip succeeded). For drivers with no network backend (in-memory,
+/// disk) there is nothing to warm, so this is set true at boot immediately.
+/// The built-in `/up` readiness probe (see `serve::handle_request`) reports
+/// 503 until this flips true, so soli-proxy's blue/green deploy keeps serving
+/// the old slot until the new slot can actually reach the session store —
+/// closing the "promoted-but-cold" window where the first requests stall to
+/// the HTTP client timeout (~10s).
+static SESSION_READY: AtomicBool = AtomicBool::new(false);
+
+/// Read the session-store readiness flag (see [`SESSION_READY`]).
+pub fn session_store_ready() -> bool {
+    SESSION_READY.load(Ordering::Relaxed)
+}
+
+/// Mark the session store ready. Idempotent.
+pub fn mark_session_store_ready() {
+    SESSION_READY.store(true, Ordering::Relaxed);
+}
+
+/// Drive the session store to a ready state at boot, then report it via
+/// `session_store_ready()` (surfaced at `/up`).
+///
+/// For non-network drivers there is nothing to warm — mark ready and return.
+/// For network-backed drivers (SoliDB, SoliKV) spawn a detached thread that
+/// retries a read-only `warm_ping` with capped backoff until the first
+/// success, then flips the flag. This both anchors a live pooled connection
+/// before traffic arrives (replacing the old fire-and-forget one-shot
+/// `warm()`) and gives the proxy an honest readiness signal: the slot is not
+/// "ready" until it can actually complete a session round-trip. Retrying
+/// (rather than a single attempt) means a session DB that is briefly
+/// unreachable at boot still becomes ready once it recovers, instead of
+/// leaving the slot permanently cold.
+pub fn spawn_session_readiness_probe() {
+    let store = get_current_store();
+    // Non-network stores are always immediately ready.
+    if !matches!(store.driver_name(), "solidb" | "solikv") {
+        mark_session_store_ready();
+        return;
+    }
+    let driver = store.driver_name();
+    // A dedicated OS thread (not a tokio task): `warm_ping` is blocking for
+    // both network drivers — it drives the shared async client via `block_on`
+    // on the long-lived runtime handle, so the connection driver is owned and
+    // polled there rather than under a transient runtime.
+    std::thread::Builder::new()
+        .name("session-warm".to_string())
+        .spawn(move || {
+            eprintln!(
+                "{} Session store warmup ({}): starting…",
+                crate::serve::log_timestamp(),
+                driver
+            );
+            let started = Instant::now();
+            let mut delay = Duration::from_millis(200);
+            let max_delay = Duration::from_secs(2);
+            let mut attempt: u32 = 0;
+            let mut logged_failure = false;
+            loop {
+                attempt += 1;
+                match store.warm_ping() {
+                    Ok(()) => {
+                        mark_session_store_ready();
+                        eprintln!(
+                            "{} Session store warmup ({}): ready ({:.1}ms, {} attempt(s))",
+                            crate::serve::log_timestamp(),
+                            driver,
+                            started.elapsed().as_secs_f64() * 1000.0,
+                            attempt
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        if !logged_failure {
+                            eprintln!(
+                                "{} Session store warmup ({}): not ready yet ({}); retrying silently until reachable",
+                                crate::serve::log_timestamp(),
+                                driver,
+                                e
+                            );
+                            logged_failure = true;
+                        }
+                        std::thread::sleep(delay);
+                        delay = (delay * 2).min(max_delay);
                     }
                 }
             }

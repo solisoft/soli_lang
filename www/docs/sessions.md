@@ -164,6 +164,30 @@ Sessions are stored in-memory by default. This means:
 - Sessions are shared across all server threads
 - For production, consider persistent storage (Redis, database)
 
+## Readiness and zero-downtime deploys
+
+When a network-backed session driver (`solidb` or `solikv`) is configured, a
+freshly-booted process must open its first connection to the session store
+before it can serve a request that touches the session. To keep that
+cold-start off the request path, Soli warms the connection at boot and exposes
+a built-in readiness endpoint:
+
+| Endpoint | Behavior |
+|----------|----------|
+| `GET /up` | Returns `503 warming` until the session store's connection has been warmed, then `200 ready`. For in-memory/disk drivers it is ready immediately. |
+
+The warm-up retries with backoff until the session store is reachable, so a
+session DB that is briefly unavailable at boot does not leave the process
+permanently un-ready.
+
+Point your load balancer's health check at `/up` so traffic is only routed to
+an instance that can actually serve session-backed requests. Under
+[soli-proxy](https://www.solisoft.net), auto-detected Soli apps already use
+`/up` as the blue/green promotion gate — the previous slot keeps serving until
+the new slot reports ready, eliminating the post-deploy window where the first
+requests would otherwise stall on a cold session connection. `/up` is a
+built-in route; defining your own `/up` in `config/routes.sl` has no effect.
+
 ## Cookie Settings
 
 Session cookies are automatically configured with:

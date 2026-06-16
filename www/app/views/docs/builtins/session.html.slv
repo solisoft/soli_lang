@@ -124,6 +124,45 @@ print(config["ttl"])</code></pre>
         </section>
     </section>
 
+    <!-- Readiness & Zero-Downtime Deploys -->
+    <section id="section-readiness" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Readiness &amp; Zero-Downtime Deploys</h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">
+                With a network-backed driver (<code class="text-amber-400">solidb</code> or
+                <code class="text-amber-400">solikv</code>), a freshly-booted process must open its first
+                connection to the session store before it can serve a session-backed request. Soli warms that
+                connection at boot (retrying with backoff until the store is reachable) and exposes a built-in
+                readiness endpoint so load balancers don't route traffic to an instance that can't yet serve:
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Endpoint</th>
+                            <th class="pb-3">Behavior</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">GET /up</code></td>
+                            <td class="py-3">Returns <code class="text-purple-400">503 warming</code> until the session-store connection is warmed, then <code class="text-purple-400">200 ready</code>. Ready immediately for in-memory/disk drivers.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-gray-400 mt-4">
+                Point your load balancer's health check at <code class="text-amber-400">/up</code>. Under
+                soli-proxy, auto-detected Soli apps already use <code class="text-amber-400">/up</code> as the
+                blue/green promotion gate — the old slot keeps serving until the new slot reports ready,
+                closing the post-deploy window where the first requests would otherwise stall on a cold session
+                connection. <code class="text-amber-400">/up</code> is a built-in route; defining your own has
+                no effect.
+            </p>
+        </div>
+    </section>
+
     <!-- Environment Variables -->
     <section id="section-env-vars" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Environment Variables</h2>
