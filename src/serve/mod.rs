@@ -4155,9 +4155,21 @@ fn call_handler(
         _ => true,
     };
 
+    // The background-job callback (`_jobs#run`) must run on the tree-walking
+    // interpreter, never the VM. Its prelude wraps `cls.perform(...)` in a
+    // try/catch that turns ANY error into a 500 return value — so a VM-only
+    // failure (optional-`let` bare assignment compiling to a doomed SetGlobal,
+    // a missing model property, etc.) is swallowed as a "successful" 500
+    // instead of bubbling up to trigger the normal VM->interpreter handler
+    // fallback below. That made every VM gap in a job's call graph a hard 500
+    // with no fallback. Jobs are infrequent and not latency-critical, so the
+    // interpreter — which honors optional-`let` and returns nil for absent
+    // properties — is the correct, safe runtime for the whole job call graph.
+    let force_interpreter = handler_name == "_jobs#run";
+
     // Try VM execution in production mode for function-based handlers
     if let Some(ref mut vm) = vm {
-        if !vm.failed_handlers.contains(handler_name) {
+        if !force_interpreter && !vm.failed_handlers.contains(handler_name) {
             if let Ok(ref handler_value) = handler_result {
                 let call_result = if handler_wants_request {
                     vm.call_value_direct_one(
