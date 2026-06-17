@@ -63,7 +63,7 @@ connection.
 | `Model.upsert(key, data)`             | Insert if absent, else update.                                         |
 | `Model.create_many([{...}, ...])`     | Batch insert.                                                          |
 | `Model.count`                         | Row count.                                                             |
-| `Model.delete_all`                    | Wipe the collection. Dangerous — use with care.                        |
+| `Model.delete_all`                    | Wipe the **whole** collection. Dangerous — for a filtered bulk delete use `Model.where(...).delete_all` (see Querying). |
 | `Model.with_deleted` / `Model.only_deleted` | Include / restrict to soft-deleted records.                       |
 | `Model.transaction`                   | Open a transaction (returns a Transaction with `get/create/update/delete/commit/rollback`). |
 | `Model.paginate({ "page": 1, "per": 20 })` | Returns `{ "records": [...], "pagination": {...} }`.              |
@@ -142,6 +142,8 @@ chain with one of:
 | `.pluck("field")`  | Array of values.                                          |
 | `.sum/avg/min/max("field")` | Numeric aggregate.                              |
 | `.group_by(field, func, agg_field)` | Array of `{group, result}` hashes.       |
+| `.delete_all`      | Bulk hard-delete every row matching the scope (one AQL `REMOVE`). Returns `null`. |
+| `.update_all({...})` | Bulk-patch every row matching the scope with the hash (one AQL `UPDATE`). Returns `null`. |
 
 ```soli
 let recent = Post
@@ -152,6 +154,22 @@ let recent = Post
 
 let total_views = Post.where({ "user_id": user.id }).sum("views")
 ```
+
+`.delete_all` / `.update_all` are **scoped bulk writes** — they act only on the
+rows matching the accumulated `.where(...)` chain, in a single statement (no
+N+1 loop). They skip validations and lifecycle callbacks, so reach for them when
+you deliberately want a fast bulk mutation:
+
+```soli
+# Archive every inactive user — one UPDATE, not a per-row loop
+User.where({ "active": false }).update_all({ "archived": true })
+
+# Clear a relation — one REMOVE
+post.comments.where({ "spam": true }).delete_all
+```
+
+Note the difference from the unscoped `Model.delete_all`, which wipes the whole
+collection. There is no unscoped `update_all` — always go through `.where(...)`.
 
 ## Validations
 
