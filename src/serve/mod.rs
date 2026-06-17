@@ -1320,7 +1320,7 @@ fn run_hyper_server_worker_pool(
     // succeeds — so soli-proxy's blue/green deploy keeps serving the old slot
     // until the new one can actually serve, instead of promoting it on a bare
     // liveness 200 and switching traffic into the cold-connection window.
-    crate::interpreter::builtins::session::spawn_session_readiness_probe();
+    crate::interpreter::builtins::session::spawn_session_readiness_probe(runtime_handle.clone());
 
     // Keep that session connection warm. The readiness probe above performs
     // the one-shot boot warm; on a quiet server a network-backed session
@@ -1328,7 +1328,7 @@ fn run_hyper_server_worker_pool(
     // keep-warm below only pings the model host), so the next request pays a
     // cold reconnect — surfacing as intermittent latency spikes on trivial
     // routes like a `/session/ping` heartbeat. No-op for in-memory/disk.
-    crate::interpreter::builtins::session::spawn_session_keep_warm();
+    crate::interpreter::builtins::session::spawn_session_keep_warm(runtime_handle.clone());
 
     // Login to SoliDB once to get a JWT token (uses ureq, no tokio needed).
     // Must be after .env loading and DB config init.

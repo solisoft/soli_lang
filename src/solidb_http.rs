@@ -176,11 +176,30 @@ impl SoliDBClient {
         path: &str,
         body: Option<&Value>,
     ) -> Result<Value, SoliDBError> {
+        self.request_with_timeout(method, path, body, None)
+    }
+
+    /// Like [`request`], but lets the caller cap this single call with a
+    /// per-request timeout (overriding the shared client's longer default).
+    /// Used by the readiness probe so a request fired while SoliDB is still
+    /// booting fails fast and the retry loop can poll, instead of riding the
+    /// shared 10s timeout on one stuck attempt.
+    fn request_with_timeout(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<Value, SoliDBError> {
         let url = format!("{}{}", self.base_url, path);
         let client = get_http_client().clone();
         let mut request = self.apply_auth(client.request(method.clone(), &url));
 
         request = request.header("Accept", "application/json");
+
+        if let Some(t) = timeout {
+            request = request.timeout(t);
+        }
 
         if let Some(b) = body {
             let json_bytes = serde_json::to_vec(b).map_err(|e| SoliDBError {
@@ -262,15 +281,27 @@ impl SoliDBClient {
     }
 
     pub fn ping(&self) -> Result<bool, SoliDBError> {
+        self.ping_with_timeout(None)
+    }
+
+    /// Connectivity probe (`RETURN 1`) with an optional per-call timeout.
+    /// The session readiness/keep-warm loops pass a short timeout so a probe
+    /// that stalls fails fast and the retry loop stays responsive, rather than
+    /// riding the shared client's long default timeout on a single attempt.
+    pub fn ping_with_timeout(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<bool, SoliDBError> {
         // Do a simple query to check connectivity
         let db = self.database.as_deref().unwrap_or("solidb");
         let path = format!("/_api/database/{}/cursor", db);
-        let _ = self.request(
+        let _ = self.request_with_timeout(
             reqwest::Method::POST,
             &path,
             Some(&serde_json::json!({
                 "query": "RETURN 1"
             })),
+            timeout,
         )?;
         Ok(true)
     }

@@ -307,7 +307,14 @@ impl SessionStore for SolidbSessionStore {
     /// `session::spawn_session_keep_warm`.
     fn warm_ping(&self) -> Result<(), String> {
         let client = self.create_client().map_err(|e| e.to_string())?;
-        client.ping().map(|_| ()).map_err(|e| e.to_string())
+        // Short per-attempt timeout: the readiness/keep-warm loops retry, so a
+        // probe that stalls should fail fast and let the next attempt catch the
+        // store once reachable — rather than riding the shared client's ~10s
+        // default timeout on a single attempt.
+        client
+            .ping_with_timeout(Some(std::time::Duration::from_secs(2)))
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 }
 

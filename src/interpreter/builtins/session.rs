@@ -121,7 +121,7 @@ pub trait SessionStore: Send + Sync {
 /// network-backed drivers; the in-memory/disk stores have nothing to warm.
 /// Disable with `SOLI_SESSION_KEEP_WARM=0`. Logs only on state transitions
 /// (ok→fail, fail→ok) so an unreachable store doesn't spam one line per tick.
-pub fn spawn_session_keep_warm() {
+pub fn spawn_session_keep_warm(runtime: tokio::runtime::Handle) {
     if std::env::var("SOLI_SESSION_KEEP_WARM").as_deref() == Ok("0") {
         return;
     }
@@ -143,6 +143,10 @@ pub fn spawn_session_keep_warm() {
     std::thread::Builder::new()
         .name("session-keep-warm".to_string())
         .spawn(move || {
+            // See `spawn_session_readiness_probe`: drive block_on on the same
+            // runtime the shared reqwest client was built in, not a per-thread
+            // fallback (which would stall each ping to the full timeout).
+            crate::serve::set_tokio_handle(runtime);
             let mut was_ok = true;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(interval_secs));
@@ -208,7 +212,7 @@ pub fn mark_session_store_ready() {
 /// (rather than a single attempt) means a session DB that is briefly
 /// unreachable at boot still becomes ready once it recovers, instead of
 /// leaving the slot permanently cold.
-pub fn spawn_session_readiness_probe() {
+pub fn spawn_session_readiness_probe(runtime: tokio::runtime::Handle) {
     let store = get_current_store();
     // Non-network stores are always immediately ready.
     if !matches!(store.driver_name(), "solidb" | "solikv") {
@@ -223,6 +227,13 @@ pub fn spawn_session_readiness_probe() {
     std::thread::Builder::new()
         .name("session-warm".to_string())
         .spawn(move || {
+            // Install the server's runtime handle on THIS thread so `block_on`
+            // (solidb_http) drives the shared reqwest client on the same
+            // runtime it was built in. Without this the thread-local handle is
+            // unset and block_on uses a per-thread fallback runtime; a reqwest
+            // client used across runtimes stalls its first request to the full
+            // ~10s timeout before recovering — the boot delay seen at `/up`.
+            crate::serve::set_tokio_handle(runtime);
             eprintln!(
                 "{} Session store warmup ({}): starting…",
                 crate::serve::log_timestamp(),
