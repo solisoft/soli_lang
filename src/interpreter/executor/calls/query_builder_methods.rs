@@ -7,7 +7,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::{
     execute_query_builder, execute_query_builder_aggregate, execute_query_builder_count,
     execute_query_builder_delete_all, execute_query_builder_exists, execute_query_builder_first,
-    execute_query_builder_group_by, AggregationFunc,
+    execute_query_builder_group_by, execute_query_builder_update_all, AggregationFunc,
 };
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
 use crate::interpreter::value::Value;
@@ -36,6 +36,7 @@ impl Interpreter {
             "count" => self.qb_count(qb, arguments, span),
             "paginate" => self.qb_paginate(qb, arguments, span),
             "delete_all" => self.qb_delete_all(qb, arguments, span),
+            "update_all" => self.qb_update_all(qb, arguments, span),
             "exists" => self.qb_exists(qb, arguments, span),
             "pluck" => self.qb_pluck(qb, arguments, span),
             "similar" => self.qb_similar(qb, arguments, span),
@@ -706,6 +707,28 @@ impl Interpreter {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
         Ok(execute_query_builder_delete_all(&qb.borrow()))
+    }
+
+    fn qb_update_all(
+        &mut self,
+        qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        if arguments.len() != 1 {
+            return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        let update_data = match &arguments[0] {
+            hash @ Value::Hash(_) => crate::interpreter::value::value_to_json(hash)
+                .map_err(|e| RuntimeError::type_error(e, span))?,
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!("update_all() expects a hash, got {}", other.type_name()),
+                    span,
+                ))
+            }
+        };
+        Ok(execute_query_builder_update_all(&qb.borrow(), update_data))
     }
 
     fn qb_pluck(

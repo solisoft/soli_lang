@@ -9319,6 +9319,21 @@
       ]
     },
     {
+      "title": "query.update_all",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/query-builder#query-builder-chaining",
+      "signature": "query.update_all(hash)",
+      "description": "Bulk update matching documents with one AQL UPDATE",
+      "keywords": [
+        "update",
+        "bulk",
+        "patch",
+        "query",
+        "orm"
+      ]
+    },
+    {
       "title": "query.similar",
       "type": "method",
       "category": "Database",

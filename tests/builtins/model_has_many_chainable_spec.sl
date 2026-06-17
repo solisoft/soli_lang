@@ -52,6 +52,12 @@ describe("has_many returns chainable QueryBuilder (no DB)", fn() {
         assert(q.contains("1 == 0"));
         assert(q.contains("doc.title == @t"));
     });
+
+    test("update_all on an unsaved owner is a safe no-op", fn() {
+        let unsaved = HmAuthor.new();
+        // Always-empty filter → matches nothing → no rows touched, no throw.
+        assert_null(unsaved.hm_books.update_all({ "title": "x" }));
+    });
 });
 
 // ----------------------------------------------------------------------------
@@ -144,6 +150,39 @@ describe("has_many chainable (DB)", fn() {
 
         author.hm_books.delete_all;
         author.delete();
+    });
+
+    test("where(...).update_all patches only matching children", fn() {
+        let author = HmAuthor.create({ "name": "Patcher" });
+        HmBook.create({ "title": "draft", "hm_author_id": author._key });
+        HmBook.create({ "title": "draft", "hm_author_id": author._key });
+        HmBook.create({ "title": "published", "hm_author_id": author._key });
+
+        author.hm_books.where("title = @t", { "t": "draft" }).update_all({ "title": "archived" });
+
+        assert_eq(author.hm_books.where("title = @t", { "t": "archived" }).count, 2);
+        assert_eq(author.hm_books.where("title = @t", { "t": "published" }).count, 1);
+        assert_eq(author.hm_books.where("title = @t", { "t": "draft" }).count, 0);
+
+        author.hm_books.delete_all;
+        author.delete();
+    });
+
+    test("update_all scopes to this owner's children only", fn() {
+        let kept = HmAuthor.create({ "name": "KeptOwner" });
+        let touched = HmAuthor.create({ "name": "TouchedOwner" });
+        HmBook.create({ "title": "orig", "hm_author_id": kept._key });
+        HmBook.create({ "title": "orig", "hm_author_id": touched._key });
+
+        touched.hm_books.update_all({ "title": "renamed" });
+
+        assert_eq(kept.hm_books.where("title = @t", { "t": "orig" }).count, 1);
+        assert_eq(touched.hm_books.where("title = @t", { "t": "renamed" }).count, 1);
+
+        kept.hm_books.delete_all;
+        touched.hm_books.delete_all;
+        kept.delete();
+        touched.delete();
     });
 
     test("each iterates with a block", fn() {

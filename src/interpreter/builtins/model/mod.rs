@@ -277,8 +277,8 @@ pub use crud::{
 pub use query::{
     build_aggregation_query, execute_query_builder, execute_query_builder_aggregate,
     execute_query_builder_count, execute_query_builder_delete_all, execute_query_builder_exists,
-    execute_query_builder_first, execute_query_builder_group_by, AggregationFunc, IncludeClause,
-    IncludeCountClause, JoinClause, QueryBuilder,
+    execute_query_builder_first, execute_query_builder_group_by, execute_query_builder_update_all,
+    AggregationFunc, IncludeClause, IncludeCountClause, JoinClause, QueryBuilder,
 };
 pub use registry::{
     clear_all_model_registries, clear_model_classes, get_model_class, register_model_class,

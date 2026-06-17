@@ -1084,6 +1084,62 @@ pub fn execute_query_builder_delete_all(qb: &QueryBuilder) -> Value {
     Value::Null
 }
 
+/// Execute a QueryBuilder as a bulk UPDATE — every row matching the
+/// accumulated filter / join clauses is patched with `update_data` in a
+/// single AQL statement. Mirrors Rails' `Model.where(...).update_all(...)`
+/// and the sibling [`execute_query_builder_delete_all`]. Returns `Null`.
+///
+/// Like `delete_all`, this is a raw bulk write: it skips validations and
+/// lifecycle callbacks, and order/limit/offset/select/pluck/group_by are
+/// intentionally ignored (they don't compose with UPDATE). The patch hash
+/// is bound under a reserved name so it can't collide with user bind vars.
+pub fn execute_query_builder_update_all(
+    qb: &QueryBuilder,
+    update_data: serde_json::Value,
+) -> Value {
+    let collection = crate::interpreter::symbol_string(qb.collection)
+        .unwrap_or("unknown")
+        .to_string();
+    let mut query = format!("FOR doc IN {}", collection);
+
+    let mut bind_vars_str: HashMap<String, serde_json::Value> = qb
+        .bind_vars
+        .iter()
+        .map(|(k, v)| {
+            (
+                crate::interpreter::symbol_string(*k)
+                    .unwrap_or("")
+                    .to_string(),
+                v.clone(),
+            )
+        })
+        .collect();
+
+    for join in &qb.joins {
+        query.push_str(&QueryBuilder::build_join_existence_filter(
+            &join.relation,
+            &join.filter,
+        ));
+    }
+
+    if let Some(filter) = &qb.filter {
+        let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
+        let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
+        let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
+        query.push_str(&format!(" FILTER {}", aql_filter));
+    }
+
+    bind_vars_str.insert("__soli_update".to_string(), update_data);
+    query.push_str(&format!(
+        " UPDATE doc WITH @__soli_update IN {}",
+        collection
+    ));
+
+    let _ = exec_auto_collection_with_binds(query, bind_vars_str, &collection);
+
+    Value::Null
+}
+
 /// Execute a QueryBuilder for exists check - returns boolean.
 pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
     let collection = crate::interpreter::symbol_string(qb.collection)

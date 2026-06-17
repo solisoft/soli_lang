@@ -1818,6 +1818,11 @@ pub const QUERY_BUILDER_METHODS: &[MethodDef] = &[
         ret: "array",
     },
     MethodDef {
+        name: "update_all",
+        zero_arg: false,
+        ret: "",
+    },
+    MethodDef {
         name: "where",
         zero_arg: false,
         ret: "",

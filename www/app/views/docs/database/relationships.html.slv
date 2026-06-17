@@ -151,7 +151,7 @@ posts = user.posts</code></pre>
         <code>len</code>, <code>each</code>, <code>map</code>, <code>filter</code>, &hellip;)
         <em>and</em> like a QueryBuilder
         (<code>.where</code>, <code>.order</code>, <code>.limit</code>,
-         <code>.count</code>, <code>.delete_all</code>, <code>.exists</code>, &hellip;).
+         <code>.count</code>, <code>.delete_all</code>, <code>.update_all</code>, <code>.exists</code>, &hellip;).
         Each terminal call runs a fresh query against the foreign-key filter.
     </p>
 
@@ -180,6 +180,9 @@ n_pub = user.posts.where("published = @p", { "p": true }).count
 user.posts.delete_all
 user.posts.where("draft = @d", { "d": true }).delete_all
 
+# Bulk update — one UPDATE statement, no N+1
+user.posts.where("draft = @d", { "d": true }).update_all({ "draft": false })
+
 # Sort / paginate before materializing
 recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
         </div>
@@ -187,7 +190,7 @@ recent = user.posts.order("created_at", "desc").limit(10).all</code></pre>
 
     <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
         <ul class="text-indigo-300 text-sm space-y-1 list-disc list-inside">
-            <li>An owner that has not been saved yet (no <code>_key</code>) returns a QueryBuilder whose filter never matches &mdash; <code>count</code> is <code>0</code>, <code>delete_all</code> is a no-op, iteration yields nothing.</li>
+            <li>An owner that has not been saved yet (no <code>_key</code>) returns a QueryBuilder whose filter never matches &mdash; <code>count</code> is <code>0</code>, <code>delete_all</code> / <code>update_all</code> are no-ops, iteration yields nothing.</li>
             <li>If the related model uses <code>soft_delete</code>, soft-deleted children are excluded from the relation. Use the static <code>Related.with_deleted</code> / <code>Related.only_deleted</code> to query them explicitly.</li>
             <li><code>belongs_to</code> and <code>has_one</code> still return a single instance (or <code>nil</code>), not a QueryBuilder.</li>
         </ul>

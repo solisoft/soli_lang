@@ -220,6 +220,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `.count` | Execute query, return count |
 | `.exists` | Execute query, return boolean (true if records exist) |
 | `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
+| `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement. Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. |
 | `.sum(field)` | Execute aggregation, return sum of field |
 | `.avg(field)` | Execute aggregation, return average of field |
 | `.min(field)` | Execute aggregation, return minimum of field |
@@ -1075,6 +1076,9 @@ n_pub = user.posts.where("published = @p", { "p": true }).count;
 user.posts.delete_all;
 user.posts.where("draft = @d", { "d": true }).delete_all;
 
+# Bulk update — one UPDATE statement, no N+1
+user.posts.where("draft = @d", { "d": true }).update_all({ "draft": false });
+
 # Sort / paginate before materializing
 recent = user.posts.order("created_at", "desc").limit(10).all;
 ```
@@ -1082,8 +1086,8 @@ recent = user.posts.order("created_at", "desc").limit(10).all;
 Notes:
 
 - An owner that has not been saved yet (no `_key`) returns a QueryBuilder
-  whose filter never matches — `count` is `0`, `delete_all` is a no-op, and
-  iteration yields nothing.
+  whose filter never matches — `count` is `0`, `delete_all` / `update_all`
+  are no-ops, and iteration yields nothing.
 - If the related model uses `soft_delete`, soft-deleted children are filtered
   out of the relation (consistent with `Related.where(...)`). Use the static
   `Related.with_deleted` / `Related.only_deleted` to query them explicitly.
@@ -1112,6 +1116,11 @@ User.upsert("user123", { "name": "Updated Name" });
 User.where("doc.active == false").delete_all;
 post.comments.delete_all;          # via has_many relation
 Model.delete_all;                  # static — wipe the whole collection
+
+# Batch update via QueryBuilder — one AQL UPDATE for the whole match.
+# Patches every matching row; skips validations and callbacks:
+User.where("doc.active == false").update_all({ "archived": true });
+post.comments.where("draft = @d", { "d": true }).update_all({ "draft": false });
 ```
 
 ## Transactions
