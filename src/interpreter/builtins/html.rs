@@ -84,6 +84,25 @@ pub fn html_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Encode every non-ASCII char as an HTML numeric entity ("é" -> "&#233;").
+///
+/// ASCII bytes (tags, attributes, existing `&#…;` entities) are left untouched, so the
+/// result renders identically under any charset — useful for embedding accented text in
+/// HTML email bodies that providers/clients re-emit as Latin-1 regardless of the declared
+/// charset. The function is idempotent: `&#233;` is pure ASCII, so re-running is a no-op.
+pub fn html_numeric_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        let cp = c as u32;
+        if cp > 127 {
+            out.push_str(&format!("&#{};", cp));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Unescape HTML entities back to characters.
 pub fn html_unescape(s: &str) -> String {
     let mut result = s.to_string();

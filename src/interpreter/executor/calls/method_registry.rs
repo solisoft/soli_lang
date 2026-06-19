@@ -706,6 +706,11 @@ pub const STRING_METHODS: &[MethodDef] = &[
         ret: "string",
     },
     MethodDef {
+        name: "html_entities",
+        zero_arg: true,
+        ret: "string",
+    },
+    MethodDef {
         name: "ascii_only?",
         zero_arg: true,
         ret: "bool",

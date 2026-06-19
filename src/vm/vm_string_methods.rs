@@ -30,6 +30,12 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::String(s.to_lowercase().into()))
             }
+            "html_entities" => {
+                check_arity(0, args.len(), span)?;
+                Ok(Value::String(
+                    crate::interpreter::builtins::html::html_numeric_entities(s).into(),
+                ))
+            }
             "len" | "length" | "size" => {
                 check_arity(0, args.len(), span)?;
                 Ok(Value::Int(s.len() as i64))

@@ -1932,7 +1932,7 @@ impl Interpreter {
             | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
             | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
             | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
-            | "truncate" | "parse_json" | "to_h" | "to_sym" | "slugify" | "camelize"
+            | "truncate" | "parse_json" | "to_h" | "to_sym" | "slugify" | "html_entities" | "camelize"
             | "casecmp" | "casecmp?" | "prepend" | "chop" | "ascii_only?" | "succ" | "next"
             // Universal method with args
             | "is_a?" => Ok(Value::Method(ValueMethod {

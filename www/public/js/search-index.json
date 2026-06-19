@@ -4397,6 +4397,29 @@
       ]
     },
     {
+      "title": ".html_entities()",
+      "type": "method",
+      "category": "String",
+      "path": "/docs/language/strings#section-methods",
+      "signature": "string.html_entities()",
+      "description": "Encode every non-ASCII char as a numeric HTML entity (\u00e9 to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
+      "keywords": [
+        "string",
+        "html_entities",
+        "entities",
+        "utf8",
+        "utf-8",
+        "unicode",
+        "ascii",
+        "email",
+        "brevo",
+        "charset",
+        "accents",
+        "mojibake",
+        "numeric"
+      ]
+    },
+    {
       "title": ".camelize()",
       "type": "method",
       "category": "String",

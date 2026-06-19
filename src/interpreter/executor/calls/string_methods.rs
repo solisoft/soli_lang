@@ -336,6 +336,14 @@ impl Interpreter {
             }
             "upcase" | "uppercase" => Ok(Value::String(s.to_uppercase().into())),
             "downcase" | "lowercase" => Ok(Value::String(s.to_lowercase().into())),
+            "html_entities" => {
+                if !arguments.is_empty() {
+                    return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+                }
+                Ok(Value::String(
+                    crate::interpreter::builtins::html::html_numeric_entities(s).into(),
+                ))
+            }
             "trim" | "strip" => Ok(Value::String(s.trim().to_string().into())),
             "contains" => self.string_contains(s, arguments, span),
             "starts_with" => self.string_starts_with(s, arguments, span),

@@ -368,6 +368,7 @@ snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
 camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
+entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> numeric HTML entities, ASCII untouched)
 
 # String successor
 next_id = "a".succ;    # "b" (increments with carry, wraps z->aa, 9->10)

@@ -456,3 +456,22 @@ describe("String.succ / String.next", fn() {
         assert_eq("9".next, "10");
     });
 });
+
+describe(".html_entities()", fn() {
+    test("encodes non-ASCII chars as numeric HTML entities", fn() {
+        assert_eq("été".html_entities(), "&#233;t&#233;");
+        assert_eq("inscrit·e".html_entities(), "inscrit&#183;e");
+        assert_eq("100€".html_entities(), "100&#8364;");
+        assert_eq("—".html_entities(), "&#8212;");
+    });
+
+    test("leaves pure ASCII (tags, attrs, apostrophe) untouched", fn() {
+        assert_eq("<p class=\"x\">it's ok</p>".html_entities(),
+                  "<p class=\"x\">it's ok</p>");
+    });
+
+    test("is idempotent (existing entities are pure ASCII)", fn() {
+        let once = "L'équipe €".html_entities();
+        assert_eq(once.html_entities(), once);
+    });
+});

@@ -377,6 +377,23 @@ print(text)  # "HELLO"</code></pre>
                 </div>
             </section>
 
+            <!-- HTML entities -->
+            <section id="method-html-entities" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-html-entities" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">.html_entities</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Encodes every non-ASCII character as an HTML <strong>numeric</strong> entity (<code class="text-indigo-300">é→&amp;#233;</code>), leaving ASCII — tags, attributes, and existing <code class="text-indigo-300">&amp;#…;</code> entities — untouched. The result is pure ASCII, so it renders identically under any charset, and the method is idempotent. Use it for accented text in <strong>HTML email bodies</strong>: many providers/clients re-emit the body as Latin-1 regardless of the request charset or an in-document <code class="text-indigo-300">&lt;meta charset&gt;</code>, double-encoding raw UTF-8 (<code class="text-indigo-300">é→Ã©</code>); numeric entities sidestep that.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"Vous avez été inscrit·e".html_entities()
+# "Vous avez &amp;#233;t&amp;#233; inscrit&amp;#183;e"
+
+"&lt;p&gt;plain ascii&lt;/p&gt;".html_entities()  # unchanged</code></pre>
+                </div>
+            </section>
+
             <!-- Camelize -->
             <section id="method-camelize" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">

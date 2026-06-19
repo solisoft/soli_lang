@@ -578,6 +578,28 @@ html_escape("<script>alert('xss')</script>")
 # "&lt;script&gt;alert('xss')&lt;/script&gt;"
 ```
 
+#### string.html_entities()
+
+Encodes every non-ASCII character as an HTML **numeric** entity (`é` → `&#233;`),
+leaving ASCII — tags, attributes, and existing `&#…;` entities — untouched. The result
+is pure ASCII, so it renders identically under any charset, and the method is idempotent
+(running it twice changes nothing).
+
+Use it when embedding accented text in an **HTML email body**: many providers/clients
+re-emit the body as Latin-1 regardless of the request `Content-Type` charset or an
+in-document `<meta charset="utf-8">`, which double-encodes raw UTF-8 (`é` → `Ã©`).
+Numeric entities sidestep that entirely.
+
+**Returns:** String
+
+**Example:**
+```soli
+"Vous avez été inscrit·e".html_entities()
+# "Vous avez &#233;t&#233; inscrit&#183;e"
+
+"<p>plain ascii</p>".html_entities()  # unchanged
+```
+
 #### html_unescape(string)
 
 Unescapes HTML entities.
