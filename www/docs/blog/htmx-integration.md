@@ -49,27 +49,27 @@ To make HTMx even easier to use in Soli, let's create some helper functions:
 ```soli
 # stdlib/htmx.sl
 
-fn hx_get(url)
+def hx_get(url)
   'hx-get="' + url + '"'
 end
 
-fn hx_post(url)
+def hx_post(url)
   'hx-post="' + url + '"'
 end
 
-fn hx_target(selector)
+def hx_target(selector)
   'hx-target="' + selector + '"'
 end
 
-fn hx_swap(method)
+def hx_swap(method)
   'hx-swap="' + method + '"'
 end
 
-fn hx_trigger(event)
+def hx_trigger(event)
   'hx-trigger="' + event + '"'
 end
 
-fn hx_push_url(enabled)
+def hx_push_url(enabled)
   'hx-push-url="' + (enabled ? "true" : "false") + '"'
 end
 ```
@@ -89,19 +89,19 @@ Let's build a simple todo list with HTMx:
 ```soli
 # app/controllers/todos_controller.sl
 
-fn index
+def index
   todos = Todo.all
   render("todos/index", {"todos": todos})
 end
 
-fn create
+def create
   params = req["all"]
   todo = Todo.create({"title": params["title"], "done": false})
   
   render("todos/_todo", {"todo": todo})
 end
 
-fn toggle
+def toggle
   id = req["all"]["id"]
   todo = Todo.find(id)
   todo["done"] = !todo["done"]

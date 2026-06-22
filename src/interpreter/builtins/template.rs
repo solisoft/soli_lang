@@ -1590,6 +1590,27 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
+    // forbidden(message?) - Raise an authorization error that the request
+    // handler maps to a 403 response (mirrors how Model.find raises a 404).
+    // Unlike `halt`, this RAISES rather than returning a hash, so it can be
+    // called as a bare statement deep inside a call chain (e.g. the auth
+    // Policy layer's `authorize(record)`) and still halt the request.
+    env.define(
+        "forbidden".to_string(),
+        Value::NativeFunction(NativeFunction::new("forbidden", None, |args| {
+            let message = match args.first() {
+                Some(Value::String(s)) => s.to_string(),
+                Some(other) => format!("{}", other),
+                None => "Forbidden".to_string(),
+            };
+            Err(format!(
+                "{}{}",
+                crate::error::RuntimeError::FORBIDDEN_MARKER,
+                message
+            ))
+        })),
+    );
+
     // render_json(data, status?) - Render JSON response with automatic content type
     env.define(
         "render_json".to_string(),

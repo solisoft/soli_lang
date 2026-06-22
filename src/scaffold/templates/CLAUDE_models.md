@@ -207,9 +207,7 @@ end
 ```soli
 @user = User.create(params)
 if @user._errors
-  for err in @user._errors
-    print("#{err.field}: #{err.message}")
-  end
+  @user._errors.each(fn(err) print("#{err.field}: #{err.message}"))
 end
 ```
 

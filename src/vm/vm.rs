@@ -2979,8 +2979,8 @@ mod tests {
         let program = Parser::new(tokens).parse().expect("parser error");
         let module = Compiler::compile(&program).expect("compile error");
 
-        let captured: Rc<RefCell<Option<(String, Vec<(String, i64)>)>>> =
-            Rc::new(RefCell::new(None));
+        type CapturedQuery = Rc<RefCell<Option<(String, Vec<(String, i64)>)>>>;
+        let captured: CapturedQuery = Rc::new(RefCell::new(None));
         let sink = captured.clone();
 
         let mut vm = Vm::new();

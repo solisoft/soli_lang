@@ -50,8 +50,28 @@ fn get_resp_pool() -> &'static RwLock<RespPool> {
 
 /// Execute a RESP command and return the raw RespValue.
 pub(crate) fn resp_cmd(args: &[&str]) -> Result<RespValue, String> {
-    let pool = get_resp_pool().read().map_err(|e| e.to_string())?;
-    pool.execute(args)
+    // Fast path when neither the dev bar nor the prod KV log is collecting:
+    // a single relaxed atomic load, then straight through to the pool.
+    if !super::kv_log::is_enabled() {
+        let pool = get_resp_pool().read().map_err(|e| e.to_string())?;
+        return pool.execute(args);
+    }
+
+    let start = std::time::Instant::now();
+    let result = {
+        let pool = get_resp_pool().read().map_err(|e| e.to_string())?;
+        pool.execute(args)
+    };
+    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+    // Record the verb + key only — never the value (args[2..]), which may
+    // hold secrets or large cached blobs.
+    let command = args.first().map(|c| c.to_uppercase()).unwrap_or_default();
+    let key = args.get(1).map(|k| k.to_string()).unwrap_or_default();
+    let error = result.as_ref().err().cloned();
+    super::kv_log::record(command, key, duration_ms, error);
+
+    result
 }
 
 /// Execute a RESP command and convert the result to serde_json::Value.

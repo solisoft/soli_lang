@@ -42,6 +42,9 @@ pub const CORS_MIDDLEWARE_TEMPLATE: &str = include_str!("cors.sl");
 /// Auth middleware template
 pub const AUTH_MIDDLEWARE_TEMPLATE: &str = include_str!("auth.sl");
 
+/// FeatureFlags stdlib module template
+pub const FEATURE_FLAGS_TEMPLATE: &str = include_str!("feature_flags.sl");
+
 /// Generate package.json content
 pub fn package_json(name: &str) -> String {
     format!(

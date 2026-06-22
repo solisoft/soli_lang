@@ -19,12 +19,13 @@
 //! SOLI_LOG=access            # per-request METHOD PATH - status (ms)
 //! SOLI_LOG=query             # AQL queries with binds + duration
 //! SOLI_LOG=http              # outgoing HTTP.* calls
+//! SOLI_LOG=kv                # SoliKV / Cache (KV.* / Cache.*) commands
 //! SOLI_LOG=timing            # middleware / view / phase timings
 //! SOLI_LOG=query,http,timing # any combination
 //! SOLI_LOG=all               # everything
 //! ```
 //!
-//! Turning on any of `query`/`http`/`timing` implies `access` so the
+//! Turning on any of `query`/`http`/`kv`/`timing` implies `access` so the
 //! detail block has a request line to anchor to. The legacy
 //! `SOLI_REQUEST_LOG=1` still works as an alias for the `access` channel.
 //!
@@ -49,6 +50,8 @@ pub struct LogChannels {
     pub query: bool,
     /// Outgoing HTTP.* call log.
     pub http: bool,
+    /// SoliKV / Cache (`KV.*` / `Cache.*`) command log.
+    pub kv: bool,
     /// Middleware / view / phase timing breakdown.
     pub timing: bool,
     /// `SOLI_SLOW_REQUEST_MS`: when set, a request whose total time
@@ -65,13 +68,13 @@ impl LogChannels {
     /// timer and the thread-local buffer clearing are worth their cost.
     #[inline]
     pub fn any(&self) -> bool {
-        self.access || self.query || self.http || self.timing || self.slow_ms.is_some()
+        self.access || self.query || self.http || self.kv || self.timing || self.slow_ms.is_some()
     }
 
     /// True if any *detail* channel (beyond the bare access line) is on.
     #[inline]
     pub fn has_detail(&self) -> bool {
-        self.query || self.http || self.timing || self.slow_ms.is_some()
+        self.query || self.http || self.kv || self.timing || self.slow_ms.is_some()
     }
 
     /// Should the per-query AQL log collect? (Printed per request only if
@@ -85,6 +88,12 @@ impl LogChannels {
     #[inline]
     pub fn collect_http(&self) -> bool {
         self.http || self.slow_ms.is_some()
+    }
+
+    /// Should the SoliKV / Cache command log collect?
+    #[inline]
+    pub fn collect_kv(&self) -> bool {
+        self.kv || self.slow_ms.is_some()
     }
 
     /// Should the middleware/view/phase timers collect?
@@ -108,11 +117,13 @@ fn parse(soli_log: Option<&str>, request_log: bool, slow_ms: Option<f64>) -> Log
                     ch.access = true;
                     ch.query = true;
                     ch.http = true;
+                    ch.kv = true;
                     ch.timing = true;
                 }
                 "access" | "request" | "requests" => ch.access = true,
                 "query" | "queries" | "db" | "sql" | "aql" => ch.query = true,
                 "http" => ch.http = true,
+                "kv" | "cache" | "solikv" => ch.kv = true,
                 "timing" | "timings" | "phase" | "phases" => ch.timing = true,
                 other => {
                     eprintln!("[WARN] SOLI_LOG: unknown channel '{}' (ignored)", other);
@@ -131,7 +142,7 @@ fn parse(soli_log: Option<&str>, request_log: bool, slow_ms: Option<f64>) -> Log
     // explicit SOLI_LOG channels count here: slow mode alone must NOT
     // turn on the per-request access line (it prints nothing until a
     // request crosses the threshold).
-    if ch.query || ch.http || ch.timing {
+    if ch.query || ch.http || ch.kv || ch.timing {
         ch.access = true;
     }
 
@@ -192,6 +203,7 @@ pub fn emit(
             access: true,
             query: true,
             http: true,
+            kv: true,
             timing: true,
             slow_ms: ch.slow_ms,
         }
@@ -256,6 +268,30 @@ pub fn emit(
                     out,
                     "\n    ({:.3}ms) {} {} -> {}",
                     call.duration_ms, call.method, call.url, call.status
+                );
+                if let Some(err) = &call.error {
+                    let _ = write!(out, " [error: {}]", err);
+                }
+            }
+        }
+    }
+
+    if ch.kv {
+        let calls = crate::interpreter::builtins::kv_log::snapshot();
+        if !calls.is_empty() {
+            let total: f64 = calls.iter().map(|c| c.duration_ms).sum();
+            let _ = write!(
+                out,
+                "\n  kv: {} call{} ({:.3}ms)",
+                calls.len(),
+                if calls.len() == 1 { "" } else { "s" },
+                total
+            );
+            for call in &calls {
+                let _ = write!(
+                    out,
+                    "\n    ({:.3}ms) {} {}",
+                    call.duration_ms, call.command, call.key
                 );
                 if let Some(err) = &call.error {
                     let _ = write!(out, " [error: {}]", err);

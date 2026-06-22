@@ -9,6 +9,32 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
+thread_local! {
+    /// The controller action name ("index", "update", ...) for the request the
+    /// current worker thread is handling. Set by the server in `call_handler`
+    /// from the "controller#action" handler string and read by the
+    /// `current_action()` builtin so the auth Policy layer can infer the policy
+    /// method in `authorize(record)` without an explicit argument.
+    static CURRENT_ACTION: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// Record the action name for the in-flight request on this worker thread.
+pub fn set_current_action(action: &str) {
+    CURRENT_ACTION.with(|cell| {
+        *cell.borrow_mut() = action.to_string();
+    });
+}
+
+/// Clear the recorded action name (called when a request finishes).
+pub fn clear_current_action() {
+    CURRENT_ACTION.with(|cell| cell.borrow_mut().clear());
+}
+
+/// The action name recorded for the current request, or "" outside a request.
+pub fn current_action_name() -> String {
+    CURRENT_ACTION.with(|cell| cell.borrow().clone())
+}
+
 // Re-export submodules
 pub mod assertions;
 pub mod assigns_helpers;
@@ -37,6 +63,7 @@ pub mod jobs;
 pub mod json;
 pub mod jwt;
 pub mod kv;
+pub mod kv_log;
 pub mod markdown;
 pub mod math;
 pub mod mock_http;
@@ -288,6 +315,16 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
                 }
             };
             Ok(crate::interpreter::executor::current_env_lookup(&name).unwrap_or(Value::Null))
+        })),
+    );
+
+    // current_action() - The controller action name for the in-flight request
+    // ("index", "update", ...), or "" outside a request. Lets the auth Policy
+    // layer infer the policy method in `authorize(record)`.
+    env.define(
+        "current_action".to_string(),
+        Value::NativeFunction(NativeFunction::new("current_action", Some(0), |_args| {
+            Ok(Value::String(current_action_name().into()))
         })),
     );
 

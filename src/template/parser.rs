@@ -305,6 +305,63 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
+/// Extract a line-preserving Soli source string from a `.slv` template: only
+/// the code inside `<% %>` / `<%= %>` / `<%- %>` regions is kept, with the
+/// literal HTML dropped. The linter feeds this to the normal Soli lexer/parser
+/// so it can run rules on the embedded code without choking on markup —
+/// apostrophes in HTML text would otherwise be read as string delimiters and
+/// `<` as an operator, both of which abort the lex/parse before any rule runs.
+///
+/// Newlines are preserved so diagnostics map back to the original template
+/// lines. When two tags share a source line, the second is pushed onto the
+/// next line rather than separated by `;` — Soli rejects `;` immediately after
+/// `if`/`for`, so a newline is the only separator that keeps the synthesized
+/// source parseable. This can nudge such a region's reported line down by one,
+/// an acceptable trade. Bodies that contain only HTML (`<% if x %>…markup…<% end %>`)
+/// extract to an empty block; the caller drops `style/empty-block` for
+/// templates so that isn't reported as a false positive.
+pub fn extract_lintable_code(source: &str) -> Result<String, String> {
+    let tokens = tokenize(source)?;
+    let mut out = String::new();
+    let mut cur_line: usize = 1;
+    let mut line_has_code = false;
+
+    for token in &tokens {
+        let (snippet, line) = match token {
+            Token::Literal(..) => continue,
+            Token::Code(code, line) => (code.trim(), *line),
+            Token::OutputEscaped(expr, line)
+            | Token::OutputRaw(expr, line)
+            | Token::OutputUnescape(expr, line) => {
+                let expr = expr.trim();
+                // `yield` is a layout directive, not lintable Soli.
+                if expr == "yield" {
+                    continue;
+                }
+                (expr, *line)
+            }
+        };
+        if snippet.is_empty() {
+            continue;
+        }
+
+        while cur_line < line {
+            out.push('\n');
+            cur_line += 1;
+            line_has_code = false;
+        }
+        if line_has_code {
+            out.push('\n');
+            cur_line += 1;
+        }
+        out.push_str(snippet);
+        cur_line += snippet.matches('\n').count();
+        line_has_code = true;
+    }
+
+    Ok(out)
+}
+
 /// Parse tokens into an AST.
 fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
     let mut nodes = Vec::new();

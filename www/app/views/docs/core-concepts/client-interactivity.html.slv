@@ -53,25 +53,20 @@
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-4">When to Use What</h2>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
-        <pre class="p-4 overflow-x-auto text-gray-300 text-sm"><code>local UI state            &rarr;  Alpine          (toggle, tabs, modal, dropdown)
+    <pre data-filename="Decision guide"><code class="language-text text-sm">local UI state            &rarr;  Alpine          (toggle, tabs, modal, dropdown)
 server round-trip         &rarr;  HTMx            (submit form, swap fragment)
 optimistic UI + server    &rarr;  HTMx + Alpine   (flip locally, reconcile on swap)
 real-time / multi-user    &rarr;  Live View       (WebSocket diffs)</code></pre>
-    </div>
     <p class="text-gray-400 mb-12">
         A rough decision tree: if the interaction has no server side, use Alpine alone. If it has a server side but doesn't need WebSocket persistence, use HTMx (and add Alpine if you want optimistic feedback). Reach for Live View when you genuinely need server-pushed updates or multi-client collaboration.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-4">HTMx &mdash; AJAX in HTML Attributes</h2>
     <p class="text-gray-400 mb-4">HTMx lets any element fire HTTP requests and swap the response into the DOM. No client-side JavaScript needed:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Lazy load a fragment</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;button hx-get="/users" hx-target="#user-list" hx-swap="innerHTML"&gt;
+    <pre data-filename="Lazy load a fragment"><code class="language-html text-sm">&lt;button hx-get="/users" hx-target="#user-list" hx-swap="innerHTML"&gt;
   Load Users
 &lt;/button&gt;
 &lt;div id="user-list"&gt;&lt;/div&gt;</code></pre>
-    </div>
 
     <h3 class="text-lg font-semibold text-white mb-3">Common Directives</h3>
     <ul class="text-gray-400 space-y-1 mb-8 list-disc list-inside">
@@ -86,9 +81,7 @@ real-time / multi-user    &rarr;  Live View       (WebSocket diffs)</code></pre>
     <p class="text-gray-400 mb-4">
         The server returns an HTML fragment, not JSON. Soli's <code class="text-amber-400">respond_to</code> block picks up the <code class="text-amber-400">HX-Request</code> header automatically:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/posts_controller.sl</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-soli text-sm"># Full request &rarr; format.html; HTMx submit &rarr; format.htmx (partial only).
+    <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm"># Full request &rarr; format.html; HTMx submit &rarr; format.htmx (partial only).
 class PostsController &lt; Controller
   def create(req)
     let post = Post.create(req["all"])
@@ -98,7 +91,6 @@ class PostsController &lt; Controller
     })
   end
 end</code></pre>
-    </div>
     <p class="text-gray-400 mb-8">
         See <a href="/docs/core-concepts/controllers#fn-respond_to" class="text-cyan-400 hover:underline">Controllers &mdash; <code class="text-amber-400">respond_to</code></a> for the full dispatch order.
     </p>
@@ -107,22 +99,17 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         Long <code class="text-amber-400">hx-*</code> attributes can be wrapped in helpers if you prefer. These are not built in &mdash; drop them in <code class="text-amber-400">stdlib/</code> if useful:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">stdlib/htmx.sl</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-soli text-sm">fn hx_get(url)
+    <pre data-filename="stdlib/htmx.sl"><code class="language-soli text-sm">def hx_get(url)
   "hx-get=\"#{url}\""
 end
 
-fn hx_target(selector)
+def hx_target(selector)
   "hx-target=\"#{selector}\""
 end</code></pre>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-4">Alpine.js &mdash; Local State and Behavior</h2>
     <p class="text-gray-400 mb-4">Alpine layers reactive directives directly onto HTML for state that lives only in the browser:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Dropdown</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;div x-data="{ open: false }"&gt;
+    <pre data-filename="Dropdown"><code class="language-html text-sm">&lt;div x-data="{ open: false }"&gt;
   &lt;button @click="open = !open" class="px-3 py-1 bg-indigo-500 text-white rounded"&gt;
     Menu
   &lt;/button&gt;
@@ -131,7 +118,6 @@ end</code></pre>
     &lt;li&gt;Sign out&lt;/li&gt;
   &lt;/ul&gt;
 &lt;/div&gt;</code></pre>
-    </div>
     <p class="text-gray-400 mb-8">
         Add <code class="text-amber-400">[x-cloak] { display: none !important; }</code> to your CSS and <code class="text-amber-400">x-cloak</code> to anything that starts hidden &mdash; Alpine strips the attribute after parsing, eliminating flash-of-unstyled-content.
     </p>
@@ -150,9 +136,7 @@ end</code></pre>
 
     <h3 class="text-lg font-semibold text-white mb-3">Tabs and Modals</h3>
     <p class="text-gray-400 mb-4">Tabs:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Tabs</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;div x-data="{ tab: 'first' }"&gt;
+    <pre data-filename="Tabs"><code class="language-html text-sm">&lt;div x-data="{ tab: 'first' }"&gt;
   &lt;nav class="flex gap-4 border-b"&gt;
     &lt;button @click="tab = 'first'"  :class="tab === 'first'  && 'font-bold'"&gt;First&lt;/button&gt;
     &lt;button @click="tab = 'second'" :class="tab === 'second' && 'font-bold'"&gt;Second&lt;/button&gt;
@@ -160,26 +144,20 @@ end</code></pre>
   &lt;section x-show="tab === 'first'"  x-cloak&gt;First panel.&lt;/section&gt;
   &lt;section x-show="tab === 'second'" x-cloak&gt;Second panel.&lt;/section&gt;
 &lt;/div&gt;</code></pre>
-    </div>
     <p class="text-gray-400 mb-4">Modal (native <code class="text-amber-400">&lt;dialog&gt;</code>):</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Modal</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;div x-data="{ open: false }"&gt;
+    <pre data-filename="Modal"><code class="language-html text-sm">&lt;div x-data="{ open: false }"&gt;
   &lt;button @click="open = true"&gt;Open&lt;/button&gt;
   &lt;dialog :open="open" @close="open = false" class="rounded-lg p-4"&gt;
     &lt;p&gt;Body text&hellip;&lt;/p&gt;
     &lt;button @click="open = false"&gt;Close&lt;/button&gt;
   &lt;/dialog&gt;
 &lt;/div&gt;</code></pre>
-    </div>
 
     <h3 class="text-lg font-semibold text-white mb-3">Client-Side Validation</h3>
     <p class="text-gray-400 mb-4">
         Pair <code class="text-amber-400">x-model</code> with derived state to give immediate feedback. Server-side <code class="text-amber-400">V.validate(...)</code> (see <a href="/docs/builtins/validation" class="text-cyan-400 hover:underline">Validation</a>) remains the source of truth &mdash; Alpine just fails fast in the UI.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Validated form</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;form x-data="{ email: '', get valid() { return /.+@.+\..+/.test(this.email) } }"
+    <pre data-filename="Validated form"><code class="language-html text-sm">&lt;form x-data="{ email: '', get valid() { return /.+@.+\..+/.test(this.email) } }"
       action="/signup" method="post"&gt;
   &lt;input type="email" name="email" x-model="email" class="border rounded px-2 py-1" /&gt;
   &lt;p x-show="email && !valid" x-cloak class="text-red-600 text-sm"&gt;
@@ -190,7 +168,6 @@ end</code></pre>
     Sign up
   &lt;/button&gt;
 &lt;/form&gt;</code></pre>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-4">Combined Patterns</h2>
 
@@ -198,29 +175,23 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         Wrap an HTMx-driven button in <code class="text-amber-400">x-data</code> and flip local state on click. HTMx then swaps the button with the server's authoritative render:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Optimistic like button</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;button x-data="{ liked: false }"
+    <pre data-filename="Optimistic like button"><code class="language-html text-sm">&lt;button x-data="{ liked: false }"
         @click="liked = true"
         :class="liked && 'text-pink-500'"
         hx-post="/posts/42/like"
         hx-swap="outerHTML"&gt;
   &hearts; Like
 &lt;/button&gt;</code></pre>
-    </div>
     <p class="text-gray-400 mb-4">
         If the request fails, the server's response replaces the optimistic state. For finer error handling, listen for HTMx events:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Status badge</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;div x-data="{ status: 'idle' }"
+    <pre data-filename="Status badge"><code class="language-html text-sm">&lt;div x-data="{ status: 'idle' }"
      @htmx:before-request.window="status = 'loading'"
      @htmx:after-request.window="status = 'idle'"
      @htmx:response-error.window="status = 'failed'"&gt;
   &lt;span x-show="status === 'loading'" x-cloak&gt;Saving&hellip;&lt;/span&gt;
   &lt;span x-show="status === 'failed'"  x-cloak class="text-red-600"&gt;Save failed.&lt;/span&gt;
 &lt;/div&gt;</code></pre>
-    </div>
 
     <h3 class="text-lg font-semibold text-white mb-3">Swap, Then Re-Init</h3>
     <p class="text-gray-400 mb-8">
@@ -231,9 +202,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         Soli does not bundle SortableJS, Chart.js, or other heavy libraries &mdash; drop them in <code class="text-amber-400">public/js/</code> (or a CDN) and let Alpine drive their lifecycle:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">SortableJS &mdash; drag to reorder</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;ul x-data
+    <pre data-filename="SortableJS &mdash; drag to reorder"><code class="language-html text-sm">&lt;ul x-data
     x-init="new Sortable($el, { animation: 150,
       onEnd(e) { fetch('/items/reorder', { method: 'POST',
         body: JSON.stringify({ from: e.oldIndex, to: e.newIndex }),
@@ -243,15 +212,11 @@ end</code></pre>
     &lt;li class="bg-white p-2 rounded shadow cursor-move"&gt;&lt;%= item["name"] %&gt;&lt;/li&gt;
   &lt;% end %&gt;
 &lt;/ul&gt;</code></pre>
-    </div>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Chart.js inside x-data</label>
-        <pre class="p-4 overflow-x-auto"><code class="language-html text-sm">&lt;canvas x-data="{
+    <pre data-filename="Chart.js inside x-data"><code class="language-html text-sm">&lt;canvas x-data="{
           init() {
             new Chart(this.$el, { type: 'line', data: &lt;%= chart_data %&gt; })
           }
         }"&gt;&lt;/canvas&gt;</code></pre>
-    </div>
 
     <h2 class="text-2xl font-bold text-white mb-4">Coexistence Notes</h2>
     <ul class="text-gray-400 space-y-2 mb-12 list-disc list-inside">

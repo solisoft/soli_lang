@@ -137,6 +137,36 @@ impl TypeEnvironment {
             },
         );
 
+        // const_get(String) -> Any — resolve a name (class/function/var) at runtime.
+        // Used by the auth Policy layer (`const_get(record.class + "Policy")`).
+        self.functions.insert(
+            "const_get".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // current_action() -> String — the controller action name for the
+        // in-flight request (e.g. "update"). Empty string outside a request.
+        // Lets `authorize(record)` infer the policy method without an argument.
+        self.functions.insert(
+            "current_action".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // forbidden(message?) -> Void — raise a 403 authorization error.
+        self.functions.insert(
+            "forbidden".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Void),
+            },
+        );
+
         // range(Int, Int) -> Int[]
         self.functions.insert(
             "range".to_string(),
@@ -410,6 +440,24 @@ impl TypeEnvironment {
             Type::Function {
                 params: vec![Type::Any, Type::Any],
                 return_type: Box::new(Type::String),
+            },
+        );
+
+        // Environment access
+        // getenv(String) -> String|Null  (Any so callers can compare against null)
+        self.functions.insert(
+            "getenv".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Any),
+            },
+        );
+        // hasenv(String) -> Bool
+        self.functions.insert(
+            "hasenv".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
             },
         );
 

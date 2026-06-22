@@ -79,6 +79,10 @@ fn core_concepts_engines
     render_docs("docs/core-concepts/engines", "Engines", "core_concepts", "engines")
 end
 
+fn core_concepts_feature_flags
+    render_docs("docs/core-concepts/feature-flags", "Feature Flags", "core_concepts", "feature_flags")
+end
+
 # ============================================================================
 # Database
 # ============================================================================
@@ -125,6 +129,10 @@ end
 
 fn security_sessions
     render_docs("docs/security/sessions", "Sessions", "security", "sessions")
+end
+
+fn security_authorization
+    render_docs("docs/security/authorization", "Authorization & Policies", "security", "authorization")
 end
 
 # Development Tools

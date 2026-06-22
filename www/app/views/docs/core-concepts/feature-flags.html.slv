@@ -1,0 +1,169 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 animate-gradient-x">
+                Feature Flags
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Toggle features on and off at runtime — no redeploy. Ramp a feature out to a percentage of users, allowlist a beta group, or kill it instantly when something breaks.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section>
+        <div class="bg-gradient-to-br from-emerald-900/20 to-cyan-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-emerald-500/20 rounded-lg text-emerald-400">
+                    <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Flip features live</h2>
+                    <p class="text-gray-300 leading-relaxed mb-0">
+                        Flags live in the shared cache (SoliKV), so every worker sees the same value and changes take effect immediately. Feature flags ship as a stdlib module in every new app at <code class="text-cyan-300">stdlib/feature_flags.sl</code> — import it where you need it.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick start -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">1</span>
+            Quick start
+        </h2>
+
+        <p class="text-gray-400 mb-4">Import the module, then gate any code path on a flag:</p>
+        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto mb-6">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">import "../../stdlib/feature_flags.sl"
+
+# In a controller action
+if FeatureFlags.enabled?("checkout_v2", user: current_user["id"])
+  return render("checkout/v2")
+end
+
+return render("checkout/v1")</code></pre>
+            </div>
+        </div>
+
+        <p class="text-gray-400 mb-4">Manage flags from a console, an admin action, or <code class="text-cyan-300">config/application.sl</code> at boot:</p>
+        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">FeatureFlags.enable("checkout_v2")            # on for everyone
+FeatureFlags.disable("checkout_v2")           # global kill-switch
+FeatureFlags.set_rollout("checkout_v2", 25)   # 25% of users (stable per user)
+FeatureFlags.enable_for("checkout_v2", "u_42")     # allowlist a single user
+FeatureFlags.enable_group("checkout_v2", "beta")   # allowlist a group</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Evaluation order -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">2</span>
+            How a flag is evaluated
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            <code class="text-cyan-300">FeatureFlags.enabled?(name, user:, groups:)</code> resolves in this order — the first rule that matches wins:
+        </p>
+
+        <ol class="space-y-3 text-gray-300">
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">1.</span><span><strong class="text-white">Environment override.</strong> If <code class="text-amber-400">SOLI_FEATURE_&lt;NAME&gt;</code> is set, it decides the answer outright and the cache is never touched.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">2.</span><span><strong class="text-white">Unknown flag.</strong> A flag that was never stored is <em>off</em>.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">3.</span><span><strong class="text-white">Kill-switch.</strong> A flag whose <code class="text-cyan-300">on</code> is <code class="text-cyan-300">false</code> is <em>off</em>, regardless of rollout or allowlist.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">4.</span><span><strong class="text-white">Allowlists.</strong> If the user is on the user allowlist, or any of <code class="text-cyan-300">groups</code> is on the group allowlist, the flag is <em>on</em> — allowlists always beat the rollout percentage.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">5.</span><span><strong class="text-white">Percentage rollout.</strong> If a rollout is set below 100%, the user is bucketed deterministically. Anonymous traffic (no <code class="text-cyan-300">user</code>) is never in a partial rollout.</span></li>
+            <li class="flex gap-3"><span class="text-emerald-400 font-semibold">6.</span><span><strong class="text-white">Plain on.</strong> Otherwise the flag's <code class="text-cyan-300">on</code> value applies.</span></li>
+        </ol>
+    </section>
+
+    <!-- Percentage rollout -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">3</span>
+            Percentage rollout
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-300">set_rollout(name, percent)</code> turns a flag on for a stable slice of users. Membership is derived from a hash of the flag name and the user id, so a given user always gets the same answer — and as you ramp the percentage up, users who were already in stay in:
+        </p>
+        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-soli text-sm">FeatureFlags.set_rollout("new_dashboard", 10)   # 10% see it
+# …later, once it looks healthy…
+FeatureFlags.set_rollout("new_dashboard", 50)   # the original 10% are still in
+FeatureFlags.set_rollout("new_dashboard", 100)  # everyone</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mt-4">
+            Because bucketing is keyed on the user id, a logged-out visitor is never counted in a partial rollout — pass a stable id when you want anonymous visitors bucketed too.
+        </p>
+    </section>
+
+    <!-- Environment overrides -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">4</span>
+            Environment overrides
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">SOLI_FEATURE_&lt;NAME&gt;</code> forces a flag without touching the cache — ideal for CI, local development, and emergency kill-switches. The env name is <code class="text-amber-400">SOLI_FEATURE_</code> plus the flag name upper-cased:
+        </p>
+        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+            <div class="p-6 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_FEATURE_CHECKOUT_V2=1   # force on
+SOLI_FEATURE_CHECKOUT_V2=0   # force off</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mt-4">
+            Truthy values are <code class="text-cyan-300">1</code>, <code class="text-cyan-300">true</code>, <code class="text-cyan-300">on</code>, <code class="text-cyan-300">yes</code> (case-insensitive); anything else reads as off. Keep flag names identifier-like so they map cleanly to environment variable names.
+        </p>
+    </section>
+
+    <!-- Fail-safe -->
+    <section>
+        <div class="bg-gradient-to-br from-amber-900/20 to-yellow-900/10 rounded-2xl p-8 border border-amber-500/20">
+            <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Fail-safe by design</h2>
+            <p class="text-gray-300 leading-relaxed mb-0">
+                Reads never throw on the request hot path. If the cache is unreachable, <code class="text-cyan-300">enabled?</code> treats the flag as unconfigured and returns <strong>off</strong> (after honoring any env override) — a cache outage degrades features gracefully instead of 500-ing the request. Flags persist far beyond the cache's default 1-hour TTL: ~10 years by default, override with <code class="text-amber-400">SOLI_FEATURE_TTL</code> (seconds).
+            </p>
+        </div>
+    </section>
+
+    <!-- API reference -->
+    <section>
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 text-sm border border-cyan-500/30">5</span>
+            API reference
+        </h2>
+
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="text-gray-300 border-b border-white/10">
+                    <tr>
+                        <th class="px-4 py-3 font-semibold">Method</th>
+                        <th class="px-4 py-3 font-semibold">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">enabled?(name, user:, groups:)</code></td><td class="px-4 py-3">Is the flag on for this user/groups? Returns a <code>Bool</code>; fails safe to <code>false</code>.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">enable(name)</code></td><td class="px-4 py-3">Turn the flag on for everyone.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">disable(name)</code></td><td class="px-4 py-3">Global kill-switch — off for everyone.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">set_rollout(name, percent)</code></td><td class="px-4 py-3">Turn on for a stable <code>percent</code> (0–100) of users.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">enable_for(name, user)</code></td><td class="px-4 py-3">Add a user to the allowlist (beats the rollout %).</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">enable_group(name, group)</code></td><td class="px-4 py-3">Add a group to the allowlist.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">get(name)</code></td><td class="px-4 py-3">Raw config hash, or <code>null</code> if unset.</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-cyan-300">clear(name)</code></td><td class="px-4 py-3">Forget the flag (env overrides still apply).</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

@@ -68,11 +68,11 @@ Long `hx-*` attributes can be wrapped in helpers if you prefer. These are not bu
 
 ```soli
 # stdlib/htmx.sl
-fn hx_get(url)
+def hx_get(url)
   "hx-get=\"#{url}\""
 end
 
-fn hx_target(selector)
+def hx_target(selector)
   "hx-target=\"#{selector}\""
 end
 ```

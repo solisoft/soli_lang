@@ -322,6 +322,23 @@ impl RuntimeError {
             .map(|idx| msg[idx + Self::RECORD_NOT_FOUND_MARKER.len()..].to_string())
     }
 
+    /// Sentinel embedded in the error message when authorization fails (the
+    /// `forbidden()` builtin / the auth Policy layer's `authorize()` helper).
+    /// The HTTP request handler looks for this marker and converts the error
+    /// into a 403 response instead of the default 500.
+    pub const FORBIDDEN_MARKER: &'static str = "__Forbidden__:";
+
+    /// The user-facing message from a forbidden error (marker stripped).
+    /// `Some` only when the error carries the forbidden marker.
+    pub fn forbidden_message(&self) -> Option<String> {
+        let msg = match self {
+            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            _ => return None,
+        };
+        msg.find(Self::FORBIDDEN_MARKER)
+            .map(|idx| msg[idx + Self::FORBIDDEN_MARKER.len()..].to_string())
+    }
+
     pub fn new(message: impl Into<String>, span: Span) -> Self {
         Self::General {
             message: message.into(),
@@ -443,6 +460,9 @@ pub enum SolilangError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Template error: {0}")]
+    Template(String),
 }
 
 #[cfg(test)]
@@ -718,6 +738,23 @@ mod tests {
         let plain = RuntimeError::new("just a regular error", span(1, 1));
         assert!(!plain.is_record_not_found());
         assert!(plain.record_not_found_message().is_none());
+    }
+
+    #[test]
+    fn forbidden_message_round_trips_and_is_isolated() {
+        let e = RuntimeError::General {
+            message: format!("{}Not authorized", RuntimeError::FORBIDDEN_MARKER),
+            span: span(1, 1),
+        };
+        assert_eq!(e.forbidden_message().as_deref(), Some("Not authorized"));
+        // A forbidden error is not a record-not-found error, and vice versa.
+        assert!(!e.is_record_not_found());
+        assert!(RuntimeError::record_not_found("x", span(1, 1))
+            .forbidden_message()
+            .is_none());
+        assert!(RuntimeError::new("plain", span(1, 1))
+            .forbidden_message()
+            .is_none());
     }
 
     #[test]

@@ -394,3 +394,96 @@ fn broken() -> Int {
         names
     );
 }
+
+// =====================================================================
+// `.slv` template linting — the linter extracts the embedded `<% %>` code
+// and skips the surrounding HTML, instead of choking on markup.
+// =====================================================================
+
+#[test]
+fn slv_html_with_apostrophe_does_not_error() {
+    // An apostrophe in HTML body text used to be lexed as a string-literal
+    // start ("Unterminated string"); plain `<` as an unexpected token. Both
+    // aborted the parse before any rule ran. A `.slv` file must lint cleanly.
+    let src = "<p>Ce prestataire n'est rattach\u{e9} \u{e0} aucun immeuble.</p>\n";
+    let diags = solilang::lint_file(src, "app/views/x/show.html.slv")
+        .expect("template with HTML must not produce a parse error");
+    assert!(
+        diags.is_empty(),
+        "pure-HTML template should have no diagnostics: {:?}",
+        diags
+    );
+}
+
+#[test]
+fn slv_lints_embedded_code() {
+    // A naming violation inside a `<% %>` block is still reported.
+    let src = "<div>\n<% let badName = 1 %>\n</div>\n";
+    let diags =
+        solilang::lint_file(src, "app/views/x/show.html.slv").expect("template should parse");
+    let names: Vec<_> = diags.iter().map(|d| d.rule).collect();
+    assert!(
+        names.contains(&"naming/snake-case"),
+        "expected naming/snake-case from embedded code, got: {:?}",
+        names
+    );
+}
+
+#[test]
+fn slv_html_only_block_is_not_flagged_empty() {
+    // `<% if x %>…markup…<% end %>` extracts to an empty block, which must NOT
+    // be reported as `style/empty-block` (the body is HTML, just no Soli code).
+    let src = "<% if show_it %>\n  <p>hello</p>\n<% end %>\n";
+    let diags =
+        solilang::lint_file(src, "app/views/x/show.html.slv").expect("template should parse");
+    let names: Vec<_> = diags.iter().map(|d| d.rule).collect();
+    assert!(
+        !names.contains(&"style/empty-block"),
+        "HTML-only control flow must not trip empty-block: {:?}",
+        names
+    );
+}
+
+#[test]
+fn slv_diagnostic_line_maps_to_template() {
+    // The naming violation sits on template line 3; the reported line must match.
+    let src = "<h1>title</h1>\n<p>body</p>\n<% let badName = 2 %>\n";
+    let diags =
+        solilang::lint_file(src, "app/views/x/show.html.slv").expect("template should parse");
+    let snake = diags
+        .iter()
+        .find(|d| d.rule == "naming/snake-case")
+        .expect("snake-case diagnostic present");
+    assert_eq!(
+        snake.span.line, 3,
+        "diagnostic should map to the original template line, got {}",
+        snake.span.line
+    );
+}
+
+#[test]
+fn slv_extract_preserves_lines_and_strips_html() {
+    use solilang::template::parser::extract_lintable_code;
+    let src = "<h1>x</h1>\n<% let total = 0 %>\n<%= total %>\n";
+    let code = extract_lintable_code(src).expect("extract ok");
+    let lines: Vec<&str> = code.lines().collect();
+    // Line 1 was pure HTML -> blank; line 2 holds the code; line 3 the output.
+    assert_eq!(lines.first().map(|s| s.trim()), Some(""));
+    assert_eq!(lines.get(1).map(|s| s.trim()), Some("let total = 0"));
+    assert_eq!(lines.get(2).map(|s| s.trim()), Some("total"));
+}
+
+#[test]
+fn slv_unclosed_tag_is_a_template_error() {
+    // A genuinely malformed template surfaces a clean error, not a confusing
+    // Soli lexer message.
+    let src = "<p><% let x = 1 \n";
+    let err = solilang::lint_file(src, "app/views/x/show.html.slv")
+        .expect_err("unclosed tag should error");
+    assert!(
+        err.to_string().to_lowercase().contains("template")
+            || err.to_string().to_lowercase().contains("unclosed"),
+        "expected a template error, got: {}",
+        err
+    );
+}

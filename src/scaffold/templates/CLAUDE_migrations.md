@@ -174,10 +174,7 @@ For larger seeds, build a batch in Soli and INSERT in one query:
 
 ```soli
 def up(db)
-  let batch = []
-  for i in 0..100
-    batch.push({ "name": "User #{i}", "email": "user#{i}@demo" })
-  end
+  let batch = (0..100).map(fn(i) { { "name": "User #{i}", "email": "user#{i}@demo" } })
   let json = batch.to_json
   db.query("FOR doc IN #{json} INSERT doc INTO users")
 end

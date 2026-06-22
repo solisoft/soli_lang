@@ -39,6 +39,7 @@ pub enum SpanKind {
     Partial,
     Db,
     Http,
+    Kv,
     Fn,
 }
 
@@ -54,6 +55,7 @@ impl SpanKind {
             SpanKind::Partial => "partial",
             SpanKind::Db => "db",
             SpanKind::Http => "http",
+            SpanKind::Kv => "kv",
             SpanKind::Fn => "fn",
         }
     }

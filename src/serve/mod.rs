@@ -491,6 +491,16 @@ pub fn serve_folder_with_options_and_workers(
     }
     boot_trace("services loaded");
 
+    // Load authorization policies (app/policies/*.sl) before controllers so
+    // controller actions can call `authorize(...)` and `const_get("XPolicy")`
+    // can resolve the policy classes. Same loader shape as models: each file
+    // just defines classes / bare functions into the shared global env.
+    let policies_dir = app_dir.join("policies");
+    if policies_dir.exists() {
+        load_models(&mut interpreter, &policies_dir)?;
+    }
+    boot_trace("policies loaded");
+
     // Initialize file tracker for hot reload
     let mut file_tracker = FileTracker::new();
 
@@ -1576,6 +1586,9 @@ fn worker_loop(
     // Same for outgoing HTTP.* calls — feeds the dev bar's "http" panel.
     crate::interpreter::builtins::http_log::set_enabled(dev_mode || log_channels.collect_http());
 
+    // Same for SoliKV / Cache (KV.* / Cache.*) commands — feeds the "kv" panel.
+    crate::interpreter::builtins::kv_log::set_enabled(dev_mode || log_channels.collect_kv());
+
     // Phase timers (middleware/view) for the render-breakdown panel.
     phase_log::set_enabled(dev_mode || log_channels.collect_timing());
     middleware_log::set_enabled(dev_mode || log_channels.collect_timing());
@@ -1604,6 +1617,14 @@ fn worker_loop(
         if services_dir.exists() {
             if let Err(e) = load_models(interpreter, &services_dir) {
                 eprintln!("Worker {}: Error loading services: {}", worker_id, e);
+            }
+        }
+        // Load authorization policies (sibling of models) so `authorize(...)`
+        // and the `<Model>Policy` classes are visible to controllers.
+        let policies_dir = parent.join("policies");
+        if policies_dir.exists() {
+            if let Err(e) = load_models(interpreter, &policies_dir) {
+                eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
             }
         }
     }
@@ -1802,6 +1823,12 @@ fn worker_loop(
                 if services_dir.exists() {
                     if let Err(e) = load_models(interpreter, &services_dir) {
                         eprintln!("Worker {}: Error reloading services: {}", worker_id, e);
+                    }
+                }
+                let policies_dir = parent.join("policies");
+                if policies_dir.exists() {
+                    if let Err(e) = load_models(interpreter, &policies_dir) {
+                        eprintln!("Worker {}: Error reloading policies: {}", worker_id, e);
                     }
                 }
             }
@@ -4076,6 +4103,12 @@ fn call_handler(
     // + after_action so they nest as children. Cheap when --dev is off.
     let _action_span = span_log::SpanGuard::start(handler_name, span_log::SpanKind::Action);
 
+    // Record the action name ("controller#action" -> "action") so the auth
+    // Policy layer's `current_action()` builtin can infer the policy method in
+    // `authorize(record)`. For function handlers without a "#", use the whole name.
+    let action_name = handler_name.rsplit('#').next().unwrap_or(handler_name);
+    crate::interpreter::builtins::set_current_action(action_name);
+
     // Expose req["all"] as global `params` so handlers/views can reference it directly.
     // Default to an empty hash (not Null) so callers can safely index into it.
     let params_value = get_hash_field(&request_hash, "all")
@@ -4225,6 +4258,10 @@ fn call_handler(
                 }
                 Err(e) => {
                     if let Some(resp) = record_not_found_response(&e) {
+                        interpreter.pop_frame();
+                        return resp;
+                    }
+                    if let Some(resp) = forbidden_response(&e) {
                         interpreter.pop_frame();
                         return resp;
                     }
@@ -4554,6 +4591,8 @@ fn call_oop_controller_action(
         }
         Err(e) => {
             if let Some(resp) = record_not_found_response(&e) {
+                resp
+            } else if let Some(resp) = forbidden_response(&e) {
                 resp
             } else {
                 let stack_trace: Vec<String> = e
@@ -5036,6 +5075,24 @@ fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
     })
 }
 
+/// If the error came from an authorization failure (the `forbidden()` builtin
+/// or the Policy layer's `authorize()` helper), build a 403 response using the
+/// standard production error-page pipeline (so apps can ship a custom
+/// `app/views/errors/403.html.slv`). Returns None otherwise.
+fn forbidden_response(err: &RuntimeError) -> Option<ResponseData> {
+    let message = err.forbidden_message()?;
+    let request_id = Uuid::new_v4().to_string();
+    let body = error_pages::render_production_error_page(403, &message, &request_id);
+    Some(ResponseData {
+        status: 403,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/html; charset=utf-8".to_string(),
+        )],
+        body: body.into_bytes(),
+    })
+}
+
 fn check_for_response(value: &Value) -> Option<ResponseData> {
     // A response is a Hash with a "status" field (and optionally headers, body)
     // A modified request hash has "method", "path", etc. but no "status"
@@ -5345,6 +5402,7 @@ fn handle_request(
     if dev_mode || prod_log::channels().has_detail() {
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
+        crate::interpreter::builtins::kv_log::clear();
         phase_log::clear();
         middleware_log::clear();
         view_log::clear();
@@ -5720,6 +5778,7 @@ fn handle_request(
                 if let Ok(body_str) = std::str::from_utf8(&resp.body) {
                     let queries = crate::interpreter::builtins::model::query_log::snapshot();
                     let http_requests = crate::interpreter::builtins::http_log::snapshot();
+                    let kv_calls = crate::interpreter::builtins::kv_log::snapshot();
                     let phases = phase_log::snapshot();
                     let middlewares = middleware_log::snapshot();
                     let views = view_log::snapshot();
@@ -5756,6 +5815,7 @@ fn handle_request(
                         started: start,
                         queries,
                         http_requests,
+                        kv_calls,
                         phases,
                         middlewares,
                         views,
@@ -6393,6 +6453,12 @@ fn execute_repl_code(
         if models_dir.exists() {
             if let Err(e) = load_models(&mut interpreter, &models_dir) {
                 eprintln!("REPL: Error loading models: {}", e);
+            }
+        }
+        let policies_dir = app_root.join("app/policies");
+        if policies_dir.exists() {
+            if let Err(e) = load_models(&mut interpreter, &policies_dir) {
+                eprintln!("REPL: Error loading policies: {}", e);
             }
         }
         *session.models_loaded.borrow_mut() = true;

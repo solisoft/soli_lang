@@ -3,6 +3,7 @@
 //! Provides functionality for `soli new app_name` command and resource scaffolding.
 
 pub mod app_generator;
+pub mod auth_generator;
 pub mod controller_generator;
 pub mod engine;
 pub mod migration_generator;
@@ -241,4 +242,5 @@ pub fn print_scaffold_success_message(name: &str) {
 
 // Re-export public functions for backward compatibility
 pub use app_generator::create_app;
+pub use auth_generator::{create_auth, print_auth_success_message};
 pub use engine::create_engine;

@@ -392,10 +392,9 @@ iterate `req["files"]` directly and attach one by one:
 ```soli
 def upload_batch
   @document = Document.find(params["id"])
-  for file in (req["files"] ?? [])
-    next unless file["name"] == "attachments"
-    @document.attach_attachments(file)    # array column; each call pushes one blob
-  end
+  (req["files"] ?? [])
+    .filter(fn(file) file["name"] == "attachments")
+    .each(fn(file) @document.attach_attachments(file))    # array column; each call pushes one blob
   redirect(document_path(@document))
 end
 ```

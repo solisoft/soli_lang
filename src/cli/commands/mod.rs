@@ -204,6 +204,16 @@ pub fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
     }
 }
 
+pub fn run_generate_auth(folder: &str) {
+    match solilang::scaffold::create_auth(folder) {
+        Ok(()) => solilang::scaffold::print_auth_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_engine(action: &EngineAction) {
     match action {
         EngineAction::Create { name } => match solilang::scaffold::create_engine(name) {
@@ -351,12 +361,12 @@ pub fn run_lint(paths: &[String]) {
         if t.is_file() {
             files.push(t.clone());
         } else {
-            files.extend(test_runner::collect_test_files(t));
+            files.extend(test_runner::collect_lint_files(t));
         }
     }
 
     if files.is_empty() {
-        println!("No .sl files found.");
+        println!("No .sl or .slv files found.");
         return;
     }
 

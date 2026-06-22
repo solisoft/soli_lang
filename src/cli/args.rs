@@ -20,6 +20,11 @@ pub enum Command {
         fields: Vec<String>,
         folder: String,
     },
+    /// `soli generate auth [folder]` — scaffold session-based authentication
+    /// (User model + login/signup/logout) and a Pundit-style Policy layer.
+    GenerateAuth {
+        folder: String,
+    },
     Serve {
         folder: String,
         port: u16,
@@ -134,6 +139,7 @@ pub fn print_usage() {
     eprintln!("       soli login [--registry URL] [--token TOKEN]");
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
+    eprintln!("       soli generate auth [folder]");
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
@@ -159,6 +165,7 @@ pub fn print_usage() {
     );
     eprintln!("  generate scaffold    Generate model, controller, and views for a resource");
     eprintln!("                       Fields: name:string email:email text:description");
+    eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
     eprintln!("                       --standalone   Build standalone binary (experimental)");
@@ -203,6 +210,7 @@ pub fn print_usage() {
     eprintln!("  soli update math               Update a specific dependency");
     eprintln!("  soli generate scaffold users  Generate users model, controller, views");
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
+    eprintln!("  soli generate auth            Scaffold authentication + policy layer");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
     eprintln!("  soli serve my_app.soli       Serve app from bundle (no source files needed)");
@@ -315,9 +323,19 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "auth" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateAuth { folder };
+                        return options;
+                    }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth)",
                             subcommand
                         );
                         print_usage();

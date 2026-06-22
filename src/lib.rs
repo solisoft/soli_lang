@@ -577,12 +577,42 @@ pub fn lint(source: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
 }
 
 /// Lint source with the file path available to path-sensitive rules.
+///
+/// `.slv` templates are pre-processed: only the embedded `<% %>` / `<%= %>`
+/// code is extracted (HTML stripped, line numbers preserved) before lexing, so
+/// the linter runs rules on the Soli code without tripping over markup.
+/// `style/empty-block` is dropped for templates because control-flow bodies
+/// that contain only HTML legitimately have no Soli statements.
 pub fn lint_file(source: &str, path: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
-    let tokens = lexer::Scanner::new(source).scan_tokens()?;
-    let program = parser::Parser::new(tokens).parse()?;
-    Ok(lint::Linter::new(source)
-        .with_file_path(path)
-        .lint(&program))
+    if !path.ends_with(".slv") {
+        let tokens = lexer::Scanner::new(source).scan_tokens()?;
+        let program = parser::Parser::new(tokens).parse()?;
+        return Ok(lint::Linter::new(source)
+            .with_file_path(path)
+            .lint(&program));
+    }
+
+    // Template: extract only the embedded code. A genuine malformed-template
+    // problem (e.g. an unclosed `<% %>` tag) is surfaced as a Template error.
+    let code = template::parser::extract_lintable_code(source).map_err(SolilangError::Template)?;
+
+    // The extracted code can still trip the core parser on constructs the
+    // template engine itself parses differently — e.g. `if (a || b) && c`, a
+    // known core-parser quirk where `(…)` is taken as the whole condition.
+    // Such templates are valid and render fine, so don't turn that into a
+    // user-facing parse error: skip linting the file instead.
+    let Ok(tokens) = lexer::Scanner::new(&code).scan_tokens() else {
+        return Ok(Vec::new());
+    };
+    let Ok(program) = parser::Parser::new(tokens).parse() else {
+        return Ok(Vec::new());
+    };
+
+    let mut diagnostics = lint::Linter::new(&code).with_file_path(path).lint(&program);
+    // HTML-only control-flow bodies (`<% if x %>…markup…<% end %>`) extract to
+    // empty blocks; that isn't a real empty block in the template.
+    diagnostics.retain(|d| d.rule != "style/empty-block");
+    Ok(diagnostics)
 }
 
 /// Type check a program without executing.

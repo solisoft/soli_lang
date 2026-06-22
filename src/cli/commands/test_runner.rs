@@ -1617,6 +1617,36 @@ pub fn collect_test_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// Like `collect_test_files`, but also picks up `.slv` view templates. Used by
+/// `soli lint` so that directory linting covers views, not just `.sl` sources.
+pub fn collect_lint_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let lintable = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| ext == "sl" || ext == "slv")
+                    .unwrap_or(false);
+                if lintable {
+                    files.push(path);
+                }
+            } else if path.is_dir() {
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if dir_name.starts_with('.') || dir_name.starts_with('_') {
+                    continue;
+                }
+                files.extend(collect_lint_files(&path));
+            }
+        }
+    }
+
+    files
+}
+
 fn register_app_source_lines(tracker: &mut CoverageTracker, app_dir: &Path) {
     let source_dirs = [
         app_dir.join("app"),

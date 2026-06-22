@@ -514,3 +514,21 @@ soli lint                             # static analysis
 12. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
 13. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
 14. **Test new features to >90% coverage** — non-negotiable, see above.
+15. **Put a blank line after a `return`** — unless the next line is another `return` or an `end`. This makes guard clauses (early returns) stand out from the code that follows.
+
+    ```soli
+    def update(req)
+        let post = Post.find(req.params["id"])
+        return forbidden() unless can_edit?(post)   # guard clause
+
+        post.update(this._permit_params(req.params))
+        return redirect(post_path(post))
+    end
+
+    # Back-to-back returns and a return right before `end` need no blank line:
+    def status_label(code)
+        return "ok"    if code == 200
+        return "moved" if code == 301
+        return "error"
+    end
+    ```

@@ -484,6 +484,66 @@
       ]
     },
     {
+      "title": "FeatureFlags",
+      "type": "class",
+      "category": "FeatureFlags",
+      "path": "/docs/core-concepts/feature-flags",
+      "signature": "FeatureFlags",
+      "description": "Toggle features at runtime without redeploying — env overrides, kill-switch, allowlists, and stable percentage rollout, backed by the shared cache",
+      "keywords": [
+        "feature flag",
+        "feature flags",
+        "feature toggle",
+        "kill switch",
+        "rollout",
+        "ab test",
+        "experiment",
+        "gradual rollout"
+      ]
+    },
+    {
+      "title": "FeatureFlags.enabled?",
+      "type": "method",
+      "category": "FeatureFlags",
+      "path": "/docs/core-concepts/feature-flags",
+      "signature": "FeatureFlags.enabled?(name, user:, groups:)",
+      "description": "Is a flag on for this user/groups? Honors env override, kill-switch, allowlists, then percentage rollout. Fails safe to off",
+      "keywords": [
+        "feature flag",
+        "enabled",
+        "toggle",
+        "rollout"
+      ]
+    },
+    {
+      "title": "FeatureFlags.set_rollout",
+      "type": "method",
+      "category": "FeatureFlags",
+      "path": "/docs/core-concepts/feature-flags",
+      "signature": "FeatureFlags.set_rollout(name, percent)",
+      "description": "Roll a flag out to a stable percentage of users (a given user keeps the same verdict as you ramp up)",
+      "keywords": [
+        "feature flag",
+        "rollout",
+        "percentage",
+        "gradual"
+      ]
+    },
+    {
+      "title": "FeatureFlags.enable",
+      "type": "method",
+      "category": "FeatureFlags",
+      "path": "/docs/core-concepts/feature-flags",
+      "signature": "FeatureFlags.enable(name) / FeatureFlags.disable(name)",
+      "description": "Turn a flag on for everyone, or flip the global kill-switch off — live, no redeploy",
+      "keywords": [
+        "feature flag",
+        "enable",
+        "disable",
+        "kill switch"
+      ]
+    },
+    {
       "title": "Cache",
       "type": "class",
       "category": "Cache",
@@ -871,7 +931,7 @@
       "category": "JSON",
       "path": "/docs/builtins/json#def-to-json",
       "signature": "value.to_json",
-      "description": "Instance-method form of JSON.stringify \u2014 works on hashes, arrays, and primitives",
+      "description": "Instance-method form of JSON.stringify — works on hashes, arrays, and primitives",
       "keywords": [
         "json",
         "to_json",
@@ -3873,7 +3933,7 @@
       "category": "Request",
       "path": "/docs/core-concepts/request-params",
       "signature": "params",
-      "description": "Global hash mirroring req[\"all\"] \u2014 unified route, query, and body parameters, refreshed per request.",
+      "description": "Global hash mirroring req[\"all\"] — unified route, query, and body parameters, refreshed per request.",
       "keywords": [
         "params",
         "global",
@@ -4402,7 +4462,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.html_entities()",
-      "description": "Encode every non-ASCII char as a numeric HTML entity (\u00e9 to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
+      "description": "Encode every non-ASCII char as a numeric HTML entity (é to &#233;), leaving ASCII untouched; idempotent, charset-proof for HTML email bodies",
       "keywords": [
         "string",
         "html_entities",
@@ -4425,7 +4485,7 @@
       "category": "String",
       "path": "/docs/language/strings#section-methods",
       "signature": "string.camelize(upper?)",
-      "description": "Convert to camelCase: snake_case/kebab-case \u2192 fooBar (or FooBar with true)",
+      "description": "Convert to camelCase: snake_case/kebab-case → fooBar (or FooBar with true)",
       "keywords": [
         "string",
         "camelize",
@@ -5728,7 +5788,7 @@
       "category": "Hash",
       "path": "/docs/language/hashes#method-update",
       "signature": "hash.update(other)",
-      "description": "Alias for merge \u2014 merges another hash",
+      "description": "Alias for merge — merges another hash",
       "keywords": [
         "hash",
         "update",
@@ -8443,7 +8503,7 @@
       "category": "Array",
       "path": "/docs/language/arrays#array-reject",
       "signature": "array.reject(fn)",
-      "description": "Inverse of filter \u2014 keeps elements where block returns false",
+      "description": "Inverse of filter — keeps elements where block returns false",
       "keywords": [
         "array",
         "reject",
@@ -8482,7 +8542,7 @@
       "category": "Int",
       "path": "/docs/language/integers#method-succ",
       "signature": "int.next",
-      "description": "Alias for .succ \u2014 returns i + 1",
+      "description": "Alias for .succ — returns i + 1",
       "keywords": [
         "int",
         "next",
@@ -9995,6 +10055,70 @@
         "undo",
         "tx",
         "orm"
+      ]
+    },
+    {
+      "title": "Authorization & Policies",
+      "type": "guide",
+      "category": "Security",
+      "path": "/docs/security/authorization",
+      "signature": "",
+      "description": "Pundit-style policy layer: authorize(record), per-action predicates, deny by default, 403 mapping.",
+      "keywords": [
+        "authorization",
+        "policy",
+        "policies",
+        "authorize",
+        "pundit",
+        "permission",
+        "403",
+        "forbidden",
+        "can",
+        "access control"
+      ]
+    },
+    {
+      "title": "authorize",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/security/authorization",
+      "signature": "authorize(record, action?)",
+      "description": "Authorize a record for the current (or given) action via its <Model>Policy; raises 403 when denied.",
+      "keywords": [
+        "authorize",
+        "policy",
+        "403",
+        "forbidden",
+        "permission"
+      ]
+    },
+    {
+      "title": "forbidden",
+      "type": "function",
+      "category": "Security",
+      "path": "/docs/security/authorization",
+      "signature": "forbidden(message?)",
+      "description": "Raise a 403 Forbidden response immediately from anywhere in a request.",
+      "keywords": [
+        "forbidden",
+        "403",
+        "deny",
+        "halt",
+        "authorization"
+      ]
+    },
+    {
+      "title": "current_action",
+      "type": "function",
+      "category": "Core",
+      "path": "/docs/security/authorization",
+      "signature": "current_action()",
+      "description": "The controller action name for the in-flight request (\"index\", \"update\", ...).",
+      "keywords": [
+        "current_action",
+        "action",
+        "controller",
+        "request"
       ]
     }
   ]

@@ -236,6 +236,14 @@ pub fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
     )
 }
 
+/// Create the bundled stdlib modules (FeatureFlags, …)
+pub fn create_stdlib(app_path: &Path) -> Result<(), String> {
+    write_file(
+        &app_path.join("stdlib/feature_flags.sl"),
+        app::FEATURE_FLAGS_TEMPLATE,
+    )
+}
+
 /// Create package.json
 pub fn create_package_json(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join("package.json"), &app::package_json(name))
@@ -606,6 +614,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_index_view(app_path)?;
     create_application_helper(app_path)?;
     create_sample_middleware(app_path)?;
+    create_stdlib(app_path)?;
     ProgressDisplay::done();
 
     // Step 4: Create assets
