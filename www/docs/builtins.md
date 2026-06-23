@@ -694,34 +694,58 @@ body, a stored URL string).
 >
 > Code that genuinely needs to step outside the jail or follow symlinks deliberately (log shippers, backup scripts, cron-style maintenance jobs, tailing a symlinked log file) should use the parallel `Trusted` class — `Trusted.read("/var/log/...")`, `Trusted.write(...)`, etc. Its API mirrors `File` exactly but skips both the jail check and the `O_NOFOLLOW` flag, making the unsafe access explicit at the call site so reviewers and grep can find it.
 
-#### slurp(path)
+#### slurp(path) / slurp(path, mode)
 
-Reads the entire contents of a file.
+Reads the entire contents of a file. The optional second argument selects how
+the bytes are interpreted:
+
+- omitted — read as a UTF-8 string (the default).
+- `"binary"` — read as a byte array (`Array<Int 0-255>`).
+- a **charset label** (`"latin1"`, `"iso-8859-1"`, `"windows-1252"`, `"utf-8"`, …) —
+  read the raw bytes and decode them from that encoding into a UTF-8 string.
+  Use this to import a legacy (non-UTF-8) file without garbling accented
+  characters. An unrecognized mode raises.
 
 **Parameters:**
 - `path` (String) - Path to the file
+- `mode` (String, optional) - `"binary"` or a charset label
 
-**Returns:** String - File contents, or error on failure
+**Returns:** String (text/charset modes) or `Array<Int>` (binary mode); error on failure
 
 **Example:**
 ```soli
-content = slurp("config.json")
-println(content)
+content = slurp("config.json")           # UTF-8 string
+bytes   = slurp("logo.png", "binary")    # Array<Int>
+legacy  = slurp("clients.csv", "latin1") # Latin-1 file -> UTF-8 string
 ```
 
 #### barf(path, content)
 
-Writes content to a file (overwrites existing).
+Writes content to a file (overwrites existing). Accepts either a string (its
+UTF-8 bytes are written) or a byte array (`Array<Int 0-255>`) — pair it with
+`Encoding.encode(...)` to write a file back out in a legacy charset.
 
 **Parameters:**
 - `path` (String) - Path to the file
-- `content` (String) - Content to write
+- `content` (String or `Array<Int>`) - Content to write
 
 **Returns:** null
 
 **Example:**
 ```soli
 barf("output.txt", "Hello, World!")
+barf("clients.csv", Encoding.encode(text, "latin1"))  # export as Latin-1
+```
+
+#### File.read(path) / File.read(path, encoding)
+
+Reads a file through the `File` class (jailed). Without an encoding it returns
+a UTF-8 string; with a charset label (`"latin1"`, etc.) it decodes the raw
+bytes from that encoding. `Trusted.read` mirrors this for unjailed access.
+
+```soli
+text   = File.read("notes.txt")            # UTF-8
+legacy = File.read("clients.csv", "latin1") # Latin-1 -> UTF-8
 ```
 
 ---
@@ -1337,6 +1361,33 @@ Base64 encoding and decoding is available via the **Base64 class**:
 - `Base64.decode(data)` - Decodes a Base64 string
 
 See the [Base64 class documentation](/docs/utility/base64) for details.
+
+### Character Encodings (Charsets)
+
+Soli strings are UTF-8. The **Encoding class** converts between UTF-8 and legacy
+byte encodings (Latin-1 / ISO-8859-1 / Windows-1252, etc.), so you can import a
+non-UTF-8 file without turning accented characters into `?`:
+
+- `Encoding.decode(input, label)` - Decodes bytes (`Array<Int>`) or a string from
+  `label` into a UTF-8 string.
+- `Encoding.encode(string, label)` - Encodes a UTF-8 string into a byte array in
+  `label`.
+
+Labels follow the WHATWG Encoding Standard (`"latin1"`, `"iso-8859-1"`,
+`"windows-1252"`, `"utf-8"`, …); `latin1`/`iso-8859-1` alias to `windows-1252`.
+An unknown label raises.
+
+```soli
+# Import a Latin-1 file as UTF-8
+raw  = slurp("clients.csv", "binary")
+text = Encoding.decode(raw, "latin1")
+# or in one step: slurp("clients.csv", "latin1")
+
+# Export UTF-8 back to Latin-1
+barf("clients.csv", Encoding.encode(text, "latin1"))
+```
+
+See the [Encoding class documentation](/docs/utility/encoding) for details.
 
 ### Password Hashing
 

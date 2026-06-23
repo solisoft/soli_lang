@@ -8,6 +8,7 @@ pub mod controller_generator;
 pub mod engine;
 pub mod migration_generator;
 pub mod model_generator;
+pub mod seed_generator;
 pub mod templates;
 pub mod ui;
 pub mod utils;

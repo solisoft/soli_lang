@@ -359,10 +359,18 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
                         let value_bytes: Vec<Value> =
                             bytes.iter().map(|&b| Value::Int(b as i64)).collect();
                         Ok(Value::Array(Rc::new(RefCell::new(value_bytes))))
+                    } else if encoding_rs::Encoding::for_label(mode.as_bytes()).is_some() {
+                        // A charset label ("latin1", "iso-8859-1", "utf-8", …):
+                        // read raw bytes and decode them so a non-UTF-8 file
+                        // imports without garbling accented characters.
+                        let bytes = read_to_bytes_policy(&resolved, follow)
+                            .map_err(|e| format!("slurp failed to read {}: {}", path, e))?;
+                        super::encoding::decode_bytes(&bytes, mode).map(|s| Value::String(s.into()))
                     } else {
-                        read_to_string_policy(&resolved, follow)
-                            .map(|s| Value::String(s.into()))
-                            .map_err(|e| format!("slurp failed to read {}: {}", path, e))
+                        Err(format!(
+                            "slurp: unknown mode/encoding '{}' (expected \"binary\" or a charset label like \"latin1\")",
+                            mode
+                        ))
                     }
                 }
                 _ => Err("slurp expects path or (path, mode)".to_string()),
@@ -496,23 +504,37 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
     let follow = policy.follow_symlinks;
     let mut static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
-    // File.read(path) - Read file contents as string
+    // File.read(path) - Read file contents as string (UTF-8)
+    // File.read(path, encoding) - decode bytes from a charset label ("latin1", …)
     {
         let label = format!("{}.read", class_name);
         static_methods.insert(
             "read".to_string(),
             Rc::new(NativeFunction::new(
                 Box::leak(label.into_boxed_str()),
-                Some(1),
+                None,
                 move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
+                    let path = match args.first() {
+                        Some(Value::String(s)) => s.clone(),
                         _ => return Err(format!("{}.read() expects string path", class_name)),
                     };
                     let resolved = resolve(&path, "read")?;
-                    read_to_string_policy(&resolved, follow)
-                        .map(|s| Value::String(s.into()))
-                        .map_err(|e| format!("{}.read() failed: {}", class_name, e))
+                    match args.get(1) {
+                        None => read_to_string_policy(&resolved, follow)
+                            .map(|s| Value::String(s.into()))
+                            .map_err(|e| format!("{}.read() failed: {}", class_name, e)),
+                        Some(Value::String(enc)) => {
+                            let bytes = read_to_bytes_policy(&resolved, follow)
+                                .map_err(|e| format!("{}.read() failed: {}", class_name, e))?;
+                            super::encoding::decode_bytes(&bytes, enc)
+                                .map(|s| Value::String(s.into()))
+                        }
+                        Some(other) => Err(format!(
+                            "{}.read() encoding must be a string, got {}",
+                            class_name,
+                            other.type_name()
+                        )),
+                    }
                 },
             )),
         );

@@ -128,11 +128,31 @@ Create templates in `app/views/home/`:
 ## Running in Development
 
 ```bash
-# Start both Tailwind watcher and Soli server
-npm run dev
+soli serve . --dev
 ```
 
-This starts both the SoliLang server and the TailwindCSS watcher with hot reload.
+In `--dev` mode the server compiles your Tailwind CSS for you: it scans
+`app/assets/css/*.css`, detects whether the project is **Tailwind v3 or v4**
+(from your CSS directives and `package.json`), and writes the result to
+`public/css/`. It recompiles on startup and whenever views, asset CSS,
+controllers, or helpers change, so new utility classes show up on the next
+reload.
+
+Which Tailwind binary it uses:
+
+- a local `node_modules/.bin/tailwindcss` if present (whatever version you
+  installed — preferred), otherwise
+- a SHA-256-pinned standalone CLI downloaded to `~/.soli/bin/` (v4.3.1 for
+  v4 projects, v3.4.17 for legacy v3 projects).
+
+Because the dev server handles this, a separate Tailwind watcher is optional.
+If you prefer to run your own (e.g. for the official `--watch` incremental
+mode), the template still ships the npm scripts:
+
+```bash
+# Start both the Tailwind watcher and the Soli server together
+npm run dev
+```
 
 ## Building for Production
 

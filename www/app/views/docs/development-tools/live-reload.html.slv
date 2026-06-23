@@ -71,10 +71,17 @@ soli serve . --dev --port 8080</code></pre>
         Soli handles asset compilation automatically. When you start the server with <code>soli serve --dev</code>, it will automatically compile your assets, including Tailwind CSS, without needing any complex build steps.
     </p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="Terminal"><code class="language-bash text-sm"># Just run the server with --dev!
 soli serve . --dev</code></pre>
     </div>
+
+    <p class="text-gray-400 mb-4">
+        The dev server scans <code class="text-indigo-400">app/assets/css/*.css</code>, detects whether your project is <strong class="text-white">Tailwind v3 or v4</strong> (from your CSS directives and <code>package.json</code> &mdash; v4 needs no <code>tailwind.config.js</code>), compiles into <code class="text-indigo-400">public/css/</code>, and recompiles on startup and whenever views, asset CSS, controllers, or helpers change. It uses your local <code class="text-indigo-400">node_modules/.bin/tailwindcss</code> if present, otherwise a SHA-256-pinned standalone CLI cached in <code class="text-indigo-400">~/.soli/bin/</code> (Tailwind v4.3.1 for v4 projects, v3.4.17 for legacy v3).
+    </p>
+    <p class="text-gray-400 mb-12">
+        Because of this, a separate Tailwind watcher is optional &mdash; the <code>npm run dev</code> / <code>npm run watch:css</code> scripts in the template still work if you'd rather run the official <code>--watch</code> mode yourself.
+    </p>
 
     <div class="my-8 p-6 rounded-xl bg-yellow-500/10 border border-yellow-500/20 mb-12">
         <h4 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">

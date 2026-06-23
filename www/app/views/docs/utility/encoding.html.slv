@@ -1,0 +1,170 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs" class="text-gray-400 hover:text-white transition-colors">Documentation</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Encoding</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Character Encodings</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Soli strings are UTF-8. The <code class="text-amber-400">Encoding</code> class converts between UTF-8 and legacy byte encodings (Latin-1 / ISO-8859-1 / Windows-1252, …) so you can import a non-UTF-8 file without turning accented characters into <code class="text-amber-400">?</code>.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            Overview
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">A byte like <code class="text-amber-400">0xE9</code> (<code class="text-amber-400">é</code> in Latin-1) is not valid UTF-8 on its own, so reading a Latin-1 file as text fails or garbles the accents. Decode the raw bytes from their actual charset first:</p>
+            <ul class="list-disc list-inside text-gray-300 space-y-2">
+                <li>Importing CSV / fixed-width exports from legacy systems</li>
+                <li>Reading HTTP responses declared as <code class="text-amber-400">charset=ISO-8859-1</code></li>
+                <li>Writing files back out in a charset a downstream system expects</li>
+            </ul>
+            <p class="text-gray-400 mt-4">Labels follow the WHATWG Encoding Standard — <code class="text-amber-400">"latin1"</code>, <code class="text-amber-400">"iso-8859-1"</code>, <code class="text-amber-400">"windows-1252"</code>, <code class="text-amber-400">"utf-8"</code>, … — and <code class="text-amber-400">latin1</code>/<code class="text-amber-400">iso-8859-1</code> alias to <code class="text-amber-400">windows-1252</code>. An unknown label raises.</p>
+        </div>
+    </section>
+
+    <!-- Static Methods -->
+    <section id="section-methods" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+            </span>
+            Static Methods
+        </h2>
+
+        <div class="space-y-6">
+            <section id="method-decode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-decode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Encoding.decode(input, label)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Decodes <code class="text-amber-400">input</code> (a byte array <code class="text-amber-400">Array&lt;Int&gt;</code> or a string) from <code class="text-amber-400">label</code> into a UTF-8 string.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># café in Latin-1: c=99 a=97 f=102 é=233
+Encoding.decode([99, 97, 102, 233], "latin1")  # "café"
+Encoding.decode([233], "iso-8859-1")           # "é"</code></pre>
+                </div>
+            </section>
+
+            <section id="method-encode" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-encode" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Encoding.encode(string, label)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Encodes a UTF-8 string into a byte array (<code class="text-amber-400">Array&lt;Int&gt;</code>) in <code class="text-amber-400">label</code>. Characters not representable in the target charset become HTML numeric entities (e.g. an emoji → <code class="text-amber-400">&amp;#128512;</code>).</p>
+<pre data-filename="Example"><code class="language-soli text-sm">Encoding.encode("café", "latin1")  # [99, 97, 102, 233]
+
+# round-trips
+text  = "Curaçao — déjà vu"
+bytes = Encoding.encode(text, "windows-1252")
+assert_eq(Encoding.decode(bytes, "windows-1252"), text)</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section id="section-use-cases" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+            </span>
+            Common Use Cases
+        </h2>
+
+        <div class="space-y-6">
+            <section id="use-case-import" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#use-case-import" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Importing a Latin-1 file</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-400">slurp</code> and <code class="text-amber-400">File.read</code> accept a charset label directly, so importing is a one-liner.</p>
+<pre data-filename="Example"><code class="language-soli text-sm"># one step
+text = slurp("clients.csv", "latin1")
+text = File.read("clients.csv", "latin1")
+
+# or explicitly via raw bytes
+raw  = slurp("clients.csv", "binary")
+text = Encoding.decode(raw, "latin1")</code></pre>
+                </div>
+            </section>
+
+            <section id="use-case-export" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#use-case-export" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-indigo-400">Exporting back to Latin-1</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-400">barf</code> and <code class="text-amber-400">File.write</code> accept a byte array, so pair them with <code class="text-amber-400">Encoding.encode</code>.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">barf("clients.csv", Encoding.encode(text, "latin1"))</code></pre>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <!-- Error Handling -->
+    <section id="section-errors" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </span>
+            Error Handling
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">An unrecognized charset label raises — handle it the same way as any other error:</p>
+<pre data-filename="Example"><code class="language-soli text-sm">try
+  Encoding.decode(bytes, "no-such-encoding")
+catch e
+  print("Error: " + e)  # "Error: unknown encoding: no-such-encoding"
+end</code></pre>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <div class="flex justify-between items-center pt-8 border-t border-white/10">
+        <a href="/docs/utility/base64" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Base64
+        </a>
+        <a href="/docs/builtins/file" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            File I/O
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </a>
+    </div>
+</div>

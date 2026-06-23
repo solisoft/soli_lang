@@ -127,7 +127,10 @@ soli new my_app</code></pre>
 soli serve . --dev</code></pre>
 
     <p class="mb-8 text-gray-400">
-        Your app is now running at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>
+        Your app is now running at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>.
+        In <code class="bg-white/10 px-1 rounded">--dev</code> mode the server also compiles your Tailwind CSS automatically &mdash; it
+        auto-detects Tailwind v3 vs v4 (v4 needs no <code class="bg-white/10 px-1 rounded">tailwind.config.js</code>) and recompiles
+        <code class="bg-white/10 px-1 rounded">app/assets/css</code> into <code class="bg-white/10 px-1 rounded">public/css</code> on change, so a separate watcher is optional.
     </p>
 
     <div class="my-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">

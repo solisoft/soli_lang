@@ -3,6 +3,9 @@
 /// Routes configuration template
 pub const ROUTES_TEMPLATE: &str = include_str!("routes.sl");
 
+/// `db/seeds.sl` starter template (run by `soli db:seed`)
+pub const SEEDS_TEMPLATE: &str = include_str!("seeds.sl");
+
 /// Application boot config (loaded by `soli serve` before routes)
 pub const APPLICATION_CONFIG_TEMPLATE: &str = include_str!("application.sl");
 
@@ -126,7 +129,9 @@ soli serve . -d
 ├── config/
 │   └── routes.sl      # Route definitions
 ├── db/
-│   └── migrations/      # Database migrations
+│   ├── migrations/      # Database migrations
+│   ├── seeds/           # Additional seed files (soli db:seed generate)
+│   └── seeds.sl         # Database seeds (soli db:seed)
 ├── public/              # Static assets (compiled output)
 │   ├── css/
 │   │   └── application.css  # Compiled CSS (generated)
@@ -160,6 +165,22 @@ Check migration status:
 
 ```bash
 soli db:migrate status
+```
+
+## Database Seeds
+
+Populate the database with sample or initial data. Edit `db/seeds.sl` (and add ordered
+files under `db/seeds/`), then run:
+
+```bash
+soli db:seed
+```
+
+Seeds are not tracked and re-run every time, so keep them idempotent (guard inserts with
+`first_by` / `find_by`). Generate an additional ordered seed file:
+
+```bash
+soli db:seed generate demo_users
 ```
 
 ## Documentation

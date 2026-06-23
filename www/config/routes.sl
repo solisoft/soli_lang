@@ -123,6 +123,7 @@ get("/docs/builtins/websocket", "docs#builtins_websocket")
 
 # Utility
 get("/docs/utility/base64", "docs#utility_base64")
+get("/docs/utility/encoding", "docs#utility_encoding")
 
 # Testing
 get("/docs/testing", "docs#testing")

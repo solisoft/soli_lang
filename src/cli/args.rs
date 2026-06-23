@@ -54,6 +54,10 @@ pub enum Command {
         action: DbMigrateAction,
         folder: String,
     },
+    DbSeed {
+        action: DbSeedAction,
+        folder: String,
+    },
     Lint {
         paths: Vec<String>,
     },
@@ -118,6 +122,13 @@ pub enum DbMigrateAction {
     Generate { name: String },
 }
 
+pub enum DbSeedAction {
+    /// Run the project's seed scripts (`db/seeds.sl` then `db/seeds/*.sl`).
+    Run,
+    /// Scaffold a new timestamped seed file under `db/seeds/`.
+    Generate { name: String },
+}
+
 pub struct Options {
     pub command: Command,
     pub no_type_check: bool,
@@ -148,6 +159,8 @@ pub fn print_usage() {
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
+    eprintln!("  soli db:seed [folder]");
+    eprintln!("  soli db:seed generate <name> [folder]");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -179,6 +192,7 @@ pub fn print_usage() {
     );
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
+    eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl)");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -227,6 +241,8 @@ pub fn print_usage() {
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate status        Show migration status");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
+    eprintln!("  soli db:seed                  Run db/seeds.sl and db/seeds/*.sl");
+    eprintln!("  soli db:seed generate demo_users  Generate new seed file");
     eprintln!("  soli engine create shop       Create a new engine named 'shop'");
     eprintln!("  soli engine db:migrate        Run all engine migrations");
     eprintln!("  soli engine db:migrate shop   Run migrations for 'shop' engine only");
@@ -382,6 +398,31 @@ pub fn parse_args() -> Options {
                     ".".to_string()
                 };
                 options.command = Command::DbMigrate { action, folder };
+                return options;
+            }
+            "db:seed" => {
+                // Unlike `db:migrate`, a bare `soli db:seed` is valid and
+                // means "run the seeds". Only `generate` is a sub-action.
+                i += 1;
+                let action = if i < args.len() && args[i] == "generate" {
+                    i += 1;
+                    if i >= args.len() {
+                        eprintln!("db:seed generate requires a seed name");
+                        print_usage();
+                        process::exit(64);
+                    }
+                    let name = args[i].clone();
+                    i += 1;
+                    DbSeedAction::Generate { name }
+                } else {
+                    DbSeedAction::Run
+                };
+                let folder = if i < args.len() && !args[i].starts_with('-') {
+                    args[i].clone()
+                } else {
+                    ".".to_string()
+                };
+                options.command = Command::DbSeed { action, folder };
                 return options;
             }
             "serve" => {

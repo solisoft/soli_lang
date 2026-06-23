@@ -628,13 +628,15 @@ elapsed = clock() - start</code></pre>
             <section id="def-slurp" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-slurp" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">slurp(path)</code>
+                        <code class="text-lg font-mono text-indigo-400">slurp(path, mode?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Read an entire file into a string.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">content = slurp("config.json")</code></pre>
+                    <p class="text-gray-400 mb-3">Read an entire file. Pass <code class="text-amber-400">"binary"</code> for a byte array, or a charset label (<code class="text-amber-400">"latin1"</code>, …) to decode a non-UTF-8 file. See <a href="/docs/utility/encoding" class="text-indigo-400 hover:underline">Encoding</a>.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">content = slurp("config.json")           # UTF-8 string
+bytes   = slurp("logo.png", "binary")    # Array&lt;Int&gt;
+legacy  = slurp("clients.csv", "latin1") # Latin-1 -> UTF-8</code></pre>
                 </div>
             </section>
 
@@ -646,8 +648,9 @@ elapsed = clock() - start</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Write content to a file.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">barf("output.txt", "Hello, World!")</code></pre>
+                    <p class="text-gray-400 mb-3">Write content to a file. Accepts a string or a byte array (<code class="text-amber-400">Array&lt;Int&gt;</code>) — pair it with <code class="text-amber-400">Encoding.encode</code> to write a legacy charset.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">barf("output.txt", "Hello, World!")
+barf("clients.csv", Encoding.encode(text, "latin1"))</code></pre>
                 </div>
             </section>
 

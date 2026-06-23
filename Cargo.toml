@@ -117,6 +117,7 @@ pkcs8 = "0.10"
 # Data encoding
 base64 = "0.22"
 rmp-serde = "1"
+encoding_rs = "0.8"
 
 # Validation
 regex = "1"

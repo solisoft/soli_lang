@@ -210,4 +210,5 @@ After generating a scaffold:
 2. Modify the controller logic as needed
 3. Style the views to match your application
 4. Run migrations with `soli db:migrate up`
-5. Start the server and test the CRUD operations
+5. Populate sample data in `db/seeds.sl` and run `soli db:seed`
+6. Start the server and test the CRUD operations

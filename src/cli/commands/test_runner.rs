@@ -1187,13 +1187,13 @@ pub fn run_test(
         clear_global_coverage_tracker();
     }
 
-    // Intentionally NOT calling `cleanup_test_databases(&worker_databases)`
-    // here. Dropping a SoliDB database is ~500ms/DB serialised on the
-    // server side, which added ~4s of wall time at `--jobs 8` for no
-    // user-visible benefit — the very next `soli test` run begins with
-    // `ensure_test_databases`, which DROP+CREATEs each per-worker DB
-    // anyway, so leaving them in place between runs costs nothing and
-    // saves the post-suite tail.
+    // Truncate the worker DBs now that the suite is done so they're left
+    // row-free for the next run and for any manual DB inspection in between.
+    // We truncate rather than drop: dropping is ~500ms/DB serialised on the
+    // server side (~4s at `--jobs 8`), whereas truncating collections is a
+    // cheap parallel range tombstone. The collections (schema) survive, which
+    // is what `ensure_test_databases` expects on the next run anyway.
+    truncate_test_databases(&worker_databases);
 
     println!();
 
@@ -1235,19 +1235,12 @@ fn worker_database_names(num_workers: usize, base_database_name: &str) -> Vec<St
     names
 }
 
-fn ensure_test_databases(db_names: &[String]) {
-    let databases: Vec<&String> = db_names.iter().filter(|name| *name != "default").collect();
-    if databases.is_empty() {
-        return;
-    }
+fn test_db_host() -> String {
+    std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string())
+}
 
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    println!(
-        "Resetting {} test database(s) on {}...",
-        databases.len(),
-        host
-    );
-    let auth_header = match (
+fn test_db_auth_header() -> Option<String> {
+    match (
         std::env::var("SOLIDB_USERNAME"),
         std::env::var("SOLIDB_PASSWORD"),
     ) {
@@ -1258,7 +1251,22 @@ fn ensure_test_databases(db_names: &[String]) {
             Some(format!("Basic {}", encoded))
         }
         _ => None,
-    };
+    }
+}
+
+fn ensure_test_databases(db_names: &[String]) {
+    let databases: Vec<&String> = db_names.iter().filter(|name| *name != "default").collect();
+    if databases.is_empty() {
+        return;
+    }
+
+    let host = test_db_host();
+    println!(
+        "Resetting {} test database(s) on {}...",
+        databases.len(),
+        host
+    );
+    let auth_header = test_db_auth_header();
 
     // Reset the base worker DB first: its collection list becomes the
     // template for newly-created sibling worker DBs. Pre-creating the
@@ -1455,28 +1463,11 @@ fn prepare_test_database(
             .map_err(|err| format!("drop mistyped {} failed: {}", name, err))?;
     }
 
-    let truncate_errors: Vec<String> = std::thread::scope(|s| {
-        let handles: Vec<_> = keep
-            .iter()
-            .map(|(collection, _)| {
-                let with_auth = &with_auth;
-                s.spawn(move || {
-                    let truncate_url = format!(
-                        "{}/_api/database/{}/collection/{}/truncate",
-                        host, database, collection
-                    );
-                    with_auth(agent.put(&truncate_url))
-                        .call()
-                        .map(|_| ())
-                        .map_err(|err| format!("truncate {} failed: {}", collection, err))
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .filter_map(|handle| handle.join().unwrap().err())
-            .collect()
-    });
+    let keep_collections: Vec<(String, String)> = keep
+        .iter()
+        .map(|collection| (*collection).clone())
+        .collect();
+    let truncate_errors = truncate_collections(host, auth_header, database, &keep_collections);
 
     if let Some(first_error) = truncate_errors.first() {
         return Err(format!(
@@ -1506,6 +1497,101 @@ fn prepare_test_database(
         detail.push_str(&format!(", dropped {} mistyped", mismatched.len()));
     }
     Ok((detail, missing))
+}
+
+/// Truncate the given collections of one database in parallel. A truncate is
+/// a cheap RocksDB range tombstone (~1-25ms each), so issuing them
+/// concurrently keeps the wall time at roughly the slowest single collection.
+/// Returns the per-collection error strings (empty on full success).
+fn truncate_collections(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collections: &[(String, String)],
+) -> Vec<String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let with_auth = |mut req: ureq::Request| {
+        if let Some(auth) = auth_header {
+            req = req.set("Authorization", auth);
+        }
+        req
+    };
+    std::thread::scope(|s| {
+        let handles: Vec<_> = collections
+            .iter()
+            .map(|(collection, _)| {
+                let with_auth = &with_auth;
+                s.spawn(move || {
+                    let truncate_url = format!(
+                        "{}/_api/database/{}/collection/{}/truncate",
+                        host, database, collection
+                    );
+                    with_auth(agent.put(&truncate_url))
+                        .call()
+                        .map(|_| ())
+                        .map_err(|err| format!("truncate {} failed: {}", collection, err))
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| handle.join().unwrap().err())
+            .collect()
+    })
+}
+
+/// Truncate every collection in each worker DB once the suite finishes,
+/// leaving them row-free for the next run and for any manual DB inspection
+/// in between. Unlike a drop (~500ms/DB serialised on the server), truncate
+/// is a cheap parallel range tombstone, so the post-suite tail stays small.
+fn truncate_test_databases(db_names: &[String]) {
+    let databases: Vec<&String> = db_names.iter().filter(|name| *name != "default").collect();
+    if databases.is_empty() {
+        return;
+    }
+    let host = test_db_host();
+    let auth_header = test_db_auth_header();
+    let started = std::time::Instant::now();
+
+    let errors: Vec<String> = std::thread::scope(|s| {
+        let handles: Vec<_> = databases
+            .iter()
+            .map(|database| {
+                let host = &host;
+                let auth_header = &auth_header;
+                s.spawn(move || {
+                    // A missing DB (None) or a list error means nothing to
+                    // truncate — surface only real list errors.
+                    match list_collections(host, auth_header, database) {
+                        Ok(Some(collections)) => {
+                            truncate_collections(host, auth_header, database, &collections)
+                        }
+                        Ok(None) => Vec::new(),
+                        Err(err) => vec![format!("{}: {}", database, err)],
+                    }
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap())
+            .collect()
+    });
+
+    if let Some(first_error) = errors.first() {
+        // Non-fatal: the next run's `ensure_test_databases` resets anyway.
+        println!(
+            "⚠ post-suite truncate had {} error(s); first: {}",
+            errors.len(),
+            first_error
+        );
+    } else {
+        println!(
+            "Truncated {} test database(s) ({}ms)",
+            databases.len(),
+            started.elapsed().as_millis()
+        );
+    }
 }
 
 /// List a database's collections as `(name, type)` pairs — type is

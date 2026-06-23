@@ -23,6 +23,7 @@ pub fn create_directories(app_path: &Path) -> Result<(), String> {
         "config",
         "db",
         "db/migrations",
+        "db/seeds",
         "app/assets",
         "app/assets/css",
         "public",
@@ -56,6 +57,12 @@ pub fn write_file(path: &Path, content: &str) -> Result<(), String> {
 /// Create the routes configuration file
 pub fn create_routes_file(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join("config/routes.sl"), app::ROUTES_TEMPLATE)
+}
+
+/// Create the `db/seeds.sl` starter file. Run with `soli db:seed`; additional
+/// seed files can live in `db/seeds/` (generated via `soli db:seed generate`).
+pub fn create_seeds_file(app_path: &Path) -> Result<(), String> {
+    write_file(&app_path.join("db/seeds.sl"), app::SEEDS_TEMPLATE)
 }
 
 /// Create the application boot config file. Loaded by `soli serve` before
@@ -595,6 +602,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     // Step 2: Generate configuration files
     progress.step("Generating configuration files...");
     create_routes_file(app_path)?;
+    create_seeds_file(app_path)?;
     create_application_config(app_path)?;
     create_env_file(app_path)?;
     create_gitignore(app_path)?;

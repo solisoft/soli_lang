@@ -48,6 +48,7 @@ pub mod datetime;
 pub mod datetime_class;
 pub mod deflate;
 pub mod dotenv;
+pub mod encoding;
 pub mod env;
 pub mod expectations;
 pub mod factories;
@@ -417,6 +418,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register Hex class (hex<->bytes bridge between Crypto.* and Base64)
     hex::register_hex_class(env);
+
+    // Register Encoding class (charset decode/encode: Latin-1, etc. <-> UTF-8)
+    encoding::register_encoding_class(env);
 
     // Register RsaKey class (PEM private-key parsing for envelope signing)
     rsa_key::register_rsa_key_builtins(env);

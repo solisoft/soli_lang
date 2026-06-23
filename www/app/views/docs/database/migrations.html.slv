@@ -256,6 +256,66 @@ end</code></pre></code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Seeding the Database</h2>
+    <p class="text-gray-400 mb-6">
+        Migrations build the schema; <strong>seeds</strong> populate it with data — demo accounts,
+        lookup tables, an initial admin user. Run them with <code>soli db:seed</code>.
+    </p>
+    <p class="text-gray-400 mb-6">
+        Unlike migrations, seeds are <strong>not tracked</strong> — every file runs on every
+        invocation. Make your seeds idempotent (guard with <code>first_by</code> / <code>find_by</code>)
+        so re-running them doesn't create duplicates.
+    </p>
+
+    <p class="text-gray-400 mb-2">Seeds live in two places, run in this order:</p>
+    <div class="rounded-lg bg-gray-950 p-3 mb-6">
+<pre><code class="language-bash text-sm">db/seeds.sl          # runs first
+db/seeds/*.sl        # then every file here, sorted by name</code></pre>
+    </div>
+
+    <div class="space-y-6 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">generate</span>
+                Create a Seed File
+            </h3>
+            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+<pre><code class="language-bash text-sm">soli db:seed generate demo_users</code></pre>
+            </div>
+            <p class="text-sm text-gray-400 mt-2">Creates: <code>db/seeds/20260623161240_demo_users.sl</code></p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">seed</span>
+                Run Seeds
+            </h3>
+            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+<pre><code class="language-bash text-sm"># Run db/seeds.sl, then db/seeds/*.sl
+soli db:seed
+
+# Point at a different project folder
+soli db:seed ./myapp</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-2">
+        Seeds run with your <code>app/models</code> (and <code>app/services</code>) auto-loaded, so
+        they can use the Model API directly — no imports needed:
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/seeds.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-ruby text-sm">3.times do |i|
+  let email = "user\(i)@example.com"
+  User.create({ "name": "User \(i)", "email": email }) if User.first_by("email", email).nil?
+end
+
+print("Seeded users")</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Environment Configuration</h2>
     <p class="text-gray-400 mb-6">Configure database connection via <code>.env</code> file:</p>
 

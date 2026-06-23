@@ -3832,6 +3832,64 @@
       ]
     },
     {
+      "title": "Encoding.decode",
+      "type": "method",
+      "category": "Utility",
+      "path": "/docs/utility/encoding#method-decode",
+      "signature": "Encoding.decode(input, label)",
+      "description": "Decode bytes or a string from a charset (latin1, iso-8859-1, windows-1252, …) into a UTF-8 string",
+      "keywords": [
+        "encoding",
+        "decode",
+        "charset",
+        "latin1",
+        "latin-1",
+        "iso-8859-1",
+        "windows-1252",
+        "accents",
+        "import",
+        "convert"
+      ]
+    },
+    {
+      "title": "Encoding.encode",
+      "type": "method",
+      "category": "Utility",
+      "path": "/docs/utility/encoding#method-encode",
+      "signature": "Encoding.encode(string, label)",
+      "description": "Encode a UTF-8 string into bytes in a charset (latin1, iso-8859-1, windows-1252, …)",
+      "keywords": [
+        "encoding",
+        "encode",
+        "charset",
+        "latin1",
+        "latin-1",
+        "iso-8859-1",
+        "windows-1252",
+        "export",
+        "convert"
+      ]
+    },
+    {
+      "title": "Character Encodings",
+      "type": "page",
+      "category": "Utility",
+      "path": "/docs/utility/encoding",
+      "signature": "Encoding",
+      "description": "Convert between UTF-8 and legacy charsets (Latin-1 / ISO-8859-1 / Windows-1252) when importing or exporting files",
+      "keywords": [
+        "encoding",
+        "charset",
+        "latin1",
+        "latin-1",
+        "iso-8859-1",
+        "windows-1252",
+        "accents",
+        "unicode",
+        "utf-8"
+      ]
+    },
+    {
       "title": ".sort_by()",
       "type": "method",
       "category": "Array",

@@ -6,7 +6,9 @@ use std::io::Read;
 use std::path::Path;
 use std::process;
 
-use crate::cli::args::{print_usage, DbMigrateAction, EngineAction, Options, VERSION};
+use crate::cli::args::{
+    print_usage, DbMigrateAction, DbSeedAction, EngineAction, Options, VERSION,
+};
 
 #[cfg(unix)]
 use daemonize::Daemonize;
@@ -1383,6 +1385,135 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str) {
                     process::exit(1);
                 }
             }
+        }
+    }
+}
+
+pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
+    let app_path = Path::new(folder);
+
+    if !app_path.exists() {
+        eprintln!("Error: Folder '{}' does not exist", folder);
+        process::exit(1);
+    }
+
+    match action {
+        DbSeedAction::Generate { name } => {
+            match solilang::scaffold::seed_generator::generate_seed(app_path, name) {
+                Ok(path) => {
+                    println!();
+                    println!("  \x1b[32mCreated seed:\x1b[0m {}", path.display());
+                    println!();
+                }
+                Err(e) => {
+                    eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        DbSeedAction::Run => {
+            // Collect the seed files to run, in order: the single-file
+            // `db/seeds.sl` first, then every `db/seeds/*.sl` sorted by name
+            // (timestamp prefixes give a deterministic order). Each file runs
+            // every invocation — seeds are not tracked, so authors make them
+            // idempotent themselves (e.g. find_or_create).
+            let mut seed_files: Vec<std::path::PathBuf> = Vec::new();
+            let single = app_path.join("db/seeds.sl");
+            if single.is_file() {
+                seed_files.push(single);
+            }
+            let seeds_dir = app_path.join("db/seeds");
+            if seeds_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&seeds_dir) {
+                    let mut dir_files: Vec<std::path::PathBuf> = entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|ext| ext == "sl"))
+                        .collect();
+                    dir_files.sort();
+                    seed_files.extend(dir_files);
+                }
+            }
+
+            if seed_files.is_empty() {
+                println!();
+                println!(
+                    "  No seed files found. Create \x1b[1mdb/seeds.sl\x1b[0m or run \x1b[1msoli db:seed generate <name>\x1b[0m."
+                );
+                println!();
+                return;
+            }
+
+            // Load `.env` (+ `.env.{APP_ENV}`) and cache the DB config so the
+            // Model layer can reach SoliDB. JWT auth is acquired lazily by the
+            // CRUD layer on the first authenticated call — same as the test
+            // runner — so no explicit `init_jwt_token()` is needed here.
+            solilang::serve::env_loader::load_env_files(app_path);
+            solilang::interpreter::builtins::model::init_db_config();
+
+            // Auto-load `app/models` and `app/services` as a preamble so seed
+            // scripts can call `User.create({...})` without explicit imports,
+            // mirroring how the test runner preloads them.
+            let mut model_preamble_files: Vec<(std::path::PathBuf, String)> = Vec::new();
+            for sub in ["models", "services"] {
+                let dir = app_path.join("app").join(sub);
+                if !dir.is_dir() {
+                    continue;
+                }
+                let Ok(entries) = fs::read_dir(&dir) else {
+                    continue;
+                };
+                let mut sorted: Vec<_> = entries
+                    .flatten()
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "sl"))
+                    .collect();
+                sorted.sort_by_key(|e| e.path());
+                for entry in sorted {
+                    let path = entry.path();
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        let absolute = path.canonicalize().unwrap_or(path);
+                        model_preamble_files.push((absolute, content));
+                    }
+                }
+            }
+
+            println!();
+            println!("  \x1b[1mSeeding database...\x1b[0m");
+            println!();
+
+            for path in &seed_files {
+                let display = path
+                    .strip_prefix(app_path)
+                    .unwrap_or(path.as_path())
+                    .display();
+                let source = match fs::read_to_string(path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m failed to read {}: {}", display, e);
+                        process::exit(1);
+                    }
+                };
+
+                println!("  \x1b[2mSeeding\x1b[0m {}", display);
+
+                let (_assertions, result) = solilang::run_with_path_and_coverage(
+                    &source,
+                    Some(path),
+                    false,
+                    None,
+                    None,
+                    &model_preamble_files,
+                );
+                if let Err(e) = result {
+                    eprintln!();
+                    eprintln!("  \x1b[31mError seeding {}:\x1b[0m {}", display, e);
+                    process::exit(1);
+                }
+            }
+
+            println!();
+            println!("  \x1b[32mSeeding complete.\x1b[0m");
+            println!();
         }
     }
 }

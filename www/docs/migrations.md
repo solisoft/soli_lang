@@ -282,6 +282,56 @@ Applied migrations are tracked in the `_migrations` collection with:
 - `batch` - The batch number (incremented each time migrations run)
 - `executed_at` - When the migration was applied
 
+## Seeding the Database
+
+Migrations build the schema; **seeds** populate it with data — demo accounts, lookup
+tables, an initial admin user. Run them with `soli db:seed`.
+
+Unlike migrations, seeds are **not tracked** — every file runs on every invocation. Make
+your seeds idempotent (guard with `first_by` / `find_by`) so re-running them doesn't create
+duplicates.
+
+### Where seeds live
+
+```
+db/seeds.sl          # runs first
+db/seeds/*.sl        # then every file here, sorted by name
+```
+
+A new app ships with a `db/seeds.sl` starter. For larger or ordered datasets, generate
+additional files:
+
+```bash
+soli db:seed generate demo_users
+# -> db/seeds/20260623161240_demo_users.sl
+```
+
+### Running seeds
+
+```bash
+# Run db/seeds.sl, then db/seeds/*.sl (in the current project)
+soli db:seed
+
+# Point at a different project folder
+soli db:seed ./myapp
+```
+
+Seeds run with your `app/models` (and `app/services`) auto-loaded, so they can use the
+Model API directly — no imports needed:
+
+```soli
+# db/seeds.sl
+3.times do |i|
+  let email = "user\(i)@example.com"
+  User.create({ "name": "User \(i)", "email": email }) if User.first_by("email", email).nil?
+end
+
+print("Seeded users")
+```
+
+The same `.env` / `SOLIDB_*` configuration used by migrations (see below) supplies the
+database connection. A seed that throws stops the run and exits non-zero.
+
 ## Best Practices
 
 1. **Keep migrations small** - One logical change per migration

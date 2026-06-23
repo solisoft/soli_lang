@@ -4693,6 +4693,7 @@ dependencies = [
  "diff",
  "dirs",
  "ecow",
+ "encoding_rs",
  "env_logger",
  "flate2",
  "futures-util",

@@ -413,6 +413,10 @@ fn utility_base64
     render_docs("docs/utility/base64", "Base64 Encoding", "utility", "base64")
 end
 
+fn utility_encoding
+    render_docs("docs/utility/encoding", "Character Encodings", "utility", "encoding")
+end
+
 # ============================================================================ Testing
 # ============================================================================
 
