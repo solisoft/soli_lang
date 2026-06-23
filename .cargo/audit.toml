@@ -1,0 +1,31 @@
+# cargo-audit configuration.
+#
+# Vulnerabilities (RUSTSEC "vulnerability" advisories) are NEVER ignored here —
+# they must be fixed by bumping the dependency. This list is only for
+# *informational* advisories (unmaintained / unsound) that we have reviewed and
+# consciously accept because the fix requires a disruptive major upgrade or the
+# crate has no maintained drop-in replacement. Each entry records why and what
+# unblocks removing it.
+
+[advisories]
+ignore = [
+    # lru 0.12.5 — unsound `IterMut` (we don't call IterMut). Our own use is on
+    # lru 0.18; this 0.12.5 copy is pulled transitively by ratatui 0.26, which
+    # only drops lru at ratatui 0.30 (forces crossterm 0.29 + a TUI migration).
+    # Remove once we upgrade ratatui to >=0.30.
+    "RUSTSEC-2026-0002",
+
+    # paste 1.0.15 — unmaintained proc-macro, no runtime risk. Transitive via
+    # ratatui and image/ravif; no maintained replacement is wired through those
+    # crates yet. Re-evaluate after the ratatui >=0.30 upgrade.
+    "RUSTSEC-2024-0436",
+
+    # rusoto_credential — Rusoto is unmaintained. Used by our S3 builtins.
+    # Replacing it means migrating to the official aws-sdk-s3, a separate
+    # tracked effort; no security vulnerability, only maintenance status.
+    "RUSTSEC-2022-0071",
+
+    # daemonize — unmaintained. Used only for `soli serve -d` (Unix daemonize).
+    # Small, stable surface; revisit if a maintained equivalent appears.
+    "RUSTSEC-2025-0069",
+]
