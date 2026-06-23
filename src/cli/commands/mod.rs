@@ -866,6 +866,38 @@ pub fn run_update(name: Option<&str>) {
     println!();
 }
 
+/// Compare two dotted version strings (e.g. "1.9.0", "1.10.0-rc1")
+/// numerically, component by component. Each component's leading digits are
+/// parsed as a number, so `1.10.0` correctly sorts *after* `1.9.0` (a plain
+/// string compare would get this backwards). Pre-release / build suffixes are
+/// ignored for ordering — good enough for the "is the release strictly newer
+/// than what I'm running?" gate.
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    fn parts(v: &str) -> Vec<u64> {
+        v.trim_start_matches('v')
+            .split('.')
+            .map(|component| {
+                component
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse::<u64>()
+                    .unwrap_or(0)
+            })
+            .collect()
+    }
+    let (pa, pb) = (parts(a), parts(b));
+    for i in 0..pa.len().max(pb.len()) {
+        let x = pa.get(i).copied().unwrap_or(0);
+        let y = pb.get(i).copied().unwrap_or(0);
+        match x.cmp(&y) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
 pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     let repo = "solisoft/soli_lang";
     let current_version = VERSION;
@@ -937,13 +969,29 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or("v0.0.0")
         .trim_start_matches('v');
 
-    if latest_tag == current_version {
-        println!(
-            "  You are already running the latest version: v{}",
-            current_version
-        );
-        println!();
-        return Ok(());
+    // Gate on a *numeric* comparison so we never downgrade. The previous
+    // guard only short-circuited the exactly-equal case, so a machine running
+    // a newer build than the latest published release (e.g. a locally built
+    // or pre-release binary) would silently install the older release.
+    match compare_versions(latest_tag, current_version) {
+        std::cmp::Ordering::Equal => {
+            println!(
+                "  You are already running the latest version: v{}",
+                current_version
+            );
+            println!();
+            return Ok(());
+        }
+        std::cmp::Ordering::Less => {
+            println!("  Current version: v{}", current_version);
+            println!("  Latest release:  v{}", latest_tag);
+            println!();
+            println!("  Your installed version is newer than the latest published release —");
+            println!("  nothing to do (refusing to downgrade).");
+            println!();
+            return Ok(());
+        }
+        std::cmp::Ordering::Greater => {}
     }
 
     println!("  Current version: v{}", current_version);
@@ -1515,5 +1563,42 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
             println!("  \x1b[32mSeeding complete.\x1b[0m");
             println!();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compare_versions;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn newer_release_is_greater() {
+        assert_eq!(compare_versions("1.9.0", "1.8.28"), Ordering::Greater);
+        assert_eq!(compare_versions("2.0.0", "1.9.0"), Ordering::Greater);
+    }
+
+    #[test]
+    fn equal_versions() {
+        assert_eq!(compare_versions("1.9.0", "1.9.0"), Ordering::Equal);
+        assert_eq!(compare_versions("v1.9.0", "1.9.0"), Ordering::Equal);
+    }
+
+    #[test]
+    fn downgrade_is_less() {
+        // The exact regression: installed 1.9.0, "latest" published 1.8.28.
+        assert_eq!(compare_versions("1.8.28", "1.9.0"), Ordering::Less);
+    }
+
+    #[test]
+    fn numeric_not_lexicographic() {
+        // A string compare would put "1.10.0" before "1.9.0"; numeric must not.
+        assert_eq!(compare_versions("1.10.0", "1.9.0"), Ordering::Greater);
+        assert_eq!(compare_versions("1.8.28", "1.8.9"), Ordering::Greater);
+    }
+
+    #[test]
+    fn prerelease_suffix_ignored_for_ordering() {
+        assert_eq!(compare_versions("1.10.0-rc1", "1.10.0"), Ordering::Equal);
+        assert_eq!(compare_versions("1.10.0-rc1", "1.9.0"), Ordering::Greater);
     }
 }
