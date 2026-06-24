@@ -43,7 +43,16 @@ class UsersController < Controller
 end
 ```
 
-If you run a model or controller file directly with `soli run path/to/file.sl`, the auto-loader does **not** run — in that case you still need explicit imports.
+Loading is **recursive** — subdirectories are walked too, so `app/models/billing/invoice.sl` is auto-loaded just like a top-level file. The same recursive auto-loader also covers two sibling directories, loaded before controllers so they can be referenced freely:
+
+- **`app/services/`** — integration / domain-service classes (Stripe, mailers, etc.)
+- **`app/policies/`** — authorization policies (see [Authorization](authorization.md))
+
+Within a directory, files load in alphabetical order and *before* their subdirectories (top-down). Soli executes files eagerly, so if one class extends another defined in a different file, keep the base class at an equal-or-shallower depth (e.g. `app/models/application_record.sl`) so it loads first.
+
+In `--dev`, edits to nested files under these directories hot-reload without a restart.
+
+If you run a model, service, or controller file directly with `soli run path/to/file.sl`, the auto-loader does **not** run — in that case you still need explicit imports.
 
 ## CRUD Operations
 

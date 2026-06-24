@@ -53,6 +53,16 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
 end</code></pre>
         </div>
     </div>
+    <p class="text-gray-400 mb-4">
+        Loading is <strong>recursive</strong> &mdash; subdirectories are walked too, so <code>app/models/billing/invoice.sl</code> is auto-loaded just like a top-level file. The same recursive auto-loader also covers two sibling directories, loaded before controllers so they can be referenced freely:
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
+        <li><code>app/services/</code> &mdash; integration / domain-service classes (Stripe, mailers, etc.)</li>
+        <li><code>app/policies/</code> &mdash; authorization policies (see <a href="/docs/authorization" class="text-indigo-400 hover:underline">Authorization</a>)</li>
+    </ul>
+    <p class="text-gray-400 mb-6">
+        Within a directory, files load in alphabetical order and <em>before</em> their subdirectories (top-down). Soli executes files eagerly, so if one class extends another defined in a different file, keep the base class at an equal-or-shallower depth (e.g. <code>app/models/application_record.sl</code>) so it loads first. In <code>--dev</code>, edits to nested files hot-reload without a restart.
+    </p>
     <div class="my-6 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 mb-12">
         <p class="text-yellow-200/80 text-sm">
             If you run a file directly with <code>soli run path/to/file.sl</code>, the auto-loader does <strong>not</strong> run &mdash; in that case you still need explicit imports. The linter flags redundant controller-side imports via <code>style/redundant-model-import</code>.

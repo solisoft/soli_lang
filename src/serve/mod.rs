@@ -974,16 +974,20 @@ fn run_hyper_server_worker_pool(
             {
                 watch_count += 1;
             }
+            // Recursive: models/services load recursively, so nested files
+            // (e.g. app/models/billing/invoice.sl) must hot-reload too. The
+            // event handler matches by `path.starts_with(dir)`, which already
+            // covers nested paths.
             if watch_models_dir.exists()
                 && watcher
-                    .watch(&watch_models_dir, RecursiveMode::NonRecursive)
+                    .watch(&watch_models_dir, RecursiveMode::Recursive)
                     .is_ok()
             {
                 watch_count += 1;
             }
             if watch_services_dir.exists()
                 && watcher
-                    .watch(&watch_services_dir, RecursiveMode::NonRecursive)
+                    .watch(&watch_services_dir, RecursiveMode::Recursive)
                     .is_ok()
             {
                 watch_count += 1;

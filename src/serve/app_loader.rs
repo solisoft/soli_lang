@@ -383,7 +383,23 @@ pub(crate) fn load_models(
     interpreter: &mut Interpreter,
     models_dir: &Path,
 ) -> Result<(), RuntimeError> {
-    for entry in std::fs::read_dir(models_dir)
+    load_sl_dir_recursive(interpreter, models_dir)
+}
+
+/// Execute every `.sl` file under `dir`, recursing into subdirectories so
+/// nested layouts like `app/models/billing/invoice.sl` or
+/// `app/services/payments/stripe.sl` are auto-loaded too (mirrors how
+/// controllers already support nested namespaces).
+///
+/// Within each directory, files are loaded in sorted order and *before* its
+/// subdirectories (top-down). Soli executes files eagerly, so a base class in
+/// `models/base_model.sl` is defined before a `models/admin/user.sl` that
+/// extends it; keep cross-file superclasses at an equal-or-shallower depth.
+fn load_sl_dir_recursive(interpreter: &mut Interpreter, dir: &Path) -> Result<(), RuntimeError> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+
+    for entry in std::fs::read_dir(dir)
         .map_err(|e| RuntimeError::General {
             message: format!("Failed to read models directory: {}", e),
             span: Span::default(),
@@ -391,9 +407,28 @@ pub(crate) fn load_models(
         .flatten()
     {
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "sl") {
-            execute_file(interpreter, &path)?;
+        // `file_type()` (unlike `path.is_dir()`) does not follow symlinks, so a
+        // symlinked directory can't send the recursion into a loop — matching
+        // the controller/job scanners.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            subdirs.push(path);
+        } else if path.extension().is_some_and(|ext| ext == "sl") {
+            files.push(path);
         }
+    }
+
+    // Deterministic order: read_dir yields entries in arbitrary OS order.
+    files.sort();
+    subdirs.sort();
+
+    for path in &files {
+        execute_file(interpreter, path)?;
+    }
+    for subdir in &subdirs {
+        load_sl_dir_recursive(interpreter, subdir)?;
     }
     Ok(())
 }
