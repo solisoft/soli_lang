@@ -86,6 +86,39 @@ end</code></pre>
         </p>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Per-Action Layouts</h2>
+    <p class="text-gray-400 mb-4">
+        A single controller can serve different layouts to different actions &mdash; declared once in the
+        <code>static { ... }</code> block, so you never repeat <code>layout:</code> on every <code>render(...)</code> call.
+        <code>this.layout = "..."</code> sets the controller-wide default; <code>this.layout("name", only: [...])</code> /
+        <code>except: [...]</code> override it for specific actions.
+    </p>
+
+    <pre data-filename="app/controllers/reports_controller.sl"><code class="language-soli text-sm">class ReportsController < Controller
+  static {
+    this.layout = "admin";                              # default for every action
+
+    this.layout("print", only: [:invoice, :receipt]);  # these two use "print"
+    this.layout("blank", except: [:index]);            # everything else but :index uses "blank"
+  }
+
+  def invoice
+    render("reports/invoice")   # → "print" layout, no `layout:` needed
+  end
+
+  def index
+    render("reports/index")     # → "admin" (excluded from "blank", not in "print")
+  end
+end</code></pre>
+
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mt-4 mb-6">
+        <li>Rules are checked <strong>in declaration order</strong>; the <strong>first match wins</strong>, then the controller-wide <code>this.layout</code> default, then the framework <code>"application"</code> layout.</li>
+        <li><code>only:</code> limits a rule to the listed actions; <code>except:</code> applies it to every action <em>but</em> those listed. Omit both and the rule applies to all actions.</li>
+        <li>An explicit <code>layout:</code> passed to <code>render(...)</code> (including <code>layout: false</code> to skip layouts) always wins over a registered rule.</li>
+        <li>Per-action rules are <strong>inherited</strong> by subclasses just like the default layout; a child's own rule for the same action overrides the inherited one.</li>
+        <li>Edits are picked up on the next request in <code>--dev</code> mode &mdash; no server restart required.</li>
+    </ul>
+
     <h2 class="text-2xl font-bold text-white mb-6">Controller Inheritance</h2>
     <p class="text-gray-400 mb-4">
         Controllers support multi-level inheritance. Create a base controller to share logic across multiple controllers.

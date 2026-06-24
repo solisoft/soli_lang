@@ -433,6 +433,49 @@ class PostsController < Controller
 end
 ```
 
+### Per-Action Layouts
+
+A single controller can serve different layouts to different actions — declared
+once in the `static { ... }` block, so you never have to repeat `layout:` on
+each `render(...)` call. `this.layout = "..."` sets the controller-wide default;
+`this.layout("name", only: [...])` / `except: [...]` override it for specific
+actions:
+
+```soli
+class ReportsController < Controller
+  static {
+    this.layout = "admin";                              # default for every action
+
+    this.layout("print", only: [:invoice, :receipt]);  # these two use "print"
+    this.layout("blank", except: [:index]);            # everything else but :index uses "blank"
+  }
+
+  def invoice
+    render("reports/invoice")   # → "print" layout, no `layout:` needed
+  end
+
+  def index
+    render("reports/index")     # → "admin" (excluded from "blank", not in "print")
+  end
+end
+```
+
+Resolution rules:
+
+- Rules are checked **in declaration order**; the **first match wins**, then the
+  controller-wide `this.layout` default, then the framework `"application"`
+  layout.
+- `only:` limits a rule to the listed actions; `except:` applies it to every
+  action *but* those listed. Omit both and the rule applies to all actions
+  (equivalent to setting the default).
+- An explicit `layout:` passed to `render(...)` (including `layout: false` to
+  skip layouts) always wins over any registered rule.
+- Per-action rules are **inherited** by subclasses just like the default
+  layout; a child's own rule for the same action overrides the inherited one.
+
+Edits to these declarations are picked up on the next request in `--dev` mode —
+no server restart required.
+
 ### Redirect
 
 ```soli

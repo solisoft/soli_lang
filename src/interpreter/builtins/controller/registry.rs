@@ -12,7 +12,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::RwLock;
 
-use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerInfo};
+use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerInfo, LayoutRule};
 use crate::interpreter::builtins::template as template_module;
 use crate::interpreter::value::{Instance, Value};
 use crate::interpreter::Interpreter;
@@ -172,8 +172,14 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
 
 /// Resolve inheritance: copy before/after actions and layout from parent controllers
 /// to children that don't define their own.
-/// Inherited hooks from a parent controller.
-type InheritedHooks = (Vec<BeforeAction>, Vec<AfterAction>, Option<String>);
+/// Inherited hooks from a parent controller: before-actions, after-actions,
+/// the default layout, and per-action layout rules.
+type InheritedHooks = (
+    Vec<BeforeAction>,
+    Vec<AfterAction>,
+    Option<String>,
+    Vec<LayoutRule>,
+);
 
 fn resolve_controller_inheritance(
     registry: &mut ControllerRegistry,
@@ -187,9 +193,12 @@ fn resolve_controller_inheritance(
             let mut before_actions = parent_info.before_actions.clone();
             let mut after_actions = parent_info.after_actions.clone();
             let mut layout = parent_info.layout.clone();
+            let mut action_layouts = parent_info.action_layouts.clone();
 
             // If the parent also inherits, chain up
-            if let Some((parent_before, parent_after, parent_layout)) = inherited.get(parent_name) {
+            if let Some((parent_before, parent_after, parent_layout, parent_action_layouts)) =
+                inherited.get(parent_name)
+            {
                 let mut combined_before = parent_before.clone();
                 combined_before.extend(before_actions);
                 before_actions = combined_before;
@@ -201,14 +210,25 @@ fn resolve_controller_inheritance(
                 if layout.is_none() {
                     layout = parent_layout.clone();
                 }
+
+                // Grandparent rules sit after the parent's so nearer ancestors
+                // win; child rules are prepended later in the apply step.
+                let mut combined_action_layouts = action_layouts;
+                combined_action_layouts.extend(parent_action_layouts.clone());
+                action_layouts = combined_action_layouts;
             }
 
-            inherited.insert(child_name.clone(), (before_actions, after_actions, layout));
+            inherited.insert(
+                child_name.clone(),
+                (before_actions, after_actions, layout, action_layouts),
+            );
         }
     }
 
     // Apply inherited hooks to child controllers
-    for (child_name, (parent_before, parent_after, parent_layout)) in inherited {
+    for (child_name, (parent_before, parent_after, parent_layout, parent_action_layouts)) in
+        inherited
+    {
         if let Some(child_info) = registry.get_by_name_mut(&child_name) {
             // Prepend parent before_actions (parent hooks run first)
             let mut combined = parent_before;
@@ -224,6 +244,11 @@ fn resolve_controller_inheritance(
             if child_info.layout.is_none() {
                 child_info.layout = parent_layout;
             }
+
+            // Append parent per-action rules after the child's own, so a
+            // child rule for the same action overrides the inherited one
+            // (`layout_for` returns the first match).
+            child_info.action_layouts.extend(parent_action_layouts);
         }
     }
 }
@@ -358,9 +383,15 @@ fn parse_controller_static_block(source: &str, info: &mut ControllerInfo) -> Res
     // space.
     let line_shift = body_start_line.saturating_sub(1);
 
-    // Parse this.layout = "..."
+    // Parse this.layout = "..." (the controller-wide default)
     if let Some(layout) = extract_quoted_value(&static_block, "this.layout") {
         info.layout = Some(layout);
+    }
+
+    // Parse this.layout("name", only: [:a, :b]) / except: [:c] — per-action
+    // overrides. May appear multiple times; checked in order, first match wins.
+    for rule in extract_all_layout_rules(&static_block) {
+        info.action_layouts.push(rule);
     }
 
     // Parse this.before_action = fn(req) { ... }
@@ -513,6 +544,125 @@ fn extract_quoted_value(source: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract per-action layout rules of the form:
+///   this.layout("name")                     # applies to all actions
+///   this.layout("name", only: [:a, :b])     # only these actions
+///   this.layout("name", except: [:c])       # all actions but these
+/// Returns one `LayoutRule` per occurrence, in source order. The assignment
+/// form `this.layout = "..."` is handled separately by `extract_quoted_value`
+/// and is not matched here (it has no `(`).
+fn extract_all_layout_rules(source: &str) -> Vec<LayoutRule> {
+    let pattern = "this.layout(";
+    let mut results = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(rel_pos) = source[cursor..].find(pattern) {
+        let pos = cursor + rel_pos;
+        let args_start = pos + pattern.len();
+        let after = &source[args_start..];
+
+        // Find the ')' that closes this call, skipping string literals and
+        // `[...]` arrays so a delimiter inside them can't terminate early.
+        let Some(close) = find_call_close_paren(after) else {
+            break;
+        };
+        let args = &after[..close];
+        cursor = args_start + close + 1;
+
+        // The first quoted string is the layout name; without one the call is
+        // malformed — skip it rather than registering a blank layout.
+        let Some(layout) = first_quoted_string(args) else {
+            continue;
+        };
+
+        results.push(LayoutRule {
+            layout,
+            only: extract_symbol_list(args, "only"),
+            except: extract_symbol_list(args, "except"),
+        });
+    }
+
+    results
+}
+
+/// Find the byte offset of the `)` that closes a call's argument list. `s`
+/// must start just after the opening `(`. Skips string literals and `[...]`
+/// arrays so their contents can't terminate the scan early.
+fn find_call_close_paren(s: &str) -> Option<usize> {
+    let mut bracket_depth = 0i32;
+    let mut in_string = false;
+    let mut string_char = ' ';
+    let mut prev = '\0';
+
+    for (i, c) in s.char_indices() {
+        if in_string {
+            if c == string_char && prev != '\\' {
+                in_string = false;
+            }
+            prev = c;
+            continue;
+        }
+        match c {
+            '"' | '\'' => {
+                in_string = true;
+                string_char = c;
+            }
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth -= 1,
+            ')' if bracket_depth == 0 => return Some(i),
+            _ => {}
+        }
+        prev = c;
+    }
+    None
+}
+
+/// Return the contents of the first single- or double-quoted string in `s`.
+fn first_quoted_string(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let quote = bytes[i];
+        if quote == b'"' || quote == b'\'' {
+            let start = i + 1;
+            if let Some(rel_end) = s[start..].find(quote as char) {
+                return Some(s[start..start + rel_end].to_string());
+            }
+            return None;
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Extract a symbol/identifier list like `only: [:a, :b]` → `["a", "b"]`.
+/// Returns empty when `key` is absent. Accepts `:`-prefixed symbols, bare
+/// identifiers, and quoted names.
+fn extract_symbol_list(args: &str, key: &str) -> Vec<String> {
+    let needle = format!("{}:", key);
+    let Some(kpos) = args.find(&needle) else {
+        return Vec::new();
+    };
+    let after = &args[kpos + needle.len()..];
+    let Some(open) = after.find('[') else {
+        return Vec::new();
+    };
+    let Some(rel_close) = after[open..].find(']') else {
+        return Vec::new();
+    };
+    after[open + 1..open + rel_close]
+        .split(',')
+        .map(|item| {
+            item.trim()
+                .trim_start_matches(':')
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string()
+        })
+        .filter(|item| !item.is_empty())
+        .collect()
 }
 
 /// Extract a function definition source code like this.before_action = fn(req) { ... }
@@ -1085,6 +1235,52 @@ class UsersController extends Controller {
             info.before_actions[1].actions,
             vec!["new", "create", "edit", "update", "destroy"]
         );
+    }
+
+    #[test]
+    fn registers_per_action_layout_rules() {
+        let source = r#"
+class ReportsController extends Controller {
+    static {
+        this.layout = "admin";
+        this.layout("print", only: [:invoice, :receipt]);
+        this.layout("blank", except: [:index]);
+    }
+}
+"#;
+        let mut info = ControllerInfo::new("ReportsController", "reports");
+        parse_controller_static_block(source, &mut info).unwrap();
+
+        assert_eq!(info.layout.as_deref(), Some("admin"), "default layout");
+        assert_eq!(info.action_layouts.len(), 2, "two per-action rules");
+
+        // `only` rule wins for its listed actions.
+        assert_eq!(info.layout_for("invoice").as_deref(), Some("print"));
+        assert_eq!(info.layout_for("receipt").as_deref(), Some("print"));
+
+        // The `except` rule (registered second) covers everything but `index`;
+        // it only takes effect for actions the `print` rule didn't claim.
+        assert_eq!(info.layout_for("show").as_deref(), Some("blank"));
+
+        // `index` is excluded from the blank rule and not in the print rule,
+        // so it falls through to the controller-wide default.
+        assert_eq!(info.layout_for("index").as_deref(), Some("admin"));
+    }
+
+    #[test]
+    fn layout_call_without_filters_applies_to_all_actions() {
+        let source = r#"
+class PagesController extends Controller {
+    static {
+        this.layout("marketing");
+    }
+}
+"#;
+        let mut info = ControllerInfo::new("PagesController", "pages");
+        parse_controller_static_block(source, &mut info).unwrap();
+
+        assert_eq!(info.action_layouts.len(), 1);
+        assert_eq!(info.layout_for("anything").as_deref(), Some("marketing"));
     }
 
     // `def` is a synonym for `fn` at the lexer level, so function-style

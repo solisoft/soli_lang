@@ -510,6 +510,9 @@ AI agents should read `.soli/context.json` for framework metadata and `.soli/con
 class {Resource}Controller extends Controller {
     static {
         this.layout = "application";
+        # Per-action override (declare once, no per-render `layout:`):
+        #   this.layout("print", only: [:invoice, :receipt]);
+        #   this.layout("blank", except: [:index]);
     }
     
     fn index(req: Any) -> Any {

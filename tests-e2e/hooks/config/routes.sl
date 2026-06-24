@@ -11,6 +11,7 @@ get("/render_with_hash_arg", "hooks_test#render_with_hash_arg");
 get("/locals_access", "hooks_test#locals_access");
 get("/layout_test/default", "layout_test#default");
 get("/layout_test/explicit_none", "layout_test#explicit_none");
+get("/layout_test/print_doc", "layout_test#print_doc");
 
 # Coverage-expansion routes: JSON APIs, sessions, form POST, error paths.
 post("/api/echo", "api_test#echo_json");

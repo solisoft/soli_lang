@@ -1,0 +1,1 @@
+<!--PRINT_LAYOUT_TOP--><%= yield %><!--PRINT_LAYOUT_BOTTOM-->

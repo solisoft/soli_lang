@@ -9,12 +9,24 @@
 class LayoutTestController extends Controller
     static {
         this.layout = "custom_layout_e2e";
+
+        # Per-action override: the `print_doc` action uses a different layout
+        # without passing `layout:` to its `render(...)` call. Every other
+        # action keeps the controller-wide `custom_layout_e2e` default.
+        this.layout("print_layout_e2e", only: [:print_doc]);
     }
 
     # GET /layout_test/default
     # Render without an explicit layout — expect the registered
     # "custom_layout_e2e" layout to wrap the view.
     fn default(req)
+        render("layout_test/default_view")
+    end
+
+    # GET /layout_test/print_doc
+    # Render without an explicit layout — the per-action rule must select
+    # "print_layout_e2e" instead of the controller default.
+    fn print_doc(req)
         render("layout_test/default_view")
     end
 

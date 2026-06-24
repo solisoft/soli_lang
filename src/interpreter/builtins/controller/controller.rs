@@ -171,6 +171,28 @@ pub struct AfterAction {
     pub source_line: usize,
 }
 
+/// A per-action layout rule from `this.layout("name", only:/except: [...])`.
+///
+/// `only`/`except` mirror `before_action` filters: an empty `only` means
+/// "all actions"; `except` subtracts from that set. The default
+/// `this.layout = "..."` declaration is stored separately on
+/// `ControllerInfo.layout` and acts as the fallback when no rule matches.
+#[derive(Debug, Clone)]
+pub struct LayoutRule {
+    pub layout: String,
+    pub only: Vec<String>,   // Empty = all actions
+    pub except: Vec<String>, // Actions this rule must NOT apply to
+}
+
+impl LayoutRule {
+    /// Whether this rule applies to `action`.
+    fn matches(&self, action: &str) -> bool {
+        let in_only = self.only.is_empty() || self.only.iter().any(|a| a == action);
+        let excluded = self.except.iter().any(|a| a == action);
+        in_only && !excluded
+    }
+}
+
 /// Controller metadata for routing.
 #[derive(Debug, Clone)]
 pub struct ControllerInfo {
@@ -180,6 +202,10 @@ pub struct ControllerInfo {
     pub before_actions: Vec<BeforeAction>,
     pub after_actions: Vec<AfterAction>,
     pub layout: Option<String>,
+    /// Per-action layout overrides, declared via
+    /// `this.layout("name", only: [...])` / `except: [...]`. Checked in
+    /// order; the first matching rule wins, falling back to `layout`.
+    pub action_layouts: Vec<LayoutRule>,
 }
 
 impl ControllerInfo {
@@ -192,7 +218,20 @@ impl ControllerInfo {
             before_actions: Vec::new(),
             after_actions: Vec::new(),
             layout: None,
+            action_layouts: Vec::new(),
         }
+    }
+
+    /// Resolve the layout for `action`: the first matching per-action rule,
+    /// else the controller's default `layout`. Returns `None` only when
+    /// neither is set (render then falls back to the "application" default).
+    pub fn layout_for(&self, action: &str) -> Option<String> {
+        for rule in &self.action_layouts {
+            if rule.matches(action) {
+                return Some(rule.layout.clone());
+            }
+        }
+        self.layout.clone()
     }
 
     /// Check if an action should run before-actions.

@@ -528,7 +528,10 @@ fn get_current_controller_registered_layout() -> Option<Value> {
         .read()
         .ok()?;
     let info = registry.get_by_name(&class_name)?;
-    info.layout.clone().map(|s| Value::String(s.into()))
+    // Resolve against the in-flight action so per-action `this.layout(...)`
+    // rules win over the controller-wide default.
+    let action = crate::interpreter::builtins::current_action_name();
+    info.layout_for(&action).map(|s| Value::String(s.into()))
 }
 
 /// Expose the current controller's instance fields as view locals.

@@ -323,6 +323,27 @@ impl Interpreter {
             }
         }
 
+        // Controller static-block DSL is declarative. `this.layout(...)`,
+        // `this.before_action(...)` and `this.after_action(...)` are parsed
+        // out of the source into the controller registry — they are not
+        // executed for effect. Inside a `static {}` block `this` is the class,
+        // so when one of these is *called* on a `Value::Class` we treat it as
+        // a no-op. Without this, `this.layout("x", only: [...])` would try to
+        // invoke the string that `this.layout = "..."` assigned to the field
+        // ("string is not callable"), and the filtered-hook call form would
+        // spuriously invoke whatever function the field happens to hold.
+        if let ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } =
+            &callee.kind
+        {
+            if matches!(object.kind, ExprKind::This)
+                && matches!(name.as_str(), "layout" | "before_action" | "after_action")
+            {
+                if let Ok(Value::Class(_)) = self.evaluate(object) {
+                    return Ok(Value::Null);
+                }
+            }
+        }
+
         // Unified Member/SafeMember call dispatch.
         //
         // The receiver expression is evaluated EXACTLY ONCE here, then every

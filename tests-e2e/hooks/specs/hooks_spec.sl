@@ -350,6 +350,25 @@ describe("controller-registered layout (end-to-end)", fn() {
         assert(body < bot);
     });
 
+    test("per-action `this.layout(name, only: [...])` overrides the default", fn() {
+        // LayoutTestController declares a controller-wide default
+        // (`custom_layout_e2e`) plus a per-action rule selecting
+        // `print_layout_e2e` for `print_doc`. The `print_doc` action calls
+        // `render(...)` with no `layout` key, so the per-action rule must win.
+        let res = get("/layout_test/print_doc");
+        assert_status(res, 200);
+        assert_body_contains(res, "PRINT_LAYOUT_TOP");
+        assert_body_contains(res, "layout-test-view-body");
+        assert_body_contains(res, "PRINT_LAYOUT_BOTTOM");
+        // The default layout's markers must NOT appear — the override replaced it.
+        assert_eq(res.body.index_of("CUSTOM_LAYOUT_TOP"), -1);
+
+        // And an action not covered by the rule still gets the default layout.
+        let other = get("/layout_test/default");
+        assert_body_contains(other, "CUSTOM_LAYOUT_TOP");
+        assert_eq(other.body.index_of("PRINT_LAYOUT_TOP"), -1);
+    });
+
     test("explicit `layout: false` still wins over registered layout", fn() {
         // The registered layout is the *last* fallback — an explicit
         // `{"layout": false}` in the render data must bypass it and
