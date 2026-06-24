@@ -36,4 +36,12 @@ class LayoutTestController extends Controller
     fn explicit_none(req)
         render("layout_test/default_view", {"layout": false})
     end
+
+    # GET /layout_test/auto_render
+    # No explicit `render(...)` call — the action relies on auto-rendering the
+    # matching `layout_test/auto_render` view. The registered layout must still
+    # be applied on this path (regression: it used to fall back to "application").
+    fn auto_render(req)
+        @marker = "auto"
+    end
 end

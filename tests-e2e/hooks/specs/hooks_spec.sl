@@ -369,6 +369,18 @@ describe("controller-registered layout (end-to-end)", fn() {
         assert_eq(other.body.index_of("PRINT_LAYOUT_TOP"), -1);
     });
 
+    test("auto-render (no explicit render) still applies the registered layout", fn() {
+        // The `auto_render` action sets an @var and never calls `render(...)`,
+        // so the framework auto-renders `layout_test/auto_render`. The
+        // controller-registered layout must still wrap it — this path used to
+        // ignore `this.layout` and fall back to the "application" layout.
+        let res = get("/layout_test/auto_render");
+        assert_status(res, 200);
+        assert_body_contains(res, "CUSTOM_LAYOUT_TOP");
+        assert_body_contains(res, "layout-test-auto-body");
+        assert_body_contains(res, "CUSTOM_LAYOUT_BOTTOM");
+    });
+
     test("explicit `layout: false` still wins over registered layout", fn() {
         // The registered layout is the *last* fallback — an explicit
         // `{"layout": false}` in the render data must bypass it and

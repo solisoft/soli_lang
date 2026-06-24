@@ -5220,8 +5220,20 @@ fn try_render_template(
     crate::interpreter::builtins::template::inject_controller_instance_vars(&data);
     crate::interpreter::builtins::template::inject_template_helpers(&data);
 
+    // Resolve the controller's registered layout for the in-flight action
+    // (`static { this.layout = ... }`, including per-action rules and those
+    // inherited from a base controller). The explicit `render(...)` builtin
+    // already does this; without it here the auto-render path passed `None`
+    // and silently fell back to the "application" layout, so OOP controllers
+    // that omit `render` (set `@vars`, let the matching view render) never
+    // got their declared layout. `None` preserves the prior "application"
+    // default for controllers that declared no layout.
+    let registered_layout =
+        crate::interpreter::builtins::template::registered_layout_for_instance(controller_instance);
+    let layout_arg: Option<Option<&str>> = registered_layout.as_deref().map(Some);
+
     // Render template — returns full HTML string
-    let body = match cache.render(template_name, &data, None) {
+    let body = match cache.render(template_name, &data, layout_arg) {
         Ok(html) => html,
         Err(e) => {
             // The only legitimate fall-through case is "the top-level view file

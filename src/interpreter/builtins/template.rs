@@ -512,6 +512,34 @@ fn current_request_string_field(field: &str) -> Value {
     }
 }
 
+/// Resolve the registered layout for a controller class + the in-flight
+/// action: the first matching per-action `this.layout(...)` rule, else the
+/// controller-wide `this.layout = "..."` default. `None` when the class isn't
+/// registered or declared no layout.
+fn registered_layout_for_class(class_name: &str) -> Option<String> {
+    let registry = crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
+        .read()
+        .ok()?;
+    let info = registry.get_by_name(class_name)?;
+    // Resolve against the in-flight action so per-action `this.layout(...)`
+    // rules win over the controller-wide default.
+    let action = crate::interpreter::builtins::current_action_name();
+    info.layout_for(&action)
+}
+
+/// Resolve the registered layout for an explicit controller instance.
+/// Used by the server's auto-render path (an action that sets `@vars` and
+/// lets the matching view render with no explicit `render(...)` call), so
+/// `static { this.layout = ... }` is honored there too — not just on the
+/// explicit-`render` path.
+pub fn registered_layout_for_instance(controller_instance: &Value) -> Option<String> {
+    let Value::Instance(inst) = controller_instance else {
+        return None;
+    };
+    let class_name = inst.borrow().class.name.clone();
+    registered_layout_for_class(&class_name)
+}
+
 /// Read the current controller's registered layout (from its
 /// `static { this.layout = "..." }` block) as a `Value::String`, or `None`
 /// if no controller is active, the instance has no class metadata, or the
@@ -524,14 +552,7 @@ fn get_current_controller_registered_layout() -> Option<Value> {
         return None;
     };
     let class_name = inst.borrow().class.name.clone();
-    let registry = crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
-        .read()
-        .ok()?;
-    let info = registry.get_by_name(&class_name)?;
-    // Resolve against the in-flight action so per-action `this.layout(...)`
-    // rules win over the controller-wide default.
-    let action = crate::interpreter::builtins::current_action_name();
-    info.layout_for(&action).map(|s| Value::String(s.into()))
+    registered_layout_for_class(&class_name).map(|s| Value::String(s.into()))
 }
 
 /// Expose the current controller's instance fields as view locals.
