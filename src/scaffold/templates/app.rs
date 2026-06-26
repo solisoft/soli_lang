@@ -187,6 +187,7 @@ soli db:seed generate demo_users
 
 - [Soli MVC Documentation](https://soli.solisoft.net/docs)
 - [Soli Language Reference](https://soli.solisoft.net/docs/soli-language)
+- [Authorization & Policies](https://soli.solisoft.test/docs/security/authorization)
 - [Tailwind CSS](https://tailwindcss.com/docs)
 
 ## License
