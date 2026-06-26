@@ -147,6 +147,11 @@ impl QueryBuilder {
     }
 
     pub fn set_filter(&mut self, filter: String, bind_vars: HashMap<String, serde_json::Value>) {
+        // An empty filter (e.g. from `where({})`) is a no-op — leave `filter`
+        // unset so no `FILTER` clause is emitted and the AQL stays valid.
+        if filter.trim().is_empty() {
+            return;
+        }
         self.filter = Some(filter);
         self.bind_vars = bind_vars
             .into_iter()

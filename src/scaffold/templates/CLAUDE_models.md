@@ -339,6 +339,22 @@ end
 | `content_types` | Allow-list of MIME types. Anything else is rejected before storage.               |
 | `max_size`      | Hard cap in bytes. Above this → `_errors` populated, no blob stored.              |
 | `collection`    | SoliDB blob collection name. Defaults to `<class_snake>_<field>s` (`contact_photos`). |
+| `format`        | Convert image uploads to `"jpeg"` / `"png"` / `"webp"` **before storage**. Non-images pass through untouched. |
+| `quality`       | Encoder quality (1–100) for lossy formats (`jpeg`, `webp`). Defaults to `82`.     |
+| `max_width` / `max_height` | Downscale the original to fit these pixel bounds before storage (aspect preserved, never upscales). |
+
+Storing photos as smaller files — convert + downscale on the way in:
+
+```soli
+uploader("photo", {
+  "content_types": ["image/jpeg", "image/png", "image/webp"],
+  "max_size":      10_000_000,   # accept up to 10 MB
+  "format":        "webp",       # …but store a lossy WebP
+  "quality":       80,
+  "max_width":     1600,
+  "max_height":    1600
+})
+```
 
 The uploader adds a `<field>_blob_id` column (single) or `<field>_blob_ids`
 array (multiple) to the document. You don't read those directly — use the

@@ -271,6 +271,18 @@ mod tests {
     }
 
     #[test]
+    fn empty_hash_filter_is_a_noop_not_an_error() {
+        // `where({})` must not raise — it produces an empty filter so callers
+        // skip the FILTER clause and match all rows.
+        let hash = std::rc::Rc::new(std::cell::RefCell::new(
+            crate::interpreter::value::HashPairs::default(),
+        ));
+        let (filter, binds) = build_safe_filter_from_hash(&hash, "where").unwrap();
+        assert_eq!(filter, "");
+        assert!(binds.is_empty());
+    }
+
+    #[test]
     fn test_compute_base_collection_name() {
         assert_eq!(compute_base_collection_name("User"), "users");
         assert_eq!(compute_base_collection_name("BlogPost"), "blog_posts");
@@ -426,10 +438,12 @@ pub fn build_safe_filter_from_hash(
     use crate::interpreter::value::HashKey;
     let pairs = hash.borrow();
     if pairs.is_empty() {
-        return Err(format!(
-            "{}() Hash filter must contain at least one field/value pair",
-            method
-        ));
+        // An empty hash filter is a no-op: `where({})` adds no constraint and
+        // matches all rows (mirroring no `.where` at all). Return an empty
+        // filter string so callers simply skip building a FILTER clause rather
+        // than raising.
+        let _ = method;
+        return Ok((String::new(), std::collections::HashMap::new()));
     }
     let mut clauses = Vec::with_capacity(pairs.len());
     let mut binds = std::collections::HashMap::new();
@@ -624,6 +638,10 @@ fn build_uploader_config_from_args(
     let mut content_types: Vec<String> = Vec::new();
     let mut max_size: Option<u64> = None;
     let mut collection: Option<String> = None;
+    let mut format: Option<String> = None;
+    let mut quality: Option<u8> = None;
+    let mut max_width: Option<u32> = None;
+    let mut max_height: Option<u32> = None;
 
     for (k, v) in options {
         if let HashKey::String(key) = k {
@@ -654,6 +672,53 @@ fn build_uploader_config_from_args(
                         collection = Some(s.to_string());
                     }
                 }
+                "format" => {
+                    if let Value::String(s) = v {
+                        let normalized = s.to_lowercase();
+                        let canonical = match normalized.as_str() {
+                            "jpg" | "jpeg" => "jpeg",
+                            "png" => "png",
+                            "webp" => "webp",
+                            _ => {
+                                return Err(format!(
+                                    "uploader(\"{}\") format must be \"jpeg\", \"png\", or \"webp\", got {:?}",
+                                    name, s
+                                ))
+                            }
+                        };
+                        format = Some(canonical.to_string());
+                    }
+                }
+                "quality" => match v {
+                    Value::Int(n) if (1..=100).contains(&n) => quality = Some(n as u8),
+                    Value::Int(_) => {
+                        return Err(format!(
+                            "uploader(\"{}\") quality must be between 1 and 100",
+                            name
+                        ))
+                    }
+                    _ => {}
+                },
+                "max_width" => match v {
+                    Value::Int(n) if n > 0 => max_width = Some(n as u32),
+                    Value::Int(_) => {
+                        return Err(format!(
+                            "uploader(\"{}\") max_width must be a positive integer",
+                            name
+                        ))
+                    }
+                    _ => {}
+                },
+                "max_height" => match v {
+                    Value::Int(n) if n > 0 => max_height = Some(n as u32),
+                    Value::Int(_) => {
+                        return Err(format!(
+                            "uploader(\"{}\") max_height must be a positive integer",
+                            name
+                        ))
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -675,6 +740,10 @@ fn build_uploader_config_from_args(
         content_types,
         max_size,
         collection,
+        format,
+        quality,
+        max_width,
+        max_height,
     })
 }
 
@@ -705,6 +774,30 @@ fn uploader_config_to_value(config: Option<UploaderConfig>) -> Value {
     pairs.insert(
         HashKey::String("collection".into()),
         Value::String(c.collection.into()),
+    );
+    pairs.insert(
+        HashKey::String("format".into()),
+        c.format
+            .map(|s| Value::String(s.into()))
+            .unwrap_or(Value::Null),
+    );
+    pairs.insert(
+        HashKey::String("quality".into()),
+        c.quality
+            .map(|q| Value::Int(q as i64))
+            .unwrap_or(Value::Null),
+    );
+    pairs.insert(
+        HashKey::String("max_width".into()),
+        c.max_width
+            .map(|w| Value::Int(w as i64))
+            .unwrap_or(Value::Null),
+    );
+    pairs.insert(
+        HashKey::String("max_height".into()),
+        c.max_height
+            .map(|h| Value::Int(h as i64))
+            .unwrap_or(Value::Null),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }

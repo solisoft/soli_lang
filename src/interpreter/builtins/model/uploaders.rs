@@ -32,6 +32,16 @@ pub struct UploaderConfig {
     pub max_size: u64,
     /// SolidB collection name. Defaults to `<class_snake>_<name>s`.
     pub collection: String,
+    /// Optional storage-time format conversion for image uploads:
+    /// `"jpeg"` | `"png"` | `"webp"`. `None` stores the original bytes as-is.
+    /// Non-image uploads (PDF, etc.) are never converted.
+    pub format: Option<String>,
+    /// Encoder quality (1-100) for lossy formats (jpeg, webp). `None` → 82.
+    pub quality: Option<u8>,
+    /// Optional downscale caps (px). The original is scaled down to fit within
+    /// `(max_width, max_height)` preserving aspect ratio; never upscaled.
+    pub max_width: Option<u32>,
+    pub max_height: Option<u32>,
 }
 
 /// Register an uploader on a class. Called from the `uploader(...)` native

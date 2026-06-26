@@ -100,6 +100,29 @@ Anyone who can hit `/contacts/:id/photo` can also append `?w=99999&h=99999`. Wit
 
 The cap is enforced in the framework prelude, not the URL builder, so no app can accidentally bypass it (and template typos can't either).
 
+## Transform on the way in, too
+
+URL transforms keep the original pristine and convert per-request. Sometimes you
+want the opposite: never store the heavy original at all. Declare a `format`
+(and optional size caps) on the uploader and the bytes are converted **before**
+they hit SoliDB:
+
+```soli
+uploader("photo", {
+  "content_types": ["image/jpeg", "image/png", "image/webp"],
+  "max_size":      10_000_000,   # accept up to 10 MB
+  "format":        "webp",       # …but store a lossy WebP
+  "quality":       80,
+  "max_width":     1600,
+  "max_height":    1600
+})
+```
+
+A 4 MB PNG lands in storage as a downscaled ~200 KB WebP. WebP is encoded lossy
+via libwebp (the same encoder now backs `?fmt=webp` on the URL pipeline), so
+photos shrink hard. Non-image uploads pass through untouched, and undecodable
+bytes are stored as-is so a transform hiccup never blocks an upload.
+
 ## What ships, what doesn't
 
 **No server-side caching of transformed bytes.** Browser cache (`Cache-Control: public, max-age=86400`) and CDN handle the hot path. Cold cache misses re-run the transform pipeline — 50–200 ms for typical thumbnails on the Image class's pure-Rust pipeline. We considered persisting variants to disk under `<app_root>/.soli/cache/uploads/`, but the operational cost (eviction, multi-process coordination, disk monitoring) isn't worth it before there's evidence the transform pipeline is the bottleneck. If it ever is, that's a config flag away.

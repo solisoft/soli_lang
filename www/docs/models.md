@@ -525,6 +525,48 @@ def detach_document
 end
 ```
 
+### Uploader options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `multiple` | `false` | `true` keeps an array of blob ids (`<field>_blob_ids`); `false` keeps one (`<field>_blob_id`). |
+| `content_types` | — (required) | Allow-list of MIME types. Anything else is rejected before storage. |
+| `max_size` | — (required) | Hard cap in bytes. Above this → `_errors` populated, no blob stored. |
+| `collection` | `<snake>_<field>s` | SoliDB collection that holds the blobs. |
+| `format` | — | Convert image uploads to `"jpeg"`, `"png"`, or `"webp"` **before storage**. Non-image uploads (PDF, csv, …) are never converted. |
+| `quality` | `82` | Encoder quality (1–100) for lossy formats (`jpeg`, `webp`). |
+| `max_width` / `max_height` | — | Downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales. |
+
+#### Transform the original before storage
+
+To avoid storing large originals (e.g. heavy PNG photos), declare a `format`
+and/or size caps. The framework decodes the upload, optionally downscales it,
+re-encodes it to the target format, and stores the result — updating the blob's
+content-type and filename extension to match. WebP is encoded **lossy** (via
+libwebp) so photos shrink dramatically; JPEG quality is honoured too.
+
+```soli
+class Listing < Model
+  uploader("photo", {
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      10_000_000,   # accept up to 10 MB on the way in
+    "format":        "webp",       # …but store a lossy WebP
+    "quality":       80,
+    "max_width":     1600,         # downscale huge originals
+    "max_height":    1600
+  })
+end
+```
+
+A 4 MB PNG uploaded here lands in storage as a downscaled ~200 KB WebP. The
+transform only runs for image content-types — a PDF in a multi-file uploader is
+stored byte-for-byte. If the bytes can't be decoded as an image, the original is
+stored unchanged so an upload is never blocked by a transform failure.
+
+> The same lossy WebP/quality encoding powers the read-time URL transform
+> pipeline (`photo_url(...)` with `?fmt=webp&w=...`), so you can also keep a
+> larger original and convert per-request instead.
+
 For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete.
 
 **Cleanup on destroy** — `before_delete` callbacks aren't yet dispatched by `Model.delete(id)`; call `detach_all_uploads(record)` explicitly until that lands. The helper walks every `uploader(...)` field on the class.

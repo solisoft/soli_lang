@@ -150,7 +150,7 @@ pub struct ImageData {
     pub quality: u8,
 }
 
-fn format_from_str(s: &str) -> Option<ImageFormat> {
+pub(crate) fn format_from_str(s: &str) -> Option<ImageFormat> {
     match s.to_lowercase().as_str() {
         "jpeg" | "jpg" => Some(ImageFormat::Jpeg),
         "png" => Some(ImageFormat::Png),
@@ -212,7 +212,7 @@ where
     })
 }
 
-fn encode_dynamic_image(
+pub(crate) fn encode_dynamic_image(
     img: &DynamicImage,
     quality: u8,
     format: ImageFormat,
@@ -223,6 +223,13 @@ fn encode_dynamic_image(
         let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(cursor, quality);
         img.write_with_encoder(encoder)
             .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
+    } else if format == ImageFormat::WebP {
+        // The `image` crate only encodes *lossless* WebP, which bloats photos.
+        // Use libwebp (via the `webp` crate) for quality-controlled lossy output.
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let encoded = webp::Encoder::from_rgba(&rgba, w, h).encode(quality as f32);
+        return Ok(encoded.to_vec());
     } else {
         img.write_to(cursor, format)
             .map_err(|e| format!("Failed to encode image: {}", e))?;

@@ -615,7 +615,33 @@ end</code></pre>
         <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip.</li>
         <li><code>max_size</code> &mdash; hard cap in bytes. Same fast-fail.</li>
         <li><code>collection</code> &mdash; SoliDB collection name. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>
+        <li><code>format</code> &mdash; convert image uploads to <code>"jpeg"</code>, <code>"png"</code>, or <code>"webp"</code> <strong>before storage</strong>. Non-image uploads (PDF, csv, &hellip;) are never converted.</li>
+        <li><code>quality</code> &mdash; encoder quality (1&ndash;100) for lossy formats (<code>jpeg</code>, <code>webp</code>). Defaults to <code>82</code>.</li>
+        <li><code>max_width</code> / <code>max_height</code> &mdash; downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales.</li>
     </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Transform the original before storage</h3>
+    <p class="text-gray-400 mb-4">
+        To avoid storing heavy originals (e.g. large PNG photos), declare a <code>format</code> and/or size caps. Soli decodes the upload, optionally downscales it, re-encodes it to the target format, and stores the result &mdash; updating the blob's content-type and filename extension to match. WebP is encoded <strong>lossy</strong> (via libwebp) so photos shrink dramatically; JPEG quality is honoured too.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/listing.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Listing &lt; Model
+  uploader("photo", {
+    "content_types": ["image/jpeg", "image/png", "image/webp"],
+    "max_size":      10_000_000,   # accept up to 10 MB on the way in
+    "format":        "webp",       # …but store a lossy WebP
+    "quality":       80,
+    "max_width":     1600,         # downscale huge originals
+    "max_height":    1600
+  })
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">
+        A 4&nbsp;MB PNG uploaded here lands in storage as a downscaled ~200&nbsp;KB WebP. The transform only runs for image content-types; if the bytes can't be decoded as an image the original is stored unchanged, so an upload is never blocked by a transform failure. The same lossy WebP/quality encoding also powers the read-time <code>photo_url(...)</code> transform pipeline.
+    </p>
 
     <h3 class="text-lg font-semibold text-white mb-3">Auto-generated instance methods</h3>
     <p class="text-gray-400 mb-4">For each declared uploader, Soli synthesizes:</p>

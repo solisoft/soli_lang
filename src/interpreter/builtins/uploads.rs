@@ -632,8 +632,189 @@ fn append_query(base: &str, pairs: &[(String, String)]) -> String {
 /// The mutation helpers (`attach_upload`, `detach_upload`, etc.) live in the
 /// Soli prelude in `serve::uploads_prelude` because they're only invoked from
 /// controllers and benefit from staying overridable in plain Soli.
+/// Read a string value from a hash by key, or `None` if absent/non-string.
+fn hash_str(h: &HashPairs, key: &str) -> Option<String> {
+    match h.get(&HashKey::String(key.into())) {
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Read an integer value from a hash by key, or `None` if absent/non-int.
+fn hash_int(h: &HashPairs, key: &str) -> Option<i64> {
+    match h.get(&HashKey::String(key.into())) {
+        Some(Value::Int(n)) => Some(*n),
+        _ => None,
+    }
+}
+
+/// Map an `image::ImageFormat` to its canonical file extension + MIME type.
+fn format_ext_and_ct(fmt: image::ImageFormat) -> (&'static str, &'static str) {
+    use image::ImageFormat as F;
+    match fmt {
+        F::Jpeg => ("jpg", "image/jpeg"),
+        F::Png => ("png", "image/png"),
+        F::WebP => ("webp", "image/webp"),
+        F::Gif => ("gif", "image/gif"),
+        F::Bmp => ("bmp", "image/bmp"),
+        F::Tiff => ("tiff", "image/tiff"),
+        F::Ico => ("ico", "image/x-icon"),
+        _ => ("bin", "application/octet-stream"),
+    }
+}
+
+/// Replace a filename's extension (e.g. `photo.png` → `photo.webp`).
+fn swap_extension(filename: &str, new_ext: &str) -> String {
+    match filename.rfind('.') {
+        Some(idx) if idx > 0 => format!("{}.{}", &filename[..idx], new_ext),
+        _ => format!("{}.{}", filename, new_ext),
+    }
+}
+
+/// Storage-time image transform driven by an uploader config. Decodes the
+/// uploaded image, optionally downscales it to fit `max_width`/`max_height`
+/// (never upscaling, aspect preserved), and re-encodes it to the configured
+/// `format`/`quality`. Returns:
+///   - `Ok(Some(new_file))` when the bytes were transformed (with updated
+///     `data`, `content_type`, `size`, and `filename` extension),
+///   - `Ok(None)` when nothing should change — no transform configured, the
+///     upload isn't an image (PDF, csv, …), or the bytes aren't a decodable
+///     image (in which case the original is stored as-is so an upload is never
+///     blocked by a transform failure).
+fn transform_upload_file(
+    file: &Rc<RefCell<HashPairs>>,
+    config: &Rc<RefCell<HashPairs>>,
+) -> Result<Option<HashPairs>, String> {
+    use crate::interpreter::builtins::image::{encode_dynamic_image, format_from_str};
+
+    let cfg = config.borrow();
+    let target_fmt_name = hash_str(&cfg, "format");
+    let max_w = hash_int(&cfg, "max_width")
+        .filter(|n| *n > 0)
+        .map(|n| n as u32);
+    let max_h = hash_int(&cfg, "max_height")
+        .filter(|n| *n > 0)
+        .map(|n| n as u32);
+    let quality = hash_int(&cfg, "quality")
+        .filter(|n| (1..=100).contains(n))
+        .map(|n| n as u8)
+        .unwrap_or(82);
+    drop(cfg);
+
+    // Nothing requested → no-op.
+    if target_fmt_name.is_none() && max_w.is_none() && max_h.is_none() {
+        return Ok(None);
+    }
+
+    let f = file.borrow();
+    let content_type = hash_str(&f, "content_type").unwrap_or_default();
+    // Only transform images; PDFs, csv, zip, … pass straight through.
+    if !content_type.starts_with("image/") {
+        return Ok(None);
+    }
+    let Some(data_b64) = hash_str(&f, "data") else {
+        return Ok(None);
+    };
+    let filename = hash_str(&f, "filename").unwrap_or_else(|| "upload".to_string());
+    drop(f);
+
+    let Ok(bytes) = STANDARD.decode(data_b64.as_bytes()) else {
+        return Ok(None);
+    };
+    let Ok(mut img) = image::load_from_memory(&bytes) else {
+        // Not a decodable image → store the original bytes untouched.
+        return Ok(None);
+    };
+
+    // Target format: explicit config wins, otherwise keep the source format.
+    let source_fmt = content_type
+        .strip_prefix("image/")
+        .and_then(format_from_str)
+        .or_else(|| image::guess_format(&bytes).ok());
+    let target_fmt = match target_fmt_name.as_deref() {
+        Some(name) => format_from_str(name),
+        None => source_fmt,
+    };
+    let Some(target_fmt) = target_fmt else {
+        return Ok(None);
+    };
+
+    // Downscale only (never upscale), preserving aspect ratio.
+    let (w, h) = (img.width(), img.height());
+    let mut scale = 1.0f64;
+    if let Some(mw) = max_w {
+        if w > mw {
+            scale = scale.min(mw as f64 / w as f64);
+        }
+    }
+    if let Some(mh) = max_h {
+        if h > mh {
+            scale = scale.min(mh as f64 / h as f64);
+        }
+    }
+    let resized = scale < 1.0;
+    if resized {
+        let nw = ((w as f64 * scale).round() as u32).max(1);
+        let nh = ((h as f64 * scale).round() as u32).max(1);
+        img = img.resize(nw, nh, image::imageops::FilterType::Lanczos3);
+    }
+
+    // No explicit format change and no resize actually happened → leave as-is
+    // rather than needlessly re-encoding.
+    if target_fmt_name.is_none() && !resized {
+        return Ok(None);
+    }
+
+    let encoded = encode_dynamic_image(&img, quality, target_fmt)?;
+    let (ext, new_ct) = format_ext_and_ct(target_fmt);
+    let new_b64 = STANDARD.encode(&encoded);
+
+    let mut out = file.borrow().clone();
+    out.insert(
+        HashKey::String("data".into()),
+        Value::String(new_b64.into()),
+    );
+    out.insert(
+        HashKey::String("content_type".into()),
+        Value::String(new_ct.into()),
+    );
+    out.insert(
+        HashKey::String("size".into()),
+        Value::Int(encoded.len() as i64),
+    );
+    out.insert(
+        HashKey::String("filename".into()),
+        Value::String(swap_extension(&filename, ext).into()),
+    );
+    Ok(Some(out))
+}
+
 fn register_uploader_helpers(env: &mut Environment) {
     use crate::interpreter::builtins::model::{get_uploader, get_uploader_field_value_as_string};
+
+    // Storage-time image transform (format conversion + downscale) driven by
+    // the uploader's `format`/`quality`/`max_width`/`max_height` options. The
+    // attach prelude calls this just before storing the blob.
+    env.define(
+        "apply_uploader_transform".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "apply_uploader_transform",
+            Some(2),
+            |args| {
+                let Some(Value::Hash(file)) = args.first() else {
+                    return Err("apply_uploader_transform() expects a file hash".to_string());
+                };
+                let Some(Value::Hash(config)) = args.get(1) else {
+                    // No config hash → return the file unchanged.
+                    return Ok(args.first().cloned().unwrap_or(Value::Null));
+                };
+                match transform_upload_file(file, config)? {
+                    Some(new_file) => Ok(Value::Hash(Rc::new(RefCell::new(new_file)))),
+                    None => Ok(Value::Hash(file.clone())),
+                }
+            },
+        )),
+    );
 
     env.define(
         "upload_url".to_string(),
@@ -1031,5 +1212,121 @@ mod tests {
         let files = parse_multipart_data(&body, boundary).unwrap();
         assert_eq!(files.len(), 1, "plain form field must not produce a file");
         assert_eq!(files[0].field_name, "file");
+    }
+}
+
+#[cfg(test)]
+mod transform_tests {
+    use super::*;
+
+    fn make_png_b64(w: u32, h: u32) -> String {
+        let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(w, h, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, 128])
+        }));
+        let mut bytes = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+        STANDARD.encode(&bytes)
+    }
+
+    fn file_hash(filename: &str, ct: &str, data_b64: &str) -> Rc<RefCell<HashPairs>> {
+        let mut h = HashPairs::default();
+        h.insert(
+            HashKey::String("filename".into()),
+            Value::String(filename.into()),
+        );
+        h.insert(
+            HashKey::String("content_type".into()),
+            Value::String(ct.into()),
+        );
+        h.insert(
+            HashKey::String("data".into()),
+            Value::String(data_b64.into()),
+        );
+        h.insert(
+            HashKey::String("size".into()),
+            Value::Int(data_b64.len() as i64),
+        );
+        Rc::new(RefCell::new(h))
+    }
+
+    fn config_hash(pairs: &[(&str, Value)]) -> Rc<RefCell<HashPairs>> {
+        let mut h = HashPairs::default();
+        for (k, v) in pairs {
+            h.insert(HashKey::String((*k).into()), v.clone());
+        }
+        Rc::new(RefCell::new(h))
+    }
+
+    #[test]
+    fn converts_png_to_webp_and_downscales() {
+        let b64 = make_png_b64(1200, 800);
+        let file = file_hash("photo.png", "image/png", &b64);
+        let cfg = config_hash(&[
+            ("format", Value::String("webp".into())),
+            ("quality", Value::Int(80)),
+            ("max_width", Value::Int(600)),
+            ("max_height", Value::Int(600)),
+        ]);
+        let out = transform_upload_file(&file, &cfg)
+            .unwrap()
+            .expect("should transform");
+        assert_eq!(
+            hash_str(&out, "content_type").as_deref(),
+            Some("image/webp")
+        );
+        assert_eq!(hash_str(&out, "filename").as_deref(), Some("photo.webp"));
+        let bytes = STANDARD.decode(hash_str(&out, "data").unwrap()).unwrap();
+        let img = image::load_from_memory(&bytes).unwrap();
+        // Downscaled to fit 600x600, aspect preserved (1200x800 -> 600x400).
+        assert_eq!((img.width(), img.height()), (600, 400));
+    }
+
+    #[test]
+    fn non_image_uploads_pass_through_untouched() {
+        let file = file_hash("doc.pdf", "application/pdf", "JVBERi0xLjQK");
+        let cfg = config_hash(&[("format", Value::String("webp".into()))]);
+        assert!(transform_upload_file(&file, &cfg).unwrap().is_none());
+    }
+
+    #[test]
+    fn no_transform_options_is_noop() {
+        let b64 = make_png_b64(64, 64);
+        let file = file_hash("a.png", "image/png", &b64);
+        let cfg = config_hash(&[]);
+        assert!(transform_upload_file(&file, &cfg).unwrap().is_none());
+    }
+
+    #[test]
+    fn size_caps_alone_skip_when_already_small() {
+        let b64 = make_png_b64(100, 100);
+        let file = file_hash("a.png", "image/png", &b64);
+        let cfg = config_hash(&[
+            ("max_width", Value::Int(600)),
+            ("max_height", Value::Int(600)),
+        ]);
+        // Smaller than the caps and no format change → nothing to do.
+        assert!(transform_upload_file(&file, &cfg).unwrap().is_none());
+    }
+
+    #[test]
+    fn format_only_reencodes_without_resize() {
+        let b64 = make_png_b64(300, 200);
+        let file = file_hash("a.png", "image/png", &b64);
+        let cfg = config_hash(&[("format", Value::String("jpeg".into()))]);
+        let out = transform_upload_file(&file, &cfg)
+            .unwrap()
+            .expect("format change should transform");
+        assert_eq!(
+            hash_str(&out, "content_type").as_deref(),
+            Some("image/jpeg")
+        );
+        assert_eq!(hash_str(&out, "filename").as_deref(), Some("a.jpg"));
+        let bytes = STANDARD.decode(hash_str(&out, "data").unwrap()).unwrap();
+        let img = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((img.width(), img.height()), (300, 200));
     }
 }

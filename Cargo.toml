@@ -193,6 +193,10 @@ tempfile = "3"
 # Default features pull in AVIF (rav1e+ravif ~1.7MB) and EXR/HDR which Soli does not use.
 # Enable only the formats referenced in src/interpreter/builtins/image.rs.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "ico", "tiff", "webp", "rayon"] }
+# Lossy WebP encoding (libwebp). The `image` crate only encodes lossless WebP,
+# which bloats photos; this gives quality-controlled lossy output for both the
+# URL transform pipeline and the storage-time uploader transform.
+webp = "0.3"
 
 # Spreadsheet support (CSV and Excel)
 calamine = "0.26"

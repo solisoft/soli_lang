@@ -78,6 +78,12 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         return false
     end
 
+    # Storage-time image transform: convert the original to the configured
+    # `format` (jpeg/png/webp) and/or downscale to `max_width`/`max_height`
+    # before storing. No-op for non-image uploads or when no transform is
+    # declared, so e.g. a PNG photo can be stored as a smaller lossy WebP.
+    file = apply_uploader_transform(file, config)
+
     client = __soli_resolve_solidb_client()
     blob_id = solidb_store_blob(client, config["collection"], file["data"],
                                 file["filename"], file["content_type"])

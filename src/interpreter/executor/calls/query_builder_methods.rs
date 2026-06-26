@@ -136,6 +136,13 @@ impl Interpreter {
                 }
             };
 
+        // `where({})` (or an empty string filter) is a no-op — return the
+        // builder unchanged rather than combining in an empty clause, which
+        // would produce invalid AQL like `(...) AND ()`.
+        if filter.trim().is_empty() {
+            return Ok(Value::QueryBuilder(qb));
+        }
+
         let mut new_qb = qb.borrow().clone();
         if let Some(existing_filter) = &new_qb.filter {
             new_qb.filter = Some(format!("({}) AND ({})", existing_filter, filter));
