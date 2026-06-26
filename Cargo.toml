@@ -219,6 +219,10 @@ mail-parser = "0.11.3"
 [dev-dependencies]
 pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
+# Same version SolidB validates cron expressions with — lets the Cron.* helper
+# tests assert their output actually parses, guarding against the 5-field
+# regression that silently broke Cron.schedule.
+cron = "0.15"
 
 [[bench]]
 name = "interpreter"

@@ -199,6 +199,11 @@ fn format_iso_utc(unix_seconds: i64) -> String {
 
 // ===== Cron expression helpers =====
 
+// All builders below emit SIX-field cron expressions
+// (`sec min hour day-of-month month day-of-week`). SolidB validates schedules
+// with the `cron` crate, which requires the leading seconds field and rejects
+// the 5-field Unix form with a 400 — a 5-field expression here silently fails
+// `Cron.schedule` (the create call is rejected, so nothing is ever scheduled).
 fn cron_every(arg: &Value) -> Result<String, String> {
     let secs = parse_duration(arg)?;
     if secs < 60 {
@@ -208,42 +213,44 @@ fn cron_every(arg: &Value) -> Result<String, String> {
     let hours = mins / 60;
     let days = hours / 24;
     if days > 0 && hours % 24 == 0 {
-        return Ok(format!("0 0 */{} * *", days));
+        return Ok(format!("0 0 0 */{} * *", days));
     }
     if hours > 0 && mins % 60 == 0 {
         if hours == 1 {
-            return Ok("0 * * * *".to_string());
+            return Ok("0 0 * * * *".to_string());
         }
-        return Ok(format!("0 */{} * * *", hours));
+        return Ok(format!("0 0 */{} * * *", hours));
     }
     if mins == 1 {
-        return Ok("* * * * *".to_string());
+        return Ok("0 * * * * *".to_string());
     }
-    Ok(format!("*/{} * * * *", mins))
+    Ok(format!("0 */{} * * * *", mins))
 }
 
 fn cron_daily_at(time: &str) -> Result<String, String> {
     let (h, m) = parse_hhmm(time)?;
-    Ok(format!("{} {} * * *", m, h))
+    Ok(format!("0 {} {} * * *", m, h))
 }
 
 fn cron_hourly() -> String {
-    "0 * * * *".to_string()
+    "0 0 * * * *".to_string()
 }
 
 fn cron_weekly_at(day: &str, time: &str) -> Result<String, String> {
     let (h, m) = parse_hhmm(time)?;
+    // `cron` numbers day-of-week 1-7 and rejects 0, so emit the three-letter
+    // name instead — unambiguous, and Sunday (which `0` would 400 on) is "Sun".
     let dow = match day.to_lowercase().as_str() {
-        "sun" | "sunday" | "0" => 0,
-        "mon" | "monday" | "1" => 1,
-        "tue" | "tues" | "tuesday" | "2" => 2,
-        "wed" | "wednesday" | "3" => 3,
-        "thu" | "thurs" | "thursday" | "4" => 4,
-        "fri" | "friday" | "5" => 5,
-        "sat" | "saturday" | "6" => 6,
+        "sun" | "sunday" | "0" | "7" => "Sun",
+        "mon" | "monday" | "1" => "Mon",
+        "tue" | "tues" | "tuesday" | "2" => "Tue",
+        "wed" | "wednesday" | "3" => "Wed",
+        "thu" | "thurs" | "thursday" | "4" => "Thu",
+        "fri" | "friday" | "5" => "Fri",
+        "sat" | "saturday" | "6" => "Sat",
         other => return Err(format!("Unknown weekday: {}", other)),
     };
-    Ok(format!("{} {} * * {}", m, h, dow))
+    Ok(format!("0 {} {} * * {}", m, h, dow))
 }
 
 fn parse_hhmm(time: &str) -> Result<(u32, u32), String> {
@@ -1109,5 +1116,84 @@ mod prelude_tests {
         // Auth passed → falls through to class lookup, which returns 503
         // because the class isn't loaded in this test interpreter.
         assert_eq!(status_of(&resp), 503);
+    }
+}
+
+#[cfg(test)]
+mod cron_expr_tests {
+    //! The `Cron.*` expression builders must emit SIX-field expressions
+    //! (`sec min hour day-of-month month day-of-week`). SolidB validates
+    //! schedules with the `cron` crate, which rejects the 5-field Unix form
+    //! with a 400 — so a 5-field expression made `Cron.schedule` silently fail
+    //! and nothing was ever scheduled. These tests pin the exact output AND
+    //! parse it with the same crate so that regression can't come back.
+    use super::{cron_daily_at, cron_every, cron_hourly, cron_weekly_at};
+    use crate::interpreter::value::Value;
+    use cron::Schedule;
+    use std::str::FromStr;
+
+    fn assert_valid(expr: &str) {
+        assert_eq!(
+            expr.split_whitespace().count(),
+            6,
+            "expression must have 6 fields: {:?}",
+            expr
+        );
+        assert!(
+            Schedule::from_str(expr).is_ok(),
+            "expression must parse with the `cron` crate SolidB uses: {:?}",
+            expr
+        );
+    }
+
+    fn every(spec: &str) -> String {
+        cron_every(&Value::String(spec.to_string().into())).expect("cron_every")
+    }
+
+    #[test]
+    fn every_emits_valid_minute_schedules() {
+        assert_eq!(every("5 minutes"), "0 */5 * * * *");
+        assert_eq!(every("15 minutes"), "0 */15 * * * *");
+        assert_eq!(every("1 minute"), "0 * * * * *");
+        for spec in ["5 minutes", "15 minutes", "1 minute"] {
+            assert_valid(&every(spec));
+        }
+    }
+
+    #[test]
+    fn every_emits_valid_hour_and_day_schedules() {
+        assert_eq!(every("1 hour"), "0 0 * * * *");
+        assert_eq!(every("2 hours"), "0 0 */2 * * *");
+        assert_eq!(every("1 day"), "0 0 0 */1 * *");
+        assert_eq!(every("3 days"), "0 0 0 */3 * *");
+        for spec in ["1 hour", "2 hours", "1 day", "3 days"] {
+            assert_valid(&every(spec));
+        }
+    }
+
+    #[test]
+    fn every_rejects_sub_minute_granularity() {
+        assert!(cron_every(&Value::String("30 seconds".to_string().into())).is_err());
+    }
+
+    #[test]
+    fn daily_at_and_hourly_emit_valid_expressions() {
+        assert_eq!(cron_daily_at("03:00").unwrap(), "0 0 3 * * *");
+        assert_eq!(cron_daily_at("23:45").unwrap(), "0 45 23 * * *");
+        assert_eq!(cron_hourly(), "0 0 * * * *");
+        assert_valid(&cron_daily_at("03:00").unwrap());
+        assert_valid(&cron_daily_at("23:45").unwrap());
+        assert_valid(&cron_hourly());
+    }
+
+    #[test]
+    fn weekly_at_uses_weekday_names_so_sunday_is_valid() {
+        assert_eq!(cron_weekly_at("monday", "09:00").unwrap(), "0 0 9 * * Mon");
+        // `cron` rejects day-of-week 0, so Sunday is emitted as the name "Sun".
+        assert_eq!(cron_weekly_at("sunday", "00:00").unwrap(), "0 0 0 * * Sun");
+        assert_eq!(cron_weekly_at("fri", "17:30").unwrap(), "0 30 17 * * Fri");
+        for (day, time) in [("monday", "09:00"), ("sunday", "00:00"), ("fri", "17:30")] {
+            assert_valid(&cron_weekly_at(day, time).unwrap());
+        }
     }
 }
