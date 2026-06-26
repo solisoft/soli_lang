@@ -581,6 +581,16 @@ pub(super) fn render_dev_error_page(
                         <button onclick="quickInspect('headers')" class="p-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-white/10 text-left transition-colors"><div class="text-xs text-gray-500 mb-1">Headers</div><div class="text-sm text-white font-mono truncate">headers</div></button>
                     </div>
                 </div>
+                <div id="view-locals-section" class="mb-6" style="display:none;">
+                    <h2 class="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2H4V6zM4 10h16v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8z" />
+                        </svg>
+                        View Locals
+                    </h2>
+                    <p class="text-sm text-gray-500 mb-3">Data passed to <span class="font-mono text-gray-400">render()</span> for the template that errored mid-render. Click to inspect, or use <span class="font-mono text-emerald-400">_view_data</span> in the REPL for the whole hash.</p>
+                    <div id="view-locals-buttons" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+                </div>
             </div>
             <div>
                 <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -770,6 +780,44 @@ pub(super) fn render_dev_error_page(
             }}
         }}
         initJsonDisplays();
+        function makeViewLocalButton(label, name, onClick, accent) {{
+            const btn = document.createElement('button');
+            btn.className = 'p-3 rounded-lg border text-left transition-colors ' + (accent ? 'bg-emerald-900/30 hover:bg-emerald-800/40 border-emerald-500/20' : 'bg-gray-800 hover:bg-gray-700 border-white/10');
+            const lbl = document.createElement('div');
+            lbl.className = 'text-xs mb-1 ' + (accent ? 'text-emerald-500/80' : 'text-gray-500');
+            lbl.textContent = label;
+            const val = document.createElement('div');
+            val.className = 'text-sm text-white font-mono truncate';
+            val.textContent = name;
+            btn.appendChild(lbl);
+            btn.appendChild(val);
+            btn.addEventListener('click', onClick);
+            return btn;
+        }}
+        function inspectViewLocal(key) {{
+            // Bracket form so it resolves to the view's value even when the name
+            // collides with a controller-scope variable (which wins at top level).
+            quickInspect('_view_data[' + JSON.stringify(key) + ']');
+        }}
+        function initViewLocals() {{
+            if (!breakpointEnv || typeof breakpointEnv !== 'object') return;
+            const viewData = breakpointEnv._view_data;
+            if (!viewData || typeof viewData !== 'object' || Array.isArray(viewData)) return;
+            const section = document.getElementById('view-locals-section');
+            const container = document.getElementById('view-locals-buttons');
+            if (!section || !container) return;
+            // Framework-injected request context has its own Quick Inspect buttons.
+            const skip = ['req', 'cookies', 'session', 'params', 'headers'];
+            container.innerHTML = '';
+            container.appendChild(makeViewLocalButton('All locals', '_view_data', function() {{ quickInspect('_view_data'); }}, true));
+            Object.keys(viewData).forEach(function(key) {{
+                if (skip.indexOf(key) !== -1) return;
+                if (viewData[key] === '<function>') return; // injected template helper
+                container.appendChild(makeViewLocalButton('View local', key, function() {{ inspectViewLocal(key); }}, false));
+            }});
+            section.style.display = '';
+        }}
+        initViewLocals();
         document.addEventListener('keydown', function(e) {{
             if (e.ctrlKey && e.key === '`') {{ e.preventDefault(); document.getElementById('repl-input').focus(); }}
             if (e.key === 'Escape') {{ document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active')); }}

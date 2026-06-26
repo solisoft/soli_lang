@@ -259,6 +259,17 @@ fn set_view_debug_context(data: Option<Value>) {
     });
 }
 
+/// Clear any view debug context left over on this worker thread.
+///
+/// `render()` only clears the context on a *successful* render; on error it
+/// keeps it so the failing locals can be attached to the dev error page. Worker
+/// threads are reused across requests, so without a per-request reset a later
+/// controller-only error could attach stale `_view_data` from a previous
+/// request's view error. The server calls this at the start of each dispatch.
+pub fn clear_view_debug_context() {
+    set_view_debug_context(None);
+}
+
 // Global views directory for initialization
 static VIEWS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 

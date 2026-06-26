@@ -4113,6 +4113,12 @@ fn call_handler(
     let action_name = handler_name.rsplit('#').next().unwrap_or(handler_name);
     crate::interpreter::builtins::set_current_action(action_name);
 
+    // Reset any view debug context left over from a prior request on this
+    // reused worker thread. `render()` keeps the context set on error (so the
+    // failing locals reach the dev error page), so a controller-only error in
+    // this request must not inherit a previous request's stale `_view_data`.
+    crate::interpreter::builtins::template::clear_view_debug_context();
+
     // Expose req["all"] as global `params` so handlers/views can reference it directly.
     // Default to an empty hash (not Null) so callers can safely index into it.
     let params_value = get_hash_field(&request_hash, "all")

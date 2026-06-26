@@ -58,6 +58,10 @@
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        View locals from <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render()</code> on template errors
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                         Request details (params, body, headers)
                     </li>
                     <li class="flex items-center gap-2">
@@ -108,6 +112,33 @@
                     <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve --no-dev</code>
                 </div>
             </div>
+        </div>
+
+        <!-- Inspecting variables in the REPL -->
+        <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
+            <h3 class="font-semibold text-white mb-3">Inspecting variables in the REPL</h3>
+            <p class="text-gray-400 text-sm mb-4">
+                The REPL evaluates expressions against a snapshot of the environment captured the moment the request failed. The controller and request state is always present — <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">this</code> (including any <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">@ivars</code> you set), <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">params</code>, <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">req</code>, and <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">cookies</code>. When the error happened <em>while a template was rendering</em>, the data you passed to <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> is captured too: each key as a top-level name, and the whole hash as <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data</code>.
+            </p>
+            <pre class="text-xs text-gray-300 bg-gray-900 p-4 rounded overflow-x-auto"><code>def show
+  @page_owner = "Olivier"
+  render("posts/show", {
+    "title": "Hello",
+    "posts": Post.all()
+  })
+end
+
+# Then, in the error-page REPL:
+title                     # =&gt; "Hello"
+posts.map(fn(p) p.title)  # locals are real values — run expressions, not just reads
+_view_data.title          # same data, under the _view_data object
+this.page_owner           # controller instance vars</code></pre>
+            <p class="text-gray-500 text-xs mt-3">
+                When a view errored, the page also shows a <strong class="text-white">View Locals</strong> panel with a one-click button per <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> local (plus an <em>All locals</em> button for <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data</code>), so you don't have to remember the names.
+            </p>
+            <p class="text-gray-500 text-xs mt-2">
+                A name passed to <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> that collides with a controller-scope variable is shadowed by the controller value at the top level — reach the view's copy under <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data.&lt;key&gt;</code> (the View Locals buttons do this for you). Variables created <em>inside</em> the template (a <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">&lt;% total = ... %&gt;</code> assignment, a loop variable) are not part of the snapshot; only the locals you passed into <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> are.
+            </p>
         </div>
 
         <!-- stderr logging block -->

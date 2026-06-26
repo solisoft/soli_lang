@@ -181,57 +181,9 @@ impl Interpreter {
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
-        // Check for view context (data passed to render())
-        // Only add view context variables if they don't already exist in the environment
-        if let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context() {
-            // Collect existing variable names to avoid duplicates
-            let existing_names: std::collections::HashSet<String> = json_parts
-                .iter()
-                .filter_map(|part| {
-                    // Extract key name from "\"key\": value" format
-                    if part.starts_with('"') {
-                        part.split(':').next().and_then(|k| {
-                            let k = k.trim().trim_matches('"');
-                            if !k.is_empty() {
-                                Some(k.to_string())
-                            } else {
-                                None
-                            }
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // Add view data as a special "_view_data" variable (always add this)
-            if !existing_names.contains("_view_data") {
-                let view_json = self.value_to_json(&view_data);
-                json_parts.push(format!(r#""_view_data": {}"#, view_json));
-            }
-
-            // Also extract individual keys from the view data hash for easy access
-            // But ONLY if they don't already exist in the environment
-            if let Value::Hash(hash) = &view_data {
-                for (key, value) in hash.borrow().iter() {
-                    if let HashKey::String(key_str) = key {
-                        // Skip if this key already exists in the environment
-                        if existing_names.contains(&**key_str) {
-                            continue;
-                        }
-                        // Skip functions and classes
-                        match value {
-                            Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => {
-                                continue
-                            }
-                            _ => {}
-                        }
-                        let value_json = self.value_to_json(value);
-                        json_parts.push(format!(r#""{}": {}"#, key_str, value_json));
-                    }
-                }
-            }
-        }
+        // Fold in the active view (`render()`) locals so the dev error page can
+        // surface the data passed to a template that errored mid-render.
+        self.append_view_debug_context(&mut json_parts);
 
         format!("{{{}}}", json_parts.join(", "))
     }
@@ -261,7 +213,75 @@ impl Interpreter {
             json_parts.push(format!(r#""{}": {}"#, name, json_value));
         }
 
+        // A view error is captured here (the failing controller frame unwinds
+        // through `serialize_environment`, not `serialize_environment_for_debug`),
+        // so the render locals must be folded in on this path too — otherwise the
+        // dev error page shows only the controller env and the `render()` data is
+        // lost. The throwaway template interpreter that held those locals is gone
+        // by now; the view debug context is the only surviving copy.
+        self.append_view_debug_context(&mut json_parts);
+
         format!("{{{}}}", json_parts.join(", "))
+    }
+
+    /// Append the active view (`render()`) data to a list of serialized
+    /// `"key": value` JSON fragments, when a template error left a view debug
+    /// context set. The render locals appear both as a `_view_data` object and
+    /// as individually hoisted top-level keys, skipping any name already present
+    /// in `json_parts` (the real environment wins on a collision; the view value
+    /// remains reachable under `_view_data`). Shared by both serializers so the
+    /// locals survive whichever path captured the environment.
+    fn append_view_debug_context(&self, json_parts: &mut Vec<String>) {
+        let Some(view_data) = crate::interpreter::builtins::template::get_view_debug_context()
+        else {
+            return;
+        };
+
+        // Collect existing variable names to avoid duplicates
+        let existing_names: std::collections::HashSet<String> = json_parts
+            .iter()
+            .filter_map(|part| {
+                // Extract key name from "\"key\": value" format
+                if part.starts_with('"') {
+                    part.split(':').next().and_then(|k| {
+                        let k = k.trim().trim_matches('"');
+                        if !k.is_empty() {
+                            Some(k.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Add view data as a special "_view_data" variable (always add this)
+        if !existing_names.contains("_view_data") {
+            let view_json = self.value_to_json(&view_data);
+            json_parts.push(format!(r#""_view_data": {}"#, view_json));
+        }
+
+        // Also extract individual keys from the view data hash for easy access
+        // But ONLY if they don't already exist in the environment
+        if let Value::Hash(hash) = &view_data {
+            for (key, value) in hash.borrow().iter() {
+                if let HashKey::String(key_str) = key {
+                    // Skip if this key already exists in the environment
+                    if existing_names.contains(&**key_str) {
+                        continue;
+                    }
+                    // Skip functions and classes
+                    match value {
+                        Value::Function(_) | Value::NativeFunction(_) | Value::Class(_) => continue,
+                        _ => {}
+                    }
+                    let value_json = self.value_to_json(value);
+                    json_parts.push(format!(r#""{}": {}"#, key_str, value_json));
+                }
+            }
+        }
     }
 
     /// Convert a Value to a JSON string representation.

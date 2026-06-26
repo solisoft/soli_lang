@@ -25,6 +25,38 @@ The server refuses to start with `--dev + ALLOW_REMOTE` unless `SOLI_DEV_REPL_SE
 
 In loopback-only mode no extra setup is needed; the auto-generated token is embedded in the error page and the REPL works as expected. Only use remote-allowed mode on trusted local networks.
 
+#### Inspecting variables in the REPL
+
+The REPL evaluates expressions against a snapshot of the environment captured at the moment the request failed. What's available depends on where the error was raised:
+
+- **Controller / request state** — always present: `this` (the controller instance, including any `@ivars` you set), `params`, `req`, `cookies`, and the locals of the failing function.
+- **View locals** — when the error happened *while a template was rendering*, the data you passed to `render(...)` is captured too. Each key is exposed as a top-level name, and the whole hash is also available as `_view_data`.
+
+For example, an action that assigns an instance var and renders a view that throws:
+
+```soli
+def show
+  @page_owner = "Olivier"
+  render("posts/show", {
+    "title": "Hello",
+    "posts": Post.all()
+  })
+end
+```
+
+lets you inspect any of these in the error-page REPL — you can run expressions, not just read values:
+
+```soli
+title                     # => "Hello"
+posts.map(fn(p) p.title)  # the locals are real values, not just text
+_view_data.title          # same data, under the _view_data object
+this.page_owner           # controller instance vars
+```
+
+When a view errored, the page also shows a **View Locals** panel with a one-click button per `render(...)` local (plus an *All locals* button for `_view_data`), so you don't have to remember the names.
+
+A name passed to `render(...)` that collides with a controller-scope variable is shadowed by the controller value at the top level — reach the view's copy under `_view_data.<key>` (the View Locals buttons do this for you). Variables *created inside the template* (a `<% total = ... %>` assignment, a `for` loop variable) are not part of the snapshot; only the locals you passed into `render(...)` are.
+
 ### Production Mode (`--no-dev`)
 
 In production mode, error pages keep the clean, branded look and **never leak failure details to the visitor**. The page shows only generic copy and an opaque error ID — the full failure context (error message, stack, request snapshot, environment) is written to stderr instead (see below), where an operator can correlate it by error ID without exposing internals to end users:
