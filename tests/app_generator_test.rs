@@ -133,7 +133,7 @@ fn create_css_file_writes_styles() {
 fn create_env_gitignore_claude_helpers_middleware() {
     let tmp = fresh();
     setup_app(tmp.path());
-    create_env_file(tmp.path()).expect("env ok");
+    create_env_file(tmp.path(), "test_app").expect("env ok");
     create_gitignore(tmp.path()).expect("gitignore ok");
     create_claude_md(tmp.path()).expect("claude md ok");
     create_application_helper(tmp.path()).expect("helper ok");

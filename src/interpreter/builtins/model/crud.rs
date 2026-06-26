@@ -569,7 +569,81 @@ fn is_collection_not_found_error(error: &str) -> bool {
             || error_lower.contains("unknown collection"))
 }
 
+fn is_database_not_found_error(error: &str) -> bool {
+    let error_lower = error.to_lowercase();
+    error_lower.contains("database")
+        && (error_lower.contains("not found")
+            || error_lower.contains("not exist")
+            || error_lower.contains("does not exist")
+            || error_lower.contains("unknown database"))
+}
+
+/// True when an operation failed because the target collection *or* its parent
+/// database does not exist yet. Both are auto-created on first use, so the
+/// document/query call sites retry through `create_collection_sync` (which now
+/// also creates the database) on either condition.
+fn is_missing_collection_or_database_error(error: &str) -> bool {
+    is_collection_not_found_error(error) || is_database_not_found_error(error)
+}
+
+/// Create the configured database. Mirrors `create_collection_sync`: a 409
+/// (already exists) is treated as success so concurrent first-callers race
+/// cleanly, and the database is created on first use the same way collections
+/// are created on demand.
+fn create_database_sync(name: &str) -> Result<(), String> {
+    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+    // SEC-027: preserve the operator-set scheme (or pick https for
+    // remote, http for loopback) instead of forcing http://.
+    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    // Note: `/_api/databases` (plural) is GET-only (list); creation is a POST
+    // to the singular `/_api/database`.
+    let url = format!("{}{}/_api/database", scheme, host);
+
+    let body = serde_json::json!({ "name": name }).to_string();
+
+    let client = get_http_client().clone();
+
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            // 409 = database already exists — exactly the state we want.
+            if status == reqwest::StatusCode::CONFLICT {
+                return Ok(());
+            }
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
+            return Err(format!("Create database failed: {} - {}", status, body));
+        }
+
+        Ok(())
+    })
+}
+
+/// Create a collection, auto-creating the parent database first if it does not
+/// exist yet. The collection endpoint returns 404 (or a database-not-found
+/// message) when the database path is missing; in that case we create the
+/// database and retry the collection creation once.
 fn create_collection_sync(name: &str) -> Result<(), String> {
+    match try_create_collection_once(name) {
+        Err(e) if is_database_not_found_error(&e) => {
+            create_database_sync(&get_database_name())?;
+            try_create_collection_once(name)
+        }
+        other => other,
+    }
+}
+
+fn try_create_collection_once(name: &str) -> Result<(), String> {
     let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     // SEC-027: preserve the operator-set scheme (or pick https for
     // remote, http for loopback) instead of forcing http://.
@@ -603,6 +677,12 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
                 .await
                 .unwrap_or_default();
+            // A 404 on the collection endpoint means the parent database path
+            // is missing. Surface it as a database-not-found so the caller
+            // creates the database first and retries.
+            if status == reqwest::StatusCode::NOT_FOUND || is_database_not_found_error(&body) {
+                return Err(format!("Database not found: {} - {}", status, body));
+            }
             return Err(format!("Create collection failed: {} - {}", status, body));
         }
 
@@ -626,10 +706,10 @@ pub fn exec_with_auto_collection(
     let result = exec_async_query_with_binds(sdbql.clone(), bind_vars.clone());
 
     if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
+        if is_missing_collection_or_database_error(e) {
             if let Err(create_err) = create_collection_sync(collection_name) {
                 return Err(format!(
-                    "Collection '{}' not found, and failed to create it: {}",
+                    "Collection '{}' (or its database) not found, and failed to create it: {}",
                     collection_name, create_err
                 ));
             }
@@ -768,7 +848,7 @@ pub fn exec_insert(
     let result = exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
+        if is_missing_collection_or_database_error(e) {
             create_collection_sync(collection)?;
             return exec_document_request(reqwest::Method::POST, url, Some(document));
         }
@@ -782,7 +862,7 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
 
     if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
+        if is_missing_collection_or_database_error(e) {
             create_collection_sync(collection)?;
             return exec_document_request(reqwest::Method::GET, url, None);
         }
@@ -801,7 +881,7 @@ pub fn exec_update(
     let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
+        if is_missing_collection_or_database_error(e) {
             create_collection_sync(collection)?;
             return exec_document_request(reqwest::Method::PUT, url, Some(document));
         }
@@ -885,7 +965,7 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
     let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 
     if let Err(ref e) = result {
-        if is_collection_not_found_error(e) {
+        if is_missing_collection_or_database_error(e) {
             create_collection_sync(collection)?;
             return exec_document_request(reqwest::Method::DELETE, url, None);
         }

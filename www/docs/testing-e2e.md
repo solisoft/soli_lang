@@ -428,33 +428,34 @@ assert_eq(user["name"], "John Doe");
 
 ### View Information
 
-**view_path()** returns the path of the rendered template:
+**view_path()** returns the path of the rendered template, with the
+conventional `.html` extension (it matches the name you passed to `render()`):
 
 ```soli
 path = view_path();
 assert_eq(path, "users/show.html");
 ```
 
-**render_template()** indicates whether a template was rendered:
+For a response that rendered no template — a `redirect(...)`, a `render_json(...)`,
+or a non-2xx halt — `view_path()` returns `""`.
+
+**render_template()** reports whether the response rendered a view template.
+`render_template?()` is an alias (the predicate spelling):
 
 ```soli
-if (render_template())
-  content = assigns()
-  # Inspect rendered content
-end
+response = get("/users/1");
+assert(render_template());        # a view was rendered
+
+response = get("/users/1/delete"); # this action redirects
+assert_not(render_template());
 ```
 
-### Flash Messages
-
-Flash message helpers access temporary session data used for one-time notifications:
-
-```soli
-flash_data = flash();
-assert_hash_has_key(flash_data, "notice");
-
-notice = flash("notice");
-assert_eq(notice, "Operation successful");
-```
+> **Large locals.** The view locals are shipped from the test server to the
+> test process as a response header. When they are very large (≈48 KB+ of
+> serialized JSON — e.g. a big collection), `assigns()` degrades to a
+> keys-only view: every top-level key is still present (so `assert_hash_has_key`
+> keeps working) but its value is `null`. Assert on the keys, or render a
+> smaller slice, in that case.
 
 ## Complete Examples
 
@@ -691,13 +692,13 @@ describe("View Rendering", fn()
     assert_eq(user_assign["name"], "John Doe")
   end)
 
-  test("flash messages are available", fn()
-    post("/users/1/comments", {"body": "Test comment"})
-    
-    response = get("/users/1")
-    flash_data = flash()
-    assert_hash_has_key(flash_data, "notice")
-    assert_eq(flash("notice"), "Comment posted successfully")
+  test("a redirect renders no template", fn()
+    # create redirects on success, so no view is rendered.
+    response = post("/users", {"name": "New User"})
+
+    assert(res_redirect?(response))
+    assert_not(render_template())
+    assert_eq(view_path(), "")
   end)
 end)
 ```

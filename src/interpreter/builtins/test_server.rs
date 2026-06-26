@@ -16,6 +16,20 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 static TEST_SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 static TEST_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 
+/// A render captured server-side during an e2e test request, shipped back to
+/// the test-runner process as response headers. The test client turns these
+/// into the `assigns()` / `view_path()` / `render_template()` helpers.
+#[derive(Clone)]
+pub struct CapturedRender {
+    /// The (normalized) template name passed to `render()`, e.g. `posts/index`.
+    pub view_path: String,
+    /// The view locals serialized to JSON.
+    pub assigns_json: String,
+    /// True when the locals were too large to ship in full and only the
+    /// top-level keys (with null values) were serialized.
+    pub partial: bool,
+}
+
 thread_local! {
     /// Per-thread test-server port override. Takes precedence over the
     /// global `TEST_SERVER_PORT` atomic. Set by the parallel test runner
@@ -27,6 +41,11 @@ thread_local! {
     static LAST_ASSIGNS: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
     static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
     static CURRENT_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
+
+    /// The most recent render() captured during the current request (server
+    /// side, test-runner only). Reset at request start, taken at response
+    /// finalization to emit the `x-soli-test-*` headers.
+    static CAPTURED_RENDER: RefCell<Option<CapturedRender>> = const { RefCell::new(None) };
 }
 
 /// Install a per-thread test-server port. `get_test_server_port()` on this
@@ -196,6 +215,32 @@ pub fn set_last_view_path(path: String) {
 /// Get the last view path.
 pub fn get_last_view_path() -> Option<String> {
     LAST_VIEW_PATH.with(|cell| cell.borrow().clone())
+}
+
+/// Record the view path + locals JSON rendered during this request
+/// (test-runner only). The last render in a request wins, matching how a
+/// controller's final `render()` determines the response body.
+pub fn set_captured_render(view_path: String, assigns_json: String, partial: bool) {
+    CAPTURED_RENDER.with(|cell| {
+        *cell.borrow_mut() = Some(CapturedRender {
+            view_path,
+            assigns_json,
+            partial,
+        });
+    });
+}
+
+/// Take (read and clear) the render captured for this request.
+pub fn take_captured_render() -> Option<CapturedRender> {
+    CAPTURED_RENDER.with(|cell| cell.borrow_mut().take())
+}
+
+/// Clear any captured render. Called at request start so a render from a
+/// prior request on the same pooled worker thread never leaks into the next.
+pub fn clear_captured_render() {
+    CAPTURED_RENDER.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
 }
 
 /// Set the current user from session.

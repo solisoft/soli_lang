@@ -172,19 +172,9 @@ pub fn register_response_helpers(env: &mut Environment) {
         })),
     );
 
-    env.define(
-        "render_template?".to_string(),
-        Value::NativeFunction(NativeFunction::new("render_template?", Some(0), |_args| {
-            Ok(Value::Bool(false))
-        })),
-    );
-
-    env.define(
-        "view_path".to_string(),
-        Value::NativeFunction(NativeFunction::new("view_path", Some(0), |_args| {
-            Ok(Value::String(String::new().into()))
-        })),
-    );
+    // NOTE: `view_path` / `render_template` / `render_template?` live in
+    // `assigns_helpers` (real implementations backed by the captured render);
+    // they used to be no-op stubs here.
 }
 
 fn extract_status(response: &Value) -> Result<Value, String> {

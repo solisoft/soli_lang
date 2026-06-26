@@ -10,7 +10,7 @@ Create model files in `app/models/`. The collection name is **automatically deri
 - `BlogPost` → `"blog_posts"`
 - `UserProfile` → `"user_profiles"`
 
-**Automatic Collection Creation**: When you call a Model method (like `create()`, `all()`, `find()`, etc.) on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
+**Automatic Collection Creation**: When you call a Model method (like `create()`, `all()`, `find()`, etc.) on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. If the configured **database** doesn't exist yet either, it is created on that same first call before the collection. This means you can start using your models immediately without running migrations first.
 
 - `User` → `"users"`
 - `BlogPost` → `"blog_posts"`
@@ -56,7 +56,7 @@ If you run a model, service, or controller file directly with `soli run path/to/
 
 ## CRUD Operations
 
-> **Auto-creation**: All Model operations automatically create the collection if it doesn't exist. This only happens on the first call that encounters a missing collection.
+> **Auto-creation**: All Model operations automatically create the collection — and the database itself, if it's missing too — when it doesn't exist. This only happens on the first call that encounters a missing collection or database.
 
 ### Creating Records
 

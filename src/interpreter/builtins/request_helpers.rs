@@ -320,10 +320,38 @@ fn http_request(
         }
     }
 
+    // E2E render introspection: the test server ships the rendered view path
+    // and locals (base64-encoded JSON) back as `x-soli-test-*` headers. Decode
+    // them into the assigns()/view_path()/render_template() thread-locals and
+    // strip them so they never surface in res_headers(). Absent headers
+    // (redirect / JSON response) leave view_path = None, so render_template()
+    // reports false for this request.
+    let mut test_view_path: Option<String> = None;
+    let mut test_assigns_json: Option<String> = None;
+
     let mut header_pairs: HashPairs = HashPairs::default();
     for (name, value) in response_headers {
+        if name.eq_ignore_ascii_case("x-soli-test-view-path") {
+            test_view_path = Some(value);
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-soli-test-assigns") {
+            test_assigns_json = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                value.as_bytes(),
+            )
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+            continue;
+        }
+        if name.eq_ignore_ascii_case("x-soli-test-assigns-partial") {
+            // Internal marker (locals were too large to ship in full); not
+            // surfaced to user tests. Strip it.
+            continue;
+        }
         header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
     }
+    super::assigns_helpers::set_last_render(test_view_path, test_assigns_json);
 
     let mut response_hash: HashPairs = HashPairs::default();
     response_hash.insert(HashKey::String("status".into()), Value::Int(status as i64));

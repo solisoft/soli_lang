@@ -748,6 +748,23 @@ text   = File.read("notes.txt")            # UTF-8
 legacy = File.read("clients.csv", "latin1") # Latin-1 -> UTF-8
 ```
 
+#### Trusted.* — unjailed file access
+
+`Trusted` mirrors the entire `File` API (`Trusted.read`, `Trusted.write`,
+`Trusted.append`, `Trusted.exists`, `Trusted.is_dir`, `Trusted.glob`, …) but
+**skips the filesystem jail and the `O_NOFOLLOW` symlink guard**. Reach for it
+only from server-side code that legitimately must step outside `<dir>` or follow
+a symlink — log shippers, backup scripts, cron-style maintenance jobs — and
+never with a path derived from request input. Because the class name is explicit
+at the call site, reviewers and `grep` can find every unjailed access, and the
+`smell/dangerous-server-builtin` lint flags `Trusted.*` calls made from
+`app/controllers/`, `app/middleware/`, or `app/views/`.
+
+```soli
+log = Trusted.read("/var/log/app/today.log")    # absolute path, outside the jail
+Trusted.append("/var/log/app/audit.log", line)  # follows a symlinked logfile
+```
+
 ---
 
 ### Math Functions
@@ -3887,7 +3904,7 @@ user = Cache.fetch("user:123")
 
 ## KV Class
 
-Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, and hashes with Redis-compatible commands via REST API. Unlike Cache, KV operates on raw keys without any prefix.
+Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, hashes, sorted sets, bitmaps, and HyperLogLog with Redis-compatible commands. Unlike Cache, KV operates on raw keys without any prefix.
 
 **Configuration:** Same as Cache — `SOLIKV_RESP_HOST`, `SOLIKV_RESP_PORT`, `SOLIKV_TOKEN`, or `KV.configure(host, token?)`.
 
@@ -3901,16 +3918,32 @@ Full-featured key-value store backed by SoliKV. Supports strings, counters, list
 - **KV.type(key)** — Get the type of a key. Returns String.
 - **KV.rename(key, newkey)** — Rename a key.
 
+### Strings
+
+- **KV.setnx(key, value)** — Set only if the key does not exist. Returns Bool (true if set).
+- **KV.getset(key, value)** — Set a new value and return the previous one (or nil).
+- **KV.getdel(key)** — Get a value and delete the key in one step. Returns the value or nil.
+- **KV.append(key, value)** — Append to a string value. Returns the new length.
+- **KV.strlen(key)** — Length of the string value. Returns Int.
+- **KV.mget(...keys)** — Get many values at once. Returns an Array (nil for missing keys).
+- **KV.mset(key, value, ...)** — Set many key/value pairs atomically. Returns nil.
+
 ### TTL Operations
 
 - **KV.ttl(key)** — Remaining TTL in seconds, or null.
 - **KV.expire(key, seconds)** — Set TTL on existing key. Returns Bool.
+- **KV.pexpire(key, milliseconds)** — Set TTL in milliseconds. Returns Bool.
+- **KV.expireat(key, unix_timestamp)** — Expire at an absolute Unix time (seconds). Returns Bool.
+- **KV.pttl(key)** — Remaining TTL in milliseconds, or null.
 - **KV.persist(key)** — Remove TTL. Returns Bool.
+- **KV.touch(...keys)** — Update last-access time. Returns the number of keys that existed.
+- **KV.unlink(...keys)** — Delete keys without blocking. Returns the number removed.
 
 ### Counters
 
 - **KV.incr(key)** / **KV.decr(key)** — Increment/decrement by 1. Returns new value.
 - **KV.incrby(key, amount)** / **KV.decrby(key, amount)** — Increment/decrement by amount. Returns new value.
+- **KV.incrbyfloat(key, amount)** — Increment by a floating-point amount. Returns the new value as Float.
 
 ### Lists
 
@@ -3918,23 +3951,98 @@ Full-featured key-value store backed by SoliKV. Supports strings, counters, list
 - **KV.lpop(key)** / **KV.rpop(key)** — Pop from head/tail.
 - **KV.lrange(key, start, stop)** — Get range of elements (use `0, -1` for all).
 - **KV.llen(key)** — List length.
+- **KV.lindex(key, index)** — Element at index (negative counts from the tail). Returns the element or nil.
+- **KV.lset(key, index, value)** — Set the element at index. Returns nil.
+- **KV.lrem(key, count, value)** — Remove `count` occurrences of `value`. Returns the number removed.
+- **KV.ltrim(key, start, stop)** — Trim the list to the given range. Returns nil.
+- **KV.rpoplpush(source, dest)** — Pop from `source`'s tail and push to `dest`'s head. Returns the moved element or nil.
 
 ### Sets
 
 - **KV.sadd(key, ...members)** / **KV.srem(key, ...members)** — Add/remove set members.
 - **KV.smembers(key)** — All members.
 - **KV.sismember(key, member)** — Check membership. Returns Bool.
+- **KV.smismember(key, ...members)** — Check several members at once. Returns an Array of Bool.
 - **KV.scard(key)** — Set cardinality.
+- **KV.spop(key, count?)** — Remove and return a random member (or an Array if `count` is given).
+- **KV.srandmember(key, count?)** — Return a random member without removing it (or an Array if `count` is given).
+- **KV.sinter(...keys)** / **KV.sunion(...keys)** / **KV.sdiff(...keys)** — Intersection / union / difference of sets. Return an Array.
+- **KV.smove(source, dest, member)** — Move a member between sets. Returns Bool.
 
 ### Hashes
 
 - **KV.hset(key, field, value)** — Set hash field.
+- **KV.hsetnx(key, field, value)** — Set a field only if it doesn't exist. Returns Bool.
 - **KV.hget(key, field)** — Get hash field.
+- **KV.hmget(key, ...fields)** — Get several fields. Returns an Array (nil for missing fields).
 - **KV.hgetall(key)** — Get all fields as a Hash.
+- **KV.hvals(key)** — All field values. Returns an Array.
 - **KV.hdel(key, ...fields)** — Delete fields.
 - **KV.hexists(key, field)** — Check field existence. Returns Bool.
 - **KV.hkeys(key)** — All field names.
 - **KV.hlen(key)** — Number of fields.
+- **KV.hincrby(key, field, amount)** — Increment a field by an integer amount. Returns the new value.
+- **KV.hincrbyfloat(key, field, amount)** — Increment a field by a floating-point amount. Returns the new value as Float.
+
+### Sorted Sets
+
+Sorted sets keep members ordered by an associated floating-point **score** — ideal for leaderboards, priority queues, and time-ordered feeds.
+
+- **KV.zadd(key, score, member, ...)** — Add one or more score/member pairs. Returns the number of new members.
+- **KV.zrem(key, ...members)** — Remove members. Returns the number removed.
+- **KV.zscore(key, member)** — Score of a member as Float (or nil).
+- **KV.zincrby(key, amount, member)** — Increment a member's score. Returns the new score as Float.
+- **KV.zrank(key, member)** / **KV.zrevrank(key, member)** — Rank (0-based) ascending / descending, or nil.
+- **KV.zcard(key)** — Number of members.
+- **KV.zcount(key, min, max)** — Number of members with score in `[min, max]`.
+- **KV.zrange(key, start, stop, with_scores?)** / **KV.zrevrange(key, start, stop, with_scores?)** — Members by rank, ascending / descending. Pass `true` for `with_scores` to interleave scores. Returns an Array.
+- **KV.zrangebyscore(key, min, max)** — Members with score in `[min, max]`. Returns an Array.
+
+```soli
+# A simple leaderboard
+KV.zadd("scores", 100, "alice", 80, "bob", 120, "carol")
+KV.zincrby("scores", 25, "bob")             # bob now 105
+KV.zrevrange("scores", 0, 2, true)          # top 3 with scores
+KV.zrank("scores", "carol")                 # ascending rank
+```
+
+### Bitmaps
+
+- **KV.setbit(key, offset, value)** — Set the bit at `offset` to 0 or 1. Returns the previous bit.
+- **KV.getbit(key, offset)** — Get the bit at `offset`. Returns 0 or 1.
+- **KV.bitcount(key)** — Number of set bits. Returns Int.
+
+### HyperLogLog
+
+A HyperLogLog estimates the number of *distinct* items in a stream (its
+**cardinality**) using a fixed ~12 KB sketch — no matter whether you add a hundred
+items or a hundred million. It trades a small, bounded error (~0.81% standard error)
+for memory that stays constant. Reach for it to count unique visitors, IP addresses,
+search terms, or events at scale, where an exact `Set` would grow without bound.
+
+- **KV.pfadd(key, ...elements)** — Add one or more elements to the HLL at `key`
+  (created on first use). Returns `1` if the estimate likely changed, else `0`.
+- **KV.pfcount(key, ...keys)** — Estimated cardinality. Pass several keys to get the
+  cardinality of their **union** without modifying any of them.
+- **KV.pfmerge(destkey, ...sourcekeys)** — Merge the source HLLs into `destkey`
+  (the union). Returns nil.
+
+```soli
+# Count unique visitors for the day without storing every id
+KV.pfadd("visitors:2026-06-24", "alice", "bob", "alice")
+KV.pfadd("visitors:2026-06-24", "carol")
+KV.pfcount("visitors:2026-06-24")            # => ~3 (an estimate, not exact)
+
+# Union several days into a rolling total
+KV.pfmerge("visitors:week", "visitors:2026-06-23", "visitors:2026-06-24")
+KV.pfcount("visitors:week")                  # => ~unique across both days
+
+# Or estimate the union on the fly, without writing a merged key
+KV.pfcount("visitors:2026-06-23", "visitors:2026-06-24")
+```
+
+> The count is a probabilistic **estimate** (~0.81% standard error), not an exact
+> figure — use it when "roughly how many uniques" is good enough and memory matters.
 
 ### Server
 

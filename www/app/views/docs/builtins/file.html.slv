@@ -216,6 +216,20 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
         </div>
     </section>
 
+    <!-- Trusted (unjailed) class -->
+    <section id="section-trusted-class" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5">
+            <a href="#section-trusted-class" class="group flex items-center gap-2 mb-2">
+                <code class="text-lg font-mono text-amber-300">Trusted.* &mdash; unjailed file access</code>
+            </a>
+            <p class="text-gray-300 mb-3 text-sm">
+                <code class="text-amber-400">Trusted</code> mirrors the entire <code class="text-amber-400">File</code> API (<code class="text-amber-400">Trusted.read</code>, <code class="text-amber-400">Trusted.write</code>, <code class="text-amber-400">Trusted.append</code>, <code class="text-amber-400">Trusted.exists</code>, <code class="text-amber-400">Trusted.is_dir</code>, <code class="text-amber-400">Trusted.glob</code>, &hellip;) but <strong>skips the filesystem jail and the <code class="text-amber-400">O_NOFOLLOW</code> symlink guard</strong>. Reach for it only from server-side code that legitimately must step outside <code class="text-amber-400">&lt;dir&gt;</code> or follow a symlink &mdash; log shippers, backup scripts, cron-style maintenance jobs &mdash; and never with a path derived from request input. Calls to <code class="text-amber-400">Trusted.*</code> from <code class="text-amber-400">app/controllers/</code>, <code class="text-amber-400">app/middleware/</code>, or <code class="text-amber-400">app/views/</code> are flagged by the <code class="text-amber-400">smell/dangerous-server-builtin</code> lint.
+            </p>
+            <pre data-filename="Example"><code class="language-soli text-sm">log = Trusted.read("/var/log/app/today.log")    # absolute path, outside the jail
+Trusted.append("/var/log/app/audit.log", line)  # follows a symlinked logfile</code></pre>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">

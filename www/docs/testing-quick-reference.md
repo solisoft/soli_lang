@@ -69,12 +69,11 @@ Quick lookup for E2E controller testing helpers.
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `assigns()` | All assigns | `{...}` |
-| `assign(key)` | Specific assign | value or `null` |
-| `view_path()` | Template path | `"users/show.html"` |
-| `render_template()` | Template rendered? | `true/false` |
-| `flash()` | Flash messages | `{...}` |
-| `flash(key)` | Flash message | value or `null` |
+| `assigns()` | All view locals (`{}` if none / not rendered) | `{...}` |
+| `assign(key)` | One view local | value or `null` |
+| `view_path()` | Rendered template path (`""` if none) | `"users/show.html"` |
+| `render_template()` | Did the response render a template? | `true/false` |
+| `render_template?()` | Alias of `render_template()` | `true/false` |
 
 ## Complete Example
 

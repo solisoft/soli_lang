@@ -120,9 +120,40 @@ pub fn create_client_js(app_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Create the .env file
-pub fn create_env_file(app_path: &Path) -> Result<(), String> {
-    write_file(&app_path.join(".env"), app::ENV_TEMPLATE)
+/// Turn an app name into a SoliDB-safe database identifier: lowercase, with
+/// every run of non-alphanumeric characters collapsed to a single `_` and
+/// leading/trailing separators trimmed. Falls back to `default` if the result
+/// would be empty (e.g. a name made entirely of punctuation).
+pub fn slugify_db_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut prev_sep = true; // suppress leading separators
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_sep = false;
+        } else if !prev_sep {
+            out.push('_');
+            prev_sep = true;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "default".to_string()
+    } else {
+        out
+    }
+}
+
+/// Create the .env file, seeding `SOLIDB_DATABASE` with the slugified app name
+/// instead of the generic `default` so each new project gets its own database.
+pub fn create_env_file(app_path: &Path, name: &str) -> Result<(), String> {
+    let content = app::ENV_TEMPLATE.replace(
+        "SOLIDB_DATABASE=default",
+        &format!("SOLIDB_DATABASE={}", slugify_db_name(name)),
+    );
+    write_file(&app_path.join(".env"), &content)
 }
 
 /// Create the .gitignore file
@@ -604,7 +635,7 @@ pub fn create_app(name: &str, template: Option<&str>) -> Result<(), String> {
     create_routes_file(app_path)?;
     create_seeds_file(app_path)?;
     create_application_config(app_path)?;
-    create_env_file(app_path)?;
+    create_env_file(app_path, name)?;
     create_gitignore(app_path)?;
     create_claude_md(app_path)?;
     create_agents_md(app_path)?;
@@ -751,5 +782,36 @@ mod tests {
         // strip it silently — predictable failure beats silent rewrite.
         let err = validate_template_entry_path(Path::new("./foo")).unwrap_err();
         assert!(err.contains("unsafe path"), "{}", err);
+    }
+
+    #[test]
+    fn slugify_db_name_normalizes() {
+        assert_eq!(slugify_db_name("blog"), "blog");
+        assert_eq!(slugify_db_name("My App"), "my_app");
+        assert_eq!(slugify_db_name("my-cool-app"), "my_cool_app");
+        assert_eq!(slugify_db_name("Foo.Bar/Baz"), "foo_bar_baz");
+        assert_eq!(slugify_db_name("  spaced  out  "), "spaced_out");
+        assert_eq!(slugify_db_name("__weird--name__"), "weird_name");
+    }
+
+    #[test]
+    fn slugify_db_name_falls_back_to_default() {
+        assert_eq!(slugify_db_name(""), "default");
+        assert_eq!(slugify_db_name("---"), "default");
+    }
+
+    #[test]
+    fn env_file_uses_slugified_app_name() {
+        let dir = std::env::temp_dir().join(format!("soli_env_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        create_env_file(&dir, "My Cool App").unwrap();
+        let content = std::fs::read_to_string(dir.join(".env")).unwrap();
+        assert!(
+            content.contains("SOLIDB_DATABASE=my_cool_app"),
+            "expected slugified db name, got:\n{}",
+            content
+        );
+        assert!(!content.contains("SOLIDB_DATABASE=default"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

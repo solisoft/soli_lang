@@ -311,23 +311,18 @@
                 </tr>
                 <tr class="hover:bg-white/5">
                     <td class="py-3 px-4"><code class="text-emerald-300">view_path()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Template path</td>
+                    <td class="py-3 px-4 text-gray-400">Rendered template path ("" if none)</td>
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">"users/show.html"</td>
                 </tr>
                 <tr class="hover:bg-white/5">
                     <td class="py-3 px-4"><code class="text-emerald-300">render_template()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Template rendered?</td>
+                    <td class="py-3 px-4 text-gray-400">Did the response render a template?</td>
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
                 </tr>
                 <tr class="hover:bg-white/5">
-                    <td class="py-3 px-4"><code class="text-emerald-300">flash()</code></td>
-                    <td class="py-3 px-4 text-gray-400">Flash messages</td>
-                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">{...}</td>
-                </tr>
-                <tr class="hover:bg-white/5">
-                    <td class="py-3 px-4"><code class="text-emerald-300">flash(key)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Flash message</td>
-                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">value or null</td>
+                    <td class="py-3 px-4"><code class="text-emerald-300">render_template?()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Alias of render_template()</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">true/false</td>
                 </tr>
             </tbody>
         </table>

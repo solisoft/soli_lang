@@ -1172,6 +1172,112 @@ fn validate_external_redirect_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Maximum size of the serialized locals shipped to the e2e test client via
+/// the `x-soli-test-assigns` response header. Beyond this we fall back to a
+/// keys-only payload so a single huge collection can't blow the header limit.
+const MAX_CAPTURED_ASSIGNS_BYTES: usize = 48 * 1024;
+
+/// Serialize render() locals to JSON for the e2e test client's `assigns()`
+/// helper. Returns `(json, partial)`. Each top-level value is serialized
+/// independently (a non-serializable value degrades to `null` rather than
+/// nuking the whole payload). When the full payload exceeds
+/// `MAX_CAPTURED_ASSIGNS_BYTES` it degrades to a keys-only object
+/// (`{"posts": null, ...}`) with `partial = true`, so `has_key`-style
+/// assertions still work on large collections.
+pub(crate) fn capture_assigns_json(data: &Value) -> (String, bool) {
+    let Value::Hash(hash) = data else {
+        return ("{}".to_string(), false);
+    };
+    let mut obj = serde_json::Map::new();
+    for (key, value) in hash.borrow().iter() {
+        if let HashKey::String(name) = key {
+            let json = value_to_json(value).unwrap_or(serde_json::Value::Null);
+            obj.insert(name.to_string(), json);
+        }
+    }
+    let full = serde_json::Value::Object(obj).to_string();
+    if full.len() <= MAX_CAPTURED_ASSIGNS_BYTES {
+        return (full, false);
+    }
+    let mut keys_only = serde_json::Map::new();
+    for (key, _) in hash.borrow().iter() {
+        if let HashKey::String(name) = key {
+            keys_only.insert(name.to_string(), serde_json::Value::Null);
+        }
+    }
+    (serde_json::Value::Object(keys_only).to_string(), true)
+}
+
+/// The view path reported to the e2e `view_path()` helper: the rendered
+/// template name with the conventional `.html` extension (the `.slv` source
+/// suffix and any layout are not part of it). Render names are extension-less
+/// by convention (`render("posts/index", ...)`), so we append `.html` to match
+/// the documented `view_path() == "posts/index.html"`. A name that already
+/// carries an extension is passed through unchanged.
+pub(crate) fn captured_view_path(template_name: &str) -> String {
+    let last_segment = template_name.rsplit('/').next().unwrap_or(template_name);
+    if last_segment.contains('.') {
+        template_name.to_string()
+    } else {
+        format!("{}.html", template_name)
+    }
+}
+
+#[cfg(test)]
+mod assigns_capture_tests {
+    use super::*;
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut hp = HashPairs::default();
+        for (key, value) in pairs {
+            hp.insert(HashKey::String(key.into()), value);
+        }
+        Value::Hash(Rc::new(RefCell::new(hp)))
+    }
+
+    #[test]
+    fn small_locals_serialize_in_full() {
+        let data = hash(vec![
+            ("title", Value::String("Hi".into())),
+            ("count", Value::Int(3)),
+        ]);
+        let (json, partial) = capture_assigns_json(&data);
+        assert!(!partial);
+        assert!(json.contains("\"title\":\"Hi\""), "json was {json}");
+        assert!(json.contains("\"count\":3"), "json was {json}");
+    }
+
+    #[test]
+    fn oversized_locals_degrade_to_keys_only() {
+        let big = "x".repeat(MAX_CAPTURED_ASSIGNS_BYTES + 10);
+        let data = hash(vec![
+            ("blob", Value::String(big.into())),
+            ("title", Value::String("Hi".into())),
+        ]);
+        let (json, partial) = capture_assigns_json(&data);
+        assert!(partial);
+        // Keys preserved, values nulled — so has_key assertions still work.
+        assert!(json.contains("\"blob\":null"), "json was {json}");
+        assert!(json.contains("\"title\":null"), "json was {json}");
+        assert!(json.len() < 1024);
+    }
+
+    #[test]
+    fn non_hash_locals_serialize_to_empty_object() {
+        let (json, partial) = capture_assigns_json(&Value::Int(5));
+        assert_eq!(json, "{}");
+        assert!(!partial);
+    }
+
+    #[test]
+    fn view_path_gets_html_extension() {
+        assert_eq!(captured_view_path("posts/index"), "posts/index.html");
+        assert_eq!(captured_view_path("dashboard"), "dashboard.html");
+        // Already-extensioned names pass through unchanged.
+        assert_eq!(captured_view_path("posts/feed.json"), "posts/feed.json");
+    }
+}
+
 /// Register template-related builtin functions.
 pub fn register_template_builtins(env: &mut Environment) {
     // render(template, data, options?) - Render a template with data
@@ -1212,6 +1318,18 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Resolve any futures in the data before rendering
             // This ensures async operations (HTTP requests, etc.) complete before template use
             let data = resolve_futures_in_value(data);
+
+            // Capture the pristine locals for the e2e test client *before* the
+            // req/helpers/instance-var injections below — those would pollute
+            // assigns() with framework internals (and unserializable native
+            // functions). Only when this process is a test-runner server;
+            // otherwise it's a single atomic load with zero further cost.
+            let captured_assigns: Option<(String, bool)> =
+                if crate::interpreter::builtins::test_server::is_test_runner_process() {
+                    Some(capture_assigns_json(&data))
+                } else {
+                    None
+                };
 
             // Get options (layout, status, etc.)
             let options = if args.len() > 2 {
@@ -1311,6 +1429,16 @@ pub fn register_template_builtins(env: &mut Environment) {
                     // Clear context on success
                     clear_current_request();
                     set_view_debug_context(None);
+                    // Ship the rendered view path + locals to the e2e test
+                    // client (test-runner only). Response finalization reads
+                    // this and emits the `x-soli-test-*` headers.
+                    if let Some((assigns_json, partial)) = captured_assigns {
+                        crate::interpreter::builtins::test_server::set_captured_render(
+                            captured_view_path(&template_name),
+                            assigns_json,
+                            partial,
+                        );
+                    }
                     Ok(html_response(rendered, status))
                 }
                 Err(e) => {

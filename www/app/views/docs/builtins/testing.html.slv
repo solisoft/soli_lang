@@ -558,6 +558,41 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                 </section>
             </div>
         </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">View Introspection (E2E)</h3>
+            <p class="text-gray-400 text-sm mb-4">After a <code>get</code>/<code>post</code>/… request that renders a view, these helpers inspect what was rendered. They report nothing for a redirect or a JSON response. See the <a href="/docs/core-concepts/testing" class="text-indigo-400 hover:text-indigo-300">testing guide</a> for the full E2E flow.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-assigns" class="scroll-mt-20">
+                    <a href="#def-assigns" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">assigns()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">All view locals as a hash (<code>{}</code> if none)</p>
+                </section>
+
+                <section id="def-assign" class="scroll-mt-20">
+                    <a href="#def-assign" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">assign(key)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">One view local, or <code>null</code></p>
+                </section>
+
+                <section id="def-view-path" class="scroll-mt-20">
+                    <a href="#def-view-path" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">view_path()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Rendered template path, e.g. <code>"posts/index.html"</code> (<code>""</code> if none)</p>
+                </section>
+
+                <section id="def-render-template" class="scroll-mt-20">
+                    <a href="#def-render-template" class="group flex items-center gap-2">
+                        <code class="font-mono text-indigo-400">render_template()</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Did the response render a view? (<code>render_template?()</code> is an alias)</p>
+                </section>
+            </div>
+            <p class="text-gray-500 text-xs mt-4">Very large locals (&approx;48&nbsp;KB+) degrade to a keys-only <code>assigns()</code>: keys present, values <code>null</code>.</p>
+        </div>
     </section>
 
     <!-- Navigation -->

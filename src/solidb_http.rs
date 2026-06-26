@@ -320,9 +320,11 @@ impl SoliDBClient {
     }
 
     pub fn create_database(&self, name: &str) -> Result<(), SoliDBError> {
+        // `/_api/databases` (plural) is GET-only (list); creation is a POST to
+        // the singular `/_api/database`.
         self.request(
             reqwest::Method::POST,
-            "/_api/databases",
+            "/_api/database",
             Some(&serde_json::json!({"name": name})),
         )?;
         Ok(())

@@ -12,8 +12,8 @@ class SessionsController < Controller
 
   # POST /login
   def create
-    email = (params["email"] ?? "").trim().downcase()
-    password = params["password"] ?? ""
+    email = params["email"].to_s.trim().downcase()
+    password = params["password"].to_s
     user = User.find_by("email", email)
     if !user.nil? && user.authenticate(password)
       # New session id after a successful login defeats session fixation.

@@ -23,3 +23,7 @@ get("/api/me", "api_test#me");
 post("/api/logout", "api_test#logout");
 get("/api/boom", "api_test#boom");
 get("/api/middleware_stamp", "api_test#echo_middleware_stamp");
+
+# Authenticated dashboard for the auth + view-introspection e2e spec.
+get("/auth_demo/dashboard", "auth_demo#dashboard");
+get("/auth_demo/auto", "auth_demo#auto");

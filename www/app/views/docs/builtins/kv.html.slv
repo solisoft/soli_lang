@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">KV</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, and hashes with Redis-compatible commands via a lightweight REST API. Shares the same connection as <a href="/docs/builtins/cache" class="text-emerald-400 hover:underline">Cache</a> but operates on raw keys with no prefix.
+            Full-featured key-value store backed by SoliKV. Supports strings, counters, lists, sets, hashes, sorted sets, bitmaps, and HyperLogLog with Redis-compatible commands. Shares the same connection as <a href="/docs/builtins/cache" class="text-emerald-400 hover:underline">Cache</a> but operates on raw keys with no prefix.
         </p>
     </div>
 
@@ -142,6 +142,59 @@ users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
         </section>
     </section>
 
+    <!-- Strings -->
+    <section id="section-strings" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </span>
+            Strings
+        </h2>
+
+        <section id="def-setnx" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-setnx" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.setnx(key, value)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Set a key only if it does not already exist. Returns <code class="text-purple-400">true</code> if it was set. Handy for locks and "first writer wins".</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">if KV.setnx("lock:job", "held")
+    run_job()
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="def-getset" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-getset" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.getset(key, value) / KV.getdel(key)</code>
+                </a>
+                <p class="text-gray-400">Atomically swap in a new value and return the old one, or read-and-delete in one step. Both return the previous value (or <code class="text-purple-400">nil</code>).</p>
+            </div>
+        </section>
+
+        <section id="def-append" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-append" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.append(key, value) / KV.strlen(key)</code>
+                </a>
+                <p class="text-gray-400">Append to a string value (returns the new length) or read the current length.</p>
+            </div>
+        </section>
+
+        <section id="def-mget" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-mget" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.mget(...keys) / KV.mset(key, value, ...)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Read or write many keys in a single round-trip. <code class="text-purple-400">mget</code> returns an array (nil for missing keys); <code class="text-purple-400">mset</code> takes alternating key/value pairs.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">KV.mset("a", "1", "b", "2")
+KV.mget("a", "b", "missing")   # => ["1", "2", nil]</code></pre>
+            </div>
+        </section>
+    </section>
+
     <!-- TTL -->
     <section id="section-ttl" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
@@ -180,6 +233,33 @@ users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
                 <p class="text-gray-400">Remove the TTL and make the key persistent. Returns <code class="text-purple-400">true</code> on success.</p>
             </div>
         </section>
+
+        <section id="def-pexpire" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-pexpire" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.pexpire(key, milliseconds) / KV.pttl(key)</code>
+                </a>
+                <p class="text-gray-400">Millisecond-precision versions of <code class="text-purple-400">expire</code> / <code class="text-purple-400">ttl</code>. <code class="text-purple-400">pttl</code> returns the remaining milliseconds, or <code class="text-purple-400">nil</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-expireat" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-expireat" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.expireat(key, unix_timestamp)</code>
+                </a>
+                <p class="text-gray-400">Expire a key at an absolute Unix time (seconds). Returns <code class="text-purple-400">Bool</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-touch" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-touch" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.touch(...keys) / KV.unlink(...keys)</code>
+                </a>
+                <p class="text-gray-400"><code class="text-purple-400">touch</code> bumps last-access time and returns how many keys existed; <code class="text-purple-400">unlink</code> deletes keys without blocking and returns the count removed.</p>
+            </div>
+        </section>
     </section>
 
     <!-- Counters -->
@@ -213,6 +293,15 @@ KV.decr("visits")     # => 1</code></pre>
                 <p class="text-gray-400 mb-3">Increment or decrement by a specified amount. Returns the new value.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.incrby("score", 10)   # => 10
 KV.decrby("score", 3)    # => 7</code></pre>
+            </div>
+        </section>
+
+        <section id="def-incrbyfloat" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-incrbyfloat" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.incrbyfloat(key, amount)</code>
+                </a>
+                <p class="text-gray-400">Increment by a floating-point amount. Returns the new value as a <code class="text-purple-400">Float</code>.</p>
             </div>
         </section>
     </section>
@@ -267,6 +356,34 @@ KV.lpush("queue", "urgent")</code></pre>
                 <p class="text-gray-400">Get the length of a list.</p>
             </div>
         </section>
+
+        <section id="def-lindex" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-lindex" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.lindex(key, index) / KV.lset(key, index, value)</code>
+                </a>
+                <p class="text-gray-400">Read or overwrite the element at <code class="text-purple-400">index</code> (negative counts from the tail). <code class="text-purple-400">lindex</code> returns the element or <code class="text-purple-400">nil</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-lrem" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-lrem" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.lrem(key, count, value) / KV.ltrim(key, start, stop)</code>
+                </a>
+                <p class="text-gray-400"><code class="text-purple-400">lrem</code> removes <code class="text-purple-400">count</code> occurrences of a value (returns how many were removed); <code class="text-purple-400">ltrim</code> keeps only the elements in the given range.</p>
+            </div>
+        </section>
+
+        <section id="def-rpoplpush" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-rpoplpush" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.rpoplpush(source, dest)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Atomically pop from the tail of <code class="text-purple-400">source</code> and push to the head of <code class="text-purple-400">dest</code> — the building block for reliable work queues. Returns the moved element or <code class="text-purple-400">nil</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">job = KV.rpoplpush("queue", "processing")</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Sets -->
@@ -318,6 +435,46 @@ end</code></pre>
                     <code class="text-lg font-mono text-indigo-400">KV.scard(key)</code>
                 </a>
                 <p class="text-gray-400">Get the number of members in a set.</p>
+            </div>
+        </section>
+
+        <section id="def-smismember" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-smismember" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.smismember(key, ...members)</code>
+                </a>
+                <p class="text-gray-400">Check membership for several values at once. Returns an array of <code class="text-purple-400">Bool</code>, one per member.</p>
+            </div>
+        </section>
+
+        <section id="def-spop" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-spop" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.spop(key, count?) / KV.srandmember(key, count?)</code>
+                </a>
+                <p class="text-gray-400">Return random members — <code class="text-purple-400">spop</code> removes them, <code class="text-purple-400">srandmember</code> leaves them in place. Pass <code class="text-purple-400">count</code> to get an array.</p>
+            </div>
+        </section>
+
+        <section id="def-sinter" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-sinter" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.sinter(...keys) / KV.sunion(...keys) / KV.sdiff(...keys)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Set intersection, union, and difference across two or more sets. Each returns an array.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">KV.sadd("a", "x", "y", "z")
+KV.sadd("b", "y", "z", "w")
+KV.sinter("a", "b")   # => ["y", "z"]
+KV.sdiff("a", "b")    # => ["x"]</code></pre>
+            </div>
+        </section>
+
+        <section id="def-smove" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-smove" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.smove(source, dest, member)</code>
+                </a>
+                <p class="text-gray-400">Atomically move a member from one set to another. Returns <code class="text-purple-400">Bool</code>.</p>
             </div>
         </section>
     </section>
@@ -390,6 +547,181 @@ println(user["name"])   # => "Alice"</code></pre>
                 <p class="text-gray-400">Get all field names in a hash or the number of fields. <code class="text-purple-400">hkeys</code> returns an array, <code class="text-purple-400">hlen</code> returns an int.</p>
             </div>
         </section>
+
+        <section id="def-hsetnx" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-hsetnx" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.hsetnx(key, field, value)</code>
+                </a>
+                <p class="text-gray-400">Set a field only if it doesn't already exist. Returns <code class="text-purple-400">Bool</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-hmget" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-hmget" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.hmget(key, ...fields) / KV.hvals(key)</code>
+                </a>
+                <p class="text-gray-400"><code class="text-purple-400">hmget</code> reads several fields at once (nil for missing); <code class="text-purple-400">hvals</code> returns all values. Both return an array.</p>
+            </div>
+        </section>
+
+        <section id="def-hincrby" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-hincrby" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.hincrby(key, field, amount) / KV.hincrbyfloat(key, field, amount)</code>
+                </a>
+                <p class="text-gray-400">Increment a hash field by an integer or floating-point amount. Returns the new value (Int or Float).</p>
+            </div>
+        </section>
+    </section>
+
+    <!-- Sorted Sets -->
+    <section id="section-sorted-sets" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 17l6-6 4 4 8-8M3 7h4v4" />
+                </svg>
+            </span>
+            Sorted Sets
+        </h2>
+
+        <p class="text-gray-400 mb-6 leading-7">
+            Sorted sets keep members ordered by an associated floating-point <strong>score</strong> — the natural fit for leaderboards, priority queues, and time-ordered feeds.
+        </p>
+
+        <section id="def-zadd" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-zadd" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.zadd(key, score, member, ...) / KV.zrem(key, ...members)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Add score/member pairs (returns the number of new members) or remove members.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">KV.zadd("scores", 100, "alice", 80, "bob", 120, "carol")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-zscore" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-zscore" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.zscore(key, member) / KV.zincrby(key, amount, member)</code>
+                </a>
+                <p class="text-gray-400">Read a member's score (Float, or <code class="text-purple-400">nil</code>) or bump it by <code class="text-purple-400">amount</code> (returns the new score).</p>
+            </div>
+        </section>
+
+        <section id="def-zrank" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-zrank" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.zrank(key, member) / KV.zrevrank(key, member)</code>
+                </a>
+                <p class="text-gray-400">0-based rank ascending or descending by score. Returns the rank or <code class="text-purple-400">nil</code> if the member is absent.</p>
+            </div>
+        </section>
+
+        <section id="def-zcard" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-zcard" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.zcard(key) / KV.zcount(key, min, max)</code>
+                </a>
+                <p class="text-gray-400">Total number of members, or the count whose score falls within <code class="text-purple-400">[min, max]</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-zrange" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-zrange" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.zrange(key, start, stop, with_scores?) / KV.zrevrange(...) / KV.zrangebyscore(key, min, max)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Fetch members by rank (ascending or descending) or by score range. Pass <code class="text-purple-400">true</code> for <code class="text-purple-400">with_scores</code> to interleave scores in the result.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Top 3 of a leaderboard, with scores
+KV.zrevrange("scores", 0, 2, true)</code></pre>
+            </div>
+        </section>
+    </section>
+
+    <!-- Bitmaps -->
+    <section id="section-bitmaps" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h4v4H4zM4 15h4v4H4zM14 5h6M14 9h6M14 15h6M14 19h6" />
+                </svg>
+            </span>
+            Bitmaps
+        </h2>
+
+        <section id="def-setbit" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-setbit" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.setbit(key, offset, value) / KV.getbit(key, offset)</code>
+                </a>
+                <p class="text-gray-400">Set or read a single bit at <code class="text-purple-400">offset</code>. <code class="text-purple-400">setbit</code> returns the previous bit; <code class="text-purple-400">getbit</code> returns 0 or 1. Great for compact per-user flags.</p>
+            </div>
+        </section>
+
+        <section id="def-bitcount" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-bitcount" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.bitcount(key)</code>
+                </a>
+                <p class="text-gray-400">Count the set bits in a value — e.g. how many days a user was active in a daily-activity bitmap.</p>
+            </div>
+        </section>
+    </section>
+
+    <!-- HyperLogLog -->
+    <section id="section-hyperloglog" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+            </span>
+            HyperLogLog
+        </h2>
+
+        <p class="text-gray-400 mb-6 leading-7">
+            A HyperLogLog estimates the number of <em>distinct</em> items in a stream (its <strong>cardinality</strong>) using a fixed ~12&nbsp;KB sketch — whether you add a hundred items or a hundred million. It trades a small, bounded error (~0.81% standard error) for memory that stays constant. Reach for it to count unique visitors, IP addresses, or events at scale, where an exact set would grow without bound.
+        </p>
+
+        <section id="def-pfadd" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-pfadd" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.pfadd(key, ...elements)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Add one or more elements to the HyperLogLog at <code class="text-purple-400">key</code> (created on first use). Returns <code class="text-purple-400">1</code> if the estimate likely changed, else <code class="text-purple-400">0</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">KV.pfadd("visitors:2026-06-24", "alice", "bob", "alice")
+KV.pfadd("visitors:2026-06-24", "carol")
+KV.pfcount("visitors:2026-06-24")   # => ~3 (an estimate, not exact)</code></pre>
+            </div>
+        </section>
+
+        <section id="def-pfcount" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-pfcount" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.pfcount(key, ...keys)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Estimated cardinality. Pass several keys to get the cardinality of their <strong>union</strong> without modifying any of them.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># Union estimate across two days, computed on the fly
+KV.pfcount("visitors:2026-06-23", "visitors:2026-06-24")</code></pre>
+            </div>
+        </section>
+
+        <section id="def-pfmerge" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-pfmerge" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-indigo-400">KV.pfmerge(destkey, ...sourcekeys)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Merge the source HyperLogLogs into <code class="text-purple-400">destkey</code> (the union). Returns <code class="text-purple-400">nil</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">KV.pfmerge("visitors:week", "visitors:2026-06-23", "visitors:2026-06-24")
+KV.pfcount("visitors:week")   # => ~unique across both days</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4">
+            <p class="text-amber-200 text-sm leading-6">The count is a probabilistic <strong>estimate</strong> (~0.81% standard error), not an exact figure — use it when "roughly how many uniques" is good enough and memory matters.</p>
+        </div>
     </section>
 
     <!-- Server Commands -->

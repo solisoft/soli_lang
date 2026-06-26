@@ -14,7 +14,7 @@ class RegistrationsController < Controller
   def create
     user = User.new()
     user.email = params["email"]
-    user.set_password(params["password"] ?? "")
+    user.set_password(params["password"].to_s)
     user.save()
     if user._errors
       return render("registrations/new", {

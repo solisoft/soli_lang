@@ -22,12 +22,12 @@ Database configuration is done through environment variables, typically stored i
 
 ## .env File
 
-When you create a new project with `soli new myapp`, a `.env` file is automatically generated:
+When you create a new project with `soli new myapp`, a `.env` file is automatically generated. `SOLIDB_DATABASE` is seeded with your project name, slugified (lower-cased, with non-alphanumeric runs collapsed to `_`), so each project gets its own database instead of sharing `default`:
 
 ```bash
 # Database Configuration
 SOLIDB_HOST=http://localhost:6745
-SOLIDB_DATABASE=default
+SOLIDB_DATABASE=myapp
 SOLIDB_USERNAME=admin
 SOLIDB_PASSWORD=admin
 
@@ -35,6 +35,8 @@ SOLIDB_PASSWORD=admin
 # APP_ENV=development
 # APP_SECRET=your-secret-key-here
 ```
+
+For example, `soli new "My Cool Shop"` writes `SOLIDB_DATABASE=my_cool_shop`. The database itself doesn't need to exist yet — it is created automatically on the first model call (see [Models — automatic creation](models.md)).
 
 ## Multiple Environments
 

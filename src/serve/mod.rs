@@ -5219,6 +5219,17 @@ fn try_render_template(
         Err(_) => return Ok(None),
     };
 
+    // E2E test client: capture the pristine locals (the controller's @vars)
+    // for assigns() *before* the req/helper/instance-var injection below, which
+    // would otherwise pollute assigns() with framework internals. Committed only
+    // if the render below succeeds. Test-runner only (single atomic load).
+    let captured_assigns: Option<(String, bool)> =
+        if crate::interpreter::builtins::test_server::is_test_runner_process() {
+            Some(crate::interpreter::builtins::template::capture_assigns_json(&data))
+        } else {
+            None
+        };
+
     // Inject req context, controller vars, helpers (same as render() builtin)
     crate::interpreter::builtins::template::inject_request_context(&data);
     crate::interpreter::builtins::template::inject_controller_instance_vars(&data);
@@ -5251,6 +5262,16 @@ fn try_render_template(
             return Err(e);
         }
     };
+
+    // E2E test client: the auto-render succeeded, so ship the captured view
+    // path + locals back (test-runner only). Mirrors the render() builtin.
+    if let Some((assigns_json, partial)) = captured_assigns {
+        crate::interpreter::builtins::test_server::set_captured_render(
+            crate::interpreter::builtins::template::captured_view_path(template_name),
+            assigns_json,
+            partial,
+        );
+    }
 
     // Route the auto-rendered body through `html_response` so it gets the same
     // treatment as an explicit `render(...)` call: Content-Type, content-derived
@@ -5423,6 +5444,13 @@ fn handle_request(
         middleware_log::clear();
         view_log::clear();
         span_log::clear();
+    }
+
+    // E2E test client: clear any render captured by a prior request on this
+    // pooled worker thread, so assigns()/view_path()/render_template() reflect
+    // only the current request. A single atomic load in non-test processes.
+    if crate::interpreter::builtins::test_server::is_test_runner_process() {
+        crate::interpreter::builtins::test_server::clear_captured_render();
     }
 
     let method = &data.method;
@@ -5776,6 +5804,30 @@ fn handle_request(
             let security_headers = get_security_headers();
             for (name, value) in security_headers {
                 resp.headers.push((name, value));
+            }
+        }
+        // E2E test client: ship the render captured by render() back as
+        // response headers, so assigns()/view_path()/render_template() work
+        // across the test-runner -> server process boundary. The locals JSON
+        // is base64-encoded so arbitrary UTF-8 / control chars stay
+        // header-safe. Test-runner only; absent (no render) -> no headers ->
+        // render_template() reports false on redirects/JSON responses.
+        if crate::interpreter::builtins::test_server::is_test_runner_process() {
+            if let Some(captured) =
+                crate::interpreter::builtins::test_server::take_captured_render()
+            {
+                let assigns_b64 = base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    captured.assigns_json.as_bytes(),
+                );
+                resp.headers
+                    .push(("x-soli-test-view-path".to_string(), captured.view_path));
+                resp.headers
+                    .push(("x-soli-test-assigns".to_string(), assigns_b64));
+                if captured.partial {
+                    resp.headers
+                        .push(("x-soli-test-assigns-partial".to_string(), "1".to_string()));
+                }
             }
         }
         // Inject the dev bar into HTML responses when running --dev. The bar

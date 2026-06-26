@@ -2971,6 +2971,69 @@
       ]
     },
     {
+      "category": "Testing",
+      "title": "assigns",
+      "signature": "assigns()",
+      "description": "E2E: returns all view locals from the last rendered response as a hash ({} if nothing was rendered)",
+      "keywords": [
+        "assigns",
+        "view",
+        "locals",
+        "render",
+        "e2e",
+        "controller test"
+      ],
+      "path": "/docs/builtins/testing#def-assigns",
+      "type": "function"
+    },
+    {
+      "category": "Testing",
+      "title": "assign",
+      "signature": "assign(key)",
+      "description": "E2E: returns a single view local by key from the last rendered response, or null",
+      "keywords": [
+        "assign",
+        "view",
+        "local",
+        "render",
+        "e2e",
+        "controller test"
+      ],
+      "path": "/docs/builtins/testing#def-assign",
+      "type": "function"
+    },
+    {
+      "category": "Testing",
+      "title": "view_path",
+      "signature": "view_path()",
+      "description": "E2E: the rendered template path (e.g. \"posts/index.html\"), or \"\" when no template was rendered",
+      "keywords": [
+        "view_path",
+        "template",
+        "render",
+        "e2e",
+        "controller test"
+      ],
+      "path": "/docs/builtins/testing#def-view-path",
+      "type": "function"
+    },
+    {
+      "category": "Testing",
+      "title": "render_template",
+      "signature": "render_template()",
+      "description": "E2E: whether the last response rendered a view template (render_template?() is an alias)",
+      "keywords": [
+        "render_template",
+        "render_template?",
+        "template",
+        "render",
+        "e2e",
+        "controller test"
+      ],
+      "path": "/docs/builtins/testing#def-render-template",
+      "type": "function"
+    },
+    {
       "title": "I18n.locale",
       "type": "function",
       "category": "I18n",
@@ -7600,6 +7663,24 @@
       ]
     },
     {
+      "title": "Trusted",
+      "type": "class",
+      "category": "File",
+      "path": "/docs/builtins/file#section-trusted-class",
+      "signature": "Trusted",
+      "description": "Unjailed file I/O class — mirrors File but skips the filesystem jail and O_NOFOLLOW symlink guard. For trusted server-side paths only.",
+      "keywords": [
+        "file",
+        "io",
+        "read",
+        "write",
+        "unjailed",
+        "jail",
+        "symlink",
+        "trusted"
+      ]
+    },
+    {
       "title": "Image",
       "type": "class",
       "category": "Image",
@@ -7894,6 +7975,1085 @@
       "keywords": [
         "kv",
         "delete"
+      ]
+    },
+    {
+      "title": "KV.exists",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.exists(key)",
+      "description": "Check if a key exists",
+      "keywords": [
+        "kv",
+        "exists",
+        "has"
+      ]
+    },
+    {
+      "title": "KV.keys",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.keys(pattern?)",
+      "description": "List keys matching a glob pattern (admin-gated)",
+      "keywords": [
+        "kv",
+        "keys",
+        "list",
+        "glob"
+      ]
+    },
+    {
+      "title": "KV.type",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.type(key)",
+      "description": "Get the data type of a key",
+      "keywords": [
+        "kv",
+        "type",
+        "type"
+      ]
+    },
+    {
+      "title": "KV.rename",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.rename(key, newkey)",
+      "description": "Rename a key",
+      "keywords": [
+        "kv",
+        "rename",
+        "rename"
+      ]
+    },
+    {
+      "title": "KV.setnx",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.setnx(key, value)",
+      "description": "Set a key only if it does not already exist",
+      "keywords": [
+        "kv",
+        "setnx",
+        "lock",
+        "nx"
+      ]
+    },
+    {
+      "title": "KV.getset",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.getset(key, value)",
+      "description": "Set a new value and return the previous one",
+      "keywords": [
+        "kv",
+        "getset",
+        "swap"
+      ]
+    },
+    {
+      "title": "KV.getdel",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.getdel(key)",
+      "description": "Get a value and delete the key in one step",
+      "keywords": [
+        "kv",
+        "getdel",
+        "pop"
+      ]
+    },
+    {
+      "title": "KV.append",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.append(key, value)",
+      "description": "Append to a string value; returns the new length",
+      "keywords": [
+        "kv",
+        "append",
+        "concat"
+      ]
+    },
+    {
+      "title": "KV.strlen",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.strlen(key)",
+      "description": "Length of the string value",
+      "keywords": [
+        "kv",
+        "strlen",
+        "length"
+      ]
+    },
+    {
+      "title": "KV.mget",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.mget(...keys)",
+      "description": "Get multiple values at once",
+      "keywords": [
+        "kv",
+        "mget",
+        "multi",
+        "batch"
+      ]
+    },
+    {
+      "title": "KV.mset",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.mset(key, value, ...)",
+      "description": "Set multiple key/value pairs atomically",
+      "keywords": [
+        "kv",
+        "mset",
+        "multi",
+        "batch"
+      ]
+    },
+    {
+      "title": "KV.ttl",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.ttl(key)",
+      "description": "Remaining TTL in seconds",
+      "keywords": [
+        "kv",
+        "ttl",
+        "expire"
+      ]
+    },
+    {
+      "title": "KV.expire",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.expire(key, seconds)",
+      "description": "Set a TTL in seconds on a key",
+      "keywords": [
+        "kv",
+        "expire",
+        "ttl"
+      ]
+    },
+    {
+      "title": "KV.pexpire",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.pexpire(key, milliseconds)",
+      "description": "Set a TTL in milliseconds",
+      "keywords": [
+        "kv",
+        "pexpire",
+        "ttl"
+      ]
+    },
+    {
+      "title": "KV.expireat",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.expireat(key, unix_timestamp)",
+      "description": "Expire a key at an absolute Unix time",
+      "keywords": [
+        "kv",
+        "expireat",
+        "ttl"
+      ]
+    },
+    {
+      "title": "KV.pttl",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.pttl(key)",
+      "description": "Remaining TTL in milliseconds",
+      "keywords": [
+        "kv",
+        "pttl",
+        "ttl"
+      ]
+    },
+    {
+      "title": "KV.persist",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.persist(key)",
+      "description": "Remove the TTL from a key",
+      "keywords": [
+        "kv",
+        "persist",
+        "ttl"
+      ]
+    },
+    {
+      "title": "KV.touch",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.touch(...keys)",
+      "description": "Update last-access time; returns how many keys existed",
+      "keywords": [
+        "kv",
+        "touch"
+      ]
+    },
+    {
+      "title": "KV.unlink",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.unlink(...keys)",
+      "description": "Delete keys without blocking",
+      "keywords": [
+        "kv",
+        "unlink",
+        "delete"
+      ]
+    },
+    {
+      "title": "KV.incr",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.incr(key)",
+      "description": "Increment a counter by 1",
+      "keywords": [
+        "kv",
+        "incr",
+        "increment"
+      ]
+    },
+    {
+      "title": "KV.decr",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.decr(key)",
+      "description": "Decrement a counter by 1",
+      "keywords": [
+        "kv",
+        "decr",
+        "decrement"
+      ]
+    },
+    {
+      "title": "KV.incrby",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.incrby(key, amount)",
+      "description": "Increment a counter by an amount",
+      "keywords": [
+        "kv",
+        "incrby",
+        "increment"
+      ]
+    },
+    {
+      "title": "KV.decrby",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.decrby(key, amount)",
+      "description": "Decrement a counter by an amount",
+      "keywords": [
+        "kv",
+        "decrby",
+        "decrement"
+      ]
+    },
+    {
+      "title": "KV.incrbyfloat",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.incrbyfloat(key, amount)",
+      "description": "Increment by a floating-point amount",
+      "keywords": [
+        "kv",
+        "incrbyfloat",
+        "float"
+      ]
+    },
+    {
+      "title": "KV.lpush",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lpush(key, ...values)",
+      "description": "Push values to the head of a list",
+      "keywords": [
+        "kv",
+        "lpush",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.rpush",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.rpush(key, ...values)",
+      "description": "Push values to the tail of a list",
+      "keywords": [
+        "kv",
+        "rpush",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.lpop",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lpop(key)",
+      "description": "Pop from the head of a list",
+      "keywords": [
+        "kv",
+        "lpop",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.rpop",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.rpop(key)",
+      "description": "Pop from the tail of a list",
+      "keywords": [
+        "kv",
+        "rpop",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.lrange",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lrange(key, start, stop)",
+      "description": "Get a range of list elements",
+      "keywords": [
+        "kv",
+        "lrange",
+        "range"
+      ]
+    },
+    {
+      "title": "KV.llen",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.llen(key)",
+      "description": "Length of a list",
+      "keywords": [
+        "kv",
+        "llen",
+        "length"
+      ]
+    },
+    {
+      "title": "KV.lindex",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lindex(key, index)",
+      "description": "Get the list element at an index",
+      "keywords": [
+        "kv",
+        "lindex",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.lset",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lset(key, index, value)",
+      "description": "Set the list element at an index",
+      "keywords": [
+        "kv",
+        "lset",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.lrem",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.lrem(key, count, value)",
+      "description": "Remove occurrences of a value from a list",
+      "keywords": [
+        "kv",
+        "lrem",
+        "list"
+      ]
+    },
+    {
+      "title": "KV.ltrim",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.ltrim(key, start, stop)",
+      "description": "Trim a list to a range",
+      "keywords": [
+        "kv",
+        "ltrim",
+        "range"
+      ]
+    },
+    {
+      "title": "KV.rpoplpush",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.rpoplpush(source, dest)",
+      "description": "Move an element between lists atomically",
+      "keywords": [
+        "kv",
+        "rpoplpush",
+        "queue"
+      ]
+    },
+    {
+      "title": "KV.sadd",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.sadd(key, ...members)",
+      "description": "Add members to a set",
+      "keywords": [
+        "kv",
+        "sadd",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.srem",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.srem(key, ...members)",
+      "description": "Remove members from a set",
+      "keywords": [
+        "kv",
+        "srem",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.smembers",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.smembers(key)",
+      "description": "Get all members of a set",
+      "keywords": [
+        "kv",
+        "smembers",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.sismember",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.sismember(key, member)",
+      "description": "Check set membership",
+      "keywords": [
+        "kv",
+        "sismember",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.smismember",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.smismember(key, ...members)",
+      "description": "Check membership of several members",
+      "keywords": [
+        "kv",
+        "smismember",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.scard",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.scard(key)",
+      "description": "Number of members in a set",
+      "keywords": [
+        "kv",
+        "scard",
+        "count"
+      ]
+    },
+    {
+      "title": "KV.spop",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.spop(key, count?)",
+      "description": "Remove and return random set members",
+      "keywords": [
+        "kv",
+        "spop",
+        "random"
+      ]
+    },
+    {
+      "title": "KV.srandmember",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.srandmember(key, count?)",
+      "description": "Return random set members without removing",
+      "keywords": [
+        "kv",
+        "srandmember",
+        "random"
+      ]
+    },
+    {
+      "title": "KV.sinter",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.sinter(...keys)",
+      "description": "Intersection of sets",
+      "keywords": [
+        "kv",
+        "sinter",
+        "intersection"
+      ]
+    },
+    {
+      "title": "KV.sunion",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.sunion(...keys)",
+      "description": "Union of sets",
+      "keywords": [
+        "kv",
+        "sunion",
+        "union"
+      ]
+    },
+    {
+      "title": "KV.sdiff",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.sdiff(...keys)",
+      "description": "Difference of sets",
+      "keywords": [
+        "kv",
+        "sdiff",
+        "difference"
+      ]
+    },
+    {
+      "title": "KV.smove",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.smove(source, dest, member)",
+      "description": "Move a member between sets",
+      "keywords": [
+        "kv",
+        "smove",
+        "set"
+      ]
+    },
+    {
+      "title": "KV.hset",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hset(key, field, value)",
+      "description": "Set a hash field",
+      "keywords": [
+        "kv",
+        "hset",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hget",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hget(key, field)",
+      "description": "Get a hash field",
+      "keywords": [
+        "kv",
+        "hget",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hgetall",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hgetall(key)",
+      "description": "Get all fields of a hash",
+      "keywords": [
+        "kv",
+        "hgetall",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hdel",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hdel(key, ...fields)",
+      "description": "Delete hash fields",
+      "keywords": [
+        "kv",
+        "hdel",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hexists",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hexists(key, field)",
+      "description": "Check if a hash field exists",
+      "keywords": [
+        "kv",
+        "hexists",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hkeys",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hkeys(key)",
+      "description": "All field names of a hash",
+      "keywords": [
+        "kv",
+        "hkeys",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hlen",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hlen(key)",
+      "description": "Number of fields in a hash",
+      "keywords": [
+        "kv",
+        "hlen",
+        "hash",
+        "count"
+      ]
+    },
+    {
+      "title": "KV.hsetnx",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hsetnx(key, field, value)",
+      "description": "Set a hash field only if absent",
+      "keywords": [
+        "kv",
+        "hsetnx",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hmget",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hmget(key, ...fields)",
+      "description": "Get several hash fields at once",
+      "keywords": [
+        "kv",
+        "hmget",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hvals",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hvals(key)",
+      "description": "All values of a hash",
+      "keywords": [
+        "kv",
+        "hvals",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hincrby",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hincrby(key, field, amount)",
+      "description": "Increment a hash field by an integer",
+      "keywords": [
+        "kv",
+        "hincrby",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.hincrbyfloat",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.hincrbyfloat(key, field, amount)",
+      "description": "Increment a hash field by a float",
+      "keywords": [
+        "kv",
+        "hincrbyfloat",
+        "hash"
+      ]
+    },
+    {
+      "title": "KV.zadd",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zadd(key, score, member, ...)",
+      "description": "Add scored members to a sorted set",
+      "keywords": [
+        "kv",
+        "zadd",
+        "sorted set",
+        "leaderboard",
+        "zset"
+      ]
+    },
+    {
+      "title": "KV.zrem",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrem(key, ...members)",
+      "description": "Remove members from a sorted set",
+      "keywords": [
+        "kv",
+        "zrem",
+        "zset"
+      ]
+    },
+    {
+      "title": "KV.zscore",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zscore(key, member)",
+      "description": "Score of a sorted-set member",
+      "keywords": [
+        "kv",
+        "zscore",
+        "zset"
+      ]
+    },
+    {
+      "title": "KV.zincrby",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zincrby(key, amount, member)",
+      "description": "Increment a member's score",
+      "keywords": [
+        "kv",
+        "zincrby",
+        "zset"
+      ]
+    },
+    {
+      "title": "KV.zrank",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrank(key, member)",
+      "description": "Ascending rank of a member",
+      "keywords": [
+        "kv",
+        "zrank",
+        "zset",
+        "rank"
+      ]
+    },
+    {
+      "title": "KV.zrevrank",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrevrank(key, member)",
+      "description": "Descending rank of a member",
+      "keywords": [
+        "kv",
+        "zrevrank",
+        "zset",
+        "rank"
+      ]
+    },
+    {
+      "title": "KV.zcard",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zcard(key)",
+      "description": "Number of members in a sorted set",
+      "keywords": [
+        "kv",
+        "zcard",
+        "zset",
+        "count"
+      ]
+    },
+    {
+      "title": "KV.zcount",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zcount(key, min, max)",
+      "description": "Count members within a score range",
+      "keywords": [
+        "kv",
+        "zcount",
+        "zset"
+      ]
+    },
+    {
+      "title": "KV.zrange",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrange(key, start, stop, with_scores?)",
+      "description": "Sorted-set members by ascending rank",
+      "keywords": [
+        "kv",
+        "zrange",
+        "zset",
+        "range",
+        "leaderboard"
+      ]
+    },
+    {
+      "title": "KV.zrevrange",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrevrange(key, start, stop, with_scores?)",
+      "description": "Sorted-set members by descending rank",
+      "keywords": [
+        "kv",
+        "zrevrange",
+        "zset",
+        "range",
+        "leaderboard"
+      ]
+    },
+    {
+      "title": "KV.zrangebyscore",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.zrangebyscore(key, min, max)",
+      "description": "Sorted-set members within a score range",
+      "keywords": [
+        "kv",
+        "zrangebyscore",
+        "zset",
+        "range"
+      ]
+    },
+    {
+      "title": "KV.setbit",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.setbit(key, offset, value)",
+      "description": "Set a bit at an offset",
+      "keywords": [
+        "kv",
+        "setbit",
+        "bitmap",
+        "bit"
+      ]
+    },
+    {
+      "title": "KV.getbit",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.getbit(key, offset)",
+      "description": "Get a bit at an offset",
+      "keywords": [
+        "kv",
+        "getbit",
+        "bitmap",
+        "bit"
+      ]
+    },
+    {
+      "title": "KV.bitcount",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.bitcount(key)",
+      "description": "Count the set bits in a value",
+      "keywords": [
+        "kv",
+        "bitcount",
+        "bitmap",
+        "bit"
+      ]
+    },
+    {
+      "title": "KV.pfadd",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.pfadd(key, ...elements)",
+      "description": "Add elements to a HyperLogLog",
+      "keywords": [
+        "kv",
+        "pfadd",
+        "hyperloglog",
+        "cardinality",
+        "unique"
+      ]
+    },
+    {
+      "title": "KV.pfcount",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.pfcount(key, ...keys)",
+      "description": "Estimate distinct-element cardinality",
+      "keywords": [
+        "kv",
+        "pfcount",
+        "hyperloglog",
+        "cardinality",
+        "unique",
+        "count"
+      ]
+    },
+    {
+      "title": "KV.pfmerge",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.pfmerge(destkey, ...sourcekeys)",
+      "description": "Merge HyperLogLogs into one",
+      "keywords": [
+        "kv",
+        "pfmerge",
+        "hyperloglog",
+        "union"
+      ]
+    },
+    {
+      "title": "KV.ping",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.ping()",
+      "description": "Check connectivity to SoliKV",
+      "keywords": [
+        "kv",
+        "ping",
+        "health"
+      ]
+    },
+    {
+      "title": "KV.dbsize",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.dbsize()",
+      "description": "Total number of keys",
+      "keywords": [
+        "kv",
+        "dbsize",
+        "count"
+      ]
+    },
+    {
+      "title": "KV.flushdb",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.flushdb()",
+      "description": "Delete all keys (admin-gated)",
+      "keywords": [
+        "kv",
+        "flushdb",
+        "clear",
+        "wipe"
+      ]
+    },
+    {
+      "title": "KV.cmd",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.cmd(...args)",
+      "description": "Run any raw SoliKV command",
+      "keywords": [
+        "kv",
+        "cmd",
+        "raw",
+        "command"
+      ]
+    },
+    {
+      "title": "KV.configure",
+      "type": "method",
+      "category": "KV",
+      "path": "/docs/builtins/kv",
+      "signature": "KV.configure(host, token?)",
+      "description": "Configure the SoliKV connection",
+      "keywords": [
+        "kv",
+        "configure",
+        "connect",
+        "setup"
       ]
     },
     {

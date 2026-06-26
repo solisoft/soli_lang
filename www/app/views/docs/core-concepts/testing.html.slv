@@ -513,12 +513,18 @@ assert_eq(res_status(response), 200)</code></pre>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">view_path()</code>
-                <p class="text-sm text-gray-400 mt-1">Returns rendered template path</p>
+                <p class="text-sm text-gray-400 mt-1">Rendered template path, e.g. <code>"posts/index.html"</code> (<code>""</code> if none)</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">flash()</code>
-                <p class="text-sm text-gray-400 mt-1">Returns flash messages</p>
+                <code class="text-emerald-300 font-bold">render_template()</code>
+                <p class="text-sm text-gray-400 mt-1">Did the response render a view template? (<code>render_template?()</code> is an alias)</p>
             </div>
+        </div>
+
+        <div class="mb-12 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+            <p class="text-yellow-300 text-sm">
+                <strong>Large locals.</strong> View locals ride back from the test server in a response header. When they are very large (&approx;48&nbsp;KB+ of serialized JSON), <code>assigns()</code> degrades to a keys-only view &mdash; every top-level key is present (so <code>assert_hash_has_key</code> still works) but its value is <code>null</code>.
+            </p>
         </div>
 
         <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>

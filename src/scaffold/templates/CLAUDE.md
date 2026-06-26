@@ -41,6 +41,7 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 | Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
 | Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |
 | `if x == nil \|\| x == ""`                 | `if x.blank?`                              | `.blank?` covers both nil and empty string in one call.                      |
+| `x ?? ""` / `str(x ?? "")`                 | `x.to_s`                                   | `.to_s` already maps `nil` → `""`, so the `?? ""` fallback is redundant.      |
 | `if x == nil` / `if x != nil`              | `if x.nil?` / `unless x.nil?`              | `.nil?` reads as the question; reserve `==`/`!=` for value comparisons.      |
 | `user == nil ? nil : user._key`            | `user&._key`                               | Safe navigation short-circuits to `nil` if the receiver is `nil`.            |
 | `if s != "a" && s != "b" && s != "c"`      | `unless ["a", "b", "c"].includes?(s)`      | Intent is membership check, not a pile of `&&`.                              |
@@ -341,7 +342,7 @@ A middleware file declares one function. Per-file directive comments at the top 
 # scope_only: true   — only runs when wrapped in `middleware("authenticate", -> { ... })`
 
 def authenticate(req)
-    let key = req["headers"]["X-Api-Key"] ?? ""
+    let key = req["headers"]["X-Api-Key"].to_s
     if key == ""
         return {
             "continue": false,

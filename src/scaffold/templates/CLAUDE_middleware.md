@@ -17,7 +17,7 @@ and orders them by per-function `# order:` directives.
 # scope_only: true
 
 def authenticate(req)
-  api_key = req["headers"]["x-api-key"] ?? ""
+  api_key = req["headers"]["x-api-key"].to_s
   if api_key == ""
     return {
       "continue": false,

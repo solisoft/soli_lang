@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1><%= h(title) %></h1>
+  <p id="user">user=<%= h(str(user_id)) %></p>
+  <ul>
+  <% for widget in widgets %>
+    <li><%= h(widget) %></li>
+  <% end %>
+  </ul>
+</body>
+</html>

@@ -12,7 +12,7 @@
       <div>
         <label class="block text-sm font-medium text-slate-400 mb-1" for="email">Email</label>
         <input id="email" name="email" type="email" required autofocus
-               value="<%= h(user.email ?? "") %>"
+               value="<%= h(user.email.to_s) %>"
                class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
       </div>
       <div>

@@ -22,7 +22,7 @@
     <div class="my-6 p-4 rounded-lg bg-green-500/10 border border-green-500/20 mb-6">
         <p class="text-green-300 text-sm">
             <strong>Automatic Collection Creation:</strong> When you call a Model method (like <code>create()</code>, <code>all()</code>, <code>find()</code>, etc.)
-on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. This means you can start using your models immediately without running migrations first.
+on a collection that doesn't exist yet, SoliLang will automatically create the collection for you. If the configured <strong>database</strong> doesn't exist yet either, it is created on that same first call before the collection. This means you can start using your models immediately without running migrations first.
         </p>
     </div>
 
@@ -73,7 +73,7 @@ end</code></pre>
 
     <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
         <p class="text-indigo-300 text-sm">
-            <strong>Auto-creation:</strong> All Model operations automatically create the collection if it doesn't exist. This only happens on the first call that encounters a missing collection.
+            <strong>Auto-creation:</strong> All Model operations automatically create the collection &mdash; and the database itself, if it's missing too &mdash; when it doesn't exist. This only happens on the first call that encounters a missing collection or database.
         </p>
     </div>
 
