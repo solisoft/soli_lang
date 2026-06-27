@@ -1459,27 +1459,42 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
                 }
             }
         }
-        DbSeedAction::Run => {
-            // Collect the seed files to run, in order: the single-file
-            // `db/seeds.sl` first, then every `db/seeds/*.sl` sorted by name
-            // (timestamp prefixes give a deterministic order). Each file runs
-            // every invocation — seeds are not tracked, so authors make them
+        DbSeedAction::Run { file } => {
+            // Collect the seed files to run. When a specific file is given,
+            // run only that one (resolved relative to the project folder).
+            // Otherwise discover them in order: the single-file `db/seeds.sl`
+            // first, then every `db/seeds/*.sl` sorted by name (timestamp
+            // prefixes give a deterministic order). Each file runs every
+            // invocation — seeds are not tracked, so authors make them
             // idempotent themselves (e.g. find_or_create).
             let mut seed_files: Vec<std::path::PathBuf> = Vec::new();
-            let single = app_path.join("db/seeds.sl");
-            if single.is_file() {
-                seed_files.push(single);
-            }
-            let seeds_dir = app_path.join("db/seeds");
-            if seeds_dir.is_dir() {
-                if let Ok(entries) = fs::read_dir(&seeds_dir) {
-                    let mut dir_files: Vec<std::path::PathBuf> = entries
-                        .flatten()
-                        .map(|e| e.path())
-                        .filter(|p| p.extension().is_some_and(|ext| ext == "sl"))
-                        .collect();
-                    dir_files.sort();
-                    seed_files.extend(dir_files);
+            if let Some(file) = file {
+                let path = app_path.join(file);
+                if !path.is_file() {
+                    eprintln!();
+                    eprintln!(
+                        "  \x1b[31mError:\x1b[0m seed file not found: {}",
+                        path.display()
+                    );
+                    process::exit(1);
+                }
+                seed_files.push(path);
+            } else {
+                let single = app_path.join("db/seeds.sl");
+                if single.is_file() {
+                    seed_files.push(single);
+                }
+                let seeds_dir = app_path.join("db/seeds");
+                if seeds_dir.is_dir() {
+                    if let Ok(entries) = fs::read_dir(&seeds_dir) {
+                        let mut dir_files: Vec<std::path::PathBuf> = entries
+                            .flatten()
+                            .map(|e| e.path())
+                            .filter(|p| p.extension().is_some_and(|ext| ext == "sl"))
+                            .collect();
+                        dir_files.sort();
+                        seed_files.extend(dir_files);
+                    }
                 }
             }
 

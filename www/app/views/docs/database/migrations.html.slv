@@ -294,6 +294,9 @@ db/seeds/*.sl        # then every file here, sorted by name</code></pre>
 <pre><code class="language-bash text-sm"># Run db/seeds.sl, then db/seeds/*.sl
 soli db:seed
 
+# Run a single seed file (path relative to the project folder)
+soli db:seed db/seeds/20260623161240_demo_users.sl
+
 # Point at a different project folder
 soli db:seed ./myapp</code></pre>
             </div>

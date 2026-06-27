@@ -312,6 +312,9 @@ soli db:seed generate demo_users
 # Run db/seeds.sl, then db/seeds/*.sl (in the current project)
 soli db:seed
 
+# Run a single seed file (path resolved relative to the project folder)
+soli db:seed db/seeds/20260623161240_demo_users.sl
+
 # Point at a different project folder
 soli db:seed ./myapp
 ```

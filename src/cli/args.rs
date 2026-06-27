@@ -123,8 +123,10 @@ pub enum DbMigrateAction {
 }
 
 pub enum DbSeedAction {
-    /// Run the project's seed scripts (`db/seeds.sl` then `db/seeds/*.sl`).
-    Run,
+    /// Run the project's seed scripts. When `file` is `Some`, run only that
+    /// single seed file (resolved relative to the project folder) instead of
+    /// the default `db/seeds.sl` then `db/seeds/*.sl` discovery.
+    Run { file: Option<String> },
     /// Scaffold a new timestamped seed file under `db/seeds/`.
     Generate { name: String },
 }
@@ -159,7 +161,7 @@ pub fn print_usage() {
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
-    eprintln!("  soli db:seed [folder]");
+    eprintln!("  soli db:seed [folder] [file.sl]");
     eprintln!("  soli db:seed generate <name> [folder]");
     eprintln!();
     eprintln!("Commands:");
@@ -192,7 +194,7 @@ pub fn print_usage() {
     );
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!("  db:migrate           Database migration commands");
-    eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl)");
+    eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -242,6 +244,7 @@ pub fn print_usage() {
     eprintln!("  soli db:migrate status        Show migration status");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
     eprintln!("  soli db:seed                  Run db/seeds.sl and db/seeds/*.sl");
+    eprintln!("  soli db:seed db/seeds/demo.sl  Run a single seed file");
     eprintln!("  soli db:seed generate demo_users  Generate new seed file");
     eprintln!("  soli engine create shop       Create a new engine named 'shop'");
     eprintln!("  soli engine db:migrate        Run all engine migrations");
@@ -404,7 +407,7 @@ pub fn parse_args() -> Options {
                 // Unlike `db:migrate`, a bare `soli db:seed` is valid and
                 // means "run the seeds". Only `generate` is a sub-action.
                 i += 1;
-                let action = if i < args.len() && args[i] == "generate" {
+                let gen_name = if i < args.len() && args[i] == "generate" {
                     i += 1;
                     if i >= args.len() {
                         eprintln!("db:seed generate requires a seed name");
@@ -413,14 +416,26 @@ pub fn parse_args() -> Options {
                     }
                     let name = args[i].clone();
                     i += 1;
-                    DbSeedAction::Generate { name }
+                    Some(name)
                 } else {
-                    DbSeedAction::Run
+                    None
                 };
-                let folder = if i < args.len() && !args[i].starts_with('-') {
-                    args[i].clone()
-                } else {
-                    ".".to_string()
+                // Remaining positionals (any order): a `.sl` arg selects a
+                // single seed file to run; any other positional is the app
+                // folder (defaults to ".").
+                let mut folder = ".".to_string();
+                let mut file: Option<String> = None;
+                while i < args.len() && !args[i].starts_with('-') {
+                    if args[i].ends_with(".sl") {
+                        file = Some(args[i].clone());
+                    } else {
+                        folder = args[i].clone();
+                    }
+                    i += 1;
+                }
+                let action = match gen_name {
+                    Some(name) => DbSeedAction::Generate { name },
+                    None => DbSeedAction::Run { file },
                 };
                 options.command = Command::DbSeed { action, folder };
                 return options;
