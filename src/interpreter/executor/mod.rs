@@ -353,6 +353,9 @@ impl Interpreter {
             Value::Symbol(s) => format!("\"{}\"", s),
             Value::Image(_) => "\"<Image>\"".to_string(),
             Value::ImagePlan(_) => "\"<ImagePlan>\"".to_string(),
+            // Resolve a `grouped {}` deferred to its query result before
+            // serialising.
+            Value::Deferred(_) => self.value_to_json(&value.force_deferred()),
         }
     }
 

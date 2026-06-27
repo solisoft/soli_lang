@@ -331,6 +331,19 @@ pub enum Value {
     Image(Rc<RefCell<crate::interpreter::builtins::image::ImageData>>),
     /// Image plan value (lazy, recorded ops to be executed in parallel)
     ImagePlan(Rc<RefCell<crate::interpreter::builtins::image::ImagePlan>>),
+    /// Deferred query result inside a `grouped(fn() { ... })` batch. The query
+    /// has been registered but not yet fetched; the cell is filled when the
+    /// batch flushes (block end, or the first time the result is read — see
+    /// `builtins::model::batch`). Resolved transparently at read points
+    /// (`evaluate_variable`, member access, `value_to_json`, `Display`).
+    Deferred(Rc<RefCell<DeferredCell>>),
+}
+
+/// Backing cell for a [`Value::Deferred`]. `resolved` is `None` until the
+/// owning batch flushes, then holds the materialised query result.
+#[derive(Debug, Default)]
+pub struct DeferredCell {
+    pub resolved: Option<Value>,
 }
 
 /// The type of HTTP future result
@@ -445,6 +458,7 @@ impl Value {
             Value::VmClosure(_) => "Function".to_string(),
             Value::Image(_) => "Image".to_string(),
             Value::ImagePlan(_) => "ImagePlan".to_string(),
+            Value::Deferred(_) => self.force_deferred().type_name(),
         }
     }
 
@@ -514,6 +528,30 @@ impl Value {
         matches!(self, Value::Future(_))
     }
 
+    /// Whether this is an unresolved/resolved `grouped {}` batch placeholder.
+    #[inline]
+    pub fn is_deferred(&self) -> bool {
+        matches!(self, Value::Deferred(_))
+    }
+
+    /// If this is a `Deferred`, resolve it — flushing the active batch if the
+    /// cell is still pending — and return the inner value. Non-deferred values
+    /// are returned as a clone. This is the *best-effort* resolver used by the
+    /// `Value` formatting/comparison methods (which have no error channel); the
+    /// real read sites (`evaluate_variable`, member access, `value_to_json`)
+    /// call `builtins::model::batch::force`, which propagates flush errors.
+    pub fn force_deferred(&self) -> Value {
+        match self {
+            Value::Deferred(cell) => {
+                if cell.borrow().resolved.is_none() {
+                    crate::interpreter::builtins::model::batch::flush_current();
+                }
+                cell.borrow().resolved.clone().unwrap_or(Value::Null)
+            }
+            other => other.clone(),
+        }
+    }
+
     pub fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
@@ -525,6 +563,9 @@ impl Value {
             Value::Hash(hash) if hash.borrow().is_empty() => false,
             Value::Future(_) => true,
             Value::VmClosure(_) => true,
+            // Truthiness follows the resolved query result (e.g. an empty
+            // array is falsy), so resolve before testing.
+            Value::Deferred(_) => self.force_deferred().is_truthy(),
             _ => true,
         }
     }
@@ -625,6 +666,7 @@ impl Value {
             Value::VmClosure(func) => func.proto.name.len() + 5,
             Value::Image(_) => 7,
             Value::ImagePlan(_) => 11,
+            Value::Deferred(_) => self.force_deferred().display_len(),
         }
     }
 
@@ -699,12 +741,17 @@ impl Value {
             }
             Value::Image(_) => s.push_str("<Image>"),
             Value::ImagePlan(_) => s.push_str("<ImagePlan>"),
+            Value::Deferred(_) => self.force_deferred().write_to_string(s),
         }
     }
 }
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        // A `grouped {}` deferred compares as its resolved value.
+        if self.is_deferred() || other.is_deferred() {
+            return self.force_deferred() == other.force_deferred();
+        }
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
@@ -848,6 +895,8 @@ impl fmt::Display for Value {
                 let p = p.borrow();
                 write!(f, "<ImagePlan src=\"{}\" ops={}>", p.src, p.ops.len())
             }
+            // Auto-resolve a `grouped {}` deferred when displaying.
+            Value::Deferred(_) => write!(f, "{}", self.force_deferred()),
         }
     }
 }

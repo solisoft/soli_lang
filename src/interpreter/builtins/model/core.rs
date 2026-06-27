@@ -1705,6 +1705,35 @@ impl Model {
                     None => return Err("Model.find() requires id argument".to_string()),
                 };
 
+                // Inside a `grouped {}` block: rewrite the key lookup to a
+                // cursor query so it can be coalesced with the others. The
+                // transform preserves the RecordNotFound-on-miss contract, so
+                // the error still surfaces (as a 404) when the deferred is read.
+                if super::batch::is_active() {
+                    let sdbql = format!(
+                        "FOR doc IN {} FILTER doc._key == @k LIMIT 1 RETURN doc",
+                        collection
+                    );
+                    let mut binds = std::collections::HashMap::new();
+                    binds.insert("k".to_string(), serde_json::Value::String(id.to_string()));
+                    let class2 = class.clone();
+                    let class_name = class.name.clone();
+                    let id2 = id.clone();
+                    return Ok(super::batch::register(
+                        sdbql,
+                        binds,
+                        Box::new(move |rows| match rows.first() {
+                            Some(doc) => Ok(json_doc_to_instance(&class2, doc)),
+                            None => Err(format!(
+                                "{}{} with id '{}' not found",
+                                crate::error::RuntimeError::RECORD_NOT_FOUND_MARKER,
+                                class_name,
+                                id2
+                            )),
+                        }),
+                    ));
+                }
+
                 match exec_get(&collection, &id) {
                     Ok(doc) => Ok(json_doc_to_instance(&class, &doc)),
                     // Not found → raise with the RecordNotFound marker so the
@@ -1852,6 +1881,20 @@ impl Model {
                     let class = get_class_rc_from_args(&args)?;
                     let collection = class_name_to_collection(&class.name);
                     let sdbql = format!("FOR doc IN {} RETURN doc", collection);
+                    if super::batch::is_active() {
+                        let class2 = class.clone();
+                        return Ok(super::batch::register(
+                            sdbql,
+                            std::collections::HashMap::new(),
+                            Box::new(move |rows| {
+                                let values: Vec<Value> = rows
+                                    .iter()
+                                    .map(|j| super::crud::json_doc_to_instance(&class2, j))
+                                    .collect();
+                                Ok(Value::Array(Rc::new(RefCell::new(values))))
+                            }),
+                        ));
+                    }
                     Ok(exec_auto_collection_as_instances(
                         sdbql,
                         &collection,
@@ -2069,9 +2112,18 @@ impl Model {
                         }
                     }
                     Some(Value::Function(_)) | Some(Value::VmClosure(_)) => {
-                        // Block passed - return transaction handle, user can call .run() on it
-                        let class_name = get_class_name_from_class(&args)?;
-                        Ok(Value::Class(get_or_create_transaction_class(&class_name)))
+                        // The block form `Model.transaction(fn() { ... })` is run by the
+                        // executor interceptor (begin → run → commit / rollback on throw),
+                        // which only recognizes an *inline* block literal. Reaching the native
+                        // means a non-literal callable was passed; guide the caller instead of
+                        // silently dropping the block and returning a handle (the old behavior).
+                        Err(
+                            "Model.transaction { ... } expects the block as an inline function \
+                             literal, e.g. Model.transaction(fn() { ... }). For manual control, \
+                             call Model.transaction() with no block and use .commit()/.rollback() \
+                             on the returned handle."
+                                .to_string(),
+                        )
                     }
                     None => {
                         let class_name = get_class_name_from_class(&args)?;
@@ -2254,6 +2306,19 @@ impl Model {
                 );
                 let mut binds = std::collections::HashMap::new();
                 binds.insert("val".to_string(), value);
+                if super::batch::is_active() {
+                    let class2 = class.clone();
+                    return Ok(super::batch::register(
+                        sdbql,
+                        binds,
+                        Box::new(move |rows| {
+                            Ok(match rows.first() {
+                                Some(doc) => super::crud::json_doc_to_instance(&class2, doc),
+                                None => Value::Null,
+                            })
+                        }),
+                    ));
+                }
                 match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
                     Ok(results) if !results.is_empty() => {
                         Ok(super::crud::json_doc_to_instance(&class, &results[0]))
@@ -2285,6 +2350,19 @@ impl Model {
                 );
                 let mut binds = std::collections::HashMap::new();
                 binds.insert("val".to_string(), value);
+                if super::batch::is_active() {
+                    let class2 = class.clone();
+                    return Ok(super::batch::register(
+                        sdbql,
+                        binds,
+                        Box::new(move |rows| {
+                            Ok(match rows.first() {
+                                Some(doc) => super::crud::json_doc_to_instance(&class2, doc),
+                                None => Value::Null,
+                            })
+                        }),
+                    ));
+                }
                 match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
                     Ok(results) if !results.is_empty() => {
                         Ok(super::crud::json_doc_to_instance(&class, &results[0]))

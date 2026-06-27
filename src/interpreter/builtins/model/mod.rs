@@ -238,15 +238,27 @@
 //!
 //! # Transactions
 //!
-//! (Placeholder - requires SoliDB transaction API)
+//! `Model.transaction` runs a block in a single SolidB transaction: it commits
+//! when the block returns and rolls back (re-raising) if the block throws.
+//! Document writes inside the block (`create`/`save`/`update`/`delete` and key
+//! reads via `find`) participate automatically because the plain `exec_*` CRUD
+//! helpers route through the `_tx` variants while `crud::CURRENT_TX` is set.
 //!
 //! ```soli
-//! // Not yet implemented
-//! // Model.transaction(fn() { ... })
+//! Model.transaction(fn() {
+//!     from.withdraw(amount)
+//!     to.deposit(amount)
+//! })
 //! ```
 //!
-//! For now, use individual Model operations within your application logic.
+//! The block form is run by the executor interceptor in
+//! `executor::calls::function` (a `NativeFunction` can't invoke a closure), so
+//! the bytecode VM compiler refuses to compile it and the production request
+//! path falls back to the tree-walking interpreter for that handler. The
+//! string form `Model.transaction("AQL")` and the manual handle form
+//! `Model.transaction()` remain native calls.
 
+pub mod batch;
 pub mod callbacks;
 pub mod core;
 pub mod crud;

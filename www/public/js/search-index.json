@@ -11338,6 +11338,23 @@
         "controller",
         "request"
       ]
+    },
+    {
+      "title": "grouped",
+      "type": "function",
+      "category": "Database",
+      "path": "/docs/database/query-builder#grouped",
+      "signature": "grouped(fn() { ... })",
+      "description": "Coalesce the database reads inside the block into a single combined request (one round-trip).",
+      "keywords": [
+        "grouped",
+        "batch",
+        "coalesce",
+        "round-trip",
+        "n+1",
+        "dataloader",
+        "defer"
+      ]
     }
   ]
 }

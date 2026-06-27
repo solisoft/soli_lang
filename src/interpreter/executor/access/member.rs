@@ -233,10 +233,30 @@ impl Interpreter {
             && crate::interpreter::executor::template_lenient_vars_enabled()
             && self.environment.borrow().get("this").is_none()
         {
-            return Ok(self.environment.borrow().get(name).unwrap_or(Value::Null));
+            let v = self.environment.borrow().get(name).unwrap_or(Value::Null);
+            // A controller `@ivar` injected as a view local may hold a
+            // `grouped {}` deferred — resolve it before handing it to the view.
+            if let Value::Deferred(cell) = &v {
+                return crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(|e| RuntimeError::General { message: e, span });
+            }
+            return Ok(v);
         }
         let obj_val = self.evaluate(object)?;
-        self.evaluate_member_on_value(obj_val, name, span)
+        // Reading a field off an instance that holds a deferred query result
+        // (`@posts`, `this.posts`) forces it, so for-loops/indexing/etc. see
+        // materialised data. Producing a deferred via a class/QueryBuilder
+        // method (`Post.all`, `where().count`) goes through the non-instance
+        // branches below and is left unforced — that's the value being stored.
+        let was_instance = matches!(obj_val, Value::Instance(_));
+        let result = self.evaluate_member_on_value(obj_val, name, span)?;
+        if was_instance {
+            if let Value::Deferred(cell) = &result {
+                return crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(|e| RuntimeError::General { message: e, span });
+            }
+        }
+        Ok(result)
     }
 
     /// Shared member access logic on an already-evaluated value.
@@ -247,6 +267,13 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         match obj_val {
+            // Member access on a `grouped {}` deferred receiver (e.g. a chained
+            // `User.find(id).posts`) forces it, then dispatches on the result.
+            Value::Deferred(ref cell) => {
+                let resolved = crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(|e| RuntimeError::General { message: e, span })?;
+                self.evaluate_member_on_value(resolved, name, span)
+            }
             Value::Future(future) => {
                 let value = Value::Future(future);
                 let resolved = value.resolve().map_err(|e| RuntimeError::new(e, span))?;

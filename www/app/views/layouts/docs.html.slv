@@ -423,7 +423,7 @@
         var KEYWORDS = {
             keyword: 'def fn if unless then else elsif elif end return let for in while do break continue class extends interface module enum static this self super new import use as try catch rescue ensure finally throw raise yield defer match case when and or not export',
             literal: 'null nil true false',
-            built_in: 'print println puts len str int float bool range push pop keys values render redirect params session_get session_set session_delete session_destroy session_regenerate authorize policy_for current_user signed_in current_action forbidden halt h Model Controller Crypto HTTP JSON Cache Cron FeatureFlags const'
+            built_in: 'print println puts len str int float bool range push pop keys values render redirect grouped params session_get session_set session_delete session_destroy session_regenerate authorize policy_for current_user signed_in current_action forbidden halt h Model Controller Crypto HTTP JSON Cache Cron FeatureFlags const'
         };
         var SUBST = { className: 'subst', begin: '\\\\\\(', end: '\\)', keywords: KEYWORDS };
         var STRING = {
@@ -464,18 +464,17 @@
         };
     });
 
-    document.addEventListener('DOMContentLoaded', function() {
+    function initDocPage() {
+        // `soli:load` keeps this bound on `document` across swaps, so it also
+        // fires when navigating to a non-docs page (a different layout). Bail
+        // unless the docs article is present, so we don't add copy buttons /
+        // highlighting to pages that didn't ask.
+        if (!document.getElementById('doc-article')) return;
         initHighlighting();
         addCopyButtons();
         scrollToActiveMenuItem();
         buildOnThisPage();
-    });
-
-    document.addEventListener('livereload:update', function() {
-        initHighlighting();
-        addCopyButtons();
-        buildOnThisPage();
-    });
+    }
 
     // Inject a copy-to-clipboard button into every code block. Idempotent so
     // it can run again after livereload re-injects the article body.
@@ -511,8 +510,12 @@
 
     // Holds the current observer so we can disconnect it before rebuilding
     // (livereload re-injects the article body, leaving the old observer
-    // pointing at detached nodes).
-    let __tocObserver = null;
+    // pointing at detached nodes). MUST be `var`, not `let`/`const`: instant
+    // navigation re-executes this whole inline script on every <body> swap, and
+    // a top-level `let` redeclaration throws `Identifier '__tocObserver' has
+    // already been declared`, aborting the entire re-run (which is what broke
+    // code highlighting and active-menu selection after navigating).
+    var __tocObserver = null;
 
     function buildOnThisPage() {
         const article = document.getElementById('doc-article');
@@ -614,6 +617,24 @@
         });
 
         hljs.highlightAll();
+    }
+
+    // --- Page initialization -------------------------------------------------
+    // Run AFTER every function above is defined and `var __tocObserver` has been
+    // initialized. Instant navigation re-executes this whole inline script on
+    // each <body> swap (nav.js's page-init hook), so calling initDocPage() here
+    // re-highlights code and re-selects the active menu item on every visit —
+    // `DOMContentLoaded` only fires once per document and never again after a
+    // swap, which was the original breakage.
+    initDocPage();
+
+    // Bind document-level listeners once; the re-run would otherwise stack a new
+    // one per visit. `soli:load` is a belt-and-suspenders for any swap path that
+    // doesn't re-run scripts; `livereload:update` covers dev hot reloads.
+    if (!window.__soliDocsListenersBound) {
+        window.__soliDocsListenersBound = true;
+        document.addEventListener('soli:load', initDocPage);
+        document.addEventListener('livereload:update', initDocPage);
     }
     </script>
 </body>

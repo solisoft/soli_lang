@@ -209,6 +209,17 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         Value::NativeFunction(NativeFunction::new("puts", None, println_impl)),
     );
 
+    // grouped(fn() { ... }) — coalesce the DB reads inside the block into a
+    // single round-trip. The real work happens in the `evaluate_call`
+    // interceptor (it needs `&mut Interpreter` to run the block); this
+    // placeholder only catches misuse (a non-block argument).
+    env.define(
+        "grouped".to_string(),
+        Value::NativeFunction(NativeFunction::new("grouped", Some(1), |_args| {
+            Err("grouped() expects a function block: grouped(fn() { ... })".to_string())
+        })),
+    );
+
     // __sdql_exec(query, binds) — runtime backing for `@sdbql{ ... }` blocks.
     // The tree-walking interpreter executes the block inline; the VM compiler
     // lowers a block to a call to this global instead (it cannot inline the

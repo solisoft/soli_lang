@@ -83,7 +83,19 @@ impl Drop for TemplateLenientVarsGuard {
 impl Interpreter {
     /// Evaluate variable access expressions.
     pub(crate) fn evaluate_variable(&mut self, name: &str, expr: &Expr) -> RuntimeResult<Value> {
-        if let Some(v) = self.environment.borrow().get(name) {
+        let looked_up = self.environment.borrow().get(name);
+        if let Some(v) = looked_up {
+            // Reading a `grouped {}` deferred result forces it: flush the batch
+            // (auto-flush) and yield the materialised value. Flush/transform
+            // errors (e.g. `find`'s RecordNotFound) surface here.
+            if let Value::Deferred(cell) = &v {
+                return crate::interpreter::builtins::model::batch::force(cell).map_err(|e| {
+                    RuntimeError::General {
+                        message: e,
+                        span: expr.span,
+                    }
+                });
+            }
             return Ok(v);
         }
         if TEMPLATE_LENIENT_VARS.with(|c| c.get()) {

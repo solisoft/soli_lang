@@ -182,8 +182,8 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.delete(id)` | Delete a document |
 | `Model.delete_all` | Wipe every document in the collection (primarily for test setup/teardown). Use `Model.where(...).delete_all` for filtered bulk deletes. |
 | `Model.count` | Count all documents |
-| `Model.transaction { }` | Execute block in a database transaction |
-| `Model.transaction("aql")` | Execute AQL in a database transaction |
+| `Model.transaction do … end` | Run a block in a transaction — commit on success, roll back on throw |
+| `Model.transaction("aql")` | Execute a single AQL statement transactionally |
 | `Model.transaction()` | Get transaction handle for manual control |
 | `Model.<scope_name>` | Invoke a named scope declared with `scope(name, fn)` (returns QueryBuilder) |
 | `Model.with_deleted()` | Include soft-deleted records (QueryBuilder) |
@@ -1174,20 +1174,108 @@ User.where("doc.active == false").update_all({ "archived": true });
 post.comments.where("draft = @d", { "d": true }).update_all({ "draft": false });
 ```
 
+## Coalescing Reads (`grouped`)
+
+A controller action that reads several unrelated things pays one network
+round-trip per read:
+
+```soli
+@posts    = Post.all                          # round-trip 1
+@accounts = Account.where({ active: true }).count   # round-trip 2
+@tags     = Tag.all                           # round-trip 3
+```
+
+Wrap the reads in `grouped(fn() { ... })` and they are deferred and combined
+into a **single** request — one `LET … RETURN […]` statement that computes every
+subquery server-side and returns them together:
+
+```soli
+grouped(fn() {
+  @posts    = Post.all
+  @accounts = Account.where({ active: true }).count
+  @tags     = Tag.all
+})
+# one round-trip for all three
+```
+
+Inside the block each read returns a placeholder instead of hitting the
+database; the queries fire as one combined statement when the block ends. The
+results are then materialised, so **after** the block `@posts`, `@accounts`, and
+`@tags` are ordinary values you use exactly as before.
+
+### What gets coalesced
+
+Read queries are batched: `all`, `where(...).all` / `.first` / `.count` /
+`.exists`, the aggregates (`sum` / `avg` / `min` / `max`), `find`, `find_by`, and
+`first_by`. **Writes are not** — `create`, `save`, `update`, `delete` run
+immediately even inside the block (use `transaction` for atomic writes).
+
+### Reading a result inside the block (auto-flush)
+
+If you read one of the deferred results *before* the block ends, the queries
+collected so far fire immediately (an "auto-flush"), then collection resumes for
+the rest:
+
+```soli
+grouped(fn() {
+  @posts = Post.all
+  log("loaded #{@posts.length} posts") if @posts.present?  # forces a flush here
+  @tags = Tag.all                                          # batched separately
+})
+```
+
+This always returns correct data; it just means you get more than one round-trip
+when you interleave reads. For maximum coalescing, do the reads first and use the
+results after the block.
+
+### Notes
+
+- `find` on a missing id still raises `RecordNotFound` (→ 404) — the error
+  surfaces when the result is read or the block ends.
+- A combined query is all-or-nothing: if it fails, every read in the batch
+  fails together.
+- Verify the savings with [`dev_queries()`](#dev_queries) — a coalesced block
+  shows a single combined query.
+
 ## Transactions
 
 Execute multiple operations atomically within a database transaction:
 
 ### Using a Block (Recommended)
 
+`Model.transaction` runs a block inside a single database transaction. Every
+document write inside the block — `create`, `save`, `update`, `delete`, and key
+lookups via `find` — participates automatically. The block **commits** when it
+returns normally and **rolls back** (re-raising the error) if it throws:
+
 ```soli
-# Execute block in a transaction
-User.transaction {
-  User.create({ name: "Alice", age: 30 });
-  User.create({ name: "Bob", age: 25 });
-}
-# All operations commit together, or rollback on error
+User.transaction do
+  User.create({ "name": "Alice", "age": 30 })
+  User.create({ "name": "Bob", "age": 25 })
+end
+# Both rows commit together. If either operation — or your own `throw` —
+# raises, neither row is persisted.
 ```
+
+The block's value is returned, so you can hand back what you computed:
+
+```soli
+order = Order.transaction do
+  account = Account.find(account_id)   # `find` (key lookup) sees in-transaction state
+  account.balance -= amount
+  account.save()
+  Order.create({ "account_id": account_id, "total": amount })["record"]
+end
+```
+
+Nested `transaction` calls **join** the outer transaction — only the outermost
+begins and commits/rolls back (SolidB has no savepoints), so a `throw` anywhere
+inside undoes every write in the whole nest.
+
+> **Cursor reads see committed state.** Queries inside the block
+> (`.where(...).all()`, `find_by`, aggregations) read *committed* data — they do
+> not observe the transaction's own uncommitted writes. To read a row you wrote
+> earlier in the same transaction, use `find` (a key lookup).
 
 ### Using AQL String
 
@@ -1197,10 +1285,8 @@ User.transaction {
 # query parameter is never interpolated into server-side JavaScript.
 result = User.transaction("
   FOR u IN users FILTER u.active == true UPDATE u WITH { last_seen: DATE_NOW() } IN users
-");
+")
 ```
-
-For multiple operations in one transaction, use the block form or transaction handle below — the string form runs a single AQL statement.
 
 ### Using Transaction Object (Manual Control)
 

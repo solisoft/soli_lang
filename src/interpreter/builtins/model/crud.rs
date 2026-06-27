@@ -126,6 +126,22 @@ pub fn get_current_tx_id() -> Option<String> {
     CURRENT_TX.with(|tx| tx.borrow().as_ref().map(|t| t.tx_id.clone()))
 }
 
+/// True when a transaction is open on this thread.
+pub fn has_active_tx() -> bool {
+    CURRENT_TX.with(|tx| tx.borrow().is_some())
+}
+
+/// Forcibly drop the thread-local transaction state without touching the
+/// server. `commit_transaction`/`rollback_transaction` already clear it on
+/// success; this is the defensive backstop the block-form runner calls after a
+/// commit/rollback that itself errored, so a half-finished transaction can
+/// never leak into the next request handled by a reused worker thread.
+pub fn clear_current_tx() {
+    CURRENT_TX.with(|tx| {
+        tx.borrow_mut().take();
+    });
+}
+
 /// Begin a new transaction.
 pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String> {
     let host = super::core::DB_CONFIG.host.clone();
@@ -839,6 +855,13 @@ pub fn exec_insert(
     key: Option<&str>,
     mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    // When a transaction is open on this thread, route the write through the
+    // transaction endpoint so it participates in (and rolls back with) the tx.
+    // `exec_insert_tx` delegates straight back here when no tx is active, so
+    // this never recurses.
+    if get_current_tx_id().is_some() {
+        return exec_insert_tx(collection, key, document);
+    }
     if let Some(k) = key {
         if let Some(obj) = document.as_object_mut() {
             obj.insert("_key".to_string(), serde_json::json!(k));
@@ -858,6 +881,10 @@ pub fn exec_insert(
 
 /// Execute a get with automatic collection creation.
 pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    // Read through the active transaction so it sees uncommitted writes.
+    if get_current_tx_id().is_some() {
+        return exec_get_tx(collection, key);
+    }
     let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
 
@@ -877,6 +904,10 @@ pub fn exec_update(
     document: serde_json::Value,
     _merge: bool,
 ) -> Result<serde_json::Value, String> {
+    // Route the update through the active transaction when one is open.
+    if get_current_tx_id().is_some() {
+        return exec_update_tx(collection, key, document);
+    }
     let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
@@ -961,6 +992,10 @@ pub fn cas_field_delta(
 
 /// Execute a delete with automatic collection creation.
 pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, String> {
+    // Route the delete through the active transaction when one is open.
+    if get_current_tx_id().is_some() {
+        return exec_delete_tx(collection, key);
+    }
     let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
     let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 

@@ -823,6 +823,25 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
 
     let (query, bind_vars) = qb.build_query();
 
+    // Inside a `grouped {}` block, register this read for coalescing instead of
+    // firing it now; the rows→instances transform mirrors the paths below.
+    if super::batch::is_active() {
+        let class = qb.class.clone();
+        return super::batch::register(
+            query,
+            bind_vars,
+            Box::new(move |rows| {
+                let values: Vec<Value> = match &class {
+                    Some(c) => rows.iter().map(|j| json_doc_to_instance(c, j)).collect(),
+                    None => rows.iter().map(super::crud::json_to_value).collect(),
+                };
+                Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    values,
+                ))))
+            }),
+        );
+    }
+
     if let Some(ref class) = qb.class {
         if bind_vars.is_empty() {
             exec_auto_collection_as_instances(query, &collection, class)
@@ -958,6 +977,23 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
     qb_with_limit.set_limit(1);
     let (query, bind_vars) = qb_with_limit.build_query();
 
+    if super::batch::is_active() {
+        let class = qb.class.clone();
+        return super::batch::register(
+            query,
+            bind_vars,
+            Box::new(move |rows| {
+                Ok(match rows.first() {
+                    Some(doc) => match &class {
+                        Some(c) => json_doc_to_instance(c, doc),
+                        None => super::crud::json_to_value(doc),
+                    },
+                    None => Value::Null,
+                })
+            }),
+        );
+    }
+
     // For first(), we can use raw JSON results + convert single item to instance
     let raw_result = if bind_vars.is_empty() {
         super::crud::exec_with_auto_collection(query, None, &collection)
@@ -1021,6 +1057,20 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
     } else {
         format!("RETURN LENGTH({} RETURN 1)", query)
     };
+
+    if super::batch::is_active() {
+        return super::batch::register(
+            query,
+            bind_vars_str,
+            // Subquery `(RETURN …)` yields a one-element array: [count].
+            Box::new(move |rows| {
+                Ok(rows
+                    .first()
+                    .map(super::crud::json_to_value)
+                    .unwrap_or(Value::Int(0)))
+            }),
+        );
+    }
 
     let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)
@@ -1182,6 +1232,14 @@ pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
 
     query.push_str(" LIMIT 1 RETURN true");
 
+    if super::batch::is_active() {
+        return super::batch::register(
+            query,
+            bind_vars_str,
+            Box::new(move |rows| Ok(Value::Bool(!rows.is_empty()))),
+        );
+    }
+
     let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)
     } else {
@@ -1261,6 +1319,19 @@ pub fn execute_query_builder_aggregate(
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
+
+    if super::batch::is_active() {
+        return super::batch::register(
+            query,
+            bind_vars_str,
+            Box::new(move |rows| {
+                Ok(rows
+                    .first()
+                    .map(super::crud::json_to_value)
+                    .unwrap_or(Value::Null))
+            }),
+        );
+    }
 
     let result = if bind_vars_str.is_empty() {
         exec_auto_collection(query, &collection)

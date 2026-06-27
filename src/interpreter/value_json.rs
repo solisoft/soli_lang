@@ -127,6 +127,12 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             }
             Ok(serde_json::Value::Object(map))
         }
+        // A `grouped {}` deferred (e.g. an `@ivar` serialised into a JSON
+        // response or template locals) resolves to its query result first.
+        Value::Deferred(cell) => {
+            let resolved = crate::interpreter::builtins::model::batch::force(cell)?;
+            value_to_json(&resolved)
+        }
         _ => Err(format!("Cannot convert {} to JSON", value.type_name())),
     }
 }

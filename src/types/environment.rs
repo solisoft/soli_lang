@@ -74,6 +74,17 @@ impl TypeEnvironment {
             },
         );
 
+        // grouped(fn() { ... }) -> Any — request-coalescing batch; runs the
+        // block and returns its value (the DB reads inside are combined into a
+        // single round-trip).
+        self.functions.insert(
+            "grouped".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
         // input(String?) -> String
         self.functions.insert(
             "input".to_string(),

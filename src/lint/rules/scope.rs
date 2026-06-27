@@ -114,6 +114,8 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "render",
     "render_partial",
     "redirect",
+    // Request-coalescing block
+    "grouped",
     "h",
     "h!",
     "raw",

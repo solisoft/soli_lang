@@ -321,6 +321,41 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            // `grouped(fn() { ... })` runs the block with a request-coalescing
+            // batch active so DB reads inside are combined into one round-trip.
+            // Like `respond_to`, the block must run with `&mut Interpreter`, so
+            // it's dispatched here rather than through the native placeholder.
+            if name == "grouped" {
+                if let Some(result) = self.try_evaluate_grouped(arguments, span)? {
+                    return Ok(result);
+                }
+            }
+        }
+
+        // Member-callee interceptor: `<ModelClass>.transaction(fn() { ... })`
+        // (or a trailing `do … end` / `{ … }` block) runs the block inside a DB
+        // transaction (begin → run → commit, or rollback + re-raise on throw).
+        // A NativeFunction can't reach `&mut Interpreter` to invoke the block,
+        // so — like `respond_to` — it's handled here. Keyed on a *block*
+        // argument, so the string (AQL) and no-arg (handle) forms, and any
+        // unrelated `.transaction` call, fall through to normal dispatch with no
+        // double evaluation.
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if name == "transaction" && arguments.len() == 1 {
+                let block_expr = match &arguments[0] {
+                    Argument::Block(e) => Some(e),
+                    Argument::Positional(e) if matches!(e.kind, ExprKind::Lambda { .. }) => Some(e),
+                    _ => None,
+                };
+                if let Some(block_expr) = block_expr {
+                    if let Some(result) =
+                        self.try_evaluate_model_transaction(object, block_expr, span)?
+                    {
+                        return Ok(result);
+                    }
+                    // Not a model class → fall through to normal dispatch.
+                }
+            }
         }
 
         // Controller static-block DSL is declarative. `this.layout(...)`,
@@ -1028,6 +1063,136 @@ impl Interpreter {
         }
 
         Ok(true)
+    }
+
+    /// Run the block form `<ModelClass>.transaction(fn() { ... })`: begin a DB
+    /// transaction, execute the block, commit on success, or roll back and
+    /// **re-raise the original error** if the block throws. The block's value is
+    /// the call's value.
+    ///
+    /// Nested calls *join* the outer transaction: only the outermost
+    /// `transaction` begins/commits/rolls back (SolidB has no savepoints). After
+    /// a commit/rollback that itself errors, the thread-local tx state is force-
+    /// cleared so a half-finished transaction can't leak into the next request
+    /// on a reused worker thread.
+    ///
+    /// Called from `evaluate_call` only when the sole argument is a block (an
+    /// `fn` literal or a trailing `do … end` / `{ … }`). Returns `Ok(None)` when
+    /// the receiver isn't a model class so an unrelated `.transaction(block)`
+    /// method falls through to normal dispatch; the AQL-string and no-arg handle
+    /// forms never reach here.
+    fn try_evaluate_model_transaction(
+        &mut self,
+        object: &Expr,
+        block_expr: &Expr,
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::crud::{
+            begin_transaction, clear_current_tx, commit_transaction, has_active_tx,
+            rollback_transaction,
+        };
+
+        // Only a model class gets the transaction-block treatment; anything else
+        // is some unrelated `.transaction` method → let normal dispatch handle it.
+        let receiver = self.evaluate(object)?;
+        match &receiver {
+            Value::Class(class) if class.is_model_subclass() => {}
+            _ => return Ok(None),
+        }
+
+        let block = self.evaluate(block_expr)?;
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Ok(None);
+        }
+
+        // Nested transaction → join the outer one; the outer scope settles it.
+        if has_active_tx() {
+            return self.call_value(block, Vec::new(), span).map(Some);
+        }
+
+        begin_transaction(None).map_err(|e| RuntimeError::General {
+            message: format!("transaction: failed to begin: {}", e),
+            span,
+        })?;
+
+        match self.call_value(block, Vec::new(), span) {
+            Ok(value) => match commit_transaction() {
+                Ok(()) => Ok(Some(value)),
+                Err(e) => {
+                    clear_current_tx();
+                    Err(RuntimeError::General {
+                        message: format!("transaction: commit failed: {}", e),
+                        span,
+                    })
+                }
+            },
+            Err(err) => {
+                // Roll back, then surface the block's original error (not the
+                // rollback's). Force-clear in case rollback also failed.
+                let _ = rollback_transaction();
+                clear_current_tx();
+                Err(err)
+            }
+        }
+    }
+
+    /// Implement `grouped(fn() { ... })` — run the block with a request-
+    /// coalescing batch active. DB reads inside the block register themselves
+    /// instead of firing, and are combined into a single round-trip when the
+    /// batch flushes: at block end, or the first time one of the deferred
+    /// results is read inside the block (auto-flush).
+    ///
+    /// Returns `Ok(None)` when the sole argument isn't a callable block, so the
+    /// call falls through to the native `grouped` placeholder (which raises a
+    /// clear usage error). A nested `grouped` joins the outer batch; only the
+    /// outermost call begins/flushes it.
+    fn try_evaluate_grouped(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::batch;
+
+        if arguments.len() != 1 {
+            return Ok(None);
+        }
+        let block_expr = match &arguments[0] {
+            Argument::Block(e) | Argument::Positional(e) => e,
+            _ => return Ok(None),
+        };
+        let block = self.evaluate(block_expr)?;
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Ok(None);
+        }
+
+        // Nested grouped → join the outer batch; the outer scope flushes it.
+        if batch::is_active() {
+            return self.call_value(block, Vec::new(), span).map(Some);
+        }
+
+        batch::begin();
+        match self.call_value(block, Vec::new(), span) {
+            Ok(value) => {
+                // Flush whatever is still queued. Surface a flush error on the
+                // success path so a failed combined query isn't swallowed.
+                batch::end().map_err(|e| RuntimeError::General {
+                    message: format!("grouped: failed to flush queries: {}", e),
+                    span,
+                })?;
+                Ok(Some(value))
+            }
+            Err(err) => {
+                // Block threw: tear the batch down and surface the block's error.
+                let _ = batch::end();
+                Err(err)
+            }
+        }
     }
 
     /// Implement `respond_to(req, block_or_hash)` — Ruby-style content negotiation.

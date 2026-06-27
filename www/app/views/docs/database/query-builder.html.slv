@@ -255,6 +255,42 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
         </ul>
     </div>
 
+    <h2 id="grouped" class="text-2xl font-bold text-white mb-6">Coalescing Reads (<code>grouped</code>)</h2>
+    <p class="text-gray-400 mb-6">An action that reads several unrelated things pays one network round-trip per read. Wrap the reads in <code>grouped(fn() { ... })</code> and they are deferred and combined into a <strong>single</strong> request — one <code>LET … RETURN […]</code> statement that computes every subquery server-side and returns them together.</p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Without grouped — three round-trips
+@posts    = Post.all
+@accounts = Account.where({ active: true }).count
+@tags     = Tag.all
+
+# With grouped — one round-trip for all three
+grouped(fn() {
+  @posts    = Post.all
+  @accounts = Account.where({ active: true }).count
+  @tags     = Tag.all
+})</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">Inside the block each read returns a placeholder instead of hitting the database; the queries fire as one combined statement when the block ends. <strong>After</strong> the block, <code>@posts</code>, <code>@accounts</code>, and <code>@tags</code> are ordinary values you use exactly as before.</p>
+
+    <h3 class="text-xl font-bold text-white mb-4">What gets coalesced</h3>
+    <p class="text-gray-400 mb-6">Read queries are batched: <code>all</code>, <code>where(...).all</code> / <code>.first</code> / <code>.count</code> / <code>.exists</code>, the aggregates (<code>sum</code> / <code>avg</code> / <code>min</code> / <code>max</code>), <code>find</code>, <code>find_by</code>, and <code>first_by</code>. <strong>Writes are not</strong> — <code>create</code>, <code>save</code>, <code>update</code>, <code>delete</code> run immediately even inside the block (use <code>transaction</code> for atomic writes).</p>
+
+    <h3 class="text-xl font-bold text-white mb-4">Reading a result inside the block (auto-flush)</h3>
+    <p class="text-gray-400 mb-6">If you read one of the deferred results <em>before</em> the block ends, the queries collected so far fire immediately (an "auto-flush"), then collection resumes. This always returns correct data; it just means more than one round-trip when you interleave reads. For maximum coalescing, do the reads first and use the results after the block.</p>
+
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">Notes</h4>
+        <ul class="text-blue-200/80 text-sm space-y-2">
+            <li><code>find</code> on a missing id still raises <code>RecordNotFound</code> (&rarr; 404) — the error surfaces when the result is read or the block ends.</li>
+            <li>A combined query is all-or-nothing: if it fails, every read in the batch fails together.</li>
+            <li>Verify the savings with <code>dev_queries()</code> — a coalesced block shows a single combined query.</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a href="/docs/database/relationships" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">

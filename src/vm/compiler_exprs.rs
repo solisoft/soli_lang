@@ -398,6 +398,51 @@ impl Compiler {
             }
         }
 
+        // `<ModelClass>.transaction(fn() { ... })` — the block form runs a user
+        // closure with begin/commit/rollback semantics, which the bytecode VM
+        // can't express inline. Refuse to compile it (like `&.` safe navigation)
+        // so the enclosing handler falls back to the tree-walking interpreter,
+        // where the executor interceptor runs the block correctly. Only the
+        // literal-block form is rejected; the AQL-string and no-arg handle forms
+        // compile and run in the VM as ordinary native calls.
+        if let ExprKind::Member { name, .. } = &callee.kind {
+            if name == "transaction" && arguments.len() == 1 {
+                let is_block = match &arguments[0] {
+                    Argument::Block(_) => true,
+                    Argument::Positional(e) => matches!(e.kind, ExprKind::Lambda { .. }),
+                    _ => false,
+                };
+                if is_block {
+                    return Err(CompileError::new(
+                        "Model.transaction { ... } block form runs in the interpreter, not the VM",
+                        callee.span,
+                    ));
+                }
+            }
+        }
+
+        // `grouped(fn() { ... })` — like the transaction block form, the
+        // request-coalescing batch runs a user closure with deferred-result
+        // semantics the bytecode VM can't express inline. Refuse the block form
+        // so the enclosing handler falls back to the tree-walking interpreter,
+        // where the `grouped` interceptor (and `Value::Deferred` resolution)
+        // runs it correctly — production requests still get the coalescing.
+        if let ExprKind::Variable(name) = &callee.kind {
+            if name == "grouped" && arguments.len() == 1 {
+                let is_block = match &arguments[0] {
+                    Argument::Block(_) => true,
+                    Argument::Positional(e) => matches!(e.kind, ExprKind::Lambda { .. }),
+                    _ => false,
+                };
+                if is_block {
+                    return Err(CompileError::new(
+                        "grouped(fn() { ... }) runs in the interpreter, not the VM",
+                        callee.span,
+                    ));
+                }
+            }
+        }
+
         // `super(...)` / `super.method(...)` — dispatch against the
         // *defining* class's superclass at runtime (the CallSuper* handlers
         // read the class recorded on the call frame). `this` goes in the
@@ -1221,5 +1266,69 @@ impl Compiler {
         self.locals.pop();
         self.stack_height = result_slot as usize + 1;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod transaction_compile_tests {
+    //! The block form `Model.transaction(fn() { ... })` must NOT compile in the
+    //! bytecode VM: the compiler rejects it so the production request path's
+    //! VM→interpreter fallback (`serve::mod.rs`) runs it on the tree-walker,
+    //! where the executor interceptor provides begin/commit/rollback. The
+    //! AQL-string and no-arg handle forms must still compile (ordinary native
+    //! calls). These tests pin that contract so a refactor can't silently make
+    //! the block form compile to a doomed native call (which would drop the
+    //! block and never roll back).
+    use crate::vm::compiler::Compiler;
+
+    fn compiles(src: &str) -> bool {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).is_ok()
+    }
+
+    #[test]
+    fn block_form_is_rejected_for_interpreter_fallback() {
+        assert!(
+            !compiles("User.transaction(fn() { User.create({}) })"),
+            "the literal block form must fail VM compilation so it falls back to the interpreter"
+        );
+    }
+
+    #[test]
+    fn string_and_handle_forms_still_compile() {
+        assert!(
+            compiles("User.transaction(\"FOR u IN users RETURN u\")"),
+            "the AQL-string form is an ordinary native call and must compile"
+        );
+        assert!(
+            compiles("let tx = User.transaction()"),
+            "the no-arg handle form is an ordinary native call and must compile"
+        );
+    }
+}
+
+#[cfg(test)]
+mod grouped_compile_tests {
+    //! `grouped(fn() { ... })` must NOT compile in the bytecode VM: the
+    //! request-coalescing batch defers query results and resolves them through
+    //! `Value::Deferred`, which the VM can't express inline. Rejecting it makes
+    //! the production request path's VM→interpreter fallback run the handler on
+    //! the tree-walker, where the `grouped` interceptor (and deferred-result
+    //! resolution) work. This pins that contract.
+    use crate::vm::compiler::Compiler;
+
+    fn compiles(src: &str) -> bool {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).is_ok()
+    }
+
+    #[test]
+    fn block_form_is_rejected_for_interpreter_fallback() {
+        assert!(
+            !compiles("grouped(fn() { Post.all })"),
+            "the literal block form must fail VM compilation so it falls back to the interpreter"
+        );
     }
 }
