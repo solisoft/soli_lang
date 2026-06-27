@@ -40,10 +40,11 @@ describe("Model.where Hash form (safe)", fn() {
         });
     });
 
-    test("rejects an empty hash", fn() {
-        assert_throws("where empty hash", fn() {
-            WhereSafeItem.where({});
-        });
+    test("accepts an empty hash (no-op, matches all rows)", fn() {
+        // An empty Hash adds no constraint — `where({})` mirrors no `.where`
+        // at all and returns a QueryBuilder that matches every row.
+        let qb = WhereSafeItem.where({});
+        assert(!qb.nil?);
     });
 
     test("rejects a second argument", fn() {
