@@ -68,24 +68,16 @@ end</code></pre>
                     </thead>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_now(args)</code></td>
-                            <td class="py-3">Runs <code class="text-purple-400">perform</code> inline, in the current process. No SolidB round-trip.</td>
-                        </tr>
-                        <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_later(args, queue?)</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_later(args, queue_or_opts?)</code></td>
                             <td class="py-3">Enqueues into SolidB. Returns the job id.</td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_in(duration, args, queue?)</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_in(duration, args, queue_or_opts?)</code></td>
                             <td class="py-3">Enqueues with a relative delay (<code class="text-purple-400">"5 minutes"</code>, <code class="text-purple-400">"2 hours"</code>, seconds as a number).</td>
                         </tr>
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_at(datetime, args, queue?)</code></td>
+                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_at(datetime, args, queue_or_opts?)</code></td>
                             <td class="py-3">Enqueues to run at an ISO-8601 timestamp.</td>
-                        </tr>
-                        <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-amber-400">XJob.set(queue: ...)</code></td>
-                            <td class="py-3">Captures options and forwards to <code class="text-purple-400">perform_later</code>/<code class="text-purple-400">perform_in</code>/<code class="text-purple-400">perform_at</code>.</td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.schedule_cron(name, expr, args?)</code></td>
@@ -94,11 +86,12 @@ end</code></pre>
                     </tbody>
                 </table>
             </div>
-            <pre data-filename="Examples" class="mt-4"><code class="language-soli text-sm">WelcomeEmailJob.perform_now({ "user_id": 42 })          # Inline, no queue
-WelcomeEmailJob.perform_later({ "user_id": 42 })        # Enqueue
+            <p class="text-gray-400 mt-4 text-sm">The trailing <code class="text-amber-400">queue_or_opts</code> argument is either a queue-name string or an options hash <code class="text-amber-400">{ queue, priority, max_retries }</code> — <code class="text-amber-400">priority</code> is an Int and higher runs first.</p>
+            <pre data-filename="Examples" class="mt-4"><code class="language-soli text-sm">WelcomeEmailJob.perform_later({ "user_id": 42 })        # Default queue
 WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 })
 WelcomeEmailJob.perform_at("2026-05-01T08:00:00Z", { "user_id": 42 })
-WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></pre>
+WelcomeEmailJob.perform_later({ "user_id": 42 }, "mailers")     # Pick a queue
+WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority": 10 })</code></pre>
         </div>
     </section>
 
@@ -109,17 +102,18 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
         <section id="def-job-enqueue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue(handler, args, queue?)</code>
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue(handler, args, queue_or_opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })</code></pre>
+                <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id. The trailing argument is a queue-name string or an options hash <code class="text-amber-400">{ queue, priority, max_retries }</code> (higher <code class="text-amber-400">priority</code> runs first).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
+Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 })</code></pre>
             </div>
         </section>
 
         <section id="def-job-enqueue-in" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue-in" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_in(handler, duration, args, queue?)</code>
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_in(handler, duration, args, queue_or_opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-purple-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })</code></pre>
@@ -129,7 +123,7 @@ WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })</code></p
         <section id="def-job-enqueue-at" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue-at" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_at(handler, datetime, args, queue?)</code>
+                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_at(handler, datetime, args, queue_or_opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue to run at a specific ISO-8601 timestamp.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 })</code></pre>

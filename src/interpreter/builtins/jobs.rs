@@ -273,20 +273,60 @@ fn parse_hhmm(time: &str) -> Result<(u32, u32), String> {
 
 // ===== Job class methods =====
 
+/// Resolve the trailing queue/options argument shared by the job enqueue
+/// methods. The argument may be:
+///
+/// - omitted / `null` → default queue, no extra options
+/// - a `String` → queue name (the original positional form)
+/// - a `Hash` → `{ queue?, priority?, max_retries? }`; the `queue` key selects
+///   the queue (default when absent) and every other key is forwarded to SolidB
+///   as-is. `priority` is an Int — higher runs first.
+///
+/// Returns `(queue_name, opts_json_object)` where the opts object carries the
+/// pass-through scheduling knobs (everything but `queue`).
+fn job_queue_and_opts(arg: Option<&Value>) -> Result<(String, serde_json::Value), String> {
+    let mut queue = jobs_config().default_queue.clone();
+    let mut out = serde_json::Map::new();
+    match arg {
+        None | Some(Value::Null) => {}
+        Some(Value::String(s)) => queue = s.to_string(),
+        Some(hash @ Value::Hash(_)) => {
+            if let serde_json::Value::Object(map) = value_to_json(hash)? {
+                for (k, v) in map {
+                    if k == "queue" {
+                        if let Some(s) = v.as_str() {
+                            queue = s.to_string();
+                        }
+                    } else {
+                        out.insert(k, v);
+                    }
+                }
+            }
+        }
+        Some(other) => {
+            return Err(format!(
+                "queue argument must be a queue-name string or an options hash \
+                 ({{ queue, priority, max_retries }}), got {}",
+                other.type_name()
+            ));
+        }
+    }
+    Ok((queue, serde_json::Value::Object(out)))
+}
+
 fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
     if args.len() < 2 {
-        return Err("Job.enqueue(handler, args, queue?) requires at least 2 arguments".to_string());
+        return Err(
+            "Job.enqueue(handler, args, queue_or_opts?) requires at least 2 arguments".to_string(),
+        );
     }
     let handler = arg_string(&args, 0, "Job.enqueue")?;
     let payload = arg_hash_as_json(&args, 1)?;
-    let queue = match args.get(2) {
-        Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone().into(),
-    };
+    let (queue, opts) = job_queue_and_opts(args.get(2))?;
     let client = make_client()?;
     let callback = callback_for(&handler);
     let id = client
-        .enqueue_job(&queue, &handler, payload, &callback, None)
+        .enqueue_job(&queue, &handler, payload, &callback, None, Some(opts))
         .map_err(|e| format!("Job.enqueue failed: {}", e))?;
     Ok(Value::String(id.into()))
 }
@@ -294,22 +334,26 @@ fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
 fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
-            "Job.enqueue_in(handler, duration, args, queue?) requires at least 3 arguments"
+            "Job.enqueue_in(handler, duration, args, queue_or_opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
     let handler = arg_string(&args, 0, "Job.enqueue_in")?;
     let secs = parse_duration(&args[1])?;
     let payload = arg_hash_as_json(&args, 2)?;
-    let queue = match args.get(3) {
-        Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone().into(),
-    };
+    let (queue, opts) = job_queue_and_opts(args.get(3))?;
     let when = iso_now_plus_seconds(secs);
     let client = make_client()?;
     let callback = callback_for(&handler);
     let id = client
-        .enqueue_job(&queue, &handler, payload, &callback, Some(&when))
+        .enqueue_job(
+            &queue,
+            &handler,
+            payload,
+            &callback,
+            Some(&when),
+            Some(opts),
+        )
         .map_err(|e| format!("Job.enqueue_in failed: {}", e))?;
     Ok(Value::String(id.into()))
 }
@@ -317,21 +361,25 @@ fn job_enqueue_in(args: Vec<Value>) -> Result<Value, String> {
 fn job_enqueue_at(args: Vec<Value>) -> Result<Value, String> {
     if args.len() < 3 {
         return Err(
-            "Job.enqueue_at(handler, datetime, args, queue?) requires at least 3 arguments"
+            "Job.enqueue_at(handler, datetime, args, queue_or_opts?) requires at least 3 arguments"
                 .to_string(),
         );
     }
     let handler = arg_string(&args, 0, "Job.enqueue_at")?;
     let when = arg_string(&args, 1, "Job.enqueue_at")?;
     let payload = arg_hash_as_json(&args, 2)?;
-    let queue = match args.get(3) {
-        Some(Value::String(s)) => s.clone(),
-        _ => jobs_config().default_queue.clone().into(),
-    };
+    let (queue, opts) = job_queue_and_opts(args.get(3))?;
     let client = make_client()?;
     let callback = callback_for(&handler);
     let id = client
-        .enqueue_job(&queue, &handler, payload, &callback, Some(&when))
+        .enqueue_job(
+            &queue,
+            &handler,
+            payload,
+            &callback,
+            Some(&when),
+            Some(opts),
+        )
         .map_err(|e| format!("Job.enqueue_at failed: {}", e))?;
     Ok(Value::String(id.into()))
 }
@@ -735,9 +783,11 @@ fn register_cron_class(env: &mut Environment) {
 
 // ===== Facade-method injection =====
 
-/// Inject perform_now / perform_later / perform_in / perform_at / set / schedule_cron
-/// static methods into a user-defined `XJob` class, returning a fresh `Rc<Class>`
-/// that the caller should re-define in the environment.
+/// Inject perform_later / perform_in / perform_at / schedule_cron static methods
+/// into a user-defined `XJob` class, returning a fresh `Rc<Class>` that the
+/// caller should re-define in the environment. Each enqueue facade accepts an
+/// optional trailing queue-name string or `{ queue, priority, max_retries }`
+/// options hash (see `job_queue_and_opts`).
 ///
 /// User-defined methods on the class take precedence — facade methods are only
 /// added when the corresponding name is not already present.
@@ -775,7 +825,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                 move |args| {
                     if args.is_empty() {
                         return Err(format!(
-                            "{}.perform_in(duration, args, queue?) requires duration",
+                            "{}.perform_in(duration, args, queue_or_opts?) requires duration",
                             cn
                         ));
                     }
@@ -804,7 +854,7 @@ pub fn inject_facade_methods(class: &Class) -> Class {
                 move |args| {
                     if args.is_empty() {
                         return Err(format!(
-                            "{}.perform_at(datetime, args, queue?) requires datetime",
+                            "{}.perform_at(datetime, args, queue_or_opts?) requires datetime",
                             cn
                         ));
                     }
@@ -1116,6 +1166,77 @@ mod prelude_tests {
         // Auth passed → falls through to class lookup, which returns 503
         // because the class isn't loaded in this test interpreter.
         assert_eq!(status_of(&resp), 503);
+    }
+}
+
+#[cfg(test)]
+mod job_opts_tests {
+    //! `job_queue_and_opts` is the single point where the trailing enqueue
+    //! argument is interpreted, so these tests pin all four shapes: omitted,
+    //! a bare queue-name string (the original form), and an options hash with
+    //! or without an explicit `queue`. The `priority` / `max_retries` knobs
+    //! must survive into the forwarded opts object unchanged.
+    use super::{job_queue_and_opts, jobs_config};
+    use crate::interpreter::value::{HashKey, HashPairs, Value};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn hash(pairs: &[(&str, Value)]) -> Value {
+        let mut hp = HashPairs::default();
+        for (k, v) in pairs {
+            hp.insert(HashKey::String((*k).into()), v.clone());
+        }
+        Value::Hash(Rc::new(RefCell::new(hp)))
+    }
+
+    #[test]
+    fn omitted_uses_default_queue_and_no_opts() {
+        let (queue, opts) = job_queue_and_opts(None).unwrap();
+        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(opts, serde_json::json!({}));
+    }
+
+    #[test]
+    fn null_is_treated_as_omitted() {
+        let (queue, opts) = job_queue_and_opts(Some(&Value::Null)).unwrap();
+        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(opts, serde_json::json!({}));
+    }
+
+    #[test]
+    fn bare_string_selects_queue_with_no_opts() {
+        let arg = Value::String("mailers".into());
+        let (queue, opts) = job_queue_and_opts(Some(&arg)).unwrap();
+        assert_eq!(queue, "mailers");
+        assert_eq!(opts, serde_json::json!({}));
+    }
+
+    #[test]
+    fn hash_selects_queue_and_forwards_priority() {
+        let arg = hash(&[
+            ("queue", Value::String("high".into())),
+            ("priority", Value::Int(10)),
+            ("max_retries", Value::Int(3)),
+        ]);
+        let (queue, opts) = job_queue_and_opts(Some(&arg)).unwrap();
+        assert_eq!(queue, "high");
+        assert_eq!(
+            opts,
+            serde_json::json!({ "priority": 10, "max_retries": 3 })
+        );
+    }
+
+    #[test]
+    fn hash_without_queue_keeps_default_but_keeps_priority() {
+        let arg = hash(&[("priority", Value::Int(5))]);
+        let (queue, opts) = job_queue_and_opts(Some(&arg)).unwrap();
+        assert_eq!(queue, jobs_config().default_queue);
+        assert_eq!(opts, serde_json::json!({ "priority": 5 }));
+    }
+
+    #[test]
+    fn wrong_type_is_rejected() {
+        assert!(job_queue_and_opts(Some(&Value::Int(7))).is_err());
     }
 }
 

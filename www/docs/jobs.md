@@ -25,9 +25,6 @@ Every job class must define a `static fn perform(args: Hash)`. That's the entry 
 Job classes get a set of static helpers automatically — you don't need to inherit from anything:
 
 ```soli
-# Run inline, in the current process. No queue, no callback.
-WelcomeEmailJob.perform_now({ "user_id": 42 });
-
 # Enqueue. SolidB picks it up and calls back to /_jobs/run/WelcomeEmailJob.
 WelcomeEmailJob.perform_later({ "user_id": 42 });
 
@@ -35,9 +32,20 @@ WelcomeEmailJob.perform_later({ "user_id": 42 });
 WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 });
 WelcomeEmailJob.perform_at("2026-05-01T08:00:00Z", { "user_id": 42 });
 
-# Pick a non-default queue.
-WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 });
+# Pick a non-default queue: pass its name as the trailing argument.
+WelcomeEmailJob.perform_later({ "user_id": 42 }, "mailers");
+
+# Pass an options hash to set the queue *and* priority (higher runs first).
+WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority": 10 });
 ```
+
+Every enqueue helper (`perform_later`, `perform_in`, `perform_at`) takes the same optional trailing argument — either a queue-name **string** or an **options hash**:
+
+| Key           | Type   | Purpose                                            |
+|---------------|--------|----------------------------------------------------|
+| `queue`       | String | Queue name (defaults to `SOLI_JOBS_DEFAULT_QUEUE`) |
+| `priority`    | Int    | Higher executes first                              |
+| `max_retries` | Int    | Retry budget                                       |
 
 Duration strings accept `seconds`, `minutes`, `hours`, `days`, `weeks` (and the singular/abbreviated forms — `s`, `min`, `hr`, `d`, `wk`). Numeric values are interpreted as seconds.
 
@@ -49,6 +57,12 @@ If you'd rather not use the per-class facade:
 job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 });
 Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 });
 Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 });
+
+# The trailing queue argument is also a string or an options hash, exactly
+# like the facade helpers.
+Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, "mailers");
+Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 });
+
 Job.cancel(job_id);
 jobs = Job.list("default");      # jobs in the "default" queue
 queue_names = Job.queues();

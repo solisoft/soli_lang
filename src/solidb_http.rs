@@ -840,6 +840,10 @@ impl SoliDBClient {
 
     /// Enqueue a job. `run_at` is an optional ISO-8601 timestamp for delayed
     /// execution; when `None`, the job is run as soon as a worker picks it up.
+    ///
+    /// `opts` is an optional JSON object whose keys are merged into the enqueue
+    /// payload as-is — the same queue-scheduling knobs the webhook path accepts,
+    /// notably `priority` (Int, higher runs first) and `max_retries` (Int).
     pub fn enqueue_job(
         &self,
         queue: &str,
@@ -847,6 +851,7 @@ impl SoliDBClient {
         args: Value,
         callback_url: &str,
         run_at: Option<&str>,
+        opts: Option<Value>,
     ) -> Result<String, SoliDBError> {
         let db = self.get_db()?;
         let mut payload = serde_json::json!({
@@ -856,6 +861,13 @@ impl SoliDBClient {
         });
         if let Some(when) = run_at {
             payload["run_at"] = serde_json::Value::String(when.to_string());
+        }
+        if let Some(Value::Object(map)) = opts {
+            if let Some(o) = payload.as_object_mut() {
+                for (k, v) in map {
+                    o.insert(k, v);
+                }
+            }
         }
         let response: Value = self.request(
             reqwest::Method::POST,

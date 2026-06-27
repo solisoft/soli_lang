@@ -3210,15 +3210,16 @@ Soli ships with a SolidB-backed queue and cron system. Define a handler in `app/
 
 Every user-defined `XJob` class also gets these static helpers injected automatically.
 
-#### Job.enqueue(handler, args, queue?)
+#### Job.enqueue(handler, args, queue_or_opts?)
 
-Enqueues a job by handler name. Returns the SolidB job id.
+Enqueues a job by handler name. Returns the SolidB job id. The trailing argument is either a queue-name string or an options hash `{ queue, priority, max_retries }` — `priority` is an Int and higher runs first.
 
 ```soli
 job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
+Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priority": 10 })
 ```
 
-#### Job.enqueue_in(handler, duration, args, queue?)
+#### Job.enqueue_in(handler, duration, args, queue_or_opts?)
 
 Enqueues with a relative delay. `duration` accepts `"5 minutes"`, `"1 hour"`, `"2 days"`, etc., or a number of seconds.
 
@@ -3226,7 +3227,7 @@ Enqueues with a relative delay. `duration` accepts `"5 minutes"`, `"1 hour"`, `"
 Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })
 ```
 
-#### Job.enqueue_at(handler, datetime, args, queue?)
+#### Job.enqueue_at(handler, datetime, args, queue_or_opts?)
 
 Enqueues to run at a specific ISO-8601 timestamp.
 
@@ -3252,18 +3253,18 @@ Each user-defined `XJob` class gets:
 
 | Method | Behavior |
 |--------|----------|
-| `XJob.perform_now(args)` | Runs `perform` inline, in the current process. No SolidB round-trip. |
-| `XJob.perform_later(args, queue?)` | Enqueues into SolidB. Returns the job id. |
-| `XJob.perform_in(duration, args, queue?)` | Enqueues with a relative delay. |
-| `XJob.perform_at(datetime, args, queue?)` | Enqueues to run at an ISO-8601 timestamp. |
-| `XJob.set(queue: ...)` | Returns a chainable proxy that forwards to `perform_later` / `perform_in` / `perform_at`. |
+| `XJob.perform_later(args, queue_or_opts?)` | Enqueues into SolidB. Returns the job id. |
+| `XJob.perform_in(duration, args, queue_or_opts?)` | Enqueues with a relative delay. |
+| `XJob.perform_at(datetime, args, queue_or_opts?)` | Enqueues to run at an ISO-8601 timestamp. |
 | `XJob.schedule_cron(name, expr, args?)` | Idempotently registers a cron entry that triggers this class. |
 
+The trailing `queue_or_opts` argument is either a queue-name string or an options hash `{ queue, priority, max_retries }` (higher `priority` runs first).
+
 ```soli
-WelcomeEmailJob.perform_now({ "user_id": 42 })
 WelcomeEmailJob.perform_later({ "user_id": 42 })
 WelcomeEmailJob.perform_in("5 minutes", { "user_id": 42 })
-WelcomeEmailJob.set(queue: "mailers").perform_later({ "user_id": 42 })
+WelcomeEmailJob.perform_later({ "user_id": 42 }, "mailers")
+WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority": 10 })
 ```
 
 ### Cron class
