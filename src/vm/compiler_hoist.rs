@@ -131,6 +131,7 @@ impl Scan {
             // Separate scopes / no in-scope expressions to scan.
             StmtKind::Function(_)
             | StmtKind::Class(_)
+            | StmtKind::Enum(_)
             | StmtKind::Interface(_)
             | StmtKind::Import(_) => {}
         }

@@ -22,6 +22,10 @@ fn pattern_binds(pattern: &MatchPattern) -> bool {
             rest.is_some() || fields.iter().any(|(_, p)| pattern_binds(p))
         }
         MatchPattern::Destructuring { fields, .. } => fields.iter().any(|(_, p)| pattern_binds(p)),
+        // Enum-variant matching (tag comparison + payload binding) is implemented
+        // in the tree-walker only; treat it as "binds" so `compile_match` bails
+        // and the match runs there.
+        MatchPattern::EnumVariant { .. } => true,
         MatchPattern::And(patterns) | MatchPattern::Or(patterns) => {
             patterns.iter().any(pattern_binds)
         }
@@ -160,6 +164,14 @@ impl Compiler {
                     fails.append(&mut sub_fails);
                 }
                 Ok(fails)
+            }
+            MatchPattern::EnumVariant { .. } => {
+                // Unreachable: `pattern_binds` flags these so `compile_match`
+                // bails to the tree-walker before reaching pattern compilation.
+                Err(CompileError::new(
+                    "enum-variant match patterns are evaluated by the tree-walker",
+                    crate::span::Span::new(0, 0, line, 0),
+                ))
             }
             MatchPattern::And(patterns) => {
                 let mut fails = Vec::new();

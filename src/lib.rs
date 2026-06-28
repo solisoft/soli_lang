@@ -109,10 +109,13 @@ pub fn run_with_path(
 /// Type-check a program without executing it. Resolves imports (when a path is
 /// given) and returns every type error, or any lex/parse/module-resolution
 /// failure as a single-element vec. Powers `soli check`.
+///
+/// On success returns any non-blocking warning messages (e.g. enum match
+/// non-exhaustiveness); these never fail the check.
 pub fn type_check_source(
     source: &str,
     source_path: Option<&std::path::Path>,
-) -> Result<(), Vec<SolilangError>> {
+) -> Result<Vec<String>, Vec<SolilangError>> {
     let tokens = lexer::Scanner::new(source)
         .scan_tokens()
         .map_err(|e| vec![e.into()])?;
@@ -133,9 +136,11 @@ pub fn type_check_source(
     }
 
     let mut checker = types::TypeChecker::new();
-    checker
-        .check(&program)
-        .map_err(|errs| errs.into_iter().map(Into::into).collect())
+    let (result, warnings) = checker.check_collecting_warnings(&program);
+    match result {
+        Ok(()) => Ok(warnings.into_iter().map(|w| w.to_string()).collect()),
+        Err(errs) => Err(errs.into_iter().map(Into::into).collect()),
+    }
 }
 
 /// Run a Solilang program through the bytecode VM (faster execution).

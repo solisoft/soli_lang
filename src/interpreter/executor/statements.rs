@@ -175,6 +175,12 @@ impl Interpreter {
                 Ok(ControlFlow::Normal(Value::Null))
             }
 
+            StmtKind::Enum(decl) => {
+                // Enums lower to an ordinary class the executor already runs.
+                self.execute_class(&decl.lower_to_class())?;
+                Ok(ControlFlow::Normal(Value::Null))
+            }
+
             StmtKind::Interface(_) => {
                 // Interfaces are handled at type-check time, no runtime effect
                 Ok(ControlFlow::Normal(Value::Null))

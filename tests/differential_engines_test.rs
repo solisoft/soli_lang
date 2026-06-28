@@ -326,6 +326,32 @@ const CASES: &[(&str, &str)] = &[
         "try_catch_native_error",
         "try { print(\"zz\".hex) } catch (e) { print(\"caught\") }",
     ),
+    // --- enums (VM-native: declaration, construction, methods, equality) ---
+    // Enum-variant *match patterns* and named construction deliberately bail to
+    // the tree-walker (binding-pattern / named-arg VM gaps), so they aren't
+    // exercised here; positional construction + method dispatch + `==` are
+    // VM-native and must match the tree-walker exactly.
+    (
+        "enum_unit_variant_access",
+        "enum Color { Red, Green, Blue }\nprint(Color.Green.variant())\nprint(Color.Red.variant())",
+    ),
+    (
+        "enum_unit_equality",
+        "enum Color { Red, Green, Blue }\nprint(Color.Red == Color.Red)\nprint(Color.Red == Color.Blue)",
+    ),
+    (
+        "enum_payload_positional_and_structural_eq",
+        "enum Box { Empty, Full(x: Int) }\nprint(Box.Full(7).variant())\nprint(Box.Full(7) == Box.Full(7))\nprint(Box.Full(7) == Box.Full(8))\nprint(Box.Empty == Box.Full(1))",
+    ),
+    (
+        "enum_method_with_if",
+        "enum Color { Red, Green, Blue\n  fn hex() { if this == Color.Red { return \"#f00\" }\n    if this == Color.Green { return \"#0f0\" }\n    return \"#00f\" } }\nprint(Color.Red.hex())\nprint(Color.Green.hex())\nprint(Color.Blue.hex())",
+    ),
+    (
+        // DB/JSON serialization shape + `parse` reconstruction must match.
+        "enum_serialization_and_parse",
+        "enum C { Red, Blue, Tag(name: String) }\nprint(json_stringify({\"c\": C.Red, \"t\": C.Tag(\"x\")}))\nprint(C.parse(\"Red\") == C.Red)\nprint(C.parse({\"variant\": \"Tag\", \"name\": \"y\"}) == C.Tag(\"y\"))",
+    ),
 ];
 
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

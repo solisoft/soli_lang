@@ -2,8 +2,11 @@
 //!
 //! Provides functions for converting between types and inspecting type information.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, Instance, NativeFunction, Value};
 
 /// Register all type conversion built-in functions.
 pub fn register_type_builtins(env: &mut Environment) {
@@ -13,6 +16,64 @@ pub fn register_type_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("str", Some(1), |args| {
             let resolved = args.into_iter().next().unwrap().resolve()?;
             Ok(Value::String(format!("{}", resolved).into()))
+        })),
+    );
+
+    // __enum_construct(EnumClass, "Variant", {field: value, ...}) — internal
+    // helper emitted by enum lowering. Builds a tagged enum-value instance,
+    // setting `__variant` (which `.new`'s `_`-prefix skip would otherwise drop).
+    env.define(
+        "__enum_construct".to_string(),
+        Value::NativeFunction(NativeFunction::new("__enum_construct", Some(3), |args| {
+            let class_rc = match &args[0] {
+                Value::Class(c) => c.clone(),
+                other => {
+                    return Err(format!(
+                        "__enum_construct expected an enum class, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let variant = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "__enum_construct expected a variant name, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut instance = Instance::new(class_rc);
+            instance.set("__variant".to_string(), Value::String(variant));
+            if let Value::Hash(pairs) = &args[2] {
+                for (key, value) in pairs.borrow().iter() {
+                    if let HashKey::String(field) = key {
+                        instance.set(field.to_string(), value.clone());
+                    }
+                }
+            }
+            Ok(Value::Instance(Rc::new(RefCell::new(instance))))
+        })),
+    );
+
+    // __enum_from(EnumClass, stored) — internal helper behind `Enum.from(...)`.
+    // Rebuilds an enum value from its stored DB/JSON shape (a tag string for a
+    // unit variant, or a { "variant": ..., ...payload } object).
+    env.define(
+        "__enum_from".to_string(),
+        Value::NativeFunction(NativeFunction::new("__enum_from", Some(2), |args| {
+            let class_rc = match &args[0] {
+                Value::Class(c) => c.clone(),
+                other => {
+                    return Err(format!(
+                        "__enum_from expected an enum class, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(crate::interpreter::value::build_enum_value(
+                &class_rc, &args[1],
+            ))
         })),
     );
 

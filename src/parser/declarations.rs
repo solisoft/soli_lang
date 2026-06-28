@@ -16,6 +16,8 @@ impl Parser {
             self.function_declaration()
         } else if self.check(&TokenKind::Class) {
             self.class_declaration()
+        } else if self.check(&TokenKind::Enum) {
+            self.enum_declaration()
         } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()
         } else if self.check(&TokenKind::Let) {
@@ -304,6 +306,97 @@ impl Parser {
         ))
     }
 
+    /// Parse an enum declaration:
+    ///   enum Status { Active, Archived, Pending(reason: String) def label() ... end }
+    /// The body is a mix of variant declarations (comma/newline separated) and
+    /// instance methods (`def`/`fn`). Closes with `}` or `end`.
+    pub(crate) fn enum_declaration(&mut self) -> ParseResult<Stmt> {
+        let start_span = self.current_span();
+        self.expect(&TokenKind::Enum)?;
+        let name = self.expect_identifier()?;
+
+        // Allow optional opening brace (Ruby `end` form also supported).
+        self.match_token(&TokenKind::LeftBrace);
+
+        let mut variants = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&TokenKind::RightBrace)
+            && !self.check(&TokenKind::End)
+            && !self.is_at_end()
+        {
+            // Allow stray separators between members.
+            if self.match_token(&TokenKind::Comma) || self.match_token(&TokenKind::Semicolon) {
+                continue;
+            }
+
+            let (visibility, is_static, _is_const) = self.parse_modifiers();
+
+            // A method (the "rich" scope): `def`/`fn` or `static def`.
+            if self.check(&TokenKind::Fn) {
+                methods.push(self.parse_method(visibility, is_static)?);
+                continue;
+            }
+
+            // Otherwise a variant: Name or Name(field: Type, ...)
+            let variant_span = self.current_span();
+            let variant_name = self.expect_identifier()?;
+            let payload = if self.match_token(&TokenKind::LeftParen) {
+                let mut payload = Vec::new();
+                if !self.check(&TokenKind::RightParen) {
+                    loop {
+                        let field_span = self.current_span();
+                        let field_name = self.expect_identifier()?;
+                        let type_annotation = if self.match_token(&TokenKind::Colon) {
+                            Some(self.parse_type()?)
+                        } else {
+                            None
+                        };
+                        payload.push(EnumPayloadField {
+                            name: field_name,
+                            type_annotation,
+                            span: field_span.merge(&self.previous_span()),
+                        });
+                        if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                        if self.check(&TokenKind::RightParen) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&TokenKind::RightParen)?;
+                payload
+            } else {
+                Vec::new()
+            };
+
+            variants.push(EnumVariantDecl {
+                name: variant_name,
+                payload,
+                span: variant_span.merge(&self.previous_span()),
+            });
+        }
+
+        if self.match_token(&TokenKind::End) {
+            // Enum body ended with 'end'.
+        } else {
+            self.expect(&TokenKind::RightBrace)?;
+        }
+        let span = start_span.merge(&self.previous_span());
+
+        Ok(Stmt::new(
+            StmtKind::Enum(EnumDecl {
+                name,
+                variants,
+                methods,
+                span,
+            }),
+            span,
+            None,
+        ))
+    }
+
     /// Check if the current token starts a class-level statement (e.g., validates(...))
     fn is_class_level_statement(&self) -> bool {
         // Check for identifier followed by left paren
@@ -327,6 +420,7 @@ impl Parser {
                 "scope",
                 "attr_accessible",
                 "encrypts",
+                "enum_field",
             ];
             // Bare class-level macros (no parentheses needed)
             let bare_class_level_names = ["soft_delete"];
@@ -384,10 +478,17 @@ impl Parser {
                 ) {
                     let callee_name = name.clone();
                     self.advance(); // consume the identifier
-                    let arg_expr = self.expression()?; // parse :user or "method"
+                                    // Parse one or more comma-separated positional args, so
+                                    // `enum_field :status, Status` works alongside the
+                                    // single-arg `belongs_to :user`. (Named args still require
+                                    // the parens form.)
+                    let mut arguments =
+                        vec![crate::ast::expr::Argument::Positional(self.expression()?)];
+                    while self.match_token(&TokenKind::Comma) {
+                        arguments.push(crate::ast::expr::Argument::Positional(self.expression()?));
+                    }
                     let span = start_span.merge(&self.previous_span());
                     let callee = Expr::new(ExprKind::Variable(callee_name), start_span);
-                    let arguments = vec![crate::ast::expr::Argument::Positional(arg_expr)];
                     let call = Expr::new(
                         ExprKind::Call {
                             callee: Box::new(callee),

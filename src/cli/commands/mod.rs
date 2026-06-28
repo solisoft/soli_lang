@@ -463,6 +463,7 @@ pub fn run_check(paths: &[String]) {
 
     let checked = files.len();
     let mut total_errors = 0;
+    let mut total_warnings = 0;
     let mut files_with_errors = 0;
 
     for file in &files {
@@ -473,11 +474,19 @@ pub fn run_check(paths: &[String]) {
                 continue;
             }
         };
-        if let Err(errors) = solilang::type_check_source(&source, Some(file.as_path())) {
-            files_with_errors += 1;
-            total_errors += errors.len();
-            for err in &errors {
-                println!("{}: {}", file.display(), err);
+        match solilang::type_check_source(&source, Some(file.as_path())) {
+            Ok(warnings) => {
+                total_warnings += warnings.len();
+                for warning in &warnings {
+                    println!("{}: {}", file.display(), warning);
+                }
+            }
+            Err(errors) => {
+                files_with_errors += 1;
+                total_errors += errors.len();
+                for err in &errors {
+                    println!("{}: {}", file.display(), err);
+                }
             }
         }
     }
@@ -485,10 +494,26 @@ pub fn run_check(paths: &[String]) {
     if total_errors > 0 {
         println!();
         println!(
-            "{} error(s) in {} of {} file(s)",
-            total_errors, files_with_errors, checked
+            "{} error(s){} in {} of {} file(s)",
+            total_errors,
+            if total_warnings > 0 {
+                format!(", {} warning(s)", total_warnings)
+            } else {
+                String::new()
+            },
+            files_with_errors,
+            checked
         );
         process::exit(1);
+    }
+
+    if total_warnings > 0 {
+        println!();
+        println!(
+            "No type errors, {} warning(s). Checked {} file(s).",
+            total_warnings, checked
+        );
+        return;
     }
 
     println!("No type errors. Checked {} file(s).", checked);

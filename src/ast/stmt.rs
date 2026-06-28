@@ -95,6 +95,9 @@ pub enum StmtKind {
     /// Class declaration
     Class(ClassDecl),
 
+    /// Enum declaration
+    Enum(EnumDecl),
+
     /// Interface declaration
     Interface(InterfaceDecl),
 
@@ -170,6 +173,235 @@ pub struct ClassDecl {
     /// Nested classes defined within this class
     pub nested_classes: Vec<ClassDecl>,
     pub span: Span,
+}
+
+/// Enum declaration: `enum Name { Variant, Payload(field: Type), def method ... }`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<EnumVariantDecl>,
+    /// Instance methods defined in the enum body (the "rich" scope).
+    pub methods: Vec<MethodDecl>,
+    pub span: Span,
+}
+
+/// A single enum variant: a unit variant (`Active`) or one carrying a payload
+/// (`Pending(reason: String)`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariantDecl {
+    pub name: String,
+    /// Ordered payload fields. Empty for unit variants.
+    pub payload: Vec<EnumPayloadField>,
+    pub span: Span,
+}
+
+/// A field carried by a payload variant: `reason: String` (type optional).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumPayloadField {
+    pub name: String,
+    pub type_annotation: Option<TypeAnnotation>,
+    pub span: Span,
+}
+
+impl EnumDecl {
+    /// Lower this enum into an ordinary class declaration that both execution
+    /// engines already know how to run. Pure AST → AST; called on-the-fly at
+    /// execution/compile time (the type checker keeps working on the `EnumDecl`).
+    ///
+    /// - `__variant: String` — instance tag field.
+    /// - each **unit** variant → `static const Active = __enum_construct(Name, "Active", {})`
+    ///   (a singleton built when the class is defined).
+    /// - each **payload** variant → `static def Pending(reason) {
+    ///   return __enum_construct(Name, "Pending", { "reason": reason }) }` — a real
+    ///   static method, so positional and named construction both work.
+    /// - `def variant() { return this.__variant }` — introspection.
+    /// - `static const __enum_variants = { "Active": [], "Pending": ["reason"] }` —
+    ///   variant → ordered payload field names (drives pattern binding & equality).
+    /// - the user's `def`s, copied verbatim.
+    pub fn lower_to_class(&self) -> ClassDecl {
+        use crate::ast::expr::{Argument, Expr, ExprKind};
+        use crate::ast::types::{TypeAnnotation, TypeKind};
+
+        let span = self.span;
+        let any_type = || TypeAnnotation::new(TypeKind::Named("Any".to_string()), span);
+        // The enum's own type — so variant construction is typed as the enum
+        // (enables `.method()` resolution and match-scrutinee typing).
+        let enum_type = || TypeAnnotation::new(TypeKind::Named(self.name.clone()), span);
+        let var = |name: &str| Expr::new(ExprKind::Variable(name.to_string()), span);
+        let str_lit = |s: &str| Expr::new(ExprKind::StringLiteral(s.to_string()), span);
+
+        // __enum_construct(EnumName, "<variant>", <fields-hash>)
+        let construct = |variant: &str, fields: Vec<(Expr, Expr)>| {
+            Expr::new(
+                ExprKind::Call {
+                    callee: Box::new(var("__enum_construct")),
+                    arguments: vec![
+                        Argument::Positional(var(&self.name)),
+                        Argument::Positional(str_lit(variant)),
+                        Argument::Positional(Expr::new(ExprKind::Hash(fields), span)),
+                    ],
+                },
+                span,
+            )
+        };
+
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+
+        // Instance tag field.
+        fields.push(FieldDecl {
+            visibility: Visibility::Public,
+            is_static: false,
+            is_const: false,
+            name: "__variant".to_string(),
+            type_annotation: Some(TypeAnnotation::new(
+                TypeKind::Named("String".to_string()),
+                span,
+            )),
+            initializer: None,
+            span,
+        });
+
+        for variant in &self.variants {
+            if variant.payload.is_empty() {
+                // Unit variant → static const singleton.
+                fields.push(FieldDecl {
+                    visibility: Visibility::Public,
+                    is_static: true,
+                    is_const: true,
+                    name: variant.name.clone(),
+                    type_annotation: Some(enum_type()),
+                    initializer: Some(construct(&variant.name, Vec::new())),
+                    span: variant.span,
+                });
+            } else {
+                // Payload variant → static constructor method.
+                let params: Vec<Parameter> = variant
+                    .payload
+                    .iter()
+                    .map(|field| Parameter {
+                        name: field.name.clone(),
+                        type_annotation: field.type_annotation.clone().unwrap_or_else(any_type),
+                        default_value: None,
+                        span: field.span,
+                        is_block_param: false,
+                    })
+                    .collect();
+                let hash_fields: Vec<(Expr, Expr)> = variant
+                    .payload
+                    .iter()
+                    .map(|field| (str_lit(&field.name), var(&field.name)))
+                    .collect();
+                methods.push(MethodDecl {
+                    visibility: Visibility::Public,
+                    is_static: true,
+                    name: variant.name.clone(),
+                    params,
+                    return_type: Some(enum_type()),
+                    body: vec![Stmt::new(
+                        StmtKind::Return(Some(construct(&variant.name, hash_fields))),
+                        variant.span,
+                        None,
+                    )],
+                    span: variant.span,
+                });
+            }
+        }
+
+        // static const __enum_variants = { "<variant>": [<field names>], ... }
+        let variants_meta: Vec<(Expr, Expr)> = self
+            .variants
+            .iter()
+            .map(|variant| {
+                let names: Vec<Expr> = variant.payload.iter().map(|f| str_lit(&f.name)).collect();
+                (
+                    str_lit(&variant.name),
+                    Expr::new(ExprKind::Array(names), span),
+                )
+            })
+            .collect();
+        fields.push(FieldDecl {
+            visibility: Visibility::Public,
+            is_static: true,
+            is_const: true,
+            name: "__enum_variants".to_string(),
+            type_annotation: None,
+            initializer: Some(Expr::new(ExprKind::Hash(variants_meta), span)),
+            span,
+        });
+
+        // static def parse(value) { return __enum_from(EnumName, value) }
+        // Rebuilds an enum value from its stored DB/JSON shape. (`from` is a
+        // reserved keyword, so the factory is named `parse`.)
+        methods.push(MethodDecl {
+            visibility: Visibility::Public,
+            is_static: true,
+            name: "parse".to_string(),
+            params: vec![Parameter {
+                name: "value".to_string(),
+                type_annotation: any_type(),
+                default_value: None,
+                span,
+                is_block_param: false,
+            }],
+            return_type: Some(enum_type()),
+            body: vec![Stmt::new(
+                StmtKind::Return(Some(Expr::new(
+                    ExprKind::Call {
+                        callee: Box::new(var("__enum_from")),
+                        arguments: vec![
+                            Argument::Positional(var(&self.name)),
+                            Argument::Positional(var("value")),
+                        ],
+                    },
+                    span,
+                ))),
+                span,
+                None,
+            )],
+            span,
+        });
+
+        // def variant() { return this.__variant }
+        methods.push(MethodDecl {
+            visibility: Visibility::Public,
+            is_static: false,
+            name: "variant".to_string(),
+            params: Vec::new(),
+            return_type: Some(TypeAnnotation::new(
+                TypeKind::Named("String".to_string()),
+                span,
+            )),
+            body: vec![Stmt::new(
+                StmtKind::Return(Some(Expr::new(
+                    ExprKind::Member {
+                        object: Box::new(Expr::new(ExprKind::This, span)),
+                        name: "__variant".to_string(),
+                    },
+                    span,
+                ))),
+                span,
+                None,
+            )],
+            span,
+        });
+
+        // User-defined behaviour, copied verbatim.
+        methods.extend(self.methods.iter().cloned());
+
+        ClassDecl {
+            name: self.name.clone(),
+            superclass: None,
+            interfaces: Vec::new(),
+            fields,
+            methods,
+            constructor: None,
+            static_block: None,
+            class_statements: Vec::new(),
+            nested_classes: Vec::new(),
+            span,
+        }
+    }
 }
 
 /// Visibility modifier.

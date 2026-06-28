@@ -617,6 +617,15 @@ impl CoverageTracker {
                     }
                 }
             }
+            Enum(decl) => {
+                // Only the user-defined methods carry real source lines; the
+                // synthesized variant machinery has no source span.
+                for method in &decl.methods {
+                    for stmt in &method.body {
+                        self.collect_lines_from_stmt(path, lines, stmt);
+                    }
+                }
+            }
             Interface(_) | Import(_) | Export(_) => {}
         }
     }

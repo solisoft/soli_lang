@@ -12,6 +12,11 @@
 //! statement and executed in one round-trip; each subquery result then feeds
 //! its transform and fills the corresponding deferred cell.
 //!
+//! Each registered query is a complete standalone statement (a `FOR … RETURN`
+//! block, or a scalar `RETURN <expr>` for `count`). When embedded as a
+//! parenthesised subquery, a leading top-level `RETURN ` is stripped so the
+//! body is a valid subquery expression — see [`build_combined_query`].
+//!
 //! A flush happens at block end (see the `grouped` interceptor in
 //! `executor/calls/function.rs`) or the first time a deferred result is read
 //! inside the block — the "auto-flush" behaviour. Auto-flush is driven by the
@@ -173,6 +178,9 @@ fn flush_inner() -> Result<(), String> {
 /// Build the combined `LET … RETURN […]` statement and the merged bind map.
 /// Each subquery's binds are prefixed with `b{i}__` to avoid collisions
 /// between subqueries that happen to use the same bind name (`@val`, `@active`).
+/// A leading top-level `RETURN ` is stripped from each query so scalar reads
+/// (`count`, registered as `RETURN <expr>`) become a valid parenthesised
+/// subquery `(<expr>)` rather than the invalid `(RETURN <expr>)`.
 fn build_combined_query(pending: &[PendingQuery]) -> (String, HashMap<String, serde_json::Value>) {
     let mut lets = String::new();
     let mut merged: HashMap<String, serde_json::Value> = HashMap::new();
@@ -184,10 +192,20 @@ fn build_combined_query(pending: &[PendingQuery]) -> (String, HashMap<String, se
             merged.insert(format!("{}{}", prefix, k), v.clone());
         }
         let var = format!("_b{}", i);
+        // A parenthesised subquery must be an expression or a `FOR…RETURN`
+        // block, never a bare top-level `RETURN`. Scalar reads (`count`)
+        // register their standalone form `RETURN <expr>` (valid when run
+        // alone); strip the leading `RETURN ` so the subquery is just
+        // `<expr>`, which evaluates to the scalar and lands in `_bi`. Only the
+        // leading prefix is removed — an inner `RETURN` (e.g. inside a
+        // `LENGTH(FOR … RETURN 1)` count) is untouched.
+        let body = rewritten
+            .strip_prefix("RETURN ")
+            .unwrap_or(rewritten.as_str());
         lets.push_str("LET ");
         lets.push_str(&var);
         lets.push_str(" = (");
-        lets.push_str(&rewritten);
+        lets.push_str(body);
         lets.push_str(")\n");
         return_items.push(var);
     }
@@ -314,5 +332,48 @@ mod tests {
         assert!(combined.trim_end().ends_with("RETURN [_b0, _b1]"));
         assert_eq!(merged.get("b0__val"), Some(&serde_json::json!("x")));
         assert_eq!(merged.get("b1__val"), Some(&serde_json::json!("y")));
+    }
+
+    fn pending(aql: &str, binds: HashMap<String, serde_json::Value>) -> PendingQuery {
+        PendingQuery {
+            aql: aql.to_string(),
+            binds,
+            transform: Box::new(|_| Ok(Value::Null)),
+            cell: Rc::new(RefCell::new(DeferredCell::default())),
+        }
+    }
+
+    #[test]
+    fn build_combined_unwraps_leading_return_for_scalar_queries() {
+        // A scalar `count` read registers `RETURN COLLECTION_COUNT(...)`. When
+        // embedded as a parenthesised subquery the bare leading RETURN is
+        // invalid AQL, so it must be stripped to the expression. A `FOR…RETURN`
+        // read alongside it is wrapped verbatim.
+        let plist = vec![
+            pending("RETURN COLLECTION_COUNT(\"orders\")", HashMap::new()),
+            pending("FOR doc IN orders RETURN doc", HashMap::new()),
+        ];
+        let (combined, _) = build_combined_query(&plist);
+        assert!(combined.contains("LET _b0 = (COLLECTION_COUNT(\"orders\"))"));
+        assert!(combined.contains("LET _b1 = (FOR doc IN orders RETURN doc)"));
+        // No subquery may begin with a bare RETURN.
+        assert!(!combined.contains("(RETURN"));
+        assert!(combined.trim_end().ends_with("RETURN [_b0, _b1]"));
+    }
+
+    #[test]
+    fn build_combined_strips_only_leading_return() {
+        // A filtered count is `RETURN LENGTH(FOR … RETURN 1)`. Only the leading
+        // RETURN is stripped; the inner `RETURN 1` of the FOR subquery survives.
+        let mut binds = HashMap::new();
+        binds.insert("val".to_string(), serde_json::json!(1));
+        let plist = vec![pending(
+            "RETURN LENGTH(FOR doc IN orders FILTER doc.x == @val RETURN 1)",
+            binds,
+        )];
+        let (combined, _) = build_combined_query(&plist);
+        assert!(combined
+            .contains("LET _b0 = (LENGTH(FOR doc IN orders FILTER doc.x == @b0__val RETURN 1))"));
+        assert!(!combined.contains("(RETURN"));
     }
 }

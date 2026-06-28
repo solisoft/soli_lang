@@ -195,6 +195,9 @@ pub fn collect_program_names(stmts: &[Stmt], out: &mut HashSet<String>) {
                 // Nested classes are name-resolved via qualified access, so
                 // we don't add them as top-level here.
             }
+            StmtKind::Enum(decl) => {
+                out.insert(decl.name.clone());
+            }
             StmtKind::Interface(decl) => {
                 out.insert(decl.name.clone());
             }
@@ -319,7 +322,7 @@ fn check_stmt(
                 check_stmt(f, defined, program, diagnostics, reported);
             }
         }
-        StmtKind::Function(_) | StmtKind::Class(_) | StmtKind::Interface(_) => {
+        StmtKind::Function(_) | StmtKind::Class(_) | StmtKind::Enum(_) | StmtKind::Interface(_) => {
             // Nested definitions have their own scope; program-level already
             // records their names. Skip their bodies here — the top-level
             // linter walks into them separately.
@@ -617,6 +620,9 @@ fn collect_assigned_in_stmt(stmt: &Stmt, out: &mut HashSet<String>) {
             out.insert(decl.name.clone());
         }
         StmtKind::Class(decl) => {
+            out.insert(decl.name.clone());
+        }
+        StmtKind::Enum(decl) => {
             out.insert(decl.name.clone());
         }
         StmtKind::Interface(decl) => {

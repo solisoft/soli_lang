@@ -879,6 +879,25 @@ impl Printer<'_> {
                 }
                 self.write(" }");
             }
+            MatchPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                bindings,
+            } => {
+                self.write(enum_name);
+                self.write(".");
+                self.write(variant_name);
+                if !bindings.is_empty() {
+                    self.write("(");
+                    for (i, pat) in bindings.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.print_match_pattern(pat);
+                    }
+                    self.write(")");
+                }
+            }
             MatchPattern::And(pats) => {
                 for (i, pat) in pats.iter().enumerate() {
                     if i > 0 {

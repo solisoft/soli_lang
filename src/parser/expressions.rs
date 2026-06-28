@@ -1537,12 +1537,22 @@ impl Parser {
     }
 
     fn parse_match_expression(&mut self, start_span: crate::span::Span) -> ParseResult<Expr> {
-        let expression = self.expression()?;
+        // Parse the scrutinee without letting it swallow the match body's `{`
+        // — otherwise `match Status.Active { Status.Active => ... }` mis-reads
+        // the body as a Ruby-style block argument to the member access (the
+        // arm patterns don't look like a hash literal). Same rule the
+        // if/while/for condition parsers use.
+        let expression = self.expression_no_trailing_brace()?;
 
-        self.expect(&TokenKind::LeftBrace)?;
+        // Body delimiters: `match x { ... }` or the Ruby-style `match x ... end`
+        // (both accepted, like `class`/`if`/`enum`).
+        let used_brace = self.match_token(&TokenKind::LeftBrace);
 
         let mut arms = Vec::new();
-        while !self.check(&TokenKind::RightBrace) {
+        while !self.check(&TokenKind::RightBrace)
+            && !self.check(&TokenKind::End)
+            && !self.is_at_end()
+        {
             let arm_start = self.current_span();
 
             let pattern = self.parse_match_pattern()?;
@@ -1569,7 +1579,15 @@ impl Parser {
             }
         }
 
-        self.expect(&TokenKind::RightBrace)?;
+        // Close with the matching delimiter; lenient like `class` (accept
+        // whichever closer appears) so a stray form still parses.
+        if used_brace && self.check(&TokenKind::RightBrace) {
+            self.advance();
+        } else if self.match_token(&TokenKind::End) {
+            // Ruby-style `end`.
+        } else {
+            self.expect(&TokenKind::RightBrace)?;
+        }
         let span = start_span.merge(&self.previous_span());
 
         Ok(Expr::new(
@@ -1648,6 +1666,36 @@ impl Parser {
             LeftBrace => {
                 self.advance();
                 self.parse_hash_pattern()
+            }
+
+            // Enum-variant pattern: `Status.Active` or `Status.Pending(r, ...)`.
+            Identifier(enum_name) if self.peek_nth(1).kind == TokenKind::Dot => {
+                self.advance(); // enum name
+                self.advance(); // '.'
+                let variant_name = self.expect_identifier()?;
+                let bindings = if self.match_token(&TokenKind::LeftParen) {
+                    let mut bindings = Vec::new();
+                    if !self.check(&TokenKind::RightParen) {
+                        loop {
+                            bindings.push(self.parse_match_pattern()?);
+                            if !self.match_token(&TokenKind::Comma) {
+                                break;
+                            }
+                            if self.check(&TokenKind::RightParen) {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(&TokenKind::RightParen)?;
+                    bindings
+                } else {
+                    Vec::new()
+                };
+                Ok(MatchPattern::EnumVariant {
+                    enum_name,
+                    variant_name,
+                    bindings,
+                })
             }
 
             Identifier(s) if self.peek_nth(1).kind != TokenKind::Colon => {

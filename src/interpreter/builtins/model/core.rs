@@ -2149,6 +2149,19 @@ impl Model {
 
                     let sdbql = format!("RETURN COLLECTION_COUNT(\"{}\")", collection);
 
+                    // Inside a `grouped {}` block, defer this count so it
+                    // coalesces with the other reads into one round-trip
+                    // instead of firing on its own. The combined-query builder
+                    // strips the leading `RETURN ` so the scalar count embeds
+                    // as `LET _bi = (COLLECTION_COUNT(...))`.
+                    if super::batch::is_active() {
+                        return Ok(super::batch::register(
+                            sdbql,
+                            std::collections::HashMap::new(),
+                            Box::new(|rows| Ok(parse_count_result(&rows))),
+                        ));
+                    }
+
                     match exec_query(&collection, sdbql) {
                         Ok(results) => Ok(parse_count_result(&results)),
                         // `exec_with_auto_collection` auto-creates a missing
@@ -3586,6 +3599,41 @@ pub fn register_model_builtins(env: &mut Environment) {
                 };
                 super::registry::register_encryption(&class_name, &collection, &field);
             }
+            Ok(Value::Null)
+        })),
+    );
+
+    // enum_field(:status, Status) - declare that a model field holds values of
+    // an enum type. Stored as the variant tag (unit) / a tagged object
+    // (payload); reconstructed to the enum value on read. The model class is
+    // auto-prepended in class bodies, so args = [ModelClass, field, EnumClass].
+    env.define(
+        "enum_field".to_string(),
+        Value::NativeFunction(NativeFunction::new("enum_field", Some(3), |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let field = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                Some(Value::Symbol(s)) => s.to_string(),
+                _ => {
+                    return Err(
+                        "enum_field(field, EnumType) expects a symbol or string field name"
+                            .to_string(),
+                    )
+                }
+            };
+            let enum_class = match args.get(2) {
+                Some(Value::Class(c)) => c.clone(),
+                other => {
+                    return Err(format!(
+                        "enum_field(field, EnumType) expects an enum class as the second \
+                         argument, got {}",
+                        other
+                            .map(|v| v.type_name())
+                            .unwrap_or_else(|| "nothing".to_string())
+                    ))
+                }
+            };
+            super::registry::register_enum_field(&class_name, &field, enum_class);
             Ok(Value::Null)
         })),
     );

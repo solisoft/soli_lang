@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::ast::expr::MatchPattern;
-use crate::interpreter::value::{HashKey, HashPairs, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, Value};
 
 use super::{Interpreter, RuntimeResult};
 
@@ -167,6 +167,56 @@ impl Interpreter {
                 Ok(Some(bindings))
             }
 
+            MatchPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                bindings,
+            } => {
+                let instance = match value {
+                    Value::Instance(inst) => inst.clone(),
+                    _ => return Ok(None),
+                };
+
+                // Class name + `__variant` tag must both match.
+                let class_rc = {
+                    let inst = instance.borrow();
+                    if inst.class.name != *enum_name {
+                        return Ok(None);
+                    }
+                    let variant_ok = matches!(
+                        inst.fields.get("__variant"),
+                        Some(Value::String(v)) if v.as_str() == variant_name.as_str()
+                    );
+                    if !variant_ok {
+                        return Ok(None);
+                    }
+                    inst.class.clone()
+                };
+
+                if bindings.is_empty() {
+                    return Ok(Some(Vec::new()));
+                }
+
+                // Bind the payload positionally, using the variant's declared
+                // field order from the enum's `__enum_variants` metadata.
+                let field_names = enum_variant_field_names(&class_rc, variant_name);
+                let mut result = Vec::new();
+                for (i, binding) in bindings.iter().enumerate() {
+                    let field_value = match field_names.get(i) {
+                        Some(field) => instance.borrow().fields.get(field).cloned(),
+                        None => None,
+                    };
+                    match field_value {
+                        Some(fv) => match self.match_pattern(&fv, binding)? {
+                            Some(b) => result.extend(b),
+                            None => return Ok(None),
+                        },
+                        None => return Ok(None),
+                    }
+                }
+                Ok(Some(result))
+            }
+
             MatchPattern::And(patterns) => {
                 let mut all_bindings = Vec::new();
                 for p in patterns {
@@ -188,4 +238,30 @@ impl Interpreter {
             }
         }
     }
+}
+
+/// Read an enum's ordered payload field names for `variant` from the synthesized
+/// `__enum_variants` static-const metadata map. Returns an empty list if the
+/// class isn't an enum or the variant carries no payload.
+pub(crate) fn enum_variant_field_names(class: &Class, variant: &str) -> Vec<String> {
+    // Clone the inner `Rc`s out of each borrow so the borrow chain doesn't
+    // outlive the temporary `Ref` guards (cheap refcount bumps).
+    let meta = match class.static_fields.borrow().get("__enum_variants") {
+        Some(Value::Hash(m)) => m.clone(),
+        _ => return Vec::new(),
+    };
+    let key = HashKey::String(variant.to_string().into());
+    let fields = match meta.borrow().get(&key) {
+        Some(Value::Array(f)) => f.clone(),
+        _ => return Vec::new(),
+    };
+    let names = fields
+        .borrow()
+        .iter()
+        .filter_map(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .collect();
+    names
 }

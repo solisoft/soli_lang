@@ -318,6 +318,14 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
             }
         }
     }
+    // Reconstruct declared `enum_field` columns: turn the stored tag string /
+    // tagged object back into the enum value (e.g. "Active" → Status.Active).
+    for (field, enum_class) in super::registry::get_enum_fields(&target_class.name) {
+        if let Some(stored @ (Value::String(_) | Value::Hash(_))) = instance.get(&field) {
+            let enum_value = crate::interpreter::value::build_enum_value(&enum_class, &stored);
+            instance.set(field, enum_value);
+        }
+    }
     Value::Instance(Rc::new(RefCell::new(instance)))
 }
 

@@ -86,8 +86,8 @@ fn starts_with_keyword(bytes: &[u8], at: usize, kw: &[u8]) -> bool {
 }
 
 use crate::ast::stmt::{
-    CatchClause, ClassDecl, ConstructorDecl, FieldDecl, FunctionDecl, ImportDecl, ImportSpecifier,
-    InterfaceDecl, MethodDecl, Parameter, Stmt, StmtKind, Visibility,
+    CatchClause, ClassDecl, ConstructorDecl, EnumDecl, FieldDecl, FunctionDecl, ImportDecl,
+    ImportSpecifier, InterfaceDecl, MethodDecl, Parameter, Stmt, StmtKind, Visibility,
 };
 
 use super::printer::Printer;
@@ -249,6 +249,7 @@ impl Printer<'_> {
             }
             StmtKind::Function(decl) => self.print_function_decl(decl, false),
             StmtKind::Class(decl) => self.print_class_decl(decl),
+            StmtKind::Enum(decl) => self.print_enum_decl(decl),
             StmtKind::Interface(decl) => self.print_interface_decl(decl),
             StmtKind::Import(decl) => self.print_import_decl(decl),
             StmtKind::Export(inner) => {
@@ -680,6 +681,50 @@ impl Printer<'_> {
                     }
                     p.flush_comments_before(n.span.line);
                     p.print_class_decl(n);
+                }
+            }
+        });
+        self.write("end");
+        self.newline();
+    }
+
+    fn print_enum_decl(&mut self, decl: &EnumDecl) {
+        self.write("enum ");
+        self.write(&decl.name);
+        self.newline();
+        self.with_indent(|p| {
+            let last = decl.variants.len().saturating_sub(1);
+            for (i, variant) in decl.variants.iter().enumerate() {
+                p.flush_comments_before(variant.span.line);
+                p.write(&variant.name);
+                if !variant.payload.is_empty() {
+                    p.write("(");
+                    for (j, field) in variant.payload.iter().enumerate() {
+                        if j > 0 {
+                            p.write(", ");
+                        }
+                        p.write(&field.name);
+                        if let Some(ty) = &field.type_annotation {
+                            p.write(": ");
+                            p.write(&ty.to_string());
+                        }
+                    }
+                    p.write(")");
+                }
+                if i != last {
+                    p.write(",");
+                }
+                p.newline();
+            }
+            // Methods (the "rich" scope).
+            if !decl.methods.is_empty() {
+                p.blank_line();
+                for (i, m) in decl.methods.iter().enumerate() {
+                    if i > 0 {
+                        p.blank_line();
+                    }
+                    p.flush_comments_before(m.span.line);
+                    p.print_method_decl(m);
                 }
             }
         });

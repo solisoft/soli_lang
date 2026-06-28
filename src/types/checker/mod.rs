@@ -15,6 +15,9 @@ pub(crate) type TypeResult<T> = Result<T, TypeError>;
 pub struct TypeChecker {
     pub(crate) env: TypeEnvironment,
     pub(crate) errors: Vec<TypeError>,
+    /// Non-blocking diagnostics (e.g. enum match non-exhaustiveness). Surfaced
+    /// by `soli check` but never fail the check or block execution.
+    pub(crate) warnings: Vec<TypeError>,
 }
 
 impl TypeChecker {
@@ -26,7 +29,18 @@ impl TypeChecker {
         Self {
             env,
             errors: Vec::new(),
+            warnings: Vec::new(),
         }
+    }
+
+    /// Type-check a program and return any non-blocking warnings collected
+    /// during the pass (errors are returned via [`TypeChecker::check`]).
+    pub fn check_collecting_warnings(
+        &mut self,
+        program: &Program,
+    ) -> (Result<(), Vec<TypeError>>, Vec<TypeError>) {
+        let result = self.check(program);
+        (result, std::mem::take(&mut self.warnings))
     }
 
     /// Type check a complete program.
@@ -35,6 +49,13 @@ impl TypeChecker {
         for stmt in &program.statements {
             if let StmtKind::Class(decl) = &stmt.kind {
                 self.declare_class(decl);
+            } else if let StmtKind::Enum(decl) = &stmt.kind {
+                // Register the enum under its lowered-class shape so member
+                // access (`Status.Active`, `Status.Pending(...)`) resolves like
+                // any class static. The variant set for exhaustiveness is
+                // tracked separately (see `declare_enum`).
+                self.declare_class(&decl.lower_to_class());
+                self.declare_enum(decl);
             } else if let StmtKind::Interface(decl) = &stmt.kind {
                 self.declare_interface(decl);
             } else if let StmtKind::Function(decl) = &stmt.kind {

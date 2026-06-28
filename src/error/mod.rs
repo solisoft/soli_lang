@@ -160,6 +160,18 @@ pub enum TypeError {
 
     #[error("{message} at {span}")]
     General { message: String, span: Span },
+
+    /// Non-blocking warning: a `match` on a known enum doesn't cover every
+    /// variant and has no `_` catch-all. Surfaced by `soli check`; never fails
+    /// the check or blocks `soli run`.
+    #[error(
+        "warning: match on enum '{enum_name}' is not exhaustive at {span} — missing: {missing} (add them, or a `_ =>` arm)"
+    )]
+    ExhaustivenessWarning {
+        enum_name: String,
+        missing: String,
+        span: Span,
+    },
 }
 
 impl TypeError {
@@ -184,6 +196,7 @@ impl TypeError {
             Self::ThisOutsideClass(span) => *span,
             Self::SuperOutsideClass(span) => *span,
             Self::General { span, .. } => *span,
+            Self::ExhaustivenessWarning { span, .. } => *span,
         }
     }
 }

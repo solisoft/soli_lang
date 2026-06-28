@@ -188,7 +188,67 @@ impl TypeChecker {
             arm_types.push(arm_type);
         }
 
+        self.check_match_exhaustiveness(&input_type, arms, expression.span);
+
         self.common_type(&arm_types)
+    }
+
+    /// Best-effort exhaustiveness check: when the scrutinee's static type is a
+    /// known enum and the arms cover neither all variants nor a `_`/binding
+    /// catch-all, record a non-blocking [`TypeError::ExhaustivenessWarning`].
+    /// Only fires when the enum type is statically inferable (dynamic Soli code
+    /// where the type is unknown is left alone).
+    fn check_match_exhaustiveness(&mut self, input_type: &Type, arms: &[MatchArm], span: Span) {
+        let enum_name = match input_type {
+            Type::Class(class) => class.name.clone(),
+            _ => return,
+        };
+        let all_variants = match self.env.get_enum(&enum_name) {
+            Some(enum_type) => enum_type.variants.clone(),
+            None => return,
+        };
+
+        // An unguarded `_` or bare-variable arm covers everything. A guarded
+        // arm guarantees nothing, so it doesn't count toward coverage.
+        let has_catch_all = arms.iter().any(|arm| {
+            arm.guard.is_none()
+                && matches!(
+                    arm.pattern,
+                    MatchPattern::Wildcard | MatchPattern::Variable(_)
+                )
+        });
+        if has_catch_all {
+            return;
+        }
+
+        let mut covered = std::collections::HashSet::new();
+        for arm in arms {
+            if arm.guard.is_some() {
+                continue;
+            }
+            if let MatchPattern::EnumVariant {
+                enum_name: arm_enum,
+                variant_name,
+                ..
+            } = &arm.pattern
+            {
+                if *arm_enum == enum_name {
+                    covered.insert(variant_name.clone());
+                }
+            }
+        }
+
+        let missing: Vec<String> = all_variants
+            .into_iter()
+            .filter(|variant| !covered.contains(variant))
+            .collect();
+        if !missing.is_empty() {
+            self.warnings.push(TypeError::ExhaustivenessWarning {
+                enum_name,
+                missing: missing.join(", "),
+                span,
+            });
+        }
     }
 
     /// Check match arm.
@@ -322,6 +382,16 @@ impl TypeChecker {
                 } else {
                     Err(TypeError::UndefinedType(type_name.clone(), Span::default()))
                 }
+            }
+
+            MatchPattern::EnumVariant { bindings, .. } => {
+                // Best-effort: bind each payload sub-pattern as Any. Full
+                // enum-aware checking + exhaustiveness lands with enum type
+                // registration (see `declare_enum`).
+                for binding in bindings {
+                    self.check_match_pattern(&Type::Any, binding)?;
+                }
+                Ok(())
             }
 
             MatchPattern::And(patterns) => {

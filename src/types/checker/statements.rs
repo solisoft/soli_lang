@@ -203,6 +203,8 @@ impl TypeChecker {
 
             StmtKind::Class(decl) => self.check_class_stmt(decl),
 
+            StmtKind::Enum(decl) => self.check_enum_stmt(decl),
+
             StmtKind::Interface(_) => {
                 // Already handled in first pass
                 Ok(())
@@ -249,6 +251,14 @@ impl TypeChecker {
                 Ok(())
             }
         }
+    }
+
+    fn check_enum_stmt(&mut self, _decl: &EnumDecl) -> TypeResult<()> {
+        // Enum type registration, member-access checking, and match
+        // exhaustiveness are handled separately (see `declare_enum`). The user
+        // methods are checked via the lowered class in that pass. Nothing to do
+        // here for now beyond accepting the declaration.
+        Ok(())
     }
 
     fn check_class_stmt(&mut self, decl: &ClassDecl) -> TypeResult<()> {

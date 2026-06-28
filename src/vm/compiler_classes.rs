@@ -27,6 +27,20 @@ impl Compiler {
             self.emit(Op::Inherit, line);
         }
 
+        // Bind the class to its global name *before* compiling static field
+        // initializers / static blocks / class statements. The tree-walker
+        // registers the class first too (`execute_class`), and an enum's
+        // unit-variant static consts reference the class by name during init
+        // (`static const Active = __enum_construct(Status, "Active", {})`).
+        // Method/field attachments below remain visible through the global
+        // because `Class` uses interior mutability. (Top-level only; nested
+        // classes bind to a local at the end, as before.)
+        if self.scope_depth == 0 {
+            let gname = self.add_string_constant(&decl.name);
+            self.emit(Op::Dup, line);
+            self.emit(Op::DefineGlobal(gname), line);
+        }
+
         // Store class context for this/super resolution
         let prev_class_ctx = self.class_context.take();
         self.class_context = Some(super::compiler::ClassContext {
@@ -88,12 +102,12 @@ impl Compiler {
         // Restore class context
         self.class_context = prev_class_ctx;
 
-        // Bind the class name
+        // Bind the class name. Top-level classes were bound to their global
+        // early (above); just discard the working copy left on the stack.
         if self.scope_depth > 0 {
             self.add_local(decl.name.clone(), false);
         } else {
-            let gname = self.add_string_constant(&decl.name);
-            self.emit(Op::DefineGlobal(gname), line);
+            self.emit(Op::Pop, line);
         }
 
         Ok(())

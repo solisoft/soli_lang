@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use crate::types::type_repr::{
-    ClassType, FieldInfo, InterfaceType, MethodInfo, MethodSignature, Type,
+    ClassType, EnumType, FieldInfo, InterfaceType, MethodInfo, MethodSignature, Type,
 };
 
 use super::TypeChecker;
@@ -65,6 +65,13 @@ impl TypeChecker {
         }
 
         self.env.define_class(class_type);
+    }
+
+    /// Record an enum's variant set so `match` exhaustiveness can be checked.
+    pub(crate) fn declare_enum(&mut self, decl: &EnumDecl) {
+        let mut enum_type = EnumType::new(decl.name.clone());
+        enum_type.variants = decl.variants.iter().map(|v| v.name.clone()).collect();
+        self.env.define_enum(enum_type);
     }
 
     pub(crate) fn declare_interface(&mut self, decl: &InterfaceDecl) {

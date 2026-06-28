@@ -77,6 +77,27 @@ describe("grouped coalesces reads", fn() {
         assert_eq(result["total"], baseline_count);
     });
 
+    test("several counts (incl. a filtered count) and an .all coalesce correctly", fn() {
+        // Mirrors the admin-dashboard shape that regressed: multiple bare
+        // `.count` reads (which compile to `RETURN COLLECTION_COUNT(...)`) plus
+        // a `where(...).count` (`RETURN LENGTH(FOR ... RETURN 1)`) and an `.all`
+        // in one block. Each bare RETURN must be unwrapped when combined.
+        let baseline_count = GroupItem.count;
+        let baseline_filtered = GroupItem.where({ "n": 2 }).count;
+        let baseline_all = GroupItem.all();
+
+        let result = grouped(fn() {
+            let total = GroupItem.count;
+            let twos = GroupItem.where({ "n": 2 }).count;
+            let items = GroupItem.all();
+            return { "total": total, "twos": twos, "items": items };
+        });
+
+        assert_eq(result["total"], baseline_count);
+        assert_eq(result["twos"], baseline_filtered);
+        assert_eq(result["items"].length, baseline_all.length);
+    });
+
     test("find_by inside grouped resolves to the right record", fn() {
         let result = grouped(fn() {
             let found = GroupItem.find_by("name", "g2");

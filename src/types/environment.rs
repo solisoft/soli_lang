@@ -2,13 +2,14 @@
 
 use std::collections::HashMap;
 
-use crate::types::type_repr::{ClassType, InterfaceType, MethodInfo, Type};
+use crate::types::type_repr::{ClassType, EnumType, InterfaceType, MethodInfo, Type};
 
 /// A type environment tracking types of variables and declarations.
 #[derive(Debug, Clone)]
 pub struct TypeEnvironment {
     scopes: Vec<HashMap<String, Type>>,
     classes: HashMap<String, ClassType>,
+    enums: HashMap<String, EnumType>,
     interfaces: HashMap<String, InterfaceType>,
     functions: HashMap<String, Type>,
     current_class: Option<String>,
@@ -20,6 +21,7 @@ impl TypeEnvironment {
         let mut env = Self {
             scopes: vec![HashMap::new()],
             classes: HashMap::new(),
+            enums: HashMap::new(),
             interfaces: HashMap::new(),
             functions: HashMap::new(),
             current_class: None,
@@ -1715,6 +1717,16 @@ impl TypeEnvironment {
     /// Get a class type.
     pub fn get_class(&self, name: &str) -> Option<&ClassType> {
         self.classes.get(name)
+    }
+
+    /// Define an enum type (its variant set, for exhaustiveness checking).
+    pub fn define_enum(&mut self, enum_type: EnumType) {
+        self.enums.insert(enum_type.name.clone(), enum_type);
+    }
+
+    /// Get an enum type.
+    pub fn get_enum(&self, name: &str) -> Option<&EnumType> {
+        self.enums.get(name)
     }
 
     /// Define an interface type.

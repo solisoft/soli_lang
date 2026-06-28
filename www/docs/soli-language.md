@@ -15,11 +15,12 @@ A comprehensive guide to the Soli programming language, covering syntax, types, 
 7. [Collections](#collections)
 8. [Classes & OOP](#classes--oop)
 9. [Pattern Matching](#pattern-matching)
-10. [Pipeline Operator](#pipeline-operator)
-11. [Modules](#modules)
-12. [Built-in Functions](#built-in-functions)
-13. [DateTime & Duration](#datetime--duration)
-14. [Linting](#linting)
+10. [Enums](#enums)
+11. [Pipeline Operator](#pipeline-operator)
+12. [Modules](#modules)
+13. [Built-in Functions](#built-in-functions)
+14. [DateTime & Duration](#datetime--duration)
+15. [Linting](#linting)
 
 ---
 
@@ -2818,6 +2819,191 @@ fn process_tree(node: Any) {
   }
 }
 ```
+
+---
+
+## Enums
+
+An enum is a type-safe set of named **variants**. Some variants are plain
+("unit"); others carry a **payload** of named fields. Reach for an enum instead
+of a stringly-typed state like `status = "pending"` — you get autocompletion,
+typo protection, and exhaustiveness-checked `match`.
+
+### Declaring an enum
+
+```soli
+enum Status
+  Active,
+  Archived,
+  Pending(reason: String)   # payload field type is optional (used by `soli check`)
+end
+```
+
+Both brace and `end` forms parse; `soli fmt` normalizes to the `end` form.
+Variant names are `PascalCase`, like classes, and trailing commas are optional.
+
+### Constructing values
+
+```soli
+a = Status.Active                    # a unit variant
+
+p = Status.Pending(reason: "kyc")    # named argument
+p = Status.Pending("kyc")            # positional — same value
+
+p.variant()                          # "Pending" — the variant tag as a String
+```
+
+### Matching variants
+
+Match a variant with `EnumName.Variant`. A payload variant binds its fields
+positionally, in declaration order:
+
+```soli
+label = match status
+  Status.Active     => "Live",
+  Status.Archived   => "Archived",
+  Status.Pending(r) => "Waiting: " + r,   # binds `reason` to `r`
+end
+
+enum Shape
+  Circle(radius: Float),
+  Rect(w: Float, h: Float)
+end
+
+area = match shape
+  Shape.Circle(radius) => 3.14159 * radius * radius,
+  Shape.Rect(w, h)     => w * h,
+end
+```
+
+### Methods on enums
+
+An enum can carry behaviour. Inside a method, `self` is the value and
+`match self` dispatches on its variant:
+
+```soli
+enum Status
+  Active,
+  Archived,
+  Pending(reason: String)
+
+  def label -> String
+    match self
+      Status.Active     => "Live",
+      Status.Pending(r) => "Waiting: " + r,
+      _                 => "Archived",
+    end
+  end
+end
+
+Status.Pending(reason: "kyc").label()   # "Waiting: kyc"
+```
+
+### Equality and introspection
+
+Enum values compare **structurally** — same variant, equal payloads:
+
+```soli
+Status.Active == Status.Active                                # true
+Status.Active == Status.Archived                              # false
+Status.Pending(reason: "x") == Status.Pending(reason: "x")    # true  (structural)
+Status.Pending(reason: "x") == Status.Pending(reason: "y")    # false
+```
+
+`variant()` returns the variant name as a String — useful for serializing to a
+database column or JSON.
+
+### Exhaustiveness checking
+
+When a value's type is a known enum, `soli check` warns if a `match` misses a
+variant and has no `_` catch-all. It's a **non-blocking** warning — the code
+still runs:
+
+```soli
+def describe(s: Status) -> String
+  match s
+    Status.Active     => "live",
+    Status.Pending(r) => "waiting: " + r,
+  end                  # missing `Archived`, no `_`
+end
+```
+
+```
+$ soli check app/
+warning: match on enum 'Status' is not exhaustive — missing: Archived (add them, or a `_ =>` arm)
+```
+
+### Persisting enums in models
+
+Declare `enum_field :name, EnumType` on a model and the column round-trips
+automatically: a unit variant is stored as its tag string, a payload variant as
+a tagged object, and reads rebuild the enum value. Define the enum **above** the
+model so it loads first.
+
+```soli
+# app/models/order.sl
+enum Status
+  Pending(reason: String),
+  Paid,
+  Shipped,
+  Cancelled(reason: String)
+end
+
+class Order < Model
+  enum_field :status, Status
+
+  def can_ship -> Bool
+    match this.status
+      Status.Paid => true,
+      _           => false,
+    end
+  end
+end
+```
+
+A real flow — create, read, transition, and branch on the status:
+
+```soli
+# app/controllers/orders_controller.sl
+def create(req)
+  # The enum value is stored as its tag / tagged object automatically.
+  order = Order.create({ status: Status.Pending(reason: "awaiting payment") })
+  redirect("/orders/" + order._key)
+end
+
+def pay(req)
+  order = Order.find(req["params"]["id"])
+  order.status = Status.Paid              # stored as "Paid"
+  order.save()
+  render_json({ "can_ship": order.can_ship() })   # true
+end
+
+def show(req)
+  order = Order.find(req["params"]["id"])
+  # `order.status` comes back as a Status value, not a raw string:
+  label = match order.status
+    Status.Pending(r)   => "Pending: " + r,
+    Status.Paid         => "Paid",
+    Status.Shipped      => "Shipped",
+    Status.Cancelled(r) => "Cancelled: " + r,
+  end
+  render("orders/show", { "order": order, "label": label })
+end
+```
+
+What lands in the database column:
+
+```soli
+# unit variant    → a plain string
+"Paid"
+
+# payload variant → a tagged object
+{ "variant": "Pending", "reason": "awaiting payment" }
+```
+
+To rebuild an enum from a stored value by hand (e.g. a webhook payload), use
+`Status.parse(value)` — it accepts either form. (The factory is `parse`, not
+`from`, because `from` is a reserved word.)
 
 ---
 

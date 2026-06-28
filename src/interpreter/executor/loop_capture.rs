@@ -63,7 +63,9 @@ pub(crate) fn stmt_creates_closures(stmt: &Stmt) -> bool {
         StmtKind::Export(inner) => stmt_creates_closures(inner),
         // Class declarations carry their own method scopes; interfaces/imports
         // never create capturing closures in the loop's environment.
-        StmtKind::Class(_) | StmtKind::Interface(_) | StmtKind::Import(_) => false,
+        StmtKind::Class(_) | StmtKind::Enum(_) | StmtKind::Interface(_) | StmtKind::Import(_) => {
+            false
+        }
     }
 }
 

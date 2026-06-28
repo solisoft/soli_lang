@@ -3401,6 +3401,43 @@
       ]
     },
     {
+      "title": "enum",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/enums#kw-enum",
+      "signature": "enum Name { Variant, Payload(field: Type) }",
+      "description": "Declares an enum: a type-safe set of variants, optionally carrying data, matched with pattern matching",
+      "keywords": [
+        "enum",
+        "variant",
+        "adt",
+        "algebraic data type",
+        "discriminated union",
+        "sum type",
+        "exhaustiveness"
+      ]
+    },
+    {
+      "title": "Enums",
+      "type": "guide",
+      "category": "Language",
+      "path": "/docs/language/enums",
+      "signature": "enum Status { Active, Pending(reason: String) }",
+      "description": "Type-safe variants with optional payloads, methods, structural equality, exhaustiveness-checked matching, and model persistence via enum_field",
+      "keywords": [
+        "enum",
+        "enums",
+        "variant",
+        "payload",
+        "match",
+        "exhaustive",
+        "enum_field",
+        "persist",
+        "database",
+        "parse"
+      ]
+    },
+    {
       "title": "import",
       "type": "keyword",
       "category": "Language",

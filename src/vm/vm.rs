@@ -473,7 +473,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => x == y,
                         (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => a == b,
+                        _ => crate::interpreter::value::enum_aware_equal(&a, &b),
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -482,7 +482,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => x != y,
                         (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => a != b,
+                        _ => !crate::interpreter::value::enum_aware_equal(&a, &b),
                     };
                     self.stack.push(Value::Bool(result));
                 }

@@ -346,6 +346,67 @@ pub struct DeferredCell {
     pub resolved: Option<Value>,
 }
 
+/// Equality used by the `==` / `!=` operators in both engines. Enum values are
+/// distinct `Instance`s, so payload variants would never compare equal under
+/// the default (identity) `Instance` equality. This compares **enum** instances
+/// structurally — class name + `__variant` tag + payload fields (recursively) —
+/// and defers to the default `PartialEq` for everything else, preserving
+/// existing behaviour for ordinary objects.
+pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
+    if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
+        let a_is_enum = ia.borrow().fields.contains_key("__variant");
+        let b_is_enum = ib.borrow().fields.contains_key("__variant");
+        if a_is_enum && b_is_enum {
+            let ra = ia.borrow();
+            let rb = ib.borrow();
+            if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
+                return false;
+            }
+            return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
+                Some(vb) => enum_aware_equal(va, vb),
+                None => false,
+            });
+        }
+    }
+    a == b
+}
+
+/// If `inst` is an enum value, return its variant tag (the `__variant` field).
+/// Drives the DB/JSON serialization shape and `enum_field` reconstruction.
+pub(crate) fn enum_variant_tag(inst: &Instance) -> Option<&str> {
+    match inst.fields.get("__variant") {
+        Some(Value::String(v)) => Some(v.as_str()),
+        _ => None,
+    }
+}
+
+/// Rebuild an enum value from its stored representation: a bare tag string
+/// (`"Active"` → a unit variant) or a tagged object (`{"variant": "Pending",
+/// "reason": "x"}` → a payload variant). Used by `Enum.from(value)` and by the
+/// model `enum_field` read-path reconstruction. A value that's neither a string
+/// nor a hash is returned unchanged (defensive).
+pub fn build_enum_value(class: &Rc<Class>, stored: &Value) -> Value {
+    let mut inst = Instance::new(class.clone());
+    match stored {
+        Value::String(tag) => {
+            inst.set("__variant".to_string(), Value::String(tag.clone()));
+        }
+        Value::Hash(hash) => {
+            for (key, value) in hash.borrow().iter() {
+                if let HashKey::String(name) = key {
+                    if name.as_str() == "variant" {
+                        inst.set("__variant".to_string(), value.clone());
+                    } else {
+                        inst.set(name.to_string(), value.clone());
+                    }
+                }
+            }
+        }
+        other => return other.clone(),
+    }
+    Value::Instance(Rc::new(RefCell::new(inst)))
+}
+
 /// The type of HTTP future result
 #[derive(Clone)]
 pub enum HttpFutureKind {
@@ -1565,13 +1626,33 @@ impl serde::Serialize for Value {
                 map.end()
             }
             Value::Instance(inst) => {
+                let borrow = inst.borrow();
+                // Enum value → a DB/JSON-friendly shape: a bare tag string for
+                // a unit variant, or { "variant": tag, ...payload }. Round-trips
+                // via the model `enum_field` DSL and `Enum.from(value)`.
+                if let Some(tag) = enum_variant_tag(&borrow) {
+                    use serde::ser::SerializeMap;
+                    let payload: Vec<(&String, &Value)> = borrow
+                        .fields
+                        .iter()
+                        .filter(|(k, _)| k.as_str() != "__variant")
+                        .collect();
+                    if payload.is_empty() {
+                        return serializer.serialize_str(tag);
+                    }
+                    let mut map = serializer.serialize_map(Some(payload.len() + 1))?;
+                    map.serialize_entry("variant", tag)?;
+                    for (k, v) in payload {
+                        map.serialize_entry(k, v)?;
+                    }
+                    return map.end();
+                }
                 // SEC-013: a bare `render_json(user)` used to walk every
                 // field of the class, leaking `password_hash`,
                 // `reset_token`, etc. Default to skipping fields whose
                 // names match common-sensitive patterns and most
                 // `_`-prefixed framework internals; apps that need the
                 // raw shape can serialise explicitly via a Hash literal.
-                let borrow = inst.borrow();
                 let visible: Vec<(&String, &Value)> = borrow
                     .fields
                     .iter()

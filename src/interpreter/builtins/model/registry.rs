@@ -11,6 +11,9 @@ use super::uploaders::UploaderConfig;
 use super::validation::ValidationRule;
 use crate::interpreter::value::Class;
 
+/// A model field bound to an enum type via `enum_field`: (field name, enum class).
+type EnumFieldBinding = (String, Rc<Class>);
+
 /// Metadata for a model class (validations, callbacks).
 #[derive(Debug, Clone, Default)]
 pub struct ModelMetadata {
@@ -93,6 +96,29 @@ pub fn encrypt_document_fields(
 // Thread-local registry for model classes (used for lazy relation conversion).
 thread_local! {
     pub static MODEL_CLASSES: RefCell<HashMap<String, Rc<Class>>> = RefCell::new(HashMap::new());
+    /// `enum_field` declarations: model class name → [(field, enum class)].
+    /// Thread-local because it holds `Rc<Class>` (registered per worker when the
+    /// model's class body runs). Drives enum reconstruction on DB reads.
+    pub static ENUM_FIELDS: RefCell<HashMap<String, Vec<EnumFieldBinding>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Register a model field as holding values of the given enum class (the
+/// `enum_field(:status, Status)` DSL). On read, `json_doc_to_instance` rebuilds
+/// the enum from its stored string/object via `build_enum_value`.
+pub fn register_enum_field(class_name: &str, field: &str, enum_class: Rc<Class>) {
+    ENUM_FIELDS.with(|fields| {
+        let mut map = fields.borrow_mut();
+        let entry = map.entry(class_name.to_string()).or_default();
+        // Re-declaring a field replaces the prior mapping.
+        entry.retain(|(name, _)| name != field);
+        entry.push((field.to_string(), enum_class));
+    });
+}
+
+/// The enum fields declared on a model class: [(field, enum class)].
+pub fn get_enum_fields(class_name: &str) -> Vec<EnumFieldBinding> {
+    ENUM_FIELDS.with(|fields| fields.borrow().get(class_name).cloned().unwrap_or_default())
 }
 
 pub fn register_translation(class_name: &str, field_name: &str) {
@@ -178,11 +204,13 @@ pub fn clear_model_classes() {
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });
+    ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
 }
 
 /// Clear all model registries (MODEL_REGISTRY and MODEL_CLASSES). Used during hot reload.
 pub fn clear_all_model_registries() {
     MODEL_REGISTRY.write().unwrap().clear();
+    ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });

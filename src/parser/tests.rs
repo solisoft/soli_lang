@@ -1427,4 +1427,100 @@ mod parser_tests {
         assert!(matches!(stmts[1], StmtKind::If { .. }));
         assert!(matches!(stmts[2], StmtKind::Return(_)));
     }
+
+    #[test]
+    fn test_enum_declaration_with_unit_and_payload_variants() {
+        let stmts =
+            parse_stmts("enum Status {\n  Active,\n  Archived,\n  Pending(reason: String)\n}\n");
+        let decl = match &stmts[0] {
+            StmtKind::Enum(decl) => decl,
+            other => panic!("expected enum declaration, got {:?}", other),
+        };
+        assert_eq!(decl.name, "Status");
+        assert_eq!(decl.variants.len(), 3);
+        assert_eq!(decl.variants[0].name, "Active");
+        assert!(decl.variants[0].payload.is_empty());
+        assert_eq!(decl.variants[2].name, "Pending");
+        assert_eq!(decl.variants[2].payload.len(), 1);
+        assert_eq!(decl.variants[2].payload[0].name, "reason");
+        assert!(decl.methods.is_empty());
+    }
+
+    #[test]
+    fn test_enum_declaration_with_method() {
+        let stmts = parse_stmts(
+            "enum Color {\n  Red,\n  Blue\n\n  fn hex() -> String { return \"#000\" }\n}\n",
+        );
+        let decl = match &stmts[0] {
+            StmtKind::Enum(decl) => decl,
+            other => panic!("expected enum declaration, got {:?}", other),
+        };
+        assert_eq!(decl.variants.len(), 2);
+        assert_eq!(decl.methods.len(), 1);
+        assert_eq!(decl.methods[0].name, "hex");
+    }
+
+    #[test]
+    fn test_enum_variant_match_pattern() {
+        let stmts = parse_stmts(
+            "let r = match s {\n  Status.Active => 1,\n  Status.Pending(reason) => 2,\n  _ => 0,\n}\n",
+        );
+        let arms = match &stmts[0] {
+            StmtKind::Let {
+                initializer: Some(expr),
+                ..
+            } => match &expr.kind {
+                ExprKind::Match { arms, .. } => arms,
+                other => panic!("expected match expression, got {:?}", other),
+            },
+            other => panic!("expected let with match, got {:?}", other),
+        };
+        match &arms[0].pattern {
+            MatchPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                bindings,
+            } => {
+                assert_eq!(enum_name, "Status");
+                assert_eq!(variant_name, "Active");
+                assert!(bindings.is_empty());
+            }
+            other => panic!("expected enum-variant pattern, got {:?}", other),
+        }
+        match &arms[1].pattern {
+            MatchPattern::EnumVariant {
+                variant_name,
+                bindings,
+                ..
+            } => {
+                assert_eq!(variant_name, "Pending");
+                assert_eq!(bindings.len(), 1);
+                assert!(matches!(bindings[0], MatchPattern::Variable(_)));
+            }
+            other => panic!(
+                "expected enum-variant pattern with binding, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_match_accepts_both_brace_and_end_forms() {
+        // Brace form.
+        let braces = parse_stmts("let a = match x { 1 => \"one\", _ => \"other\" }\n");
+        // Ruby-style `end` form.
+        let ends = parse_stmts("let b = match x\n  1 => \"one\",\n  _ => \"other\",\nend\n");
+        for stmts in [braces, ends] {
+            match &stmts[0] {
+                StmtKind::Let {
+                    initializer: Some(expr),
+                    ..
+                } => match &expr.kind {
+                    ExprKind::Match { arms, .. } => assert_eq!(arms.len(), 2),
+                    other => panic!("expected match expression, got {:?}", other),
+                },
+                other => panic!("expected let with match, got {:?}", other),
+            }
+        }
+    }
 }

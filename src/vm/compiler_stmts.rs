@@ -87,6 +87,11 @@ impl Compiler {
             StmtKind::Class(decl) => {
                 self.compile_class_decl(decl, line)?;
             }
+            StmtKind::Enum(decl) => {
+                // Enums lower to an ordinary class the VM already compiles —
+                // declaration, construction, and methods are all VM-native.
+                self.compile_class_decl(&decl.lower_to_class(), line)?;
+            }
             StmtKind::Interface(_) => {
                 // Interfaces are type-only, no runtime representation needed
             }

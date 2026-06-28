@@ -130,9 +130,17 @@ impl Vm {
                 if let Some(val) = class.static_fields.borrow().get(name) {
                     return Ok(val.clone());
                 }
-                // Static method access
+                // Static method access (AST-interpreted)
                 if let Some(method) = class.find_static_method(name) {
                     return Ok(Value::Function(method));
+                }
+                // Static method access (VM-compiled) — needed when the call
+                // site can't use the CallMethod fast path, e.g. named-arg
+                // calls like `Status.Pending(reason: "x")`, which compile the
+                // callee via GetProperty then Op::Call (reordering by the
+                // closure's param names).
+                if let Some(closure) = class.find_vm_static_method(name) {
+                    return Ok(Value::VmClosure(closure));
                 }
                 // Native static method — Model subclass statics expect the
                 // class as args[0] (collection resolution); bind it like the

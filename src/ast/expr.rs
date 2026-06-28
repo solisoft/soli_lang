@@ -255,6 +255,13 @@ pub enum MatchPattern {
         type_name: String,
         fields: Vec<(String, MatchPattern)>,
     },
+    /// Enum-variant pattern: `Status.Active` or `Status.Pending(r)`.
+    /// `bindings` are matched positionally against the variant's payload fields.
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        bindings: Vec<MatchPattern>,
+    },
     /// Conjunction (AND) of patterns
     And(Vec<MatchPattern>),
     /// Disjunction (OR) of patterns

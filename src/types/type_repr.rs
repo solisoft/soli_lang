@@ -167,6 +167,23 @@ impl fmt::Display for Type {
     }
 }
 
+/// Enum type information — the ordered set of variant names, used for `match`
+/// exhaustiveness checking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumType {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
+impl EnumType {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            variants: Vec::new(),
+        }
+    }
+}
+
 /// Class type information.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassType {

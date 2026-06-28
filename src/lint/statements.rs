@@ -125,6 +125,38 @@ impl Linter {
 
             StmtKind::Class(decl) => self.lint_class_decl(decl),
 
+            StmtKind::Enum(decl) => {
+                rules::naming::check_class_name(
+                    "enum",
+                    &decl.name,
+                    decl.span,
+                    &mut self.diagnostics,
+                );
+                // Lint the user-defined methods only; the synthesized variant
+                // machinery is generated, not user source.
+                for method in &decl.methods {
+                    rules::naming::check_function_name(
+                        &method.name,
+                        method.span,
+                        &mut self.diagnostics,
+                    );
+                    for param in &method.params {
+                        rules::naming::check_variable_name(
+                            &param.name,
+                            param.span,
+                            &mut self.diagnostics,
+                        );
+                    }
+                    rules::scope::check_undefined_locals(
+                        &method.params,
+                        &method.body,
+                        &self.program_names,
+                        &mut self.diagnostics,
+                    );
+                    self.lint_body(&method.body);
+                }
+            }
+
             StmtKind::Interface(decl) => {
                 rules::naming::check_class_name(
                     "interface",

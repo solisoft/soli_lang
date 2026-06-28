@@ -236,6 +236,10 @@ fn language_pattern_matching
     render_docs("docs/language/pattern-matching", "Pattern Matching", "language", "pattern_matching")
 end
 
+fn language_enums
+    render_docs("docs/language/enums", "Enums", "language", "enums")
+end
+
 fn language_pipeline_operator
     render_docs("docs/language/pipeline-operator", "Pipeline Operator", "language", "pipeline_operator")
 end

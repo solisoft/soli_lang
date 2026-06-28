@@ -118,8 +118,12 @@ impl Interpreter {
             BinaryOp::Multiply => self.eval_multiply(left_val, right_val, span),
             BinaryOp::Divide => self.eval_divide(left_val, right_val, span),
             BinaryOp::Modulo => self.eval_modulo(left_val, right_val, span),
-            BinaryOp::Equal => Ok(Value::Bool(*left_val == *right_val)),
-            BinaryOp::NotEqual => Ok(Value::Bool(*left_val != *right_val)),
+            BinaryOp::Equal => Ok(Value::Bool(crate::interpreter::value::enum_aware_equal(
+                left_val, right_val,
+            ))),
+            BinaryOp::NotEqual => Ok(Value::Bool(!crate::interpreter::value::enum_aware_equal(
+                left_val, right_val,
+            ))),
             BinaryOp::Less => {
                 if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
                     return self.eval_string_compare(a, b, OrdOp::Less, span);

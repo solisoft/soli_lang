@@ -114,10 +114,32 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             Ok(serde_json::Value::Object(map))
         }
         Value::Instance(inst) => {
+            let borrow = inst.borrow();
+            // Enum value → tag string (unit) or { "variant": tag, ...payload }
+            // (payload). This is what gets stored in the DB; the model
+            // `enum_field` DSL reconstructs it on read.
+            if let Some(tag) = crate::interpreter::value::enum_variant_tag(&borrow) {
+                let payload: Vec<(&String, &Value)> = borrow
+                    .fields
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != "__variant")
+                    .collect();
+                if payload.is_empty() {
+                    return Ok(serde_json::Value::String(tag.to_string()));
+                }
+                let mut map = serde_json::Map::with_capacity(payload.len() + 1);
+                map.insert(
+                    "variant".to_string(),
+                    serde_json::Value::String(tag.to_string()),
+                );
+                for (k, v) in payload {
+                    map.insert(k.clone(), value_to_json(v)?);
+                }
+                return Ok(serde_json::Value::Object(map));
+            }
             // SEC-013: same filter as the `serde::Serialize` path —
             // `value_to_json(user)` must not leak `password_hash` /
             // `*_token` / framework-internal fields.
-            let borrow = inst.borrow();
             let mut map = serde_json::Map::with_capacity(borrow.fields.len());
             for (k, v) in borrow.fields.iter() {
                 if !crate::interpreter::value::is_safe_serialised_field(k) {
