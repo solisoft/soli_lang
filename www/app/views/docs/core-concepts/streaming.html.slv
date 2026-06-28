@@ -1,0 +1,89 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs" class="text-gray-400 hover:text-white transition-colors">Core Concepts</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Streaming &amp; SSE</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Streaming &amp; SSE</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Stream a response as it's produced &mdash; Server-Sent Events for live updates, or a chunked body for large exports &mdash; instead of buffering the whole thing first.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-300">
+                A controller returns <code class="text-amber-400">sse(req)</code> or <code class="text-amber-400">stream(req, content_type)</code> with a block. The server holds the connection open and sends each chunk over <code class="text-cyan-400">Transfer-Encoding: chunked</code> as the block calls <code class="text-cyan-400">out.emit(...)</code> / <code class="text-cyan-400">out.write(...)</code> &mdash; ideal for AI token streaming, progress, live dashboards, and large CSV/JSON exports.
+            </p>
+        </div>
+    </section>
+
+    <!-- Server-Sent Events -->
+    <section id="section-sse" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Server-Sent Events</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">sse(req) do |out| ... end</code> sends <code class="text-cyan-400">text/event-stream</code>. Call <code class="text-cyan-400">out.emit(data, event?)</code> per event; the browser's <code>EventSource</code> receives them live.</p>
+            <pre data-filename="app/controllers/feed_controller.sl"><code class="language-soli text-sm">def stream(req)
+  sse(req) do |out|
+    for item in Notification.live()
+      out.emit(item.to_json, "notice")   # event: notice\n data: {...}
+    end
+    out.emit("done")                      # a plain data: event
+  end
+end</code></pre>
+            <pre data-filename="Client (JavaScript)"><code class="language-bash text-sm">const es = new EventSource("/feed/stream")
+es.addEventListener("notice", e =&gt; console.log(JSON.parse(e.data)))</code></pre>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">out.emit</code> returns <code class="text-purple-400">false</code> when the client has disconnected &mdash; check it to stop an open-ended loop early.</p>
+        </div>
+    </section>
+
+    <!-- Chunked bodies -->
+    <section id="section-chunked" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Chunked bodies (large exports)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">stream(req, content_type) do |out| ... end</code> sends a raw chunked body. Use <code class="text-cyan-400">out.write(chunk)</code> &mdash; no SSE framing &mdash; to stream a file or report without buffering it in memory.</p>
+            <pre data-filename="app/controllers/reports_controller.sl"><code class="language-soli text-sm">def export(req)
+  stream(req, "text/csv") do |out|
+    out.write("name,score\n")
+    for row in Player.order("score desc").each_row()
+      out.write(row.name + "," + str(row.score) + "\n")
+    end
+  end
+end</code></pre>
+        </div>
+    </section>
+
+    <!-- out API -->
+    <section id="section-out" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-indigo-400">out</code> emitter</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="text-sm text-gray-400 space-y-1">
+                <div><code class="text-amber-400">out.emit(data, event?)</code> &mdash; one SSE event; multi-line <code>data</code> is split into multiple <code>data:</code> lines. Returns <code class="text-purple-400">Bool</code> (false = client gone).</div>
+                <div><code class="text-amber-400">out.write(data)</code> &mdash; a raw body chunk, no framing (for <code>stream</code>).</div>
+            </div>
+            <p class="text-gray-400 mt-3 text-sm">Named <code>emit</code>, not <code>send</code>, because <code>send</code> is the universal metaprogramming method.</p>
+        </div>
+    </section>
+
+    <!-- When to use -->
+    <section id="section-when" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">When to use what</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="text-sm text-gray-400 space-y-2">
+                <div><strong class="text-white">SSE</strong> &mdash; one-way server → browser updates (notifications, token streams, progress). Simpler than WebSockets; auto-reconnects.</div>
+                <div><strong class="text-white"><a href="/docs/core-concepts/websockets" class="text-indigo-400 hover:text-indigo-300">WebSockets</a></strong> &mdash; two-way, low-latency (chat, presence, games).</div>
+                <div><strong class="text-white"><a href="/docs/core-concepts/liveview" class="text-indigo-400 hover:text-indigo-300">Live View</a></strong> &mdash; server-rendered reactive UI without writing client JS.</div>
+            </div>
+            <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
+                <p class="text-sm text-amber-200"><strong>A stream occupies one worker thread for its lifetime.</strong> Backpressure is automatic (a slow client pauses the block). Keep streams bounded, or size your worker pool for the number of concurrent long-lived streams you expect.</p>
+            </div>
+        </div>
+    </section>
+</div>

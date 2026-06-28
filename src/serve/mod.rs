@@ -193,9 +193,11 @@ use bytes::Bytes;
 use crossbeam::channel;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
+use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Full;
 use http_body_util::Limited;
+use http_body_util::StreamBody;
 use hyper::body::Incoming;
 use hyper::service::service_fn;
 use hyper::{header, Request, Response, StatusCode};
@@ -293,7 +295,7 @@ pub(crate) struct RequestData {
     /// diffs it at handling time to expose queue wait. `None` when logging
     /// is off so the no-logging hot path keeps zero clock reads.
     pub(crate) enqueued_at: Option<std::time::Instant>,
-    pub(crate) response_tx: oneshot::Sender<ResponseData>,
+    pub(crate) response_tx: oneshot::Sender<WorkerResponse>,
 }
 
 /// Borrow a header value from the wire `HeaderMap` by its lowercase name.
@@ -310,6 +312,35 @@ pub(crate) struct ResponseData {
     pub(crate) status: u16,
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Vec<u8>,
+}
+
+/// Worker → service reply. Buffered responses carry a complete `ResponseData`;
+/// streaming responses carry the status/headers plus a channel the worker feeds
+/// body chunks into (handler-driven SSE / chunked bodies).
+pub(crate) enum WorkerResponse {
+    Buffered(ResponseData),
+    Stream {
+        status: u16,
+        headers: Vec<(String, String)>,
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    },
+}
+
+/// Boxed response body so buffered (`Full`) and streaming (`StreamBody`)
+/// responses share one type at the hyper service boundary.
+pub(crate) type ResponseBody = BoxBody<Bytes, std::io::Error>;
+
+/// Wrap fully-buffered bytes as a boxed response body.
+fn full(body: Bytes) -> ResponseBody {
+    Full::<Bytes>::new(body)
+        .map_err(|never| match never {})
+        .boxed()
+}
+
+/// Box a `Response<Full<Bytes>>` (handlers that still build `Full`, e.g. the
+/// live-reload handlers) into the unified boxed body type.
+fn box_full(resp: Response<Full<Bytes>>) -> Response<ResponseBody> {
+    resp.map(|b| b.map_err(|never| match never {}).boxed())
 }
 
 // File tracking functions (used by app_loader for initial file tracking in workers)
@@ -882,7 +913,7 @@ fn run_hyper_server_worker_pool(
                             if shutdown_flag.load(Ordering::Relaxed) {
                                 return Ok(Response::builder()
                                     .status(StatusCode::SERVICE_UNAVAILABLE)
-                                    .body(Full::new(Bytes::from("Server shutting down")))
+                                    .body(full(Bytes::from("Server shutting down")))
                                     .unwrap());
                             }
                             handle_hyper_request(
@@ -1969,8 +2000,32 @@ fn worker_loop(
             for _ in 0..server_constants::BATCH_SIZE {
                 match work_rx.try_recv() {
                     Ok(mut data) => {
+                        crate::interpreter::builtins::streaming::clear_pending_stream();
                         let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
-                        let _ = data.response_tx.send(resp_data);
+                        match crate::interpreter::builtins::streaming::take_pending_stream() {
+                            Some(spec) => {
+                                // Handler-driven streaming: hand the body channel
+                                // to the async task, then run the block so
+                                // out.send/out.write feed chunks as it executes.
+                                let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+                                let id =
+                                    crate::interpreter::builtins::streaming::register_sender(tx);
+                                let _ = data.response_tx.send(WorkerResponse::Stream {
+                                    status: spec.status,
+                                    headers: spec.headers.clone(),
+                                    rx,
+                                });
+                                crate::interpreter::builtins::streaming::run_stream_block(
+                                    interpreter,
+                                    &spec,
+                                    id,
+                                );
+                                crate::interpreter::builtins::streaming::unregister_sender(id);
+                            }
+                            None => {
+                                let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
+                            }
+                        }
                     }
                     Err(channel::TryRecvError::Empty) => {
                         break;
@@ -2014,8 +2069,32 @@ fn worker_loop(
                                 clear_template_cache();
                             }
                         }
+                        crate::interpreter::builtins::streaming::clear_pending_stream();
                         let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
-                        let _ = data.response_tx.send(resp_data);
+                        match crate::interpreter::builtins::streaming::take_pending_stream() {
+                            Some(spec) => {
+                                // Handler-driven streaming: hand the body channel
+                                // to the async task, then run the block so
+                                // out.send/out.write feed chunks as it executes.
+                                let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+                                let id =
+                                    crate::interpreter::builtins::streaming::register_sender(tx);
+                                let _ = data.response_tx.send(WorkerResponse::Stream {
+                                    status: spec.status,
+                                    headers: spec.headers.clone(),
+                                    rx,
+                                });
+                                crate::interpreter::builtins::streaming::run_stream_block(
+                                    interpreter,
+                                    &spec,
+                                    id,
+                                );
+                                crate::interpreter::builtins::streaming::unregister_sender(id);
+                            }
+                            None => {
+                                let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
+                            }
+                        }
                     }
                 } else if Some(idx) == ws_idx {
                     if let Some(ref rx) = ws_event_rx_inner {
@@ -2100,7 +2179,7 @@ async fn handle_hyper_request(
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
     peer_addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
+) -> Result<Response<ResponseBody>, hyper::Error> {
     let method: Cow<'static, str> = match *req.method() {
         hyper::Method::GET => Cow::Borrowed("GET"),
         hyper::Method::POST => Cow::Borrowed("POST"),
@@ -2126,7 +2205,7 @@ async fn handle_hyper_request(
         return Ok(Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "text/plain; charset=utf-8")
-            .body(Full::new(Bytes::from(body)))
+            .body(full(Bytes::from(body)))
             .unwrap());
     }
 
@@ -2148,12 +2227,14 @@ async fn handle_hyper_request(
                 return Ok(forbidden_websocket_origin_response());
             }
             if let Some(ref tx) = reload_tx {
-                return live_reload_ws::handle_live_reload_websocket(req, tx.subscribe()).await;
+                return live_reload_ws::handle_live_reload_websocket(req, tx.subscribe())
+                    .await
+                    .map(box_full);
             } else {
                 // Live reload disabled
                 return Ok(Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Full::new(Bytes::from("Live reload is disabled")))
+                    .body(full(Bytes::from("Live reload is disabled")))
                     .unwrap());
             }
         }
@@ -2189,10 +2270,7 @@ async fn handle_hyper_request(
                     eprintln!("[LiveView] Upgrade error: {}", e);
                     return Ok(Response::builder()
                         .status(StatusCode::BAD_REQUEST)
-                        .body(Full::new(Bytes::from(format!(
-                            "WebSocket upgrade error: {}",
-                            e
-                        ))))
+                        .body(full(Bytes::from(format!("WebSocket upgrade error: {}", e))))
                         .unwrap());
                 }
             };
@@ -2347,7 +2425,7 @@ async fn handle_hyper_request(
                 crate::live::socket::cancel_tick_task(&liveview_id);
             });
 
-            return Ok(response);
+            return Ok(box_full(response));
         }
 
         // Check if there's a WebSocket route for this path
@@ -2362,7 +2440,7 @@ async fn handle_hyper_request(
             // No WebSocket route found
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(Full::new(Bytes::from("WebSocket endpoint not found")))
+                .body(full(Bytes::from("WebSocket endpoint not found")))
                 .unwrap());
         }
     }
@@ -2373,7 +2451,7 @@ async fn handle_hyper_request(
             Err(()) => {
                 return Ok(Response::builder()
                     .status(StatusCode::FORBIDDEN)
-                    .body(Full::new(Bytes::from("Forbidden")))
+                    .body(full(Bytes::from("Forbidden")))
                     .unwrap());
             }
             Ok(Some(file_path)) => {
@@ -2400,7 +2478,7 @@ async fn handle_hyper_request(
                                             "Cache-Control",
                                             server_constants::STATIC_CACHE_MAX_AGE,
                                         )
-                                        .body(Full::new(Bytes::new()))
+                                        .body(full(Bytes::new()))
                                         .unwrap());
                                 }
                             }
@@ -2430,13 +2508,13 @@ async fn handle_hyper_request(
                                             "Cache-Control",
                                             server_constants::STATIC_CACHE_MAX_AGE,
                                         )
-                                        .body(Full::new(slice))
+                                        .body(full(slice))
                                         .unwrap());
                                 } else {
                                     return Ok(Response::builder()
                                         .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                         .header("Content-Range", format!("bytes */{}", total_size))
-                                        .body(Full::new(Bytes::new()))
+                                        .body(full(Bytes::new()))
                                         .unwrap());
                                 }
                             }
@@ -2449,7 +2527,7 @@ async fn handle_hyper_request(
                             .header("Accept-Ranges", "bytes")
                             .header("ETag", &asset.etag)
                             .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
-                            .body(Full::new(asset.bytes.clone()))
+                            .body(full(asset.bytes.clone()))
                             .unwrap());
                     }
                 }
@@ -2472,7 +2550,7 @@ async fn handle_hyper_request(
                                                 "Cache-Control",
                                                 server_constants::STATIC_CACHE_MAX_AGE,
                                             )
-                                            .body(Full::new(Bytes::new()))
+                                            .body(full(Bytes::new()))
                                             .unwrap());
                                     }
                                 }
@@ -2497,9 +2575,7 @@ async fn handle_hyper_request(
                                             Err(_) => {
                                                 return Ok(Response::builder()
                                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                                    .body(Full::new(Bytes::from(
-                                                        "Error reading file",
-                                                    )))
+                                                    .body(full(Bytes::from("Error reading file")))
                                                     .unwrap())
                                             }
                                         };
@@ -2517,7 +2593,7 @@ async fn handle_hyper_request(
                                                 "Cache-Control",
                                                 server_constants::STATIC_CACHE_MAX_AGE,
                                             )
-                                            .body(Full::new(Bytes::from(slice)))
+                                            .body(full(Bytes::from(slice)))
                                             .unwrap());
                                     } else {
                                         // Range not satisfiable
@@ -2527,7 +2603,7 @@ async fn handle_hyper_request(
                                                 "Content-Range",
                                                 format!("bytes */{}", file_size),
                                             )
-                                            .body(Full::new(Bytes::new()))
+                                            .body(full(Bytes::new()))
                                             .unwrap());
                                     }
                                 }
@@ -2539,7 +2615,7 @@ async fn handle_hyper_request(
                                 Err(_) => {
                                     return Ok(Response::builder()
                                         .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                        .body(Full::new(Bytes::from("Error reading file")))
+                                        .body(full(Bytes::from("Error reading file")))
                                         .unwrap())
                                 }
                             };
@@ -2551,7 +2627,7 @@ async fn handle_hyper_request(
                                 .header("Accept-Ranges", "bytes")
                                 .header("ETag", etag)
                                 .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
-                                .body(Full::new(Bytes::from(content)))
+                                .body(full(Bytes::from(content)))
                                 .unwrap());
                         }
                     }
@@ -2563,7 +2639,7 @@ async fn handle_hyper_request(
                     Err(_) => {
                         return Ok(Response::builder()
                             .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(Full::new(Bytes::from("Error reading file")))
+                            .body(full(Bytes::from("Error reading file")))
                             .unwrap())
                     }
                 };
@@ -2588,13 +2664,13 @@ async fn handle_hyper_request(
                                 )
                                 .header("Content-Length", length.to_string())
                                 .header("Accept-Ranges", "bytes")
-                                .body(Full::new(Bytes::copy_from_slice(slice)))
+                                .body(full(Bytes::copy_from_slice(slice)))
                                 .unwrap());
                         } else {
                             return Ok(Response::builder()
                                 .status(StatusCode::RANGE_NOT_SATISFIABLE)
                                 .header("Content-Range", format!("bytes */{}", file_size))
-                                .body(Full::new(Bytes::new()))
+                                .body(full(Bytes::new()))
                                 .unwrap());
                         }
                     }
@@ -2605,7 +2681,7 @@ async fn handle_hyper_request(
                     .header("Content-Type", mime_type)
                     .header("Content-Length", content.len().to_string())
                     .header("Accept-Ranges", "bytes")
-                    .body(Full::new(Bytes::from(content)))
+                    .body(full(Bytes::from(content)))
                     .unwrap());
             }
             Ok(None) => {} // Not a static file, fall through to route matching
@@ -2615,12 +2691,12 @@ async fn handle_hyper_request(
     // Framework-bundled hover-prefetch script. Served at a reserved path so
     // strict-CSP apps can use `<script src>` instead of inline JS.
     if path == "/__soli/prefetch.js" && method == "GET" {
-        return Ok(prefetch::handle_prefetch_js());
+        return Ok(box_full(prefetch::handle_prefetch_js()));
     }
 
     // Framework-bundled instant-navigation script (body swap + pushState).
     if path == "/__soli/nav.js" && method == "GET" {
-        return Ok(nav::handle_nav_js());
+        return Ok(box_full(nav::handle_nav_js()));
     }
 
     // Handle live reload SSE endpoint
@@ -2636,16 +2712,18 @@ async fn handle_hyper_request(
         if !websocket_origin_allowed(req.headers()) {
             return Ok(Response::builder()
                 .status(StatusCode::FORBIDDEN)
-                .body(Full::new(Bytes::from("Forbidden live-reload origin")))
+                .body(full(Bytes::from("Forbidden live-reload origin")))
                 .unwrap());
         }
         if let Some(ref tx) = reload_tx {
-            return Ok(live_reload::handle_live_reload_sse(tx.subscribe()).await);
+            return Ok(box_full(
+                live_reload::handle_live_reload_sse(tx.subscribe()).await,
+            ));
         } else {
             // Live reload disabled
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(Full::new(Bytes::from("Live reload is disabled")))
+                .body(full(Bytes::from("Live reload is disabled")))
                 .unwrap());
         }
     }
@@ -2688,7 +2766,7 @@ async fn handle_hyper_request(
             return Ok(Response::builder()
                 .status(StatusCode::FORBIDDEN)
                 .header("Content-Type", "text/plain; charset=utf-8")
-                .body(Full::new(Bytes::from(
+                .body(full(Bytes::from(
                     "coverage endpoint requires X-Coverage-Token matching SOLI_COVERAGE_TOKEN",
                 )))
                 .unwrap());
@@ -2697,7 +2775,7 @@ async fn handle_hyper_request(
         return Ok(Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(body)))
+            .body(full(Bytes::from(body)))
             .unwrap());
     }
 
@@ -2742,7 +2820,7 @@ async fn handle_hyper_request(
                 return Ok(Response::builder()
                     .status(StatusCode::PAYLOAD_TOO_LARGE)
                     .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(Full::new(Bytes::from("Request body too large")))
+                    .body(full(Bytes::from("Request body too large")))
                     .unwrap());
             }
         }
@@ -2763,7 +2841,7 @@ async fn handle_hyper_request(
                     return Ok(Response::builder()
                         .status(StatusCode::PAYLOAD_TOO_LARGE)
                         .header("Content-Type", "text/plain; charset=utf-8")
-                        .body(Full::new(Bytes::from("Request body too large")))
+                        .body(full(Bytes::from("Request body too large")))
                         .unwrap());
                 }
             };
@@ -2838,7 +2916,7 @@ async fn handle_hyper_request(
     if !send_ok {
         return Ok(Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(Full::new(Bytes::from("Server busy")))
+            .body(full(Bytes::from("Server busy")))
             .unwrap());
     }
 
@@ -2867,10 +2945,34 @@ async fn handle_hyper_request(
             Ok(Response::builder()
                 .status(StatusCode::GATEWAY_TIMEOUT)
                 .header("Server", "soliMVC")
-                .body(Full::new(Bytes::from("Gateway Timeout")))
+                .body(full(Bytes::from("Gateway Timeout")))
                 .unwrap())
         }
-        Ok(Ok(resp_data)) => {
+        Ok(Ok(worker_response)) => {
+            // Streaming responses (SSE / chunked) bypass the buffered path
+            // entirely: build a chunked body fed by the worker's channel.
+            let resp_data = match worker_response {
+                WorkerResponse::Stream {
+                    status,
+                    headers,
+                    rx,
+                } => {
+                    let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|chunk| {
+                        Ok::<_, std::io::Error>(hyper::body::Frame::data(Bytes::from(chunk)))
+                    });
+                    let body = BodyExt::boxed(StreamBody::new(stream));
+                    let mut builder = Response::builder()
+                        .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
+                        .header("Server", "soliMVC");
+                    for (key, value) in &headers {
+                        builder = builder.header(key, value);
+                    }
+                    return Ok(builder.body(body).unwrap_or_else(|_| {
+                        Response::new(full(Bytes::from("stream init error")))
+                    }));
+                }
+                WorkerResponse::Buffered(rd) => rd,
+            };
             // Conditional-GET short-circuit: if the controller produced an
             // ETag matching the browser's If-None-Match, return 304 with
             // just the validator headers. Enables the hover-prefetch feature
@@ -2909,7 +3011,7 @@ async fn handle_hyper_request(
                                     b304 = b304.header(key.as_str(), value.as_str());
                                 }
                             }
-                            return Ok(b304.body(Full::new(Bytes::new())).unwrap());
+                            return Ok(b304.body(full(Bytes::new())).unwrap());
                         }
                     }
                 }
@@ -2965,11 +3067,11 @@ async fn handle_hyper_request(
                 resp_data.body
             };
 
-            Ok(builder.body(Full::new(Bytes::from(body))).unwrap())
+            Ok(builder.body(full(Bytes::from(body))).unwrap())
         }
         Ok(Err(_)) => Ok(Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Full::new(Bytes::from("Internal Server Error")))
+            .body(full(Bytes::from("Internal Server Error")))
             .unwrap()),
     }
 }
@@ -2988,10 +3090,10 @@ fn is_websocket_upgrade(req: &Request<Incoming>) -> bool {
     false
 }
 
-fn forbidden_websocket_origin_response() -> Response<Full<Bytes>> {
+fn forbidden_websocket_origin_response() -> Response<ResponseBody> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
-        .body(Full::new(Bytes::from("Forbidden WebSocket origin")))
+        .body(full(Bytes::from("Forbidden WebSocket origin")))
         .unwrap()
 }
 
@@ -3166,14 +3268,11 @@ fn coverage_request_authorized(expected: Option<&str>, provided: &str) -> bool {
     crate::interpreter::builtins::crypto::do_secure_compare(tok, provided)
 }
 
-fn forbidden_csrf_response(reason: &str) -> Response<Full<Bytes>> {
+fn forbidden_csrf_response(reason: &str) -> Response<ResponseBody> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
         .header("Content-Type", "text/plain; charset=utf-8")
-        .body(Full::new(Bytes::from(format!(
-            "CSRF check failed: {}",
-            reason
-        ))))
+        .body(full(Bytes::from(format!("CSRF check failed: {}", reason))))
         .unwrap()
 }
 
@@ -3278,12 +3377,12 @@ async fn handle_websocket_upgrade(
     ws_registry: Arc<WebSocketRegistry>,
     path: String,
     ws_event_tx: channel::Sender<WebSocketEventData>,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
+) -> Result<Response<ResponseBody>, hyper::Error> {
     // Check if this is a valid WebSocket upgrade request
     if !hyper_tungstenite::is_upgrade_request(&req) {
         return Ok(Response::builder()
             .status(StatusCode::BAD_REQUEST)
-            .body(Full::new(Bytes::from("Not a WebSocket upgrade request")))
+            .body(full(Bytes::from("Not a WebSocket upgrade request")))
             .unwrap());
     }
 
@@ -3299,10 +3398,7 @@ async fn handle_websocket_upgrade(
             eprintln!("[WS] Upgrade error: {}", e);
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Full::new(Bytes::from(format!(
-                    "WebSocket upgrade error: {}",
-                    e
-                ))))
+                .body(full(Bytes::from(format!("WebSocket upgrade error: {}", e))))
                 .unwrap());
         }
     };
@@ -3405,7 +3501,7 @@ async fn handle_websocket_upgrade(
     });
 
     // Return the upgrade response directly
-    Ok(response)
+    Ok(box_full(response))
 }
 
 /// Handle WebSocket stream for a single connection.
@@ -6238,12 +6334,12 @@ fn handle_request(
 async fn handle_dev_repl(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
+) -> Result<Response<ResponseBody>, hyper::Error> {
     if !is_authorized_dev_repl_request(req.headers(), peer_addr) {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(full(Bytes::from(
                 r#"{"error": "Forbidden dev REPL request"}"#,
             )))
             .unwrap());
@@ -6256,9 +6352,7 @@ async fn handle_dev_repl(
             return Ok(Response::builder()
                 .status(StatusCode::PAYLOAD_TOO_LARGE)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
-                    r#"{"error": "Request body too large"}"#,
-                )))
+                .body(full(Bytes::from(r#"{"error": "Request body too large"}"#)))
                 .unwrap());
         }
     };
@@ -6271,7 +6365,7 @@ async fn handle_dev_repl(
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error": "Invalid JSON body"}"#)))
+                .body(full(Bytes::from(r#"{"error": "Invalid JSON body"}"#)))
                 .unwrap());
         }
     };
@@ -6304,7 +6398,7 @@ async fn handle_dev_repl(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(response_json.to_string())))
+        .body(full(Bytes::from(response_json.to_string())))
         .unwrap())
 }
 
@@ -6379,12 +6473,12 @@ fn constant_time_eq(left: &str, right: &str) -> bool {
 async fn handle_dev_source(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
+) -> Result<Response<ResponseBody>, hyper::Error> {
     if !is_authorized_dev_repl_request(req.headers(), peer_addr) {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(full(Bytes::from(
                 r#"{"error": "Forbidden dev source request"}"#,
             )))
             .unwrap());
@@ -6415,9 +6509,7 @@ async fn handle_dev_source(
         return Ok(Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
-                r#"{"error": "Missing file parameter"}"#,
-            )))
+            .body(full(Bytes::from(r#"{"error": "Missing file parameter"}"#)))
             .unwrap());
     }
 
@@ -6426,7 +6518,7 @@ async fn handle_dev_source(
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(full(Bytes::from(
                 r#"{"error": "Absolute paths not allowed"}"#,
             )))
             .unwrap());
@@ -6443,7 +6535,7 @@ async fn handle_dev_source(
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error": "File not found"}"#)))
+                .body(full(Bytes::from(r#"{"error": "File not found"}"#)))
                 .unwrap());
         }
     };
@@ -6454,7 +6546,7 @@ async fn handle_dev_source(
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
+                .body(full(Bytes::from(
                     r#"{"error": "Could not determine app root"}"#,
                 )))
                 .unwrap());
@@ -6470,7 +6562,7 @@ async fn handle_dev_source(
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(
+            .body(full(Bytes::from(
                 r#"{"error": "Path outside app directory"}"#,
             )))
             .unwrap());
@@ -6480,7 +6572,7 @@ async fn handle_dev_source(
         return Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("Content-Type", "application/json")
-            .body(Full::new(Bytes::from(r#"{"error": "Not a file"}"#)))
+            .body(full(Bytes::from(r#"{"error": "Not a file"}"#)))
             .unwrap());
     }
 
@@ -6490,9 +6582,7 @@ async fn handle_dev_source(
             return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
-                .body(Full::new(Bytes::from(
-                    r#"{"error": "Could not read file"}"#,
-                )))
+                .body(full(Bytes::from(r#"{"error": "Could not read file"}"#)))
                 .unwrap());
         }
     };
@@ -6526,7 +6616,7 @@ async fn handle_dev_source(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
-        .body(Full::new(Bytes::from(response.to_string())))
+        .body(full(Bytes::from(response.to_string())))
         .unwrap())
 }
 

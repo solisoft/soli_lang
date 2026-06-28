@@ -55,6 +55,10 @@ fn core_concepts_websockets
     render_docs("docs/core-concepts/websockets", "WebSockets", "core_concepts", "websockets")
 end
 
+fn core_concepts_streaming
+    render_docs("docs/core-concepts/streaming", "Streaming & SSE", "core_concepts", "streaming")
+end
+
 fn core_concepts_liveview
     render_docs("docs/core-concepts/liveview", "Live View", "core_concepts", "liveview")
 end

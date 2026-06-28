@@ -11518,6 +11518,57 @@
         "symmetric encryption",
         "cipher"
       ]
+    },
+    {
+      "title": "Streaming & SSE",
+      "type": "guide",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/streaming",
+      "signature": "sse(req) / stream(req, content_type)",
+      "description": "Stream a response as it's produced: Server-Sent Events (text/event-stream) or a chunked body for large exports, via out.emit / out.write.",
+      "keywords": [
+        "sse",
+        "server-sent events",
+        "streaming",
+        "eventsource",
+        "chunked",
+        "text/event-stream",
+        "token streaming",
+        "stream response",
+        "out.emit"
+      ]
+    },
+    {
+      "title": "sse",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/streaming#section-sse",
+      "signature": "sse(req) do |out| out.emit(data, event?) end",
+      "description": "Return a Server-Sent Events stream from a controller; emit events with out.emit as the block runs.",
+      "keywords": [
+        "sse",
+        "server-sent events",
+        "eventsource",
+        "out.emit",
+        "live updates",
+        "streaming"
+      ]
+    },
+    {
+      "title": "stream",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/streaming#section-chunked",
+      "signature": "stream(req, content_type) do |out| out.write(chunk) end",
+      "description": "Return a chunked streaming body (e.g. large CSV/JSON export) without buffering it in memory.",
+      "keywords": [
+        "stream",
+        "chunked",
+        "export",
+        "out.write",
+        "large response",
+        "csv export"
+      ]
     }
   ]
 }

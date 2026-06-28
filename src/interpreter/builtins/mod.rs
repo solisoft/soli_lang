@@ -95,6 +95,7 @@ pub mod soap;
 pub mod solidb;
 pub mod solikv;
 pub mod spreadsheet;
+pub mod streaming;
 pub mod strings;
 pub mod system;
 pub mod template;
@@ -443,6 +444,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register outbound-email (Mailer) native builtins. The `Mailer`/`Message`
     // classes themselves are defined by a Soli prelude (mailer::ensure_prelude).
     mailer::register_mailer_builtins(env);
+
+    // Register streaming/SSE builtins (sse / stream) + the StreamOut emitter.
+    streaming::register_streaming_builtins(env);
 
     // Register url_encode/url_decode
     server::register_server_builtins(env);
