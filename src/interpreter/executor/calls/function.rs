@@ -1176,6 +1176,14 @@ impl Interpreter {
             return self.call_value(block, Vec::new(), span).map(Some);
         }
 
+        // In `--dev`, don't coalesce: run the block without a batch so each
+        // read fires (and logs) as its own natural statement instead of one
+        // combined `LET … RETURN […]` that's hard to read in the dev query
+        // log. Coalescing stays on in production for the single-round-trip win.
+        if crate::interpreter::builtins::template::is_dev_mode() {
+            return self.call_value(block, Vec::new(), span).map(Some);
+        }
+
         batch::begin();
         match self.call_value(block, Vec::new(), span) {
             Ok(value) => {

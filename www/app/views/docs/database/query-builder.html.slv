@@ -287,7 +287,7 @@ grouped(fn() {
         <ul class="text-blue-200/80 text-sm space-y-2">
             <li><code>find</code> on a missing id still raises <code>RecordNotFound</code> (&rarr; 404) — the error surfaces when the result is read or the block ends.</li>
             <li>A combined query is all-or-nothing: if it fails, every read in the batch fails together.</li>
-            <li>Verify the savings with <code>dev_queries()</code> — a coalesced block shows a single combined query.</li>
+            <li>In <code>--dev</code> the reads are <em>not</em> coalesced — each runs as its own query so the dev query log stays readable instead of showing one combined <code>LET … RETURN […]</code>. Coalescing is active in production, where the single round-trip matters.</li>
         </ul>
     </div>
 

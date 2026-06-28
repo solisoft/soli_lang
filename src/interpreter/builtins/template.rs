@@ -54,6 +54,15 @@ pub fn set_dev_mode(enabled: bool) {
     DEV_MODE.store(enabled, Ordering::Relaxed);
 }
 
+/// Whether the server is running with `--dev`. Process-global, set once at
+/// server startup. Used to relax production-only optimisations that hurt
+/// debuggability — e.g. `grouped {}` skips read coalescing in dev so each
+/// query shows up individually in the dev query log.
+#[inline]
+pub fn is_dev_mode() -> bool {
+    DEV_MODE.load(Ordering::Relaxed)
+}
+
 /// Clear the file mtime cache (for hot reload).
 pub fn clear_file_mtime_cache() {
     FILE_MTIME_CACHE.with(|cache| cache.borrow_mut().clear());

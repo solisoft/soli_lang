@@ -1266,8 +1266,11 @@ results after the block.
   surfaces when the result is read or the block ends.
 - A combined query is all-or-nothing: if it fails, every read in the batch
   fails together.
-- Verify the savings with [`dev_queries()`](#dev_queries) — a coalesced block
-  shows a single combined query.
+- In **`--dev`** the reads are *not* coalesced — each runs as its own query so
+  the dev query log stays readable (you see the natural statements instead of
+  one combined `LET … RETURN […]`). Coalescing is active in production, where
+  the single round-trip is what matters. To confirm the production shape, check
+  the combined query in a non-dev run.
 
 ## Transactions
 
