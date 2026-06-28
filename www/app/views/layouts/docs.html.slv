@@ -416,8 +416,21 @@
         }
     }
 
-    // SoliLang language definition for highlight.js
-    hljs.registerLanguage('soli', function(hljs) {
+    // SoliLang language definition for highlight.js. Registered lazily inside
+    // a function (NOT at top level) so a missing `hljs` can never throw and
+    // abort the rest of this script. Instant-nav (/__soli/nav.js) swaps the
+    // <body> but merges only the new <head>'s stylesheets/meta — NOT its
+    // <script> tags. So arriving at a docs page from a layout that doesn't load
+    // highlight.js (the home/blog pages use layouts/application, which has no
+    // hljs) leaves `hljs` undefined until initHighlighting() loads it on
+    // demand. A top-level `hljs.registerLanguage(...)` here used to throw in
+    // exactly that case, aborting before initDocPage() ran — which is what
+    // broke BOTH code highlighting and active-menu selection after navigating.
+    var __soliLangRegistered = false;
+    function registerSoliLanguage() {
+        if (__soliLangRegistered || typeof hljs === 'undefined') return;
+        __soliLangRegistered = true;
+        hljs.registerLanguage('soli', function(hljs) {
         // Identifiers may end in `?` or `!` (predicate / bang methods).
         var IDENT = '[A-Za-z_][A-Za-z0-9_]*[?!]?';
         var KEYWORDS = {
@@ -462,7 +475,8 @@
                 { className: 'type', begin: ':\\s*(Any|String|Int|Float|Bool|Decimal|Array|Hash|Object|Void|Request|Response)\\b', relevance: 2 }
             ]
         };
-    });
+        });
+    }
 
     function initDocPage() {
         // `soli:load` keeps this bound on `document` across swaps, so it also
@@ -606,7 +620,34 @@
         }
     }
 
+    // highlight.js lives in this layout's <head>. When you reach a docs page
+    // via an instant-nav <body> swap from a layout that doesn't load it (the
+    // home/blog pages), nav.js doesn't carry over <head> <script> tags, so
+    // `hljs` is undefined. Load it once, on demand, then highlight — instead of
+    // throwing and taking the rest of initDocPage() (incl. the active-menu
+    // selection) down with it.
+    var HLJS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js";
+
     function initHighlighting() {
+        if (typeof hljs === 'undefined') {
+            var loader = document.getElementById('__hljs-loader');
+            if (loader) {
+                loader.addEventListener('load', runHighlight, { once: true });
+                return;
+            }
+            loader = document.createElement('script');
+            loader.id = '__hljs-loader';
+            loader.src = HLJS_SRC;
+            loader.addEventListener('load', runHighlight, { once: true });
+            document.head.appendChild(loader);
+            return;
+        }
+        runHighlight();
+    }
+
+    function runHighlight() {
+        registerSoliLanguage();
+
         document.querySelectorAll('code.language-erb').forEach(function(block) {
             block.classList.remove('language-erb');
             block.classList.add('language-xml');
