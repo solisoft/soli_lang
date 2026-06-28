@@ -531,9 +531,13 @@ impl Printer<'_> {
             self.write("def ");
         }
         self.write(&decl.name);
-        // Methods always keep parens, even when empty, to match the
-        // task-orchestrator-style `static def run_state_root()` convention.
-        self.print_param_list(&decl.params);
+        // Drop empty parens (`def run()` -> `def run`), matching Soli's
+        // optional-parens convention for no-arg definitions. Keep them when
+        // the body's first statement starts with `(`, or the parser would
+        // consume that `(` as the parameter list.
+        if !decl.params.is_empty() || body_starts_with_paren(&decl.body) {
+            self.print_param_list(&decl.params);
+        }
         if let Some(ret) = &decl.return_type {
             self.write(" -> ");
             self.write(&format_type(ret));

@@ -52,11 +52,10 @@ fn nested_function_uses_two_space_indent() {
 
 #[test]
 fn class_with_methods_separated_by_blank_line() {
-    // Methods keep `()` even when empty (matches the task-orchestrator
-    // convention `static def run_state_root()`).
-    let src = "class A < B\n  def first\n    1\n  end\n  def second\n    2\n  end\nend\n";
-    let expected =
-        "class A < B\n  def first()\n    1\n  end\n\n  def second()\n    2\n  end\nend\n";
+    // Empty parens are dropped on no-arg methods (`def first()` -> `def first`),
+    // matching Soli's optional-parens convention.
+    let src = "class A < B\n  def first()\n    1\n  end\n  def second()\n    2\n  end\nend\n";
+    let expected = "class A < B\n  def first\n    1\n  end\n\n  def second\n    2\n  end\nend\n";
     assert_fmt(src, expected);
 }
 
