@@ -221,6 +221,26 @@ end</code></pre>
         </section>
     </section>
 
+    <!-- Symmetric Encryption -->
+    <section id="section-symmetric" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Symmetric Encryption (AES-256-GCM)</h2>
+
+        <section id="def-encrypt" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-indigo-400">Crypto.encrypt(plaintext, key?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Authenticated encryption with AES-256-GCM. Returns base64 of <code class="text-cyan-400">nonce ‖ ciphertext+tag</code>. The key defaults to the <code class="text-cyan-400">SOLI_ENCRYPTION_KEY</code> environment variable; any string works (it's hashed to a 32-byte key), but use a long, high-entropy secret.</p>
+                <code class="text-lg font-mono text-indigo-400">Crypto.decrypt(ciphertext, key?)</code>
+                <p class="text-gray-400 mt-3">Reverses <code>Crypto.encrypt</code>. Throws if the key is wrong or the data was tampered with (GCM authentication).</p>
+                <pre data-filename="Encrypt a secret" class="mt-3"><code class="language-soli text-sm">let key = Crypto.random_hex(32)
+let token = Crypto.encrypt("secret value", key)
+Crypto.decrypt(token, key)        # =&gt; "secret value"</code></pre>
+                <div class="rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4 mt-4">
+                    <p class="text-sm text-indigo-200">For model fields, prefer the <a href="/docs/database/models#encrypted-attributes" class="underline">encrypts</a> DSL, which encrypts on save and decrypts on load automatically. Note: GCM uses a random nonce, so ciphertext is non-deterministic &mdash; you can't match encrypted values in a query.</p>
+                </div>
+            </div>
+        </section>
+    </section>
+
     <!-- X25519 Key Exchange -->
     <section id="section-x25519" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">X25519 Key Exchange</h2>

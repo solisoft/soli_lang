@@ -19,6 +19,8 @@ pub struct ModelMetadata {
     pub relations: Vec<RelationDef>,
     pub soft_delete: bool,
     pub translated_fields: Vec<String>,
+    /// Fields encrypted at rest via the `encrypts` DSL (AES-256-GCM).
+    pub encrypted_fields: Vec<String>,
     pub uploaders: Vec<UploaderConfig>,
     /// `attr_accessible` whitelist. `None` = not declared (legacy/unsafe
     /// passthrough); `Some([])` = nothing is mass-assignable; `Some(list)` =
@@ -30,6 +32,62 @@ lazy_static! {
     /// Global registry mapping class names to their metadata.
     pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
         RwLock::new(HashMap::new());
+
+    /// Collection name -> encrypted field names. Keyed by collection so the DB
+    /// write layer (exec_insert/exec_update) can encrypt without a class handle.
+    static ref ENCRYPTED_COLLECTIONS: RwLock<HashMap<String, Vec<String>>> =
+        RwLock::new(HashMap::new());
+}
+
+/// Register an encrypted field for a model (by class) and its collection.
+pub fn register_encryption(class_name: &str, collection: &str, field: &str) {
+    {
+        let mut registry = MODEL_REGISTRY.write().unwrap();
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        if !metadata.encrypted_fields.iter().any(|s| s == field) {
+            metadata.encrypted_fields.push(field.to_string());
+        }
+    }
+    let mut cols = ENCRYPTED_COLLECTIONS.write().unwrap();
+    let fields = cols.entry(collection.to_string()).or_default();
+    if !fields.iter().any(|s| s == field) {
+        fields.push(field.to_string());
+    }
+}
+
+/// Encrypted field names for a model class (used to decrypt on load).
+pub fn get_encrypted_fields(class_name: &str) -> Vec<String> {
+    MODEL_REGISTRY
+        .read()
+        .unwrap()
+        .get(class_name)
+        .map(|m| m.encrypted_fields.clone())
+        .unwrap_or_default()
+}
+
+/// Encrypt the declared `encrypts` fields of `document` in place (string values
+/// only). Called from the DB write layer so every standard Model write path
+/// (create/save/update) is covered, including inside a transaction.
+pub fn encrypt_document_fields(
+    collection: &str,
+    document: &mut serde_json::Value,
+) -> Result<(), String> {
+    let fields = {
+        let cols = ENCRYPTED_COLLECTIONS.read().unwrap();
+        match cols.get(collection) {
+            Some(f) if !f.is_empty() => f.clone(),
+            _ => return Ok(()),
+        }
+    };
+    if let Some(obj) = document.as_object_mut() {
+        for field in &fields {
+            if let Some(serde_json::Value::String(plaintext)) = obj.get(field) {
+                let ciphertext = crate::interpreter::builtins::crypto::encrypt_field(plaintext)?;
+                obj.insert(field.clone(), serde_json::Value::String(ciphertext));
+            }
+        }
+    }
+    Ok(())
 }
 
 // Thread-local registry for model classes (used for lazy relation conversion).
@@ -128,4 +186,33 @@ pub fn clear_all_model_registries() {
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });
+}
+
+#[cfg(test)]
+mod encryption_tests {
+    use super::*;
+
+    #[test]
+    fn registers_encrypts_and_round_trips_a_document() {
+        std::env::set_var("SOLI_ENCRYPTION_KEY", "unit-test-key-please-rotate");
+        register_encryption("EncTestUser", "enc_test_users", "ssn");
+        assert_eq!(get_encrypted_fields("EncTestUser"), vec!["ssn".to_string()]);
+
+        let mut doc = serde_json::json!({ "ssn": "123-45-6789", "name": "Bob" });
+        encrypt_document_fields("enc_test_users", &mut doc).unwrap();
+
+        let stored = doc["ssn"].as_str().unwrap();
+        assert_ne!(stored, "123-45-6789", "ssn should be encrypted at rest");
+        assert_eq!(doc["name"], "Bob", "non-encrypted field is untouched");
+
+        let decrypted = crate::interpreter::builtins::crypto::decrypt_field(stored).unwrap();
+        assert_eq!(decrypted, "123-45-6789", "decrypts back to plaintext");
+    }
+
+    #[test]
+    fn unencrypted_collection_is_left_alone() {
+        let mut doc = serde_json::json!({ "x": "plain" });
+        encrypt_document_fields("collection_with_no_encrypts", &mut doc).unwrap();
+        assert_eq!(doc["x"], "plain");
+    }
 }

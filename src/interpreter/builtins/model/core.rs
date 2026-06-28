@@ -3564,6 +3564,32 @@ pub fn register_model_builtins(env: &mut Environment) {
         })),
     );
 
+    // encrypts(:field, ...) - Encrypt the named fields at rest (AES-256-GCM).
+    // Auto-encrypted on create/save/update, auto-decrypted on load. The key
+    // comes from SOLI_ENCRYPTION_KEY. NOTE: encrypted fields can't be queried
+    // by value (the nonce is random, so the ciphertext differs each write).
+    env.define(
+        "encrypts".to_string(),
+        Value::NativeFunction(NativeFunction::new("encrypts", None, |args| {
+            let class_name = get_class_name_from_class(&args)?;
+            let collection = class_name_to_collection(&class_name);
+            for arg in args.iter().skip(1) {
+                let field = match arg {
+                    Value::String(s) => s.to_string(),
+                    Value::Symbol(s) => s.to_string(),
+                    other => {
+                        return Err(format!(
+                            "encrypts() expects field names (symbols or strings), got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                super::registry::register_encryption(&class_name, &collection, &field);
+            }
+            Ok(Value::Null)
+        })),
+    );
+
     // scope(name, fn) - Register a named scope on a model. The class is
     // auto-prepended in class bodies (see `executor/statements.rs`), so user
     // code reads naturally:

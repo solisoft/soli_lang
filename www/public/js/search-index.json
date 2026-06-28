@@ -11455,6 +11455,69 @@
         "test mode",
         "email testing"
       ]
+    },
+    {
+      "title": "soli check",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/linting#section-type-check",
+      "signature": "soli check [paths...]",
+      "description": "Static type-check Soli code without executing it \u2014 whole-project, CI-friendly, exits non-zero on type errors.",
+      "keywords": [
+        "soli check",
+        "type check",
+        "typecheck",
+        "static analysis",
+        "ci",
+        "type errors",
+        "pre-commit"
+      ]
+    },
+    {
+      "title": "encrypts",
+      "type": "dsl",
+      "category": "Database",
+      "path": "/docs/database/models#encrypted-attributes",
+      "signature": "encrypts(:field, ...)",
+      "description": "Model DSL: encrypt fields at rest (AES-256-GCM), auto encrypt on save / decrypt on load. Key from SOLI_ENCRYPTION_KEY. Encrypted columns can't be queried by value.",
+      "keywords": [
+        "encrypts",
+        "encrypted attributes",
+        "field encryption",
+        "pii",
+        "encrypt at rest",
+        "aes",
+        "attr_encrypted"
+      ]
+    },
+    {
+      "title": "Crypto.encrypt",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-encrypt",
+      "signature": "Crypto.encrypt(plaintext, key?)",
+      "description": "AES-256-GCM authenticated encryption; returns base64 nonce\u2016ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
+      "keywords": [
+        "encrypt",
+        "aes",
+        "aes-256-gcm",
+        "symmetric encryption",
+        "cipher"
+      ]
+    },
+    {
+      "title": "Crypto.decrypt",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-encrypt",
+      "signature": "Crypto.decrypt(ciphertext, key?)",
+      "description": "Decrypt a Crypto.encrypt value (AES-256-GCM); throws on wrong key or tampering.",
+      "keywords": [
+        "decrypt",
+        "aes",
+        "symmetric encryption",
+        "cipher"
+      ]
     }
   ]
 }

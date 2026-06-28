@@ -1074,6 +1074,38 @@ all = Post.with_deleted.all;
 deleted = Post.only_deleted.all;
 ```
 
+## Encrypted Attributes
+
+Encrypt sensitive fields at rest with `encrypts`. Values are encrypted on
+create/save/update and decrypted transparently on load, using AES-256-GCM:
+
+```soli
+class User < Model
+  encrypts(:ssn, :api_token)
+end
+
+u = User.create({ "ssn": "123-45-6789", "email": "a@b.com" });
+# stored ciphertext in the DB; in memory it's plaintext:
+User.find(u._key).ssn  # => "123-45-6789"
+```
+
+The encryption key comes from the `SOLI_ENCRYPTION_KEY` environment variable —
+set it to a long, high-entropy secret (e.g. `Crypto.random_hex(32)`) and keep
+it out of source control.
+
+> **Encrypted columns can't be queried by value.** AES-GCM uses a random nonce,
+> so the same plaintext encrypts to different ciphertext every time —
+> `User.where("ssn = @s", { "s": "123-45-6789" })` will never match. Encrypt
+> only fields you store and read, not ones you filter on.
+
+A field written before `encrypts` was added (legacy plaintext) is returned
+as-is on load rather than erroring. Low-level/transaction writes that bypass
+`create`/`save` aren't auto-encrypted — use `Crypto.encrypt` directly there.
+
+`encrypts` builds on the standalone `Crypto.encrypt(plaintext, key?)` /
+`Crypto.decrypt(ciphertext, key?)` builtins, which you can also use on their
+own (key defaults to `SOLI_ENCRYPTION_KEY`).
+
 ## Relationship Accessors
 
 Access related records directly from instances:

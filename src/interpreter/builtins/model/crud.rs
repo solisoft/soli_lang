@@ -307,6 +307,17 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
             instance.set(k.clone(), json_to_value(v));
         }
     }
+    // Decrypt declared `encrypts` fields. Best-effort: a value that isn't valid
+    // ciphertext (e.g. legacy plaintext written before `encrypts` was added) is
+    // left untouched rather than erroring the whole read.
+    for field in super::registry::get_encrypted_fields(&target_class.name) {
+        if let Some(Value::String(ciphertext)) = instance.get(&field) {
+            if let Ok(plaintext) = crate::interpreter::builtins::crypto::decrypt_field(&ciphertext)
+            {
+                instance.set(field, Value::String(plaintext.into()));
+            }
+        }
+    }
     Value::Instance(Rc::new(RefCell::new(instance)))
 }
 
@@ -855,6 +866,9 @@ pub fn exec_insert(
     key: Option<&str>,
     mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    // Encrypt declared `encrypts` fields before the write (covers tx and
+    // non-tx paths; the tx delegation below carries the already-encrypted doc).
+    super::registry::encrypt_document_fields(collection, &mut document)?;
     // When a transaction is open on this thread, route the write through the
     // transaction endpoint so it participates in (and rolls back with) the tx.
     // `exec_insert_tx` delegates straight back here when no tx is active, so
@@ -901,9 +915,10 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
 pub fn exec_update(
     collection: &str,
     key: &str,
-    document: serde_json::Value,
+    mut document: serde_json::Value,
     _merge: bool,
 ) -> Result<serde_json::Value, String> {
+    super::registry::encrypt_document_fields(collection, &mut document)?;
     // Route the update through the active transaction when one is open.
     if get_current_tx_id().is_some() {
         return exec_update_tx(collection, key, document);

@@ -934,6 +934,27 @@ end</code></pre>
         See <a href="/docs/routing#auto-routed-attachments" class="text-indigo-400 hover:underline">Auto-routed attachments</a> for the matching <code>uploads(resource, field)</code> route helper, which mounts <code>show</code>/<code>create</code>/<code>destroy</code> endpoints driven by the same config.
     </p>
 
+    <h2 id="encrypted-attributes" class="text-2xl font-bold text-white mb-6">Encrypted Attributes</h2>
+
+    <p class="text-gray-400 mb-4">
+        Encrypt sensitive fields at rest with <code>encrypts</code>. Values are encrypted on create/save/update and decrypted transparently on load, using AES-256-GCM. The key comes from the <code>SOLI_ENCRYPTION_KEY</code> environment variable (use a long, high-entropy secret such as <code>Crypto.random_hex(32)</code>).
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User &lt; Model
+  encrypts(:ssn, :api_token)
+end
+
+u = User.create({ "ssn": "123-45-6789", "email": "a@b.com" })
+User.find(u._key).ssn   # =&gt; "123-45-6789" (decrypted)</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-12">
+        <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone.</p>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">

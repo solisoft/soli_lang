@@ -4,10 +4,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use aes_gcm::{aead::Aead, Aes256Gcm, Nonce};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use base64::Engine as _;
 use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use hmac::{Hmac, Mac};
@@ -413,10 +415,128 @@ fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
     Ok(em[sep + 1..].to_vec())
 }
 
+// ---------------------------------------------------------------------------
+// Symmetric encryption (AES-256-GCM) — Crypto.encrypt/decrypt + model field
+// encryption (see model `encrypts`). Output is base64(nonce ‖ ciphertext+tag).
+// ---------------------------------------------------------------------------
+
+/// Normalize arbitrary key material to a 32-byte AES key by SHA-256. Accepts a
+/// hex/base64/raw high-entropy key or a passphrase.
+fn derive_aes_key(material: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(material);
+    hasher.finalize().into()
+}
+
+/// Resolve the encryption key: an explicit string, else `SOLI_ENCRYPTION_KEY`.
+fn resolve_aes_key(explicit: Option<&str>) -> Result<[u8; 32], String> {
+    let material = match explicit {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => std::env::var("SOLI_ENCRYPTION_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "no encryption key: pass one or set SOLI_ENCRYPTION_KEY".to_string())?,
+    };
+    Ok(derive_aes_key(material.as_bytes()))
+}
+
+fn aes_encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
+    // Fully-qualified: `hmac::Mac` is also in scope and defines new_from_slice.
+    let cipher = <Aes256Gcm as aes_gcm::aead::KeyInit>::new_from_slice(key)
+        .map_err(|e| format!("bad key: {e}"))?;
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    #[allow(deprecated)]
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|e| format!("encryption failed: {e}"))?;
+    let mut out = Vec::with_capacity(12 + ciphertext.len());
+    out.extend_from_slice(&nonce_bytes);
+    out.extend_from_slice(&ciphertext);
+    Ok(base64::engine::general_purpose::STANDARD.encode(out))
+}
+
+fn aes_decrypt(encoded: &str, key: &[u8; 32]) -> Result<String, String> {
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if data.len() < 12 {
+        return Err("ciphertext too short".to_string());
+    }
+    let (nonce_bytes, ciphertext) = data.split_at(12);
+    let cipher = <Aes256Gcm as aes_gcm::aead::KeyInit>::new_from_slice(key)
+        .map_err(|e| format!("bad key: {e}"))?;
+    #[allow(deprecated)]
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| "decryption failed (wrong key or corrupt data)".to_string())?;
+    String::from_utf8(plaintext).map_err(|e| format!("decrypted data is not UTF-8: {e}"))
+}
+
+/// Encrypt a model field value using `SOLI_ENCRYPTION_KEY`. Used by `encrypts`.
+pub fn encrypt_field(plaintext: &str) -> Result<String, String> {
+    aes_encrypt(plaintext, &resolve_aes_key(None)?)
+}
+
+/// Decrypt a model field value using `SOLI_ENCRYPTION_KEY`. Used by `encrypts`.
+pub fn decrypt_field(ciphertext: &str) -> Result<String, String> {
+    aes_decrypt(ciphertext, &resolve_aes_key(None)?)
+}
+
 /// Register cryptographic functions and Crypto class in the given environment.
 pub fn register_crypto_builtins(env: &mut Environment) {
     // Build Crypto static methods
     let mut crypto_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+
+    // Crypto.encrypt(plaintext, key?) -> String (base64 nonce‖ciphertext)
+    crypto_static_methods.insert(
+        "encrypt".to_string(),
+        Rc::new(NativeFunction::new("Crypto.encrypt", None, |args| {
+            let plaintext = match args.first() {
+                Some(Value::String(s)) => s.to_string(),
+                _ => return Err("Crypto.encrypt(plaintext, key?) expects a string".to_string()),
+            };
+            let key = match args.get(1) {
+                Some(Value::String(s)) => Some(s.to_string()),
+                None | Some(Value::Null) => None,
+                Some(other) => {
+                    return Err(format!(
+                        "Crypto.encrypt key must be a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::String(
+                aes_encrypt(&plaintext, &resolve_aes_key(key.as_deref())?)?.into(),
+            ))
+        })),
+    );
+
+    // Crypto.decrypt(ciphertext, key?) -> String
+    crypto_static_methods.insert(
+        "decrypt".to_string(),
+        Rc::new(NativeFunction::new("Crypto.decrypt", None, |args| {
+            let ciphertext = match args.first() {
+                Some(Value::String(s)) => s.to_string(),
+                _ => return Err("Crypto.decrypt(ciphertext, key?) expects a string".to_string()),
+            };
+            let key = match args.get(1) {
+                Some(Value::String(s)) => Some(s.to_string()),
+                None | Some(Value::Null) => None,
+                Some(other) => {
+                    return Err(format!(
+                        "Crypto.decrypt key must be a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::String(
+                aes_decrypt(&ciphertext, &resolve_aes_key(key.as_deref())?)?.into(),
+            ))
+        })),
+    );
 
     // Crypto.sha256(data) -> String
     crypto_static_methods.insert(
