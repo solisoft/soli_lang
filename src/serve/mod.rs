@@ -2004,23 +2004,38 @@ fn worker_loop(
                         let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
                         match crate::interpreter::builtins::streaming::take_pending_stream() {
                             Some(spec) => {
-                                // Handler-driven streaming: hand the body channel
-                                // to the async task, then run the block so
-                                // out.send/out.write feed chunks as it executes.
                                 let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-                                let id =
-                                    crate::interpreter::builtins::streaming::register_sender(tx);
-                                let _ = data.response_tx.send(WorkerResponse::Stream {
+                                let resp = WorkerResponse::Stream {
                                     status: spec.status,
                                     headers: spec.headers.clone(),
                                     rx,
-                                });
-                                crate::interpreter::builtins::streaming::run_stream_block(
-                                    interpreter,
-                                    &spec,
-                                    id,
-                                );
-                                crate::interpreter::builtins::streaming::unregister_sender(id);
+                                };
+                                if let Some(topic) = spec.subscribe_topic.clone() {
+                                    // Async pub/sub: register the sender under the
+                                    // topic and return — the connection lives as
+                                    // the async StreamBody, NOT on this worker, so
+                                    // many idle subscribers cost no threads. Events
+                                    // arrive via sse_broadcast.
+                                    let _ = tx.try_send(b": connected\n\n".to_vec());
+                                    crate::interpreter::builtins::streaming::register_subscriber(
+                                        &topic, tx,
+                                    );
+                                    let _ = data.response_tx.send(resp);
+                                } else {
+                                    // Handler-driven streaming: hold the worker
+                                    // while the block runs and feeds chunks.
+                                    let id =
+                                        crate::interpreter::builtins::streaming::register_sender(
+                                            tx,
+                                        );
+                                    let _ = data.response_tx.send(resp);
+                                    crate::interpreter::builtins::streaming::run_stream_block(
+                                        interpreter,
+                                        &spec,
+                                        id,
+                                    );
+                                    crate::interpreter::builtins::streaming::unregister_sender(id);
+                                }
                             }
                             None => {
                                 let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));
@@ -2073,23 +2088,38 @@ fn worker_loop(
                         let resp_data = handle_request(interpreter, &mut vm, &mut data, dev_mode);
                         match crate::interpreter::builtins::streaming::take_pending_stream() {
                             Some(spec) => {
-                                // Handler-driven streaming: hand the body channel
-                                // to the async task, then run the block so
-                                // out.send/out.write feed chunks as it executes.
                                 let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-                                let id =
-                                    crate::interpreter::builtins::streaming::register_sender(tx);
-                                let _ = data.response_tx.send(WorkerResponse::Stream {
+                                let resp = WorkerResponse::Stream {
                                     status: spec.status,
                                     headers: spec.headers.clone(),
                                     rx,
-                                });
-                                crate::interpreter::builtins::streaming::run_stream_block(
-                                    interpreter,
-                                    &spec,
-                                    id,
-                                );
-                                crate::interpreter::builtins::streaming::unregister_sender(id);
+                                };
+                                if let Some(topic) = spec.subscribe_topic.clone() {
+                                    // Async pub/sub: register the sender under the
+                                    // topic and return — the connection lives as
+                                    // the async StreamBody, NOT on this worker, so
+                                    // many idle subscribers cost no threads. Events
+                                    // arrive via sse_broadcast.
+                                    let _ = tx.try_send(b": connected\n\n".to_vec());
+                                    crate::interpreter::builtins::streaming::register_subscriber(
+                                        &topic, tx,
+                                    );
+                                    let _ = data.response_tx.send(resp);
+                                } else {
+                                    // Handler-driven streaming: hold the worker
+                                    // while the block runs and feeds chunks.
+                                    let id =
+                                        crate::interpreter::builtins::streaming::register_sender(
+                                            tx,
+                                        );
+                                    let _ = data.response_tx.send(resp);
+                                    crate::interpreter::builtins::streaming::run_stream_block(
+                                        interpreter,
+                                        &spec,
+                                        id,
+                                    );
+                                    crate::interpreter::builtins::streaming::unregister_sender(id);
+                                }
                             }
                             None => {
                                 let _ = data.response_tx.send(WorkerResponse::Buffered(resp_data));

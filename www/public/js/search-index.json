@@ -11569,6 +11569,42 @@
         "large response",
         "csv export"
       ]
+    },
+    {
+      "title": "sse_subscribe",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/streaming#section-pubsub",
+      "signature": "sse_subscribe(req, topic)",
+      "description": "Open a long-lived SSE connection subscribed to a topic. Async \u2014 does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
+      "keywords": [
+        "sse_subscribe",
+        "pub/sub",
+        "pubsub",
+        "subscribe",
+        "fan-out",
+        "notifications",
+        "dashboard",
+        "broadcast",
+        "scalable sse"
+      ]
+    },
+    {
+      "title": "sse_broadcast",
+      "type": "function",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/streaming#section-pubsub",
+      "signature": "sse_broadcast(topic, data, event?)",
+      "description": "Push an SSE event to every live subscriber of a topic, from any controller, job, or callback. Returns the number of clients reached; prunes disconnected ones.",
+      "keywords": [
+        "sse_broadcast",
+        "broadcast",
+        "pub/sub",
+        "push",
+        "fan-out",
+        "notify subscribers",
+        "topic"
+      ]
     }
   ]
 }

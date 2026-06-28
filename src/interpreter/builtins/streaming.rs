@@ -1,17 +1,22 @@
-//! Handler-driven streaming responses (SSE + chunked).
+//! Streaming responses — two flavors:
 //!
-//! A controller returns `sse(req) do |out| ... end` (or `stream(req, ct) do
-//! |out| ... end`); the `sse`/`stream` builtin stashes the block as a pending
-//! stream (thread-local) and returns a benign 200 sentinel. The serve worker,
-//! after the request handler runs, detects the pending stream: it opens a
-//! chunk channel, hands the receiver back to the async hyper task as the
-//! response body, then runs the block — `out.emit(...)`/`out.write(...)` push
-//! formatted frames into the channel as the block executes. The worker thread
-//! is occupied for the stream's lifetime.
+//! 1. **Handler-driven** (`sse(req) do |out| ... end`, `stream(req, ct) do
+//!    |out| ... end`): the builtin stashes the block as a pending stream
+//!    (thread-local) and returns a 200 sentinel. The worker opens a chunk
+//!    channel, hands the receiver to the async hyper task as the body, then
+//!    **runs the block on the worker thread** — `out.emit`/`out.write` push
+//!    frames as it executes. Good for finite, active streams (an agent run, an
+//!    export); the worker is held for the stream's lifetime.
 //!
-//! The chunk sender lives in a process-global registry keyed by an integer id
-//! (the same pattern as the Pop3 connection registry); the `out` instance
-//! carries that id.
+//! 2. **Async pub/sub** (`sse_subscribe(req, topic)` + `sse_broadcast(topic,
+//!    data, event?)`): the worker registers the chunk sender under the topic
+//!    and **returns immediately** — the connection lives only as the async
+//!    StreamBody, so thousands of mostly-idle subscribers cost async-task
+//!    memory, not threads. Events are pushed from anywhere via `sse_broadcast`.
+//!    Good for fan-out (dashboards, notifications).
+//!
+//! Senders live in process-global registries (the Pop3-connection pattern):
+//! id→sender for the handler-driven path, topic→[senders] for pub/sub.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -56,13 +61,87 @@ fn send_chunk(id: usize, bytes: Vec<u8>) -> bool {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Async pub/sub subscribers (topic -> live chunk senders)
+//
+// Unlike the handler-driven path above (which holds a worker thread for the
+// stream's lifetime), a subscription's connection lives as the async hyper
+// StreamBody; the worker only registers the sender and returns. Events are
+// pushed from anywhere via `sse_broadcast`. Thousands of mostly-idle
+// connections cost async-task memory, not OS threads.
+// ---------------------------------------------------------------------------
+
+lazy_static! {
+    static ref SUBSCRIBERS: Mutex<HashMap<String, Vec<Sender<Vec<u8>>>>> =
+        Mutex::new(HashMap::new());
+}
+
+/// Register a subscriber's chunk sender under `topic`.
+pub fn register_subscriber(topic: &str, tx: Sender<Vec<u8>>) {
+    SUBSCRIBERS
+        .lock()
+        .unwrap()
+        .entry(topic.to_string())
+        .or_default()
+        .push(tx);
+}
+
+/// Fan out `bytes` to every live subscriber of `topic`, pruning disconnected
+/// ones. Non-blocking: a slow client whose buffer is full drops this message
+/// (but keeps its subscription). Returns the number delivered.
+fn broadcast_bytes(topic: &str, bytes: Vec<u8>) -> usize {
+    use tokio::sync::mpsc::error::TrySendError;
+    let mut subs = SUBSCRIBERS.lock().unwrap();
+    let Some(list) = subs.get_mut(topic) else {
+        return 0;
+    };
+    let mut delivered = 0;
+    list.retain(|tx| {
+        if tx.is_closed() {
+            return false; // client disconnected
+        }
+        match tx.try_send(bytes.clone()) {
+            Ok(()) => {
+                delivered += 1;
+                true
+            }
+            Err(TrySendError::Full(_)) => true, // slow client: drop msg, keep sub
+            Err(TrySendError::Closed(_)) => false,
+        }
+    });
+    if list.is_empty() {
+        subs.remove(topic);
+    }
+    delivered
+}
+
+/// Number of live subscribers on `topic` (best-effort; prunes closed ones).
+fn subscriber_count(topic: &str) -> usize {
+    let mut subs = SUBSCRIBERS.lock().unwrap();
+    let Some(list) = subs.get_mut(topic) else {
+        return 0;
+    };
+    list.retain(|tx| !tx.is_closed());
+    let n = list.len();
+    if n == 0 {
+        subs.remove(topic);
+    }
+    n
+}
+
 /// A stream a controller asked for, captured during the request handler run.
 pub struct StreamSpec {
+    /// The handler block for `sse`/`stream` (run on the worker). Unused — and
+    /// `Value::Null` — for `sse_subscribe`, which has no block.
     pub block: Value,
     pub status: u16,
     pub headers: Vec<(String, String)>,
     /// SSE framing (`data:`/`event:`) vs raw chunked bytes.
     pub sse: bool,
+    /// When set, this is an async pub/sub subscription: the worker registers
+    /// the chunk sender under this topic and returns immediately (no block,
+    /// no worker held). Events arrive via `sse_broadcast`.
+    pub subscribe_topic: Option<String>,
 }
 
 thread_local! {
@@ -203,6 +282,7 @@ fn sse_builtin(args: Vec<Value>) -> Result<Value, String> {
             ("X-Accel-Buffering".to_string(), "no".to_string()),
         ],
         sse: true,
+        subscribe_topic: None,
     });
     Ok(sentinel())
 }
@@ -225,8 +305,66 @@ fn stream_builtin(args: Vec<Value>) -> Result<Value, String> {
             ("X-Accel-Buffering".to_string(), "no".to_string()),
         ],
         sse: false,
+        subscribe_topic: None,
     });
     Ok(sentinel())
+}
+
+/// The last string argument (for `sse_subscribe(req, topic)` / the topic).
+fn last_string(args: &[Value]) -> Option<String> {
+    args.iter().rev().find_map(|v| match v {
+        Value::String(s) => Some(s.to_string()),
+        _ => None,
+    })
+}
+
+/// `sse_subscribe(req, topic)` — open a long-lived SSE connection subscribed to
+/// `topic`. The worker registers the connection and returns immediately (no
+/// worker held); events arrive via `sse_broadcast`.
+fn sse_subscribe_builtin(args: Vec<Value>) -> Result<Value, String> {
+    let topic = last_string(&args)
+        .ok_or_else(|| "sse_subscribe(req, topic) requires a topic string".to_string())?;
+    set_pending(StreamSpec {
+        block: Value::Null,
+        status: 200,
+        headers: vec![
+            ("Content-Type".to_string(), "text/event-stream".to_string()),
+            ("Cache-Control".to_string(), "no-cache".to_string()),
+            ("Connection".to_string(), "keep-alive".to_string()),
+            ("X-Accel-Buffering".to_string(), "no".to_string()),
+        ],
+        sse: true,
+        subscribe_topic: Some(topic),
+    });
+    Ok(sentinel())
+}
+
+/// `sse_broadcast(topic, data, event?)` — push an SSE event to every live
+/// subscriber of `topic` (from a controller, job, or callback). Returns the
+/// number of clients reached. Safe to call from any thread.
+fn sse_broadcast_builtin(args: Vec<Value>) -> Result<Value, String> {
+    let topic = match args.first() {
+        Some(Value::String(s)) => s.to_string(),
+        _ => return Err("sse_broadcast(topic, data, event?) requires a topic string".to_string()),
+    };
+    let data = as_text(args.get(1));
+    let event = match args.get(2) {
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
+    };
+    let frame = format_sse(&data, event.as_deref());
+    Ok(Value::Int(
+        broadcast_bytes(&topic, frame.into_bytes()) as i64
+    ))
+}
+
+/// `sse_subscribers(topic)` — count live subscribers on `topic`.
+fn sse_subscribers_builtin(args: Vec<Value>) -> Result<Value, String> {
+    let topic = match args.first() {
+        Some(Value::String(s)) => s.to_string(),
+        _ => return Err("sse_subscribers(topic) requires a topic string".to_string()),
+    };
+    Ok(Value::Int(subscriber_count(&topic) as i64))
 }
 
 /// Benign value the request handler turns into a 200 — discarded by the worker
@@ -284,6 +422,30 @@ pub fn register_streaming_builtins(env: &mut Environment) {
         "stream".to_string(),
         Value::NativeFunction(NativeFunction::new("stream", None, stream_builtin)),
     );
+    env.define(
+        "sse_subscribe".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "sse_subscribe",
+            None,
+            sse_subscribe_builtin,
+        )),
+    );
+    env.define(
+        "sse_broadcast".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "sse_broadcast",
+            None,
+            sse_broadcast_builtin,
+        )),
+    );
+    env.define(
+        "sse_subscribers".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "sse_subscribers",
+            Some(1),
+            sse_subscribers_builtin,
+        )),
+    );
 }
 
 #[cfg(test)]
@@ -299,6 +461,24 @@ mod tests {
         assert_eq!(format_sse("a\nb", None), "data: a\ndata: b\n\n");
         // an empty event name is omitted
         assert_eq!(format_sse("x", Some("")), "data: x\n\n");
+    }
+
+    #[test]
+    fn broadcast_fans_out_and_prunes_dead_subscribers() {
+        let topic = "unit_topic_broadcast";
+        let (tx1, mut rx1) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        let (tx2, mut rx2) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        register_subscriber(topic, tx1);
+        register_subscriber(topic, tx2);
+        assert_eq!(subscriber_count(topic), 2);
+
+        assert_eq!(broadcast_bytes(topic, b"x".to_vec()), 2);
+        assert_eq!(rx1.try_recv().unwrap(), b"x".to_vec());
+        assert_eq!(rx2.try_recv().unwrap(), b"x".to_vec());
+
+        drop(rx2); // client 2 disconnects
+        assert_eq!(broadcast_bytes(topic, b"y".to_vec()), 1); // only rx1; rx2 pruned
+        assert_eq!(subscriber_count(topic), 1);
     }
 
     #[test]
