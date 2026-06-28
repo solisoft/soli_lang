@@ -39,6 +39,7 @@ fn get_blog_posts()
 
     # Simple list - ordered manually (newest first)
     let blog_info = [
+        {"slug": "streaming-ai-progress", "file": "docs/blog/streaming-ai-progress.md", "desc": "Stream an AI agent's progress to the browser as it works — plan, tool calls, synthesis — with Server-Sent Events and a single sse() block. No WebSocket, no client framework, and the run stops if the user leaves.", "tag": "Tutorial"},
         {"slug": "e2e-testing", "file": "docs/blog/e2e-testing.md", "desc": "Write realistic full-stack integration tests entirely in Soli using a built-in test server, clean BDD DSL, and coverage gates — no Playwright or Node required.", "tag": "Tutorial", "image": "e2e-testing.jpg"},
         {"slug": "scaffolds", "file": "docs/blog/scaffolds.md", "desc": "One command (`/soli-resource`) to go from concept to production-ready model, controller, views, migration, routes, and specs — with an intelligent pause for human judgment.", "tag": "Tutorial", "image": "scaffolds.jpg"},
         {"slug": "pattern-matching", "file": "docs/blog/pattern-matching.md", "desc": "Destructuring, guards, rest patterns, and exhaustive matching as a daily tool for controllers and data pipelines.", "tag": "Deep Dive", "image": "pattern-matching.jpg"},
