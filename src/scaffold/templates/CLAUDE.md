@@ -31,7 +31,7 @@ Generators encode the naming, location, and boilerplate the framework expects. H
 | You'd type…                                | In Soli it's…                              | Why                                                                          |
 |--------------------------------------------|--------------------------------------------|------------------------------------------------------------------------------|
 | `// comment`                               | `# comment`                                | `//` was standardized away — lint flags it.                                  |
-| `${name}` / `#{name}` in a string          | `\(name)`                                  | Backslash-paren is the only interpolation form.                              |
+| `${name}` / `\(name)` in a string          | `#{name}`                                  | Hash-brace is the only interpolation form; `\(` is an invalid escape.        |
 | `@"multi\nline"` raw string                | `[[multi\nline]]` or `""" ... """`         | `@"..."` doesn't exist; `@` is only for `@sdbql{...}` query blocks.          |
 | `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
 | `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
@@ -149,7 +149,7 @@ let double = fn(x) { return x * 2; };
 let halve  = |x| { return x / 2; };
 
 # String interpolation
-let msg = "Hi \(name), age \(age)"
+let msg = "Hi #{name}, age #{age}"
 
 # Multiline / raw strings (NO @"..." — that form does not exist)
 let lua_raw = [[

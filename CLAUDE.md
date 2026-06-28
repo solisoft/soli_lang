@@ -53,7 +53,7 @@ fn greet {
 
 // Default and named parameters
 fn configure(host: String = "localhost", port: Int = 8080) -> Void {
-    print("Connecting to \(host):\(port)");
+    print("Connecting to #{host}:#{port}");
 }
 configure(port: 3000, host: "example.com");  // Named params in any order
 ```
@@ -442,7 +442,7 @@ import "erb";                  // Builtin module
 ## String Interpolation
 ```soli
 let name = "Alice";
-let greeting = "Hello \(name)!";  // "Hello Alice!"
+let greeting = "Hello #{name}!";  // "Hello Alice!"  (#{...} is the only interpolation form; \( is an invalid escape)
 
 // Multi-line / raw strings — NOTE: `@"..."` is NOT a valid form.
 // Soli supports three raw / multiline string syntaxes:

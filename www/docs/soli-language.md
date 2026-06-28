@@ -1116,7 +1116,7 @@ You can call functions using named parameters with the colon syntax:
 
 ```soli
 fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Void
-  print("Connecting to \(host):\(port) with debug=\(debug)");
+  print("Connecting to #{host}:#{port} with debug=#{debug}");
 end
 
 configure();                              # Using all defaults

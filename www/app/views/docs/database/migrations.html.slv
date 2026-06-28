@@ -311,8 +311,8 @@ soli db:seed ./myapp</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/seeds.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-ruby text-sm">3.times do |i|
-  let email = "user\(i)@example.com"
-  User.create({ "name": "User \(i)", "email": email }) if User.first_by("email", email).nil?
+  let email = "user#{i}@example.com"
+  User.create({ "name": "User #{i}", "email": email }) if User.first_by("email", email).nil?
 end
 
 print("Seeded users")</code></pre>

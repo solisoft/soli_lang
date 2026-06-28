@@ -404,13 +404,13 @@ print(sum);  # 6</code></pre>
                     <p class="text-gray-400 mb-3">Iterate over elements with their index. The block receives <code>(value, index)</code>. Returns the original array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">names = ["Alice", "Bob", "Charlie"]
 
-names.each_with_index(|name, i| print("\(i): \(name)"))
+names.each_with_index(|name, i| print("#{i}: #{name}"))
 # Output: 0: Alice
 #         1: Bob
 #         2: Charlie
 
 # Trailing block syntax (equivalent)
-names.each_with_index |name, i| print("\(i): \(name)") end</code></pre>
+names.each_with_index |name, i| print("#{i}: #{name}") end</code></pre>
                 </div>
             </section>
 

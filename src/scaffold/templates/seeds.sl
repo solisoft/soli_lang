@@ -7,8 +7,8 @@
 # Guard with first_by / find_by instead of a blind create():
 #
 #   3.times do |i|
-#     let email = "user\(i)@example.com"
-#     User.create({ "name": "User \(i)", "email": email }) if User.first_by("email", email).nil?
+#     let email = "user#{i}@example.com"
+#     User.create({ "name": "User #{i}", "email": email }) if User.first_by("email", email).nil?
 #   end
 
 print("Seeded database")

@@ -44,8 +44,8 @@ pub fn seed_template(name: &str) -> String {
 # Guard with first_by / find_by instead of a blind create():
 #
 #   10.times do |i|
-#     let email = "user\(i)@example.com"
-#     User.create({{ "name": "User \(i)", "email": email }}) if User.first_by("email", email).nil?
+#     let email = "user#{{i}}@example.com"
+#     User.create({{ "name": "User #{{i}}", "email": email }}) if User.first_by("email", email).nil?
 #   end
 
 print("Seeded {name}")
@@ -88,10 +88,10 @@ mod tests {
     }
 
     #[test]
-    fn seed_template_uses_soli_interpolation_not_hash_braces() {
+    fn seed_template_uses_soli_interpolation_not_backslash_paren() {
         let body = seed_template("things");
-        // Soli string interpolation is `\(expr)`, never `#{expr}`.
-        assert!(!body.contains("#{"));
-        assert!(body.contains("\\(i)"));
+        // Soli string interpolation is `#{expr}`, never `\(expr)` (the lexer rejects `\(`).
+        assert!(!body.contains("\\("));
+        assert!(body.contains("#{i}"));
     }
 }
