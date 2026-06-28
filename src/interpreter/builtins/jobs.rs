@@ -314,6 +314,12 @@ fn job_queue_and_opts(arg: Option<&Value>) -> Result<(String, serde_json::Value)
     Ok((queue, serde_json::Value::Object(out)))
 }
 
+/// Enqueue a named job class with a payload — the same path as `Job.enqueue`,
+/// exposed for built-in callers (e.g. `Mailer` `deliver_later`).
+pub(crate) fn enqueue(args: Vec<Value>) -> Result<Value, String> {
+    job_enqueue(args)
+}
+
 fn job_enqueue(args: Vec<Value>) -> Result<Value, String> {
     if args.len() < 2 {
         return Err(

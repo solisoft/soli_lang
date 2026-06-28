@@ -100,6 +100,7 @@ pub fn run_with_path(
 
     // Execute with tree-walking interpreter
     let mut interpreter = interpreter::Interpreter::new();
+    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     interpreter.interpret(&program)?;
 
     Ok(())
@@ -130,7 +131,8 @@ pub fn run_vm(
     // builtin function and native class — DateTime, Duration, HTTP, …) and
     // copy its globals across. Keeps `--vm` a faithful simulator of
     // production-mode execution instead of a hand-rolled subset.
-    let interpreter = interpreter::Interpreter::new();
+    let mut interpreter = interpreter::Interpreter::new();
+    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     let all_globals = interpreter.environment.borrow().get_all_bindings();
     for (name, value) in all_globals {
         vm_instance.globals.insert(name, value);
@@ -187,6 +189,7 @@ fn run_with_path_and_coverage_inner(
     if let Some(tracker) = coverage_tracker {
         interpreter.set_coverage_tracker(tracker.clone());
     }
+    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
 
     for (preamble_path, preamble_source) in preamble_files {
         let tokens = lexer::Scanner::new(preamble_source).scan_tokens()?;

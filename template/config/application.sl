@@ -101,3 +101,23 @@
 #
 # `enable_security_headers` / `disable_security_headers` toggle the
 # whole bundle.
+
+# ---------------------------------------------------------------------
+# Mailer — outbound email (SMTP).
+# ---------------------------------------------------------------------
+# Define mailers under app/mailers/ (subclass Mailer) and send with
+# `UserMailer.welcome(user).deliver_later`. Configure delivery here:
+#
+#   # Mailer.configure({
+#   #   "delivery_method": "smtp",      # "smtp" | "test" | "logger"
+#   #   "host": getenv("SMTP_HOST"),
+#   #   "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
+#   #   "user": getenv("SMTP_USER"),
+#   #   "pass": getenv("SMTP_PASS"),
+#   #   "tls": "auto",                   # "auto" | "starttls" | "tls" | "none"
+#   #   "from": "Acme <noreply@example.com>"
+#   # })
+#
+# In tests use `"delivery_method": "test"` and assert on
+# `Mailer.deliveries()`. Env-var equivalents: SOLI_SMTP_HOST / _PORT /
+# _USER / _PASS / _TLS / _FROM and SOLI_MAIL_DELIVERY_METHOD.

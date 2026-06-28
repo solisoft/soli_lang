@@ -17,6 +17,11 @@ pub fn run() {
             folder,
         } => commands::run_generate(scaffold_name, fields, folder),
         Command::GenerateAuth { folder } => commands::run_generate_auth(folder),
+        Command::GenerateMailer {
+            name,
+            actions,
+            folder,
+        } => commands::run_generate_mailer(name, actions, folder),
         Command::DbMigrate { action, folder } => commands::run_db_migrate(action, folder),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
         Command::Serve {

@@ -1,0 +1,181 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Mailer</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Mailer</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Send transactional email over SMTP. Define a mailer like a controller — one method per email — render a view, and deliver now or in the background.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-300">
+                Mailers live in <code class="text-cyan-400">app/mailers/</code> and subclass <code class="text-amber-400">Mailer</code>. Each action sets instance variables, renders a matching <code class="text-cyan-400">.slv</code> view by convention, and returns a <code class="text-amber-400">Message</code> you send with <code class="text-cyan-400">deliver_now</code> or <code class="text-cyan-400">deliver_later</code>. SMTP supports STARTTLS (587) and implicit TLS (465).
+            </p>
+        </div>
+    </section>
+
+    <!-- Defining a mailer -->
+    <section id="defining" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Defining a mailer</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Each public method is an action that builds a message with <code class="text-cyan-400">this.mail(...)</code>. Instance variables set in the action are available to its view.</p>
+            <pre data-filename="app/mailers/user_mailer.sl"><code class="language-soli text-sm">class UserMailer &lt; Mailer
+  def welcome(user)
+    @user = user
+    # Renders app/views/user_mailer/welcome.html.slv with @user in scope.
+    this.mail(to: user.email, subject: "Welcome!")
+  end
+
+  def reset_password(user)
+    @user = user
+    this.mail(to: user.email, subject: "Reset your password")
+  end
+end</code></pre>
+            <p class="text-gray-400 mt-4 mb-2">Scaffold one with the generator:</p>
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate mailer User welcome reset_password</code></pre>
+            <p class="text-gray-400 mt-3">This writes the mailer class plus an HTML view per action under <code class="text-cyan-400">app/views/user_mailer/</code>.</p>
+        </div>
+    </section>
+
+    <!-- Views -->
+    <section id="views" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Views</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">A mailer view is a normal template; the action's instance variables are available as locals, exactly like a controller view. <code class="text-amber-400">UserMailer#welcome</code> renders <code class="text-cyan-400">user_mailer/welcome</code> by convention.</p>
+            <pre data-filename="app/views/user_mailer/welcome.html.slv"><code class="language-erb text-sm">&lt;h1&gt;Welcome, &lt;%= h(user.name) %&gt;!&lt;/h1&gt;
+&lt;p&gt;Thanks for joining. &lt;a href="https://example.com/start"&gt;Get started&lt;/a&gt;.&lt;/p&gt;</code></pre>
+            <p class="text-gray-400 mt-3">Override the path with <code class="text-cyan-400">template:</code>, or skip rendering by passing <code class="text-cyan-400">html:</code> (and/or <code class="text-cyan-400">text:</code>) straight to <code class="text-cyan-400">mail</code>.</p>
+            <p class="text-gray-400 mt-3"><strong class="text-white">Plain-text part:</strong> add a <code class="text-cyan-400">welcome.text.slv</code> next to <code class="text-cyan-400">welcome.html.slv</code> and it's rendered automatically as the <code class="text-cyan-400">text/plain</code> alternative.</p>
+        </div>
+    </section>
+
+    <!-- Multiple arguments -->
+    <section id="multi-arg" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Multiple arguments</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">An action can take more than one argument:</p>
+            <pre data-filename="app/mailers/order_mailer.sl"><code class="language-soli text-sm">class OrderMailer &lt; Mailer
+  def receipt(order, invoice)
+    @order = order
+    this.mail(to: order.email, subject: "Receipt #{invoice.number}")
+  end
+end
+
+OrderMailer.receipt(order, invoice).deliver_later</code></pre>
+            <p class="text-gray-400 mt-3">Omitted arguments arrive as <code class="text-cyan-400">nil</code> (default parameter values are not applied), so pass every argument explicitly or fold them into a single hash.</p>
+        </div>
+    </section>
+
+    <!-- Sending -->
+    <section id="sending" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Sending</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Every action returns a <code class="text-amber-400">Message</code>. Send it synchronously, or enqueue it on the <a class="text-indigo-400 hover:text-indigo-300" href="/docs/builtins/jobs">Job queue</a> for background delivery.</p>
+            <pre data-filename="Controller / job"><code class="language-soli text-sm"># Send synchronously, within the current request
+UserMailer.welcome(user).deliver_now
+
+# Enqueue for background delivery; returns immediately
+UserMailer.welcome(user).deliver_later</code></pre>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">deliver_later</code> enqueues a <code class="text-cyan-400">__MailDelivery</code> job; if the queue is unavailable it logs and falls back to sending synchronously so a message is never dropped.</p>
+        </div>
+    </section>
+
+    <!-- this.mail arguments -->
+    <section id="mail-args" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4"><code class="text-indigo-400">this.mail(...)</code></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <div class="text-sm text-gray-400 space-y-1">
+                <div><code class="text-amber-400">to</code> : <code class="text-purple-400">String | Array</code> &mdash; one address or a list</div>
+                <div><code class="text-amber-400">subject</code> : <code class="text-purple-400">String</code> &mdash; encoded automatically for non-ASCII</div>
+                <div><code class="text-amber-400">html</code> : <code class="text-purple-400">String?</code> &mdash; skip the view render and use this body</div>
+                <div><code class="text-amber-400">text</code> : <code class="text-purple-400">String?</code> &mdash; plain-text alternative part</div>
+                <div><code class="text-amber-400">cc</code>, <code class="text-amber-400">bcc</code> : <code class="text-purple-400">String | Array?</code> &mdash; <code class="text-cyan-400">bcc</code> stays out of the headers</div>
+                <div><code class="text-amber-400">reply_to</code> : <code class="text-purple-400">String?</code></div>
+                <div><code class="text-amber-400">sender</code> : <code class="text-purple-400">String?</code> &mdash; overrides the configured default <code>From</code></div>
+                <div><code class="text-amber-400">attachments</code> : <code class="text-purple-400">Array?</code> &mdash; <code class="text-cyan-400">{ "filename", "content_type", "content" }</code> hashes</div>
+                <div><code class="text-amber-400">template</code> : <code class="text-purple-400">String?</code> &mdash; override the convention view path</div>
+            </div>
+            <p class="text-gray-400 mt-4">Addresses accept a bare <code class="text-cyan-400">addr@host</code> or a <code class="text-cyan-400">"Name &lt;addr@host&gt;"</code> display form.</p>
+        </div>
+    </section>
+
+    <!-- Attachments -->
+    <section id="attachments" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Attachments</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Pass an <code class="text-cyan-400">attachments</code> array to <code class="text-cyan-400">mail</code>, or chain <code class="text-cyan-400">attach</code> / <code class="text-cyan-400">attach_base64</code> on the returned <code class="text-amber-400">Message</code>. Text content goes verbatim; binary content is supplied as a base64 string.</p>
+            <pre data-filename="Controller / job"><code class="language-soli text-sm">UserMailer.welcome(user)
+  .attach("notes.txt", "Thanks for signing up!")
+  .attach_base64("logo.png", Base64.encode(File.read("logo.png")), "image/png")
+  .deliver_later</code></pre>
+            <p class="text-gray-400 mt-3">Each attachment is <code class="text-cyan-400">{ "filename", "content_type", "content" }</code> (text) or <code class="text-cyan-400">{ "filename", "content_type", "base64" }</code> (binary).</p>
+        </div>
+    </section>
+
+    <!-- Configuration -->
+    <section id="configuration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Configure delivery once in <code class="text-cyan-400">config/application.sl</code>:</p>
+            <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
+  "delivery_method": "smtp",       # "smtp" | "test" | "logger"
+  "host": getenv("SMTP_HOST"),
+  "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
+  "user": getenv("SMTP_USER"),
+  "pass": getenv("SMTP_PASS"),
+  "tls": "auto",                   # "auto" | "starttls" | "tls" | "none"
+  "from": "Acme &lt;noreply@example.com&gt;"
+})</code></pre>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">tls: "auto"</code> uses implicit TLS on port 465 and STARTTLS everywhere else. <code class="text-cyan-400">AUTH LOGIN</code> is used when <code class="text-cyan-400">user</code>/<code class="text-cyan-400">pass</code> are set.</p>
+
+            <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Delivery methods</h4>
+            <div class="text-sm text-gray-400 space-y-1">
+                <div><code class="text-amber-400">smtp</code> &mdash; send over SMTP (default)</div>
+                <div><code class="text-amber-400">test</code> &mdash; capture mail in memory for assertions; never sends</div>
+                <div><code class="text-amber-400">logger</code> &mdash; print a one-line summary instead of sending</div>
+            </div>
+
+            <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Environment variables</h4>
+            <div class="text-sm text-gray-400 space-y-1">
+                <div><code class="text-cyan-400">SOLI_MAIL_DELIVERY_METHOD</code> &mdash; delivery method</div>
+                <div><code class="text-cyan-400">SOLI_SMTP_HOST</code> / <code class="text-cyan-400">SOLI_SMTP_PORT</code></div>
+                <div><code class="text-cyan-400">SOLI_SMTP_USER</code> / <code class="text-cyan-400">SOLI_SMTP_PASS</code></div>
+                <div><code class="text-cyan-400">SOLI_SMTP_TLS</code> &mdash; tls mode</div>
+                <div><code class="text-cyan-400">SOLI_SMTP_FROM</code> &mdash; default From</div>
+                <div><code class="text-cyan-400">SOLI_SMTP_DOMAIN</code> &mdash; EHLO name / <code>Message-ID</code> host</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testing -->
+    <section id="testing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Testing</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Set <code class="text-cyan-400">delivery_method: "test"</code> and assert on <code class="text-cyan-400">Mailer.deliveries()</code> — the rendered mail hashes, newest last.</p>
+            <pre data-filename="tests/user_mailer_spec.sl"><code class="language-soli text-sm">describe("UserMailer", fn() {
+  before_each(fn() {
+    Mailer.configure({ "delivery_method": "test" })
+    Mailer.clear_deliveries()
+  })
+
+  test("welcome email", fn() {
+    UserMailer.welcome(user).deliver_now()
+    let sent = Mailer.deliveries()
+    assert_eq(len(sent), 1)
+    assert_eq(sent[0]["to"], user.email)
+  })
+})</code></pre>
+        </div>
+    </section>
+</div>

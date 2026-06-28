@@ -151,6 +151,18 @@ impl Vm {
                 if let Some(nested) = class.nested_classes.borrow().get(name) {
                     return Ok(Value::Class(nested.clone()));
                 }
+                // Class-level `method_missing` is dispatched only by the
+                // tree-walker (see executor/access/member.rs). When the class
+                // (or a superclass) defines one, punt to the interpreter via
+                // EngineFallback — serve mode re-runs the request there. This
+                // is what makes `UserMailer.welcome(user)` work in production,
+                // mirroring the model instance-method punt above.
+                if class.find_static_method("method_missing").is_some() {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("class method_missing for '{}'", name),
+                        span,
+                    ));
+                }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: class.name.clone(),
                     property: name.to_string(),

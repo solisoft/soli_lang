@@ -25,6 +25,13 @@ pub enum Command {
     GenerateAuth {
         folder: String,
     },
+    /// `soli generate mailer <Name> <action...> [folder]` — scaffold a mailer
+    /// class (app/mailers/<name>_mailer.sl) and one HTML view per action.
+    GenerateMailer {
+        name: String,
+        actions: Vec<String>,
+        folder: String,
+    },
     Serve {
         folder: String,
         port: u16,
@@ -352,9 +359,39 @@ pub fn parse_args() -> Options {
                         options.command = Command::GenerateAuth { folder };
                         return options;
                     }
+                    "mailer" => {
+                        i += 1;
+                        if i >= args.len() {
+                            eprintln!("generate mailer requires a name (e.g. User)");
+                            print_usage();
+                            process::exit(64);
+                        }
+                        let name = args[i].clone();
+                        i += 1;
+                        // Remaining bare args are action names; a trailing path
+                        // (".", "/", or containing a separator) is the folder.
+                        let mut actions = Vec::new();
+                        let mut folder = ".".to_string();
+                        for value in &args[i..] {
+                            if value.starts_with('-') {
+                                break;
+                            }
+                            if value == "." || value == "/" || value.contains('/') {
+                                folder = value.clone();
+                                break;
+                            }
+                            actions.push(value.clone());
+                        }
+                        options.command = Command::GenerateMailer {
+                            name,
+                            actions,
+                            folder,
+                        };
+                        return options;
+                    }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, mailer)",
                             subcommand
                         );
                         print_usage();

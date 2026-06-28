@@ -473,6 +473,9 @@ pub fn serve_folder_with_options_and_workers(
 
     // Create interpreter
     let mut interpreter = Interpreter::new();
+    // Define the Mailer/Message base classes before any app code that may
+    // subclass Mailer (app/mailers/*.sl) loads.
+    crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     boot_trace("interpreter created");
 
     // Load models first (shared code)
@@ -500,6 +503,15 @@ pub fn serve_folder_with_options_and_workers(
         load_models(&mut interpreter, &policies_dir)?;
     }
     boot_trace("policies loaded");
+
+    // Load mailers (app/mailers/*.sl) — `class UserMailer < Mailer`. The
+    // Mailer base class was defined above (ensure_prelude), so subclasses
+    // resolve their superclass at load time.
+    let mailers_dir = app_dir.join("mailers");
+    if mailers_dir.exists() {
+        load_models(&mut interpreter, &mailers_dir)?;
+    }
+    boot_trace("mailers loaded");
 
     // Initialize file tracker for hot reload
     let mut file_tracker = FileTracker::new();
@@ -933,6 +945,7 @@ fn run_hyper_server_worker_pool(
         let watch_helpers_dir = helpers_dir.clone();
         let watch_models_dir = models_dir.clone();
         let watch_services_dir = folder.join("app/services");
+        let watch_mailers_dir = folder.join("app/mailers");
         let watch_jobs_dir = jobs_dir.clone();
         let watch_public_dir = public_dir.clone();
         let watch_routes_file = routes_file.clone();
@@ -988,6 +1001,13 @@ fn run_hyper_server_worker_pool(
             if watch_services_dir.exists()
                 && watcher
                     .watch(&watch_services_dir, RecursiveMode::Recursive)
+                    .is_ok()
+            {
+                watch_count += 1;
+            }
+            if watch_mailers_dir.exists()
+                && watcher
+                    .watch(&watch_mailers_dir, RecursiveMode::Recursive)
                     .is_ok()
             {
                 watch_count += 1;
@@ -1144,6 +1164,10 @@ fn run_hyper_server_worker_pool(
                         } else if name.ends_with(".sl") && path.starts_with(&watch_services_dir) {
                             // Reuse the models signal — workers already reload
                             // app/services/ in the same step (see app_loader).
+                            models_changed = true;
+                        } else if name.ends_with(".sl") && path.starts_with(&watch_mailers_dir) {
+                            // Workers reload app/mailers/ in the same step as
+                            // models (see worker reload path).
                             models_changed = true;
                         } else if name.ends_with("_job.sl") && path.starts_with(&watch_jobs_dir) {
                             jobs_changed = true;
@@ -1440,6 +1464,8 @@ fn run_hyper_server_worker_pool(
 
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut interpreter = Interpreter::new_for_serve();
+                    // Mailer/Message base classes available before app load.
+                    crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
 
                     worker_loop(
                         i,
@@ -1629,6 +1655,14 @@ fn worker_loop(
         if policies_dir.exists() {
             if let Err(e) = load_models(interpreter, &policies_dir) {
                 eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
+            }
+        }
+        // Load mailers (sibling of models). The Mailer base class is defined by
+        // ensure_prelude when the worker interpreter is built.
+        let mailers_dir = parent.join("mailers");
+        if mailers_dir.exists() {
+            if let Err(e) = load_models(interpreter, &mailers_dir) {
+                eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
             }
         }
     }

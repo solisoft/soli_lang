@@ -219,6 +219,10 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rustls-pki-types = "1"
 webpki-roots = "1.0.7"
 mail-parser = "0.11.3"
+# Outbound email (Mailer): RFC 5322 / MIME message construction. The SMTP
+# transport itself is hand-rolled over the sync rustls stream above (see
+# builtins/mailer/smtp.rs), mirroring the POP3 client.
+mail-builder = "0.4"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

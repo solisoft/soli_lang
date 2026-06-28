@@ -11355,6 +11355,106 @@
         "dataloader",
         "defer"
       ]
+    },
+    {
+      "title": "Mailer",
+      "type": "page",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer",
+      "signature": "Mailer",
+      "description": "Send transactional email over SMTP: mailer classes, view rendering, deliver_now / deliver_later, and a test mode.",
+      "keywords": [
+        "mailer",
+        "email",
+        "mail",
+        "smtp",
+        "send email",
+        "transactional",
+        "deliver",
+        "starttls",
+        "action mailer"
+      ]
+    },
+    {
+      "title": "Mailer.configure",
+      "type": "method",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer#configuration",
+      "signature": "Mailer.configure(options)",
+      "description": "Configure SMTP host/port/auth/TLS, the default From, and the delivery method (smtp/test/logger).",
+      "keywords": [
+        "mailer configure",
+        "smtp config",
+        "delivery method",
+        "smtp host",
+        "from address",
+        "tls",
+        "starttls"
+      ]
+    },
+    {
+      "title": "mail",
+      "type": "method",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer#mail-args",
+      "signature": "this.mail(to, subject, html, text, cc, bcc, reply_to, sender, attachments, template)",
+      "description": "Build a Message inside a mailer action: renders the convention view (or explicit html/text) and sets recipients, subject, and attachments.",
+      "keywords": [
+        "mail",
+        "compose",
+        "message",
+        "attachments",
+        "subject",
+        "html email",
+        "mailer action"
+      ]
+    },
+    {
+      "title": "deliver_now",
+      "type": "method",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer#sending",
+      "signature": "message.deliver_now()",
+      "description": "Send a built mailer Message synchronously over SMTP.",
+      "keywords": [
+        "deliver",
+        "deliver_now",
+        "send mail",
+        "send email synchronously",
+        "smtp send"
+      ]
+    },
+    {
+      "title": "deliver_later",
+      "type": "method",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer#sending",
+      "signature": "message.deliver_later(queue?)",
+      "description": "Enqueue a mailer Message for background delivery via the Job queue (falls back to synchronous send if the queue is unavailable).",
+      "keywords": [
+        "deliver_later",
+        "background email",
+        "enqueue mail",
+        "async email",
+        "job queue",
+        "mail delivery"
+      ]
+    },
+    {
+      "title": "Mailer.deliveries",
+      "type": "method",
+      "category": "Mailer",
+      "path": "/docs/builtins/mailer#testing",
+      "signature": "Mailer.deliveries()",
+      "description": "In test delivery mode, the captured mail (rendered hashes) for assertions; clear with Mailer.clear_deliveries().",
+      "keywords": [
+        "mailer test",
+        "deliveries",
+        "assert email",
+        "clear_deliveries",
+        "test mode",
+        "email testing"
+      ]
     }
   ]
 }
