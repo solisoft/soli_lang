@@ -32,6 +32,7 @@ pub fn run() {
             daemonize,
         } => commands::run_serve(folder, *port, *dev_mode, *workers, *daemonize),
         Command::Lint { paths } => commands::run_lint(paths),
+        Command::Check { paths } => commands::run_check(paths),
         Command::Fmt {
             paths,
             check,

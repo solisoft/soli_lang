@@ -430,6 +430,70 @@ pub fn run_lint(paths: &[String]) {
     println!("No issues found.");
 }
 
+pub fn run_check(paths: &[String]) {
+    let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        vec![cwd]
+    } else {
+        paths.iter().map(std::path::PathBuf::from).collect()
+    };
+
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for t in &targets {
+        if !t.exists() {
+            eprintln!("Error: Path '{}' does not exist", t.display());
+            process::exit(1);
+        }
+        if t.is_file() {
+            files.push(t.clone());
+        } else {
+            // Type-check Soli programs only (skip .slv templates).
+            files.extend(
+                test_runner::collect_lint_files(t)
+                    .into_iter()
+                    .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("sl")),
+            );
+        }
+    }
+
+    if files.is_empty() {
+        println!("No .sl files found.");
+        return;
+    }
+
+    let checked = files.len();
+    let mut total_errors = 0;
+    let mut files_with_errors = 0;
+
+    for file in &files {
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{}: error reading file: {}", file.display(), e);
+                continue;
+            }
+        };
+        if let Err(errors) = solilang::type_check_source(&source, Some(file.as_path())) {
+            files_with_errors += 1;
+            total_errors += errors.len();
+            for err in &errors {
+                println!("{}: {}", file.display(), err);
+            }
+        }
+    }
+
+    if total_errors > 0 {
+        println!();
+        println!(
+            "{} error(s) in {} of {} file(s)",
+            total_errors, files_with_errors, checked
+        );
+        process::exit(1);
+    }
+
+    println!("No type errors. Checked {} file(s).", checked);
+}
+
 pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
     use std::io::Read;
     if stdin {

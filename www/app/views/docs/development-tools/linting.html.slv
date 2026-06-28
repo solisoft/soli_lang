@@ -316,6 +316,26 @@ vsce package
         </div>
     </section>
 
+    <!-- Type checking -->
+    <section id="section-type-check" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Type checking with <code class="text-indigo-400">soli check</code></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">
+                Where <code class="text-cyan-400">soli lint</code> catches style and smells, <code class="text-cyan-400">soli check</code> runs Soli's optional type system over your code <strong class="text-white">without executing it</strong> &mdash; ideal for CI or a pre-commit hook. It resolves imports and reports every mismatch with a <code class="text-cyan-400">file:line:column</code> location, exiting non-zero when any are found.
+            </p>
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli check               # type-check the current project
+soli check app/models    # check a directory
+soli check app/models/user.sl
+
+# example output
+# app/models/user.sl: Type error: Type mismatch: expected Int, found String at 14:14
+# 1 error(s) in 1 of 38 file(s)</code></pre>
+            <p class="text-gray-400 mt-3">
+                Running a file with <code class="text-cyan-400">soli run</code> type-checks it first too (use <code class="text-cyan-400">--no-type-check</code> to skip); <code class="text-cyan-400">soli check</code> is the standalone, whole-project form that never runs your app.
+            </p>
+        </div>
+    </section>
+
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
         <a href="/docs/language/blocks" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">

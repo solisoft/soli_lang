@@ -106,6 +106,38 @@ pub fn run_with_path(
     Ok(())
 }
 
+/// Type-check a program without executing it. Resolves imports (when a path is
+/// given) and returns every type error, or any lex/parse/module-resolution
+/// failure as a single-element vec. Powers `soli check`.
+pub fn type_check_source(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+) -> Result<(), Vec<SolilangError>> {
+    let tokens = lexer::Scanner::new(source)
+        .scan_tokens()
+        .map_err(|e| vec![e.into()])?;
+    let mut program = parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| vec![e.into()])?;
+
+    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
+        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let mut resolver = module::ModuleResolver::new(base_dir);
+        program = resolver.resolve(program, path).map_err(|e| {
+            vec![error::RuntimeError::General {
+                message: format!("Module resolution error: {}", e),
+                span: span::Span::new(0, 0, 1, 1),
+            }
+            .into()]
+        })?;
+    }
+
+    let mut checker = types::TypeChecker::new();
+    checker
+        .check(&program)
+        .map_err(|errs| errs.into_iter().map(Into::into).collect())
+}
+
 /// Run a Solilang program through the bytecode VM (faster execution).
 pub fn run_file_vm(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
     let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {

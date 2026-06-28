@@ -68,6 +68,10 @@ pub enum Command {
     Lint {
         paths: Vec<String>,
     },
+    /// `soli check [paths...]` — static type-check without executing.
+    Check {
+        paths: Vec<String>,
+    },
     Fmt {
         paths: Vec<String>,
         /// Don't rewrite — exit non-zero if any file isn't already formatted.
@@ -163,6 +167,7 @@ pub fn print_usage() {
     eprintln!("       soli serve <folder> [-d] [--dev] [--port PORT] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage]");
     eprintln!("       soli lint [paths...]");
+    eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--standalone]");
     eprintln!("  soli deploy [--folder <path>]");
@@ -195,6 +200,7 @@ pub fn print_usage() {
     eprintln!("                       Supports .soli bundle files");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
+    eprintln!("  check [paths...]     Static type-check .sl files without running them");
     eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
     eprintln!(
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
@@ -730,6 +736,22 @@ pub fn parse_args() -> Options {
                     i += 1;
                 }
                 options.command = Command::Lint { paths };
+                return options;
+            }
+            "check" => {
+                i += 1;
+                let mut paths: Vec<String> = Vec::new();
+                while i < args.len() {
+                    if !args[i].starts_with('-') {
+                        paths.push(args[i].clone());
+                    } else {
+                        eprintln!("Unknown option for check: {}", args[i]);
+                        print_usage();
+                        process::exit(64);
+                    }
+                    i += 1;
+                }
+                options.command = Command::Check { paths };
                 return options;
             }
             "fmt" => {
