@@ -11106,6 +11106,91 @@
       ]
     },
     {
+      "title": "State Machines",
+      "type": "guide",
+      "category": "Database",
+      "path": "/docs/database/state-machines",
+      "signature": "state_machine :status do ... end",
+      "description": "Enum-backed state machine DSL declared in a model: events, transitions, guards, before/after hooks, generated can_X?/bang methods, and state predicates",
+      "keywords": [
+        "state machine",
+        "state_machine",
+        "transition",
+        "event",
+        "guard",
+        "workflow",
+        "enum",
+        "enum_field",
+        "model",
+        "fsm"
+      ]
+    },
+    {
+      "title": "state_machine",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/state-machines#the-dsl",
+      "signature": "state_machine :field do ... end",
+      "description": "Declare an enum-backed state machine driving an enum_field column in a model",
+      "keywords": [
+        "state_machine",
+        "state machine",
+        "model",
+        "enum_field",
+        "workflow",
+        "fsm"
+      ]
+    },
+    {
+      "title": "event",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/state-machines#the-dsl",
+      "signature": "event :name do transition from: X, to: Y end",
+      "description": "Declare a state-machine event holding one or more transitions and an optional guard; generates name/name!/can_name? methods",
+      "keywords": [
+        "event",
+        "state machine",
+        "transition",
+        "guard",
+        "can",
+        "bang",
+        "fsm"
+      ]
+    },
+    {
+      "title": "transition",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/state-machines#the-dsl",
+      "signature": "transition from: X, to: Y",
+      "description": "Declare a legal move inside a state-machine event; from: accepts a single state or an array of states",
+      "keywords": [
+        "transition",
+        "state machine",
+        "from",
+        "to",
+        "event",
+        "fsm"
+      ]
+    },
+    {
+      "title": "guard",
+      "type": "method",
+      "category": "Database",
+      "path": "/docs/database/state-machines#the-dsl",
+      "signature": "guard fn() { ... }",
+      "description": "Predicate run with this bound to the record; the event fires only when it returns truthy",
+      "keywords": [
+        "guard",
+        "state machine",
+        "event",
+        "predicate",
+        "condition",
+        "fsm"
+      ]
+    },
+    {
       "title": "soft_delete",
       "type": "method",
       "category": "Database",
@@ -11499,7 +11584,7 @@
       "category": "Development Tools",
       "path": "/docs/development-tools/linting#section-type-check",
       "signature": "soli check [paths...]",
-      "description": "Static type-check Soli code without executing it \u2014 whole-project, CI-friendly, exits non-zero on type errors.",
+      "description": "Static type-check Soli code without executing it — whole-project, CI-friendly, exits non-zero on type errors.",
       "keywords": [
         "soli check",
         "type check",
@@ -11533,7 +11618,7 @@
       "category": "Crypto",
       "path": "/docs/builtins/crypto#def-encrypt",
       "signature": "Crypto.encrypt(plaintext, key?)",
-      "description": "AES-256-GCM authenticated encryption; returns base64 nonce\u2016ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
+      "description": "AES-256-GCM authenticated encryption; returns base64 nonce‖ciphertext. Key defaults to SOLI_ENCRYPTION_KEY.",
       "keywords": [
         "encrypt",
         "aes",
@@ -11613,7 +11698,7 @@
       "category": "Core Concepts",
       "path": "/docs/core-concepts/streaming#section-pubsub",
       "signature": "sse_subscribe(req, topic)",
-      "description": "Open a long-lived SSE connection subscribed to a topic. Async \u2014 does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
+      "description": "Open a long-lived SSE connection subscribed to a topic. Async — does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
       "keywords": [
         "sse_subscribe",
         "pub/sub",

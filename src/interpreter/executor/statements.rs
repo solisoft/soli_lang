@@ -691,6 +691,49 @@ impl Interpreter {
                 // we need to pass the class as the first argument
                 if let crate::ast::StmtKind::Expression(expr) = &stmt.kind {
                     if let crate::ast::ExprKind::Call { callee, arguments } = &expr.kind {
+                        // `state_machine :field do … end` — the declarative state
+                        // machine DSL. Unlike `validates`/`scope`, its block must
+                        // be invoked with `&mut Interpreter` (so nested
+                        // `event`/`transition`/`guard` calls run), so it can't be a
+                        // plain native. Route it to `define_state_machine` and skip
+                        // the generic class-statement dispatch below.
+                        if let crate::ast::ExprKind::Variable(fname) = &callee.kind {
+                            if fname == "state_machine" {
+                                let block = arguments.iter().find_map(|a| match a {
+                                    Argument::Block(e) => Some(e),
+                                    Argument::Positional(e)
+                                        if matches!(
+                                            e.kind,
+                                            crate::ast::ExprKind::Lambda { .. }
+                                        ) =>
+                                    {
+                                        Some(e)
+                                    }
+                                    _ => None,
+                                });
+                                let field = arguments.iter().find_map(|a| match a {
+                                    Argument::Positional(e)
+                                        if !matches!(
+                                            e.kind,
+                                            crate::ast::ExprKind::Lambda { .. }
+                                        ) =>
+                                    {
+                                        Some(e)
+                                    }
+                                    _ => None,
+                                });
+                                if let (Some(field_expr), Some(block_expr)) = (field, block) {
+                                    self.define_state_machine(
+                                        class_rc.clone(),
+                                        field_expr,
+                                        block_expr,
+                                        stmt.span,
+                                    )?;
+                                    continue;
+                                }
+                            }
+                        }
+
                         // Get the callee value (should be a native function from Model)
                         let callee_val = self.evaluate(callee)?;
 

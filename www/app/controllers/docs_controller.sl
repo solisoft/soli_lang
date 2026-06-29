@@ -111,6 +111,10 @@ fn database_validations
     render_docs("docs/database/validations", "Validations & Callbacks", "database", "validations")
 end
 
+fn database_state_machines
+    render_docs("docs/database/state-machines", "State Machines", "database", "state_machines")
+end
+
 fn database_finders
     render_docs("docs/database/finders", "Finders & Aggregations", "database", "finders")
 end

@@ -16,6 +16,11 @@ pub struct Parser {
     /// When true, trailing `{` blocks are NOT consumed after call expressions.
     /// Set while parsing if/while/for conditions to avoid stealing the statement body.
     pub(crate) no_trailing_brace: bool,
+    /// When true, a trailing `do … end` block is NOT consumed by a call/member
+    /// expression. Set while parsing command-style argument values so the block
+    /// binds to the outer command call (`after_transition to: X do … end`)
+    /// rather than the argument value (`X`).
+    pub(crate) no_trailing_do: bool,
     /// When true, a `rescue` opening a new line ends the current statement so the
     /// enclosing `try`/`begin` body can treat it as a block-form catch clause rather
     /// than a postfix `rescue` modifier. Set only while parsing an end-form try body.
@@ -28,6 +33,7 @@ impl Parser {
             tokens,
             current: 0,
             no_trailing_brace: false,
+            no_trailing_do: false,
             in_try_body: false,
         }
     }

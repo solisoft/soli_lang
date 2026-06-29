@@ -1,338 +1,181 @@
 # State Machines
 
-Implement state machines for managing complex workflows and business logic in your application.
+Drive an `enum_field` column through a declarative, enum-backed state machine declared right inside your model class.
 
 ## Overview
 
-State machines provide a structured way to model workflows with discrete states and transitions. They help prevent invalid state transitions and make complex business logic more maintainable.
+A `state_machine` block models a workflow as a set of discrete states (the variants of an `enum`) and the legal `transition`s between them. You declare it in the model class body — alongside `validates`, `scope`, and the lifecycle callbacks — using the same class-body DSL style.
 
-## Creating a State Machine
+Soli generates the runtime surface for you: an event method per declared event (`pay`, `pay!`, `can_pay?`), a boolean predicate per state (`pending?`, `paid?`, …), and class-level reflection (`Order.events()`, `Order.states()`). Illegal moves and failed guards raise; the `can_X?` predicates never raise, so they're safe to drive UI and conditionals.
 
-Use the `create_state_machine()` function to create a new state machine instance:
-
-```soli
-states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
-transitions = [
-  {"event": "confirm", "from": "pending", "to": "confirmed"},
-  {"event": "process", "from": "confirmed", "to": "processing"},
-  {"event": "ship", "from": "processing", "to": "shipped"},
-  {"event": "deliver", "from": "shipped", "to": "delivered"},
-  {"event": "cancel", "from": "pending", "to": "cancelled"}
-];
-
-order = create_state_machine("pending", states, transitions);
-```
-
-### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `initial_state` | String | The starting state (must be in the states array) |
-| `states` | Array | Array of valid state names |
-| `transitions` | Array | Array of transition definitions |
-
-### Transition Definition
-
-Each transition can have these keys:
-
-| Key | Description |
-|-----|-------------|
-| `event` | Name of the event/method to create |
-| `from` | Source state(s) - can be a string or array of strings |
-| `to` | Target state |
-| `if` | Optional guard condition field name |
-| `guard` | Optional guard condition field name (alias for `if`) |
-
-## Guard Conditions
-
-Guard conditions allow you to conditionally enable transitions based on context values:
+## A Complete Example
 
 ```soli
-transitions = [
-  {"event": "confirm", "from": "pending", "to": "confirmed"},
-  {"event": "ship", "from": "processing", "to": "shipped", "if": "can_ship"},
-  {"event": "deliver", "from": "shipped", "to": "delivered", "guard": "is_deliverable"},
-  {"event": "cancel", "from": "pending", "to": "cancelled"}
-];
-
-order = create_state_machine("pending", states, transitions);
-
-# Set guard conditions
-order.set("can_ship", true);
-order.set("is_deliverable", true);
-
-# Transitions will fail if guard is false
-order.set("can_ship", false);
-order.ship();  # Error: Guard condition 'can_ship' is false
-```
-
-The `if` and `guard` keys specify a context field that must be `true` (or undefined) for the transition to proceed.
-
-## Advanced Methods
-
-### last_transition()
-
-Returns information about the last transition:
-
-```soli
-order.confirm();
-last = order.last_transition();
-# {from => pending, to => confirmed, event => confirm}
-```
-
-### can(event)
-
-Checks if an event is available from the current state:
-
-```soli
-if (order.can("ship"))
-  print("Order can be shipped")
+# app/models/order.sl
+enum OrderState
+  Pending,
+  Paid,
+  Shipped,
+  Delivered,
+  Cancelled
 end
-```
 
-### available_events()
+class Order < Model
+  enum_field :status, OrderState
 
-Returns an array of events available from the current state:
+  state_machine :status do
+    initial OrderState.Pending
 
-```soli
-events = order.available_events();
-# ["confirm", "cancel"] from pending state
-```
-
-## Instance Methods
-
-### current_state()
-
-Returns the current state as a string:
-
-```soli
-print(order.current_state());  # "pending"
-```
-
-### is(state)
-
-Check if the state machine is in a specific state:
-
-```soli
-if (order.is("pending"))
-  print("Order is waiting for confirmation")
-end
-```
-
-### is_in([states])
-
-Check if the state machine is in any of the given states:
-
-```soli
-if (order.is_in(["shipped", "delivered"]))
-  print("Order is on its way or delivered")
-end
-```
-
-### set(key, value)
-
-Store custom data in the state machine context:
-
-```soli
-order.set("customer_id", 12345);
-order.set("total", 99.99);
-order.set("items", ["Product A", "Product B"]);
-```
-
-### get(key)
-
-Retrieve custom data from the state machine context:
-
-```soli
-customer_id = order.get("customer_id");
-total = order.get("total");
-```
-
-### history()
-
-Get the state transition history:
-
-```soli
-hist = order.history();
-print(hist);
-```
-
-### last_transition()
-
-Returns information about the last transition as a hash:
-
-```soli
-order.confirm();
-last = order.last_transition();
-# {from => pending, to => confirmed, event => confirm}
-
-print(last["from"]);  # "pending"
-print(last["to"]);    # "confirmed"
-print(last["event"]); # "confirm"
-```
-
-### can(event)
-
-Checks if an event is available from the current state:
-
-```soli
-if (order.can("ship"))
-  print("Order can be shipped")
-end
-# Returns: true or false
-```
-
-### available_events()
-
-Returns an array of events available from the current state:
-
-```soli
-events = order.available_events();
-# ["confirm", "cancel"] from pending state
-```
-
-## Automatic Transition Methods
-
-When you define transitions, Soli automatically creates methods for each event:
-
-```soli
-# From the transitions array above
-order.confirm();   # Transitions from "pending" to "confirmed"
-order.process();   # Transitions from "confirmed" to "processing"
-order.ship();      # Transitions from "processing" to "shipped"
-order.deliver();   # Transitions from "shipped" to "delivered"
-order.cancel();    # Transitions from "pending" to "cancelled"
-```
-
-Invalid transitions are rejected:
-
-```soli
-order.ship();
-# Error: Cannot transition 'ship' from state 'pending'. Valid states: processing
-```
-
-## Example: Order Processing Workflow
-
-```soli
-class OrderWorkflow
-  fn create_order(items: Array, total: Float)
-    states = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
-    transitions = [
-      {"event": "confirm", "from": "pending", "to": "confirmed"},
-      {"event": "process", "from": "confirmed", "to": "processing"},
-      {"event": "ship", "from": "processing", "to": "shipped"},
-      {"event": "deliver", "from": "shipped", "to": "delivered"},
-      {"event": "cancel", "from": "pending", "to": "cancelled"}
-    ]
-
-    order = create_state_machine("pending", states, transitions)
-    order.set("items", items)
-    order.set("total", total)
-    order.set("created_at", clock())
-
-    return order
-  end
-
-  fn process_order(order: Any)
-    if (order.is("pending"))
-      order.confirm()
+    event :pay do
+      transition from: OrderState.Pending, to: OrderState.Paid
+      guard fn() { this.total > 0 }
     end
 
-    if (order.is("confirmed"))
-      order.process()
+    event :ship do
+      transition from: OrderState.Paid, to: OrderState.Shipped
     end
 
-    return order
+    event :cancel do
+      transition from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled
+    end
+
+    before_transition to: OrderState.Shipped do this.warehouse_ready? end
+    after_transition  to: OrderState.Paid do this.send_receipt() end
   end
 end
 ```
 
-## Example: Payment State Machine
+## The DSL
+
+### `state_machine :field do … end`
+
+Declares a machine that drives an `enum_field` column. The `:field` symbol must match a field already declared with `enum_field :field, SomeEnum` **earlier in the class body** — the machine's states are exactly that enum's variants.
 
 ```soli
-payment_states = ["pending", "authorized", "captured", "failed", "refunded"];
-payment_transitions = [
-  {"event": "authorize", "from": "pending", "to": "authorized"},
-  {"event": "capture", "from": "authorized", "to": "captured"},
-  {"event": "fail", "from": ["pending", "authorized"], "to": "failed"},
-  {"event": "refund", "from": ["captured", "failed"], "to": "refunded"},
-  {"event": "retry", "from": "failed", "to": "pending"}
-];
+class Order < Model
+  enum_field :status, OrderState   # declare the column first
 
-payment = create_state_machine("pending", payment_states, payment_transitions);
-payment.set("amount", 99.99);
-payment.set("currency", "USD");
-
-payment.authorize();
-print("Payment status: " + payment.current_state());  # "authorized"
-
-payment.capture();
-print("Payment status: " + payment.current_state());  # "captured"
+  state_machine :status do
+    # …
+  end
+end
 ```
 
-## Database Persistence
+### `initial EnumType.Variant`
 
-State machines can be persisted to the database for long-running workflows:
+The starting state of a freshly built record. **Required** — omitting it raises a clear error when the model loads.
 
 ```soli
-# Save state to database
-state_data = {
-  "machine_type": "Order",
-  "machine_id": order.get("id"),
-  "current_state": order.current_state(),
-  "context": {
-    "total": order.get("total"),
-    "items": order.get("items")
-  }
-};
-Order.update(order.get("id"), state_data);
-
-# Load state from database
-saved_data = Order.find(order.get("id"));
-loaded_order = create_state_machine(
-  saved_data["current_state"],
-  ["pending", "confirmed", "processing", "shipped", "delivered"],
-  [...]
-);
-loaded_order.set("total", saved_data["context"]["total"]);
-loaded_order.set("items", saved_data["context"]["items"]);
+initial OrderState.Pending
 ```
 
-## Best Practices
+### `event :name do … end`
 
-1. **Define clear states**: Use descriptive state names that reflect business states
-2. **Validate transitions**: Let the state machine reject invalid transitions
-3. **Use context for data**: Store related data in the state machine context
-4. **One machine per workflow**: Use separate state machines for independent workflows
-5. **Persist important states**: Save state changes for audit trails
+Declares an event. An event holds one or more `transition`s and an optional `guard`. The event name becomes the generated method (`:pay` → `pay` / `pay!` / `can_pay?`).
 
-## API Reference
+```soli
+event :pay do
+  transition from: OrderState.Pending, to: OrderState.Paid
+  guard fn() { this.total > 0 }
+end
+```
 
-### create_state_machine(initial_state, states, transitions)
+### `transition from: X, to: Y`
 
-Creates a new state machine instance.
+A legal move. `from:` accepts a single state **or** an array of states; `to:` is always a single state. List multiple `transition`s inside one event when several source states converge on the same target.
 
-**Parameters:**
-- `initial_state` (String): Starting state
-- `states` (Array): List of valid state names
-- `transitions` (Array): Transition definitions with `event`, `from`, `to` keys
+```soli
+# Single source
+transition from: OrderState.Paid, to: OrderState.Shipped
 
-**Returns:** StateMachine instance
+# Multiple sources, one target
+transition from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled
+```
 
-### Instance Methods
+### `guard fn() { … }`
 
-| Method | Description |
-|--------|-------------|
-| `current_state()` | Returns current state as string |
-| `is(state)` | Returns true if in given state |
-| `is_in([states])` | Returns true if in any of given states |
-| `set(key, value)` | Stores data in context |
-| `get(key)` | Retrieves data from context |
-| `history()` | Returns transition history |
-| `last_transition()` | Returns info about last transition |
-| `can(event)` | Returns true if event is available |
-| `available_events()` | Returns array of available events |
+A predicate run with `this` bound to the record. The event fires (and `can_X?` returns `true`) only when the guard returns a truthy value. A guard is optional; an event without one is gated solely by the legality of its transitions.
 
-### Transition Methods
+```soli
+event :pay do
+  transition from: OrderState.Pending, to: OrderState.Paid
+  guard fn() { this.total > 0 }
+end
+```
 
-Automatic methods are created for each transition event defined in the transitions array.
+### `before_transition` / `after_transition`
+
+Hooks keyed by the state being entered, both run with `this` bound to the record.
+
+- `before_transition to: X do … end` runs **before** entering state `X`. **Returning `false` vetoes the transition** — the move is aborted and the event raises.
+- `after_transition to: X do … end` runs **after** the record has entered state `X`.
+
+```soli
+before_transition to: OrderState.Shipped do this.warehouse_ready? end
+after_transition  to: OrderState.Paid do this.send_receipt() end
+```
+
+## Generated Methods
+
+For an event named `pay` and a state enum with variants `Pending`, `Paid`, … Soli generates:
+
+| Method | Kind | Behavior |
+|--------|------|----------|
+| `order.pay` | event | Performs the transition in memory: checks legality, runs the guard and before/after hooks, sets the field. **Raises** on an illegal transition or a failed guard. |
+| `order.pay!` | event (persisting) | Same as `order.pay`, then **persists** via the record's normal `save` path. |
+| `order.can_pay?` | predicate | `true` only if the transition is legal from the current state **and** the guard (if any) passes. **Never raises.** |
+| `order.pending?`, `order.paid?`, … | state predicate | One per enum variant, snake_cased (`InTransit` → `in_transit?`). Pure boolean check of the current state. |
+| `Order.events()` | reflection | Array of the event-name strings. |
+| `Order.states()` | reflection | Array of the state-tag strings. |
+
+## Raise vs. `can_X?`
+
+Event methods are strict: `pay` and `pay!` **raise** on an illegal transition or a failed guard. The matching `can_pay?` predicate **never raises** — it returns `false` instead. Use the predicate to branch, and reserve the event call for the path you've already confirmed is legal.
+
+```soli
+# Idiomatic: ask first, then act
+if order.can_pay?
+  order.pay!
+else
+  # legal-but-unmet guard, or wrong source state
+  flash[:error] = "This order can't be paid yet."
+end
+```
+
+Calling the event without checking is fine when an illegal move is genuinely exceptional — the raise surfaces it loudly:
+
+```soli
+order.ship   # raises if the order isn't Paid (or warehouse_ready? returns false)
+```
+
+## Persisting with `!`
+
+The plain event method (`pay`) mutates the record **in memory only**. The bang form (`pay!`) performs the same transition and then saves through the record's normal `save` path — so model validations and lifecycle callbacks fire exactly as they would for any other write.
+
+```soli
+order.pay    # field becomes Paid in memory; nothing written yet
+order.save   # persist later, by hand
+
+order.pay!   # transition + persist in one step
+```
+
+## Reflection
+
+Introspect the machine at the class level:
+
+```soli
+Order.events()   # ["pay", "ship", "cancel"]
+Order.states()   # ["Pending", "Paid", "Shipped", "Delivered", "Cancelled"]
+```
+
+## Validation at Boot
+
+The machine is validated when the model loads (at server boot, and under `soli test`). Each of these raises a clear error before any request runs, so misconfiguration never reaches production:
+
+- Referencing a variant that isn't part of the field's enum.
+- Omitting the required `initial` state.
+- Declaring `state_machine :field` without a matching `enum_field :field, …` earlier in the class body.
+
+## Production Note
+
+Under the production VM, state machine event methods transparently fall back to the tree-walking interpreter — the same mechanism model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.

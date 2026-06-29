@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 
 use super::callbacks::ModelCallbacks;
 use super::relations::RelationDef;
+use super::state_machine::StateMachineDef;
 use super::uploaders::UploaderConfig;
 use super::validation::ValidationRule;
 use crate::interpreter::value::Class;
@@ -29,6 +30,10 @@ pub struct ModelMetadata {
     /// passthrough); `Some([])` = nothing is mass-assignable; `Some(list)` =
     /// only listed keys are accepted in mass-assign paths.
     pub accessible_attributes: Option<Vec<String>>,
+    /// Declarative state machines (`state_machine :field do … end`). Plain data
+    /// only — guard/before/after closures live in the `state_machine`
+    /// thread-locals. Keyed by field, so a model may declare more than one.
+    pub state_machines: Vec<StateMachineDef>,
 }
 
 lazy_static! {
@@ -121,6 +126,25 @@ pub fn get_enum_fields(class_name: &str) -> Vec<EnumFieldBinding> {
     ENUM_FIELDS.with(|fields| fields.borrow().get(class_name).cloned().unwrap_or_default())
 }
 
+/// Register (or replace, by field) a state machine declared on a model class.
+/// Re-declaring the same field overwrites the prior machine.
+pub fn set_state_machine(class_name: &str, def: StateMachineDef) {
+    let mut registry = MODEL_REGISTRY.write().unwrap();
+    let metadata = registry.entry(class_name.to_string()).or_default();
+    metadata.state_machines.retain(|m| m.field != def.field);
+    metadata.state_machines.push(def);
+}
+
+/// All state machines declared on a model class.
+pub fn get_state_machines(class_name: &str) -> Vec<StateMachineDef> {
+    MODEL_REGISTRY
+        .read()
+        .unwrap()
+        .get(class_name)
+        .map(|m| m.state_machines.clone())
+        .unwrap_or_default()
+}
+
 pub fn register_translation(class_name: &str, field_name: &str) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
     let metadata = registry.entry(class_name.to_string()).or_default();
@@ -205,6 +229,7 @@ pub fn clear_model_classes() {
         classes.borrow_mut().clear();
     });
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
+    super::state_machine::clear();
 }
 
 /// Clear all model registries (MODEL_REGISTRY and MODEL_CLASSES). Used during hot reload.
@@ -214,6 +239,7 @@ pub fn clear_all_model_registries() {
     MODEL_CLASSES.with(|classes: &RefCell<HashMap<String, Rc<Class>>>| {
         classes.borrow_mut().clear();
     });
+    super::state_machine::clear();
 }
 
 #[cfg(test)]

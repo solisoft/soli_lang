@@ -2662,6 +2662,41 @@ impl Model {
             })),
         );
 
+        // Model.states() / Model.events() — state machine reflection. Return the
+        // distinct state tags / event names across all machines on the class.
+        native_static_methods.insert(
+            "states".to_string(),
+            Rc::new(NativeFunction::new("Model.states", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let mut seen = std::collections::HashSet::new();
+                let mut out = Vec::new();
+                for machine in super::state_machine::machines_for(&class_name) {
+                    for state in machine.states {
+                        if seen.insert(state.clone()) {
+                            out.push(Value::String(state.into()));
+                        }
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(out))))
+            })),
+        );
+        native_static_methods.insert(
+            "events".to_string(),
+            Rc::new(NativeFunction::new("Model.events", None, |args| {
+                let class_name = get_class_name_from_class(&args)?;
+                let mut seen = std::collections::HashSet::new();
+                let mut out = Vec::new();
+                for machine in super::state_machine::machines_for(&class_name) {
+                    for event in machine.events {
+                        if seen.insert(event.name.clone()) {
+                            out.push(Value::String(event.name.into()));
+                        }
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(out))))
+            })),
+        );
+
         // Model.pluck(field, ...) - Convenience: creates QB and sets pluck fields
         native_static_methods.insert(
             "pluck".to_string(),
@@ -3669,6 +3704,30 @@ pub fn register_model_builtins(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+
+    // State machine DSL. `state_machine :field do … end` is intercepted in
+    // `execute_class` (the block must run with `&mut Interpreter`), so this
+    // native is only reached when `state_machine(...)` is (mis)used outside a
+    // model class body — it raises a clear usage error.
+    env.define(
+        "state_machine".to_string(),
+        Value::NativeFunction(NativeFunction::new("state_machine", None, |_args| {
+            Err("state_machine(:field) { … } can only be used in a model class body".to_string())
+        })),
+    );
+    // `event :name do … end` is intercepted inside the state_machine block
+    // (`evaluate_call`); reached here only when used outside one.
+    env.define(
+        "event".to_string(),
+        Value::NativeFunction(NativeFunction::new("event", None, |_args| {
+            Err("event(:name) { … } can only be used inside a state_machine block".to_string())
+        })),
+    );
+    // initial / transition / guard / before_transition / after_transition all
+    // record onto the state machine currently being built.
+    for (name, native) in super::state_machine::recorder_natives() {
+        env.define(name.to_string(), Value::NativeFunction(native));
+    }
 
     // uploader(name, options) - Declare a blob attachment on the model
     env.define(

@@ -157,7 +157,18 @@ impl Parser {
                     if next.span.line == start_span.line
                         && self.peek_nth(1).kind == TokenKind::Colon
                     {
-                        let arguments = self.parse_named_arguments_without_parens()?;
+                        // Suppress trailing-do capture while parsing the values so a
+                        // `do … end` binds to this command call, not the final value
+                        // (`after_transition to: X do … end`).
+                        let old_no_do = self.no_trailing_do;
+                        self.no_trailing_do = true;
+                        let args_result = self.parse_named_arguments_without_parens();
+                        self.no_trailing_do = old_no_do;
+                        let mut arguments = args_result?;
+                        if self.check(&TokenKind::Do) {
+                            let block = self.parse_trailing_do_block()?;
+                            arguments.push(Argument::Block(block));
+                        }
                         let span = start_span.merge(&self.previous_span());
                         return Ok(Expr::new(
                             ExprKind::Call {
@@ -178,9 +189,29 @@ impl Parser {
                 //   fn foo
                 //     bar    ← not a call to foo
                 //   end
-                let next = self.peek();
-                if next.span.line == start_span.line && Self::is_command_arg(&next.kind) {
+                let next_line = self.peek().span.line;
+                if next_line == start_span.line && self.at_command_arg_start() {
                     let arguments = self.parse_command_arguments()?;
+
+                    // Trailing `do … end` block on a no-paren command call:
+                    // `state_machine :status do … end`, `event :pay do … end`,
+                    // `after_transition to: X do … end`.
+                    if self.check(&TokenKind::Do) {
+                        let block = self.parse_trailing_do_block()?;
+                        let mut args = arguments;
+                        args.push(Argument::Block(block));
+                        let span = start_span.merge(&self.previous_span());
+                        return Ok(Expr::new(
+                            ExprKind::Call {
+                                callee: Box::new(Expr::new(
+                                    ExprKind::Variable(name.clone()),
+                                    start_span,
+                                )),
+                                arguments: args,
+                            },
+                            span,
+                        ));
+                    }
 
                     // Check for trailing block: puts("args") { body } or puts "args" { body }
                     if !self.no_trailing_brace
@@ -911,7 +942,7 @@ impl Parser {
                     let block = self.parse_trailing_brace_block()?;
                     arguments.push(Argument::Block(block));
                 // Check for trailing do block: obj.method(args) do body end
-                } else if self.check(&TokenKind::Do) {
+                } else if !self.no_trailing_do && self.check(&TokenKind::Do) {
                     let block = self.parse_trailing_do_block()?;
                     arguments.push(Argument::Block(block));
                 }
@@ -1002,7 +1033,7 @@ impl Parser {
                         ))
                     }
                 // Check for trailing do block: obj.method do body end
-                } else if self.check(&TokenKind::Do) {
+                } else if !self.no_trailing_do && self.check(&TokenKind::Do) {
                     let block = self.parse_trailing_do_block()?;
                     let span = start_span.merge(&self.previous_span());
                     let member = Expr::new(
@@ -1303,7 +1334,7 @@ impl Parser {
 
     /// Parse a trailing do block: `do body end` or `do |params| body end`
     /// (Ruby-style) as a lambda expression.
-    fn parse_trailing_do_block(&mut self) -> ParseResult<Expr> {
+    pub(crate) fn parse_trailing_do_block(&mut self) -> ParseResult<Expr> {
         let start_span = self.current_span();
         self.expect(&TokenKind::Do)?;
 
@@ -1916,7 +1947,26 @@ impl Parser {
                 | TokenKind::Identifier(_)
                 | TokenKind::Null
                 | TokenKind::This
+                // Symbol args (`event :pay`) and lambda args (`guard fn() {…}`)
+                // for declarative block DSLs like `state_machine`.
+                | TokenKind::SymbolLiteral(_)
+                | TokenKind::Fn
         )
+    }
+
+    /// Whether the parser is positioned at the start of a command-style
+    /// argument. Broader than [`is_command_arg`] in one case: a reserved word
+    /// used as a named-arg label (`from:`, `in:`), which needs two tokens of
+    /// lookahead to disambiguate from the keyword's normal use.
+    fn at_command_arg_start(&self) -> bool {
+        if Self::is_command_arg(&self.peek().kind) {
+            return true;
+        }
+        matches!(self.peek().kind, TokenKind::From | TokenKind::In)
+            && matches!(
+                self.tokens.get(self.current + 1).map(|t| &t.kind),
+                Some(TokenKind::Colon)
+            )
     }
 
     /// Parse arguments for command-style calls (without parentheses).
@@ -1924,28 +1974,72 @@ impl Parser {
     fn parse_command_arguments(&mut self) -> ParseResult<Vec<Argument>> {
         let mut arguments = Vec::new();
 
-        if !Self::is_command_arg(&self.peek().kind) {
+        if !self.at_command_arg_start() {
             return Ok(arguments);
         }
 
-        let expr = self.expression()?;
-        arguments.push(Argument::Positional(expr));
+        arguments.push(self.parse_command_arg()?);
 
         while self.match_token(&TokenKind::Comma) {
-            if !Self::is_command_arg(&self.peek().kind) {
+            if !self.at_command_arg_start() {
                 break;
             }
-            let expr = self.expression()?;
-            arguments.push(Argument::Positional(expr));
+            arguments.push(self.parse_command_arg()?);
         }
 
         Ok(arguments)
+    }
+
+    /// Parse one command-style argument, recognizing the named form
+    /// `label: value` (e.g. `transition from: X, to: Y`). The label is an
+    /// identifier — or a reserved word like `from` — immediately followed by
+    /// `:`; everything else is positional.
+    fn parse_command_arg(&mut self) -> ParseResult<Argument> {
+        let label_colon = matches!(
+            self.tokens.get(self.current + 1).map(|t| &t.kind),
+            Some(TokenKind::Colon)
+        )
+        .then(|| match &self.peek().kind {
+            TokenKind::Identifier(name) => Some(name.clone()),
+            // Reserved words usable as named-argument labels (Ruby-style), so
+            // `transition from: X` reads naturally even though `from` is a keyword.
+            TokenKind::From => Some("from".to_string()),
+            TokenKind::In => Some("in".to_string()),
+            _ => None,
+        })
+        .flatten();
+
+        // A trailing `do … end` belongs to the command call, not to an argument
+        // value (`after_transition to: X do … end` → block binds to
+        // `after_transition`). Suppress do-block capture while parsing the value,
+        // restoring the flag before propagating any parse error.
+        let old_no_do = self.no_trailing_do;
+        self.no_trailing_do = true;
+
+        if let Some(label) = label_colon {
+            let start = self.current_span();
+            self.advance(); // label
+            self.advance(); // colon
+            let value = self.expression();
+            self.no_trailing_do = old_no_do;
+            let value = value?;
+            let span = start.merge(&self.previous_span());
+            return Ok(Argument::Named(NamedArgument {
+                name: label,
+                value,
+                span,
+            }));
+        }
+
+        let value = self.expression();
+        self.no_trailing_do = old_no_do;
+        Ok(Argument::Positional(value?))
     }
 }
 
 #[cfg(test)]
 mod at_sigil_tests {
-    use crate::ast::expr::ExprKind;
+    use crate::ast::expr::{Argument, ExprKind};
     use crate::ast::stmt::StmtKind;
     use crate::ast::Program;
     use crate::lexer::Scanner;
@@ -2072,6 +2166,68 @@ mod at_sigil_tests {
                 }
             }
             other => panic!("expected Member, got {:?}", other),
+        }
+    }
+
+    // --- State machine DSL surface syntax (§6) ------------------------------
+
+    #[test]
+    fn command_call_with_named_args() {
+        // `transition from: a, to: b` → a call with two named arguments.
+        let program = parse("transition from: a, to: b").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, arguments } => {
+                assert!(matches!(callee.kind, ExprKind::Variable(ref n) if n == "transition"));
+                assert_eq!(arguments.len(), 2);
+                assert!(matches!(&arguments[0], Argument::Named(n) if n.name == "from"));
+                assert!(matches!(&arguments[1], Argument::Named(n) if n.name == "to"));
+            }
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn command_call_with_symbol_and_do_block() {
+        // `event :pay do … end` → a call with a positional symbol + a block.
+        let program = parse("event :pay do\n  transition from: a, to: b\nend").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, arguments } => {
+                assert!(matches!(callee.kind, ExprKind::Variable(ref n) if n == "event"));
+                assert!(matches!(&arguments[0], Argument::Positional(_)));
+                assert!(matches!(arguments.last(), Some(Argument::Block(_))));
+            }
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn named_command_call_with_trailing_do_block() {
+        // The `do` binds to the command call, NOT to the final value `b`.
+        let program = parse("after_transition to: b do\n  this.x = 1\nend").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, arguments } => {
+                assert!(
+                    matches!(callee.kind, ExprKind::Variable(ref n) if n == "after_transition")
+                );
+                assert!(matches!(&arguments[0], Argument::Named(n) if n.name == "to"));
+                assert!(matches!(arguments.last(), Some(Argument::Block(_))));
+            }
+            other => panic!("expected Call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn command_call_with_lambda_arg() {
+        // `guard fn() { … }` → a call with a positional lambda argument.
+        let program = parse("guard fn() { this.total > 0 }").expect("parses");
+        match first_expr(&program) {
+            ExprKind::Call { callee, arguments } => {
+                assert!(matches!(callee.kind, ExprKind::Variable(ref n) if n == "guard"));
+                assert!(
+                    matches!(&arguments[0], Argument::Positional(e) if matches!(e.kind, ExprKind::Lambda { .. }))
+                );
+            }
+            other => panic!("expected Call, got {:?}", other),
         }
     }
 }

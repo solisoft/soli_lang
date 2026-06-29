@@ -270,6 +270,7 @@ pub mod query_log;
 mod registry;
 pub mod relations;
 pub mod scopes;
+pub mod state_machine;
 pub mod uploaders;
 pub mod validation;
 

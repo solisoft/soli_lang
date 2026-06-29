@@ -363,6 +363,30 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
+        // State machine events / predicates on bare access (`order.pay`,
+        // `order.pay!`, `order.paid?`, `order.can_pay?`). Handled up front,
+        // before any `inst.borrow()` below, because a firing event takes a
+        // `borrow_mut()` and the access machinery below holds shared borrows of
+        // the same instance in several places. A real field or user method of
+        // the same name takes precedence (checked in the guard / dispatcher).
+        {
+            let dispatch = {
+                let inst_ref = inst.borrow();
+                inst_ref.class.is_model_subclass()
+                    && !inst_ref.fields.contains_key(name)
+                    && inst_ref.class.find_method(name).is_none()
+                    && !crate::interpreter::builtins::model::state_machine::machines_for(
+                        &inst_ref.class.name,
+                    )
+                    .is_empty()
+            };
+            if dispatch {
+                if let Some(result) = self.sm_dispatch_on_instance(&inst, name, span)? {
+                    return Ok(result);
+                }
+            }
+        }
+
         // Universal methods on instances
         match name {
             "inspect" => {

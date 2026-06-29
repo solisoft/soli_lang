@@ -421,6 +421,7 @@ impl Parser {
                 "attr_accessible",
                 "encrypts",
                 "enum_field",
+                "state_machine",
             ];
             // Bare class-level macros (no parentheses needed)
             let bare_class_level_names = ["soft_delete"];
@@ -486,6 +487,12 @@ impl Parser {
                         vec![crate::ast::expr::Argument::Positional(self.expression()?)];
                     while self.match_token(&TokenKind::Comma) {
                         arguments.push(crate::ast::expr::Argument::Positional(self.expression()?));
+                    }
+                    // Trailing `do … end` block for declarative DSLs, e.g.
+                    // `state_machine :status do … end`.
+                    if self.check(&TokenKind::Do) {
+                        let block = self.parse_trailing_do_block()?;
+                        arguments.push(crate::ast::expr::Argument::Block(block));
                     }
                     let span = start_span.merge(&self.previous_span());
                     let callee = Expr::new(ExprKind::Variable(callee_name), start_span);

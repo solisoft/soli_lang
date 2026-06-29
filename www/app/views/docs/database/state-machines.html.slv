@@ -1,0 +1,271 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">State Machines</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Drive an <code>enum_field</code> column through a declarative, enum-backed state machine declared right inside your model class.
+        </p>
+    </div>
+
+    <h2 id="overview" class="text-2xl font-bold text-white mb-6">Overview</h2>
+    <p class="text-gray-400 mb-4">
+        A <code>state_machine</code> block models a workflow as a set of discrete states (the variants of an <code>enum</code>) and the legal <code>transition</code>s between them. You declare it in the model class body &mdash; alongside <code>validates</code>, <code>scope</code>, and the lifecycle callbacks &mdash; using the same class-body DSL style.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Soli generates the runtime surface for you: an event method per declared event (<code>pay</code>, <code>pay!</code>, <code>can_pay?</code>), a boolean predicate per state (<code>pending?</code>, <code>paid?</code>, &hellip;), and class-level reflection (<code>Order.events()</code>, <code>Order.states()</code>). Illegal moves and failed guards raise; the <code>can_X?</code> predicates never raise, so they're safe to drive UI and conditionals.
+    </p>
+
+    <h2 id="complete-example" class="text-2xl font-bold text-white mb-6">A Complete Example</h2>
+    <p class="text-gray-400 mb-4">
+        Define the <code>enum</code> above the model so it loads first, declare the column with <code>enum_field</code>, then wire the machine to it.
+    </p>
+
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/order.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">enum OrderState
+  Pending,
+  Paid,
+  Shipped,
+  Delivered,
+  Cancelled
+end
+
+class Order < Model
+  enum_field :status, OrderState
+
+  state_machine :status do
+    initial OrderState.Pending
+
+    event :pay do
+      transition from: OrderState.Pending, to: OrderState.Paid
+      guard fn() { this.total > 0 }
+    end
+
+    event :ship do
+      transition from: OrderState.Paid, to: OrderState.Shipped
+    end
+
+    event :cancel do
+      transition from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled
+    end
+
+    before_transition to: OrderState.Shipped do this.warehouse_ready? end
+    after_transition  to: OrderState.Paid do this.send_receipt() end
+  end
+end</code></pre>
+        </div>
+    </div>
+
+    <h2 id="the-dsl" class="text-2xl font-bold text-white mb-6">The DSL</h2>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>state_machine :field do &hellip; end</code></h3>
+    <p class="text-gray-400 mb-4">
+        Declares a machine that drives an <code>enum_field</code> column. The <code>:field</code> symbol must match a field already declared with <code>enum_field :field, SomeEnum</code> <strong class="text-white">earlier in the class body</strong> &mdash; the machine's states are exactly that enum's variants.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Order < Model
+  enum_field :status, OrderState   # declare the column first
+
+  state_machine :status do
+    # …
+  end
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>initial EnumType.Variant</code></h3>
+    <p class="text-gray-400 mb-4">
+        The starting state of a freshly built record. <strong class="text-white">Required</strong> &mdash; omitting it raises a clear error when the model loads.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">initial OrderState.Pending</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>event :name do &hellip; end</code></h3>
+    <p class="text-gray-400 mb-4">
+        Declares an event. An event holds one or more <code>transition</code>s and an optional <code>guard</code>. The event name becomes the generated method (<code>:pay</code> &rarr; <code>pay</code> / <code>pay!</code> / <code>can_pay?</code>).
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">event :pay do
+  transition from: OrderState.Pending, to: OrderState.Paid
+  guard fn() { this.total > 0 }
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>transition from: X, to: Y</code></h3>
+    <p class="text-gray-400 mb-4">
+        A legal move. <code>from:</code> accepts a single state <strong class="text-white">or</strong> an array of states; <code>to:</code> is always a single state. List multiple <code>transition</code>s inside one event when several source states converge on the same target.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Single source
+transition from: OrderState.Paid, to: OrderState.Shipped
+
+# Multiple sources, one target
+transition from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>guard fn() { &hellip; }</code></h3>
+    <p class="text-gray-400 mb-4">
+        A predicate run with <code>this</code> bound to the record. The event fires (and <code>can_X?</code> returns <code>true</code>) only when the guard returns a truthy value. A guard is optional; an event without one is gated solely by the legality of its transitions.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">event :pay do
+  transition from: OrderState.Pending, to: OrderState.Paid
+  guard fn() { this.total > 0 }
+end</code></pre>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4"><code>before_transition</code> / <code>after_transition</code></h3>
+    <p class="text-gray-400 mb-4">
+        Hooks keyed by the state being entered, both run with <code>this</code> bound to the record.
+        <code>before_transition to: X do &hellip; end</code> runs <strong class="text-white">before</strong> entering state <code>X</code> &mdash; <strong class="text-white">returning <code>false</code> vetoes the transition</strong>, so the move is aborted and the event raises.
+        <code>after_transition to: X do &hellip; end</code> runs <strong class="text-white">after</strong> the record has entered state <code>X</code>.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">before_transition to: OrderState.Shipped do this.warehouse_ready? end
+after_transition  to: OrderState.Paid do this.send_receipt() end</code></pre>
+        </div>
+    </div>
+
+    <h2 id="generated-methods" class="text-2xl font-bold text-white mb-6">Generated Methods</h2>
+    <p class="text-gray-400 mb-6">
+        For an event named <code>pay</code> and a state enum with variants <code>Pending</code>, <code>Paid</code>, &hellip; Soli generates:
+    </p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Method</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Kind</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Behavior</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-300">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">order.pay</code></td>
+                    <td class="py-3 px-4">event</td>
+                    <td class="py-3 px-4">Performs the transition in memory: checks legality, runs the guard and before/after hooks, sets the field. <strong class="text-white">Raises</strong> on an illegal transition or a failed guard.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">order.pay!</code></td>
+                    <td class="py-3 px-4">event (persisting)</td>
+                    <td class="py-3 px-4">Same as <code>order.pay</code>, then <strong class="text-white">persists</strong> via the record's normal <code>save</code> path.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">order.can_pay?</code></td>
+                    <td class="py-3 px-4">predicate</td>
+                    <td class="py-3 px-4"><code>true</code> only if the transition is legal from the current state <strong class="text-white">and</strong> the guard (if any) passes. <strong class="text-white">Never raises.</strong></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">order.pending?</code>, <code class="text-green-300">order.paid?</code>, &hellip;</td>
+                    <td class="py-3 px-4">state predicate</td>
+                    <td class="py-3 px-4">One per enum variant, snake_cased (<code>InTransit</code> &rarr; <code>in_transit?</code>). Pure boolean check of the current state.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">Order.events()</code></td>
+                    <td class="py-3 px-4">reflection</td>
+                    <td class="py-3 px-4">Array of the event-name strings.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">Order.states()</code></td>
+                    <td class="py-3 px-4">reflection</td>
+                    <td class="py-3 px-4">Array of the state-tag strings.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="raise-vs-can" class="text-2xl font-bold text-white mb-6">Raise vs. <code>can_X?</code></h2>
+    <p class="text-gray-400 mb-4">
+        Event methods are strict: <code>pay</code> and <code>pay!</code> <strong class="text-white">raise</strong> on an illegal transition or a failed guard. The matching <code>can_pay?</code> predicate <strong class="text-white">never raises</strong> &mdash; it returns <code>false</code> instead. Use the predicate to branch, and reserve the event call for the path you've already confirmed is legal.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm"># Idiomatic: ask first, then act
+if order.can_pay?
+  order.pay!
+else
+  # legal-but-unmet guard, or wrong source state
+  flash[:error] = "This order can't be paid yet."
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Calling the event without checking is fine when an illegal move is genuinely exceptional &mdash; the raise surfaces it loudly:
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">order.ship   # raises if the order isn't Paid (or warehouse_ready? returns false)</code></pre>
+        </div>
+    </div>
+
+    <h2 id="persisting" class="text-2xl font-bold text-white mb-6">Persisting with <code>!</code></h2>
+    <p class="text-gray-400 mb-4">
+        The plain event method (<code>pay</code>) mutates the record <strong class="text-white">in memory only</strong>. The bang form (<code>pay!</code>) performs the same transition and then saves through the record's normal <code>save</code> path &mdash; so model validations and lifecycle callbacks fire exactly as they would for any other write.
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">order.pay    # field becomes Paid in memory; nothing written yet
+order.save   # persist later, by hand
+
+order.pay!   # transition + persist in one step</code></pre>
+        </div>
+    </div>
+
+    <h2 id="reflection" class="text-2xl font-bold text-white mb-6">Reflection</h2>
+    <p class="text-gray-400 mb-4">
+        Introspect the machine at the class level:
+    </p>
+    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">Order.events()   # ["pay", "ship", "cancel"]
+Order.states()   # ["Pending", "Paid", "Shipped", "Delivered", "Cancelled"]</code></pre>
+        </div>
+    </div>
+
+    <h2 id="validation-at-boot" class="text-2xl font-bold text-white mb-6">Validation at Boot</h2>
+    <p class="text-gray-400 mb-4">
+        The machine is validated when the model loads (at server boot, and under <code>soli test</code>). Each of these raises a clear error before any request runs, so misconfiguration never reaches production:
+    </p>
+    <ul class="text-gray-400 mb-12 space-y-2 list-disc list-inside">
+        <li>Referencing a variant that isn't part of the field's enum.</li>
+        <li>Omitting the required <code>initial</code> state.</li>
+        <li>Declaring <code>state_machine :field</code> without a matching <code>enum_field :field, &hellip;</code> earlier in the class body.</li>
+    </ul>
+
+    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Production note
+        </h4>
+        <p class="text-indigo-200/80 text-sm">
+            Under the production VM, state machine event methods transparently fall back to the tree-walking interpreter &mdash; the same mechanism model lifecycle callbacks use. Behavior is identical in development and production; no user action is required.
+        </p>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/language/enums" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Enums &rarr;</h3>
+            <p class="text-sm text-gray-400">Type-safe variants, pattern matching, and persisting with <code>enum_field</code>.</p>
+        </a>
+        <a href="/docs/database/validations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Validations & Callbacks &rarr;</h3>
+            <p class="text-sm text-gray-400">Declare validation rules and hook into the record lifecycle.</p>
+        </a>
+    </div>
+</div>

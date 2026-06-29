@@ -330,6 +330,17 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            // `event :name do … end` inside a `state_machine` block. Scoped to an
+            // active builder so a stray `event(...)` elsewhere falls through to
+            // the native placeholder (which raises a clear error). The block must
+            // run with `&mut Interpreter`, hence the interceptor.
+            if name == "event"
+                && crate::interpreter::builtins::model::state_machine::builder_active()
+            {
+                if let Some(result) = self.try_evaluate_sm_event(arguments, span)? {
+                    return Ok(result);
+                }
+            }
         }
 
         // Member-callee interceptor: `<ModelClass>.transaction(fn() { ... })`
@@ -431,6 +442,17 @@ impl Interpreter {
                         self.try_run_model_persist_callbacks(&obj_val, name, arguments, span)?
                     {
                         return Ok(result);
+                    }
+                    // State machine event call: `order.pay()`, `order.pay!()`,
+                    // `order.can_pay?()`, `order.paid?()`. Only fires for empty-arg
+                    // calls on a model instance whose class has a machine and whose
+                    // method name maps to an event/predicate (user methods win).
+                    if arguments.is_empty() {
+                        if let Value::Instance(inst) = &obj_val {
+                            if let Some(result) = self.sm_dispatch_on_instance(inst, name, span)? {
+                                return Ok(result);
+                            }
+                        }
                     }
                 }
 
@@ -1065,6 +1087,303 @@ impl Interpreter {
         Ok(true)
     }
 
+    // ----- State machine DSL -------------------------------------------------
+
+    /// Define a state machine declared in a model class body. Pushes a builder,
+    /// runs the `do … end` block (its `initial`/`event`/`transition`/`guard`/
+    /// `before_transition`/`after_transition` calls record onto it), then
+    /// finalizes + registers it. Tears the builder down on any error so a failed
+    /// declaration can't leak a frame onto the per-worker stack.
+    pub(crate) fn define_state_machine(
+        &mut self,
+        class: Rc<crate::interpreter::value::Class>,
+        field_expr: &Expr,
+        block_expr: &Expr,
+        span: Span,
+    ) -> RuntimeResult<()> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let field = match self.evaluate(field_expr)? {
+            Value::Symbol(s) => s.to_string(),
+            Value::String(s) => s.to_string(),
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!(
+                        "state_machine expects a field name symbol, got {}",
+                        other.type_name()
+                    ),
+                    span,
+                ))
+            }
+        };
+        let block = self.evaluate(block_expr)?;
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Err(RuntimeError::type_error(
+                "state_machine expects a `do … end` block".to_string(),
+                span,
+            ));
+        }
+
+        sm::push_builder(field);
+        if let Err(e) = self.call_value(block, Vec::new(), span) {
+            sm::abort_builder();
+            return Err(e);
+        }
+        sm::finalize(&class.name).map_err(|e| RuntimeError::General { message: e, span })
+    }
+
+    /// Handle `event :name do … end` inside a `state_machine` block: open an
+    /// event frame, run the block (its `transition`/`guard` calls record onto
+    /// it), then close it. Returns `Ok(None)` when the argument shape doesn't
+    /// match so the call falls through to the native placeholder.
+    fn try_evaluate_sm_event(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let block = arguments.iter().find_map(|a| match a {
+            Argument::Block(e) => Some(e),
+            Argument::Positional(e) if matches!(e.kind, ExprKind::Lambda { .. }) => Some(e),
+            _ => None,
+        });
+        let name_expr = arguments.iter().find_map(|a| match a {
+            Argument::Positional(e) if !matches!(e.kind, ExprKind::Lambda { .. }) => Some(e),
+            _ => None,
+        });
+        let (Some(name_expr), Some(block_expr)) = (name_expr, block) else {
+            return Ok(None);
+        };
+
+        let event_name = match self.evaluate(name_expr)? {
+            Value::Symbol(s) => s.to_string(),
+            Value::String(s) => s.to_string(),
+            other => {
+                return Err(RuntimeError::type_error(
+                    format!("event expects a name symbol, got {}", other.type_name()),
+                    span,
+                ))
+            }
+        };
+        let block = self.evaluate(block_expr)?;
+        sm::begin_event(event_name).map_err(|e| RuntimeError::General { message: e, span })?;
+        // On block error, leave the half-built event; the enclosing
+        // define_state_machine aborts the whole builder. Surface the error.
+        self.call_value(block, Vec::new(), span)?;
+        sm::end_event().map_err(|e| RuntimeError::General { message: e, span })?;
+        Ok(Some(Value::Null))
+    }
+
+    /// Map a zero-arg method name on a model instance to a state machine
+    /// event / predicate and run it. Returns `Ok(None)` when the class has no
+    /// machine, a real user method shadows the name, or the name matches no
+    /// event/predicate (so normal dispatch proceeds).
+    pub(crate) fn sm_dispatch_on_instance(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let class = inst.borrow().class.clone();
+        if !class.is_model_subclass() {
+            return Ok(None);
+        }
+        let machines = sm::machines_for(&class.name);
+        if machines.is_empty() {
+            return Ok(None);
+        }
+        // A real user-defined method of the same name always wins.
+        if class.find_method(name).is_some() {
+            return Ok(None);
+        }
+
+        for machine in &machines {
+            if let Some(stem) = name.strip_suffix('?') {
+                // can_<event>?
+                if let Some(event) = stem.strip_prefix("can_") {
+                    if machine.event(event).is_some() {
+                        let ok = self.sm_can(inst, machine, event, span)?;
+                        return Ok(Some(Value::Bool(ok)));
+                    }
+                }
+                // <state>? predicate
+                if let Some(tag) = machine.states.iter().find(|t| sm::snake_case(t) == stem) {
+                    let current = self.sm_current_tag(inst, machine);
+                    return Ok(Some(Value::Bool(current.as_deref() == Some(tag.as_str()))));
+                }
+            }
+            // Event mutator: `pay` (in-memory) or `pay!` (also persists).
+            let (event_name, persist) = match name.strip_suffix('!') {
+                Some(stem) => (stem, true),
+                None => (name, false),
+            };
+            if machine.event(event_name).is_some() {
+                let result = self.sm_fire_event(inst, machine, event_name, persist, span)?;
+                return Ok(Some(result));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Current state tag of `inst` for `machine`: the `__variant` of the enum
+    /// stored in the field, the bare stored tag string, or the machine's
+    /// `initial` when the field is unset.
+    fn sm_current_tag(
+        &self,
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+    ) -> Option<String> {
+        let b = inst.borrow();
+        match b.fields.get(machine.field.as_str()) {
+            Some(Value::Instance(e)) => e.borrow().fields.get("__variant").and_then(|v| match v {
+                Value::String(s) => Some(s.to_string()),
+                _ => None,
+            }),
+            Some(Value::String(s)) => Some(s.to_string()),
+            _ => machine.initial.clone(),
+        }
+    }
+
+    /// `can_<event>?` — legal from the current state and the guard (if any) passes.
+    fn sm_can(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+        event: &str,
+        span: Span,
+    ) -> RuntimeResult<bool> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+        let Some(current) = self.sm_current_tag(inst, machine) else {
+            return Ok(false);
+        };
+        if machine.target_for(event, &current).is_none() {
+            return Ok(false);
+        }
+        let class_name = inst.borrow().class.name.clone();
+        if let Some(guard) = sm::lookup_guard(&class_name, event) {
+            let v = self.run_sm_closure(inst, &guard, span)?;
+            return Ok(!matches!(v, Value::Bool(false) | Value::Null));
+        }
+        Ok(true)
+    }
+
+    /// Fire `event`: check legality + guard, run before hooks, set the new
+    /// state, optionally persist, run after hooks. Raises on illegal transition,
+    /// guard failure, or a `before_transition` veto.
+    fn sm_fire_event(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
+        event: &str,
+        persist: bool,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        use crate::interpreter::builtins::model::state_machine as sm;
+
+        let class_name = inst.borrow().class.name.clone();
+        let current = self
+            .sm_current_tag(inst, machine)
+            .ok_or_else(|| RuntimeError::General {
+                message: format!(
+                    "{}: state field '{}' is unset and the machine has no initial state",
+                    class_name, machine.field
+                ),
+                span,
+            })?;
+        let to_tag = match machine.target_for(event, &current) {
+            Some(t) => t.to_string(),
+            None => {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "{}: cannot '{}' from state '{}'",
+                        class_name, event, current
+                    ),
+                    span,
+                })
+            }
+        };
+
+        if let Some(guard) = sm::lookup_guard(&class_name, event) {
+            let v = self.run_sm_closure(inst, &guard, span)?;
+            if matches!(v, Value::Bool(false) | Value::Null) {
+                return Err(RuntimeError::General {
+                    message: format!("{}: guard for '{}' failed", class_name, event),
+                    span,
+                });
+            }
+        }
+
+        for hook in sm::lookup_before(&class_name, &to_tag) {
+            let r = self.run_sm_closure(inst, &hook, span)?;
+            if matches!(r, Value::Bool(false)) {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "{}: before_transition to '{}' vetoed '{}'",
+                        class_name, to_tag, event
+                    ),
+                    span,
+                });
+            }
+        }
+
+        let new_value =
+            sm::build_state_value(&class_name, &machine.field, &to_tag).ok_or_else(|| {
+                RuntimeError::General {
+                    message: format!(
+                        "{}: state_machine field '{}' is not declared with enum_field",
+                        class_name, machine.field
+                    ),
+                    span,
+                }
+            })?;
+        inst.borrow_mut().set(machine.field.clone(), new_value);
+
+        if persist {
+            let callee =
+                self.evaluate_member_on_value(Value::Instance(inst.clone()), "save", span)?;
+            self.call_value(callee, Vec::new(), span)?;
+        }
+
+        for hook in sm::lookup_after(&class_name, &to_tag) {
+            self.run_sm_closure(inst, &hook, span)?;
+        }
+
+        Ok(Value::Bool(true))
+    }
+
+    /// Invoke a guard/before/after closure with `this`/`self` bound to the
+    /// instance (the same binding `run_model_callbacks` uses).
+    fn run_sm_closure(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        closure: &Rc<crate::interpreter::value::Function>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        let mut bound_env = Environment::with_enclosing(closure.closure.clone());
+        bound_env.define("this".to_string(), Value::Instance(inst.clone()));
+        bound_env.define("self".to_string(), Value::Instance(inst.clone()));
+        let bound = crate::interpreter::value::Function {
+            name: closure.name.clone(),
+            params: closure.params.clone(),
+            body: closure.body.clone(),
+            closure: Rc::new(RefCell::new(bound_env)),
+            is_method: true,
+            span: closure.span,
+            source_path: closure.source_path.clone(),
+            defining_superclass: None,
+            return_type: closure.return_type.clone(),
+            cached_env: RefCell::new(None),
+            jit_cache: RefCell::new(None),
+        };
+        self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)
+    }
+
     /// Run the block form `<ModelClass>.transaction(fn() { ... })`: begin a DB
     /// transaction, execute the block, commit on success, or roll back and
     /// **re-raise the original error** if the block throws. The block's value is
@@ -1482,6 +1801,19 @@ impl Interpreter {
             Value::NativeFunction(native) => {
                 let mut all_args = positional_args.clone();
 
+                // Ruby-style: trailing named arguments collapse into a single
+                // trailing hash positional arg. This lets native DSL helpers
+                // accept keyword-style calls (`transition from: X, to: Y`),
+                // mirroring the class-body desugaring in `execute_class`. Keys
+                // are accessed by name by the receiver, so HashMap order is fine.
+                if !named_args.is_empty() {
+                    let mut pairs = crate::interpreter::value::HashPairs::default();
+                    for (key, value) in &named_args {
+                        pairs.insert(HashKey::String(key.clone().into()), value.clone());
+                    }
+                    all_args.push(Value::Hash(Rc::new(RefCell::new(pairs))));
+                }
+
                 // Add block argument as last positional arg for native functions
                 if let Some(block_val) = block_arg {
                     all_args.push(block_val);
@@ -1491,12 +1823,6 @@ impl Interpreter {
                     return Err(RuntimeError::wrong_arity(
                         native.arity.unwrap_or(0),
                         all_args.len(),
-                        span,
-                    ));
-                }
-                if !named_args.is_empty() {
-                    return Err(RuntimeError::type_error(
-                        "native functions do not support named arguments".to_string(),
                         span,
                     ));
                 }

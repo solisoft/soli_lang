@@ -119,6 +119,22 @@ impl Vm {
                     }
                     _ => {}
                 }
+                // State machine events / predicates (`order.pay`, `order.paid?`,
+                // `order.can_pay?`). The VM can't run guard/transition closures
+                // (`op_get_property` is `&self`), so hand the request back to the
+                // tree-walker, which owns the full machinery — same EngineFallback
+                // route the model-instance-method carve-out above uses.
+                if inst_ref.class.is_model_subclass()
+                    && crate::interpreter::builtins::model::state_machine::is_sm_member(
+                        &inst_ref.class.name,
+                        name,
+                    )
+                {
+                    return Err(RuntimeError::EngineFallback(
+                        format!("state machine member '{}'", name),
+                        span,
+                    ));
+                }
                 Err(RuntimeError::NoSuchProperty {
                     value_type: inst_ref.class.name.clone(),
                     property: name.to_string(),
