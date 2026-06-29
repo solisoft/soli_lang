@@ -24,22 +24,40 @@
 </div>
 
 <script>
-// Search index will be loaded dynamically
-let searchIndex = null;
-let fuse = null;
+// nav.js re-executes this inline <script> on every instant-nav <body> swap.
+// A top-level `let`/`const` throws "already declared" on the second run and
+// aborts the re-run, so keep shared state on `window` and gate the one-time
+// setup behind a flag. The function declarations below are idempotent and
+// intentionally re-run on every swap.
+if (!window.__soliSearchInit) {
+    window.__soliSearchInit = true;
+    window.__soliSearchFuse = null;
 
-// Load search index
-fetch('/js/search-index.json')
-    .then(r => r.json())
-    .then(data => {
-        searchIndex = data.entries;
-        fuse = new Fuse(searchIndex, {
-            keys: ['title', 'signature', 'description', 'keywords'],
-            threshold: 0.3,
-            includeMatches: true
-        });
-    })
-    .catch((e) => console.log('Search index not available', e));
+    // Load the search index once per document (it never changes mid-session).
+    // Routed through public_path so it cache-busts like the other assets.
+    fetch('<%= public_path("js/search-index.json") %>')
+        .then(r => r.json())
+        .then(data => {
+            window.__soliSearchFuse = new Fuse(data.entries, {
+                keys: ['title', 'signature', 'description', 'keywords'],
+                threshold: 0.3,
+                includeMatches: true
+            });
+        })
+        .catch((e) => console.log('Search index not available', e));
+
+    // Bind the global key shortcuts once — re-binding on every swap would
+    // stack a fresh listener per navigation.
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            openSearchModal();
+        }
+        if (e.key === 'Escape') {
+            closeSearchModal({ target: document.getElementById('searchModal') });
+        }
+    });
+}
 
 function openSearchModal() {
     document.getElementById('searchModal').classList.add('open');
@@ -55,6 +73,7 @@ function closeSearchModal(e) {
 
 function handleSearch(query) {
     const resultsEl = document.getElementById('searchResults');
+    const fuse = window.__soliSearchFuse;
     if (!fuse || !query.trim()) {
         resultsEl.innerHTML = '<div class="text-center py-8 text-gray-500">Type to search...</div>';
         return;
@@ -88,15 +107,4 @@ function handleSearch(query) {
         `;
     }).join('');
 }
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        openSearchModal();
-    }
-    if (e.key === 'Escape') {
-        closeSearchModal({ target: document.getElementById('searchModal') });
-    }
-});
 </script>
