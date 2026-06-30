@@ -203,8 +203,13 @@ calamine = "0.26"
 csv = "1.3"
 umya-spreadsheet = "1.0"
 
-# Pinned transitive dependency to fix RUSTSEC-2026-0009
-time = ">=0.3.47"
+# Pinned transitive dependency. Floor >=0.3.47 fixes RUSTSEC-2026-0009; ceiling
+# <0.3.52 keeps `cookie` 0.18.1 building — time 0.3.52 changed `Parsable::parse`
+# to a 2-arg signature that cookie still calls with one arg. lopdf 0.43 needs
+# >=0.3.51, so the unified version resolves to exactly 0.3.51. Without the ceiling,
+# an unlocked build (e.g. `cargo install` without `--locked`) grabs 0.3.52 and fails
+# to compile cookie. Drop the ceiling once cookie ships a release built on time 0.3.52.
+time = ">=0.3.47, <0.3.52"
 
 # SSH support for deploy
 ssh2 = "0.9"

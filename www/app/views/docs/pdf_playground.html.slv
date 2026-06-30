@@ -101,7 +101,10 @@
     setStatus("Rendering…");
     var t0 = performance.now();
     fetch(RENDER_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
-      .then(function (res) { return res.text().then(function (t) { return { ok: res.ok, text: t }; }); })
+      .then(function (res) {
+        var rms = res.headers.get("X-Render-Ms");
+        return res.text().then(function (t) { return { ok: res.ok, text: t, rms: rms }; });
+      })
       .then(function (r) {
         var ms = Math.round(performance.now() - t0);
         if (!r.ok) { setStatus("✗ " + (r.text || "render failed"), "error"); return; }
@@ -109,7 +112,8 @@
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = URL.createObjectURL(blob);
         if (frame) frame.src = lastUrl;
-        setStatus("✓ " + Math.round(blob.size / 1024) + " KB · " + ms + " ms", "ok");
+        var engine = r.rms ? ("engine " + r.rms + " ms · ") : "";
+        setStatus("✓ " + Math.round(blob.size / 1024) + " KB · " + engine + "total " + ms + " ms", "ok");
       })
       .catch(function (e) { setStatus("✗ " + e, "error"); });
   }

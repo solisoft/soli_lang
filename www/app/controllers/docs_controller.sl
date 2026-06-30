@@ -421,8 +421,11 @@ fn pdf_playground_render
     let template = params["template"] ?? ""
     let data = params["data"] ?? "{}"
     try
+        let t0 = clock()
         let pdf = pdf_render(template, data, { "fetch_images": false, "font_dirs": ["font"] })
-        return { "status": 200, "headers": {"Content-Type": "text/plain"}, "body": pdf }
+        let engine_ms = ((clock() - t0) * 1000).round()
+        let headers = { "Content-Type": "text/plain", "X-Render-Ms": str(engine_ms) }
+        return { "status": 200, "headers": headers, "body": pdf }
     catch e
         return { "status": 400, "headers": {"Content-Type": "text/plain"}, "body": str(e) }
     end
