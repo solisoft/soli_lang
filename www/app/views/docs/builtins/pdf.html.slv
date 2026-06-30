@@ -385,6 +385,22 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
                 <pre data-filename="chart (data-bound bar)"><code class="language-json text-sm">{ "type": "chart", "kind": "bar", "title": "Revenue by month",
   "data": "months", "label": "name", "value": "revenue", "width": 360, "height": 160 }</code></pre>
             </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">repeat</code> <span class="text-xs font-normal text-teal-300 align-middle">· control flow</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Lay out <code>content</code> (an array of elements) once per item of the <code>data</code> array, with <code>${field}</code> scoped to each item &mdash; the block-level analogue of a data-bound table row. A missing or empty array renders nothing. (A <code>table</code>/<code>chart</code> nested inside still binds its own <code>data</code> against the top-level document.)</p>
+                <pre data-filename="repeat"><code class="language-json text-sm">{ "type": "repeat", "data": "invoices", "content": [
+  { "type": "paragraph", "spans": [ { "text": "${number}", "fontWeight": "bold" }, { "text": " — ${customer}" } ] },
+  { "type": "hr" } ] }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">if</code> / <code class="text-teal-300 font-mono">unless</code> <span class="text-xs font-normal text-teal-300 align-middle">· control flow</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Render <code>content</code> only when a condition holds (<code>if</code>) or fails (<code>unless</code>); an optional <code>else</code> array is the other branch. The test reads <code>${when}</code>: with <code>equals</code> it's string equality, otherwise truthiness (a value is falsy when missing, empty, <code>false</code>, <code>0</code>, or <code>null</code>).</p>
+                <pre data-filename="if / unless"><code class="language-json text-sm">{ "type": "if", "when": "paid", "equals": "true",
+  "content": [ { "type": "paragraph", "value": "PAID IN FULL" } ],
+  "else":    [ { "type": "paragraph", "value": "Balance due" } ] }</code></pre>
+            </div>
         </div>
         <p class="text-sm text-gray-400 mt-3"><code>hr</code>, <code>line</code>, and <code>rect</code>/<code>ellipse</code> borders accept a <code class="text-amber-400">dash</code> array (pt on/off lengths, e.g. <code>[3, 2]</code>) for dashed strokes; <code>rect</code> accepts a <code class="text-amber-400">radius</code> (pt) for rounded corners.</p>
 

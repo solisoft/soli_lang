@@ -17,9 +17,9 @@ use crate::geometry::{
 use crate::images;
 use crate::interpolate::{has_page_tokens, interpolate};
 use crate::template::{
-    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, Element, EllipseEl, FontWeight,
-    HrEl, LineEl, ListEl, ListItem, PageSpec, Paragraph, QrEl, RectEl, StyledSpan, Table,
-    TableHeaderStyle, Template, Watermark,
+    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, Conditional, Element, EllipseEl,
+    FontWeight, HrEl, LineEl, ListEl, ListItem, PageSpec, Paragraph, QrEl, RectEl, RepeatEl,
+    StyledSpan, Table, TableHeaderStyle, Template, Watermark,
 };
 use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg};
 use crate::RenderOptions;
@@ -231,6 +231,59 @@ impl<'a> Engine<'a> {
             Element::Ellipse(e) => self.ellipse(e),
             Element::List(l) => self.list(l, root, template),
             Element::Chart(c) => self.chart(c, data, root, template),
+            Element::Repeat(r) => self.repeat(r, data, root, template)?,
+            Element::If(c) => self.conditional(c, false, data, root, template)?,
+            Element::Unless(c) => self.conditional(c, true, data, root, template)?,
+        }
+        Ok(())
+    }
+
+    /// Lay out a `repeat` block's `content` once per item of its `data` array,
+    /// scoping `${field}` to each item (falling back to the root) — the
+    /// block-level analogue of data-bound table rows. A missing/empty array
+    /// renders nothing.
+    fn repeat(
+        &mut self,
+        r: &RepeatEl,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
+        let Some(items) = data.array(&r.data) else {
+            return Ok(());
+        };
+        for item in items {
+            let scoped = root.with_scope(item);
+            for el in &r.content {
+                self.element(el, data, &scoped, template)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Render an `if`/`unless` block's matching branch. The test reads `${when}`:
+    /// with `equals` it's string equality, otherwise truthiness (falsy = missing,
+    /// empty, `false`, `0`, or `null`). `negate` (the `unless` element) flips it.
+    fn conditional(
+        &mut self,
+        c: &Conditional,
+        negate: bool,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
+        let value = root.lookup(&c.when);
+        let pass = match &c.equals {
+            Some(eq) => value.as_deref() == Some(eq.as_str()),
+            None => value.as_deref().map(is_truthy).unwrap_or(false),
+        };
+        let branch = if pass ^ negate {
+            &c.content
+        } else {
+            &c.else_content
+        };
+        for el in branch {
+            self.element(el, data, root, template)?;
         }
         Ok(())
     }
@@ -1467,6 +1520,13 @@ impl<'a> Engine<'a> {
 /// Footer band height = stacked footer paragraph line-heights + padding.
 /// Bezier circle/quadrant constant: control-point offset = radius × KAPPA.
 const KAPPA: f32 = 0.552_285;
+
+/// Template truthiness for `if`/`unless`: a rendered scalar is falsy when it is
+/// empty, `false`, `0`, or `null` (case-insensitive); anything else is truthy.
+fn is_truthy(s: &str) -> bool {
+    let t = s.trim();
+    !t.is_empty() && !t.eq_ignore_ascii_case("false") && t != "0" && !t.eq_ignore_ascii_case("null")
+}
 
 /// Round/clamp a template dash pattern (pt floats) to printpdf's integer
 /// lengths, dropping it if empty or all-zero.

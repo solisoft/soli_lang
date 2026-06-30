@@ -1,0 +1,8 @@
+{
+  "order": { "id": "SO-4821", "customer": "Café Lumière · Lyon", "paid": false, "balance": "€84.00" },
+  "items": [
+    { "qty": 3, "name": "Ethiopia Yirgacheffe (1 kg)", "price": "€69.00", "in_stock": true },
+    { "qty": 2, "name": "Colombia Huila (1 kg)", "price": "€44.00", "in_stock": false, "eta": "5 days" },
+    { "qty": 1, "name": "Cold brew concentrate", "price": "€18.00", "in_stock": true }
+  ]
+}

@@ -319,6 +319,32 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
   { "label": "Cloud", "value": 800 } ] }
 ```
 
+### Control flow: repeat, if / unless
+
+Two structural elements make the whole document data-driven, not just table rows:
+
+**repeat** — lay out `content` (an array of elements) once per item of the `data` array, with `${field}` scoped to each item (falling back to the root) — the block-level analogue of a data-bound table row. A missing or empty array renders nothing.
+
+```json
+{ "type": "repeat", "data": "invoices", "content": [
+  { "type": "paragraph", "spans": [ { "text": "${number}", "fontWeight": "bold" }, { "text": " — ${customer}" } ] },
+  { "type": "hr" }
+] }
+```
+
+**if** / **unless** — render `content` only when a condition holds (`if`) or fails (`unless`); an optional `else` array is the other branch. The condition reads `${when}`: with `equals` it's a string-equality test, otherwise a truthiness test (a value is falsy when it is missing, empty, `false`, `0`, or `null`).
+
+```json
+{ "type": "if", "when": "paid", "equals": "true",
+  "content": [ { "type": "paragraph", "value": "PAID IN FULL" } ],
+  "else":    [ { "type": "paragraph", "value": "Balance due" } ] }
+
+{ "type": "unless", "when": "items",
+  "content": [ { "type": "paragraph", "value": "No line items." } ] }
+```
+
+> A `table` or `chart` nested inside a `repeat` still binds its own `data` key against the **top-level** data document, not the current item.
+
 ### Cells: text & rich
 
 A cell is a simple **text** cell, or a **rich** cell whose `content` stacks multiple items — text lines *and* images — in one cell.

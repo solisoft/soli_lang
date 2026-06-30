@@ -218,6 +218,46 @@ pub enum Element {
     /// A bar, line, or pie chart drawn from data-bound or inline points. Flows
     /// like a block and advances the cursor below it.
     Chart(ChartEl),
+    /// Render `content` once per item of a data array, with `${field}` scoped to
+    /// each item. The block-level analogue of a data-bound table.
+    Repeat(RepeatEl),
+    /// Render `content` only when the `when` condition holds (else `else`).
+    If(Conditional),
+    /// The negation of `if`: render `content` only when the condition is false.
+    Unless(Conditional),
+}
+
+/// A `repeat` block: `content` is laid out once per item of the `data` array,
+/// with `${field}` resolving against each item (falling back to the root), just
+/// like a data-bound table row. Nesting is supported, but a `table`/`chart`
+/// inside a `repeat` still binds its own `data` key against the top-level data,
+/// not the current item.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RepeatEl {
+    /// Key of an array in the data document; `content` repeats once per element.
+    pub data: String,
+    /// The elements rendered per item.
+    #[serde(default)]
+    pub content: Vec<Element>,
+}
+
+/// An `if` / `unless` block. The test reads `${when}`: with `equals`, it's a
+/// string-equality check; otherwise a truthiness check (a value is falsy when it
+/// is missing, empty, `false`, `0`, or `null`). `unless` negates the result.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Conditional {
+    /// Dotted data path whose value drives the condition.
+    pub when: String,
+    /// When set, the test is `${when} == equals` instead of truthiness.
+    #[serde(default)]
+    pub equals: Option<String>,
+    /// Elements rendered when the condition is satisfied.
+    #[serde(default)]
+    pub content: Vec<Element>,
+    /// Elements rendered otherwise (optional).
+    #[serde(default, rename = "else")]
+    pub else_content: Vec<Element>,
 }
 
 /// A chart element. `kind` is `"bar"`, `"line"`, or `"pie"`. Values come either

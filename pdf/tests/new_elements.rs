@@ -269,6 +269,83 @@ fn behind_watermark_sits_above_the_page_background() {
     );
 }
 
+// --- Control flow: repeat + if/unless ----------------------------------------
+
+#[test]
+fn repeat_renders_content_per_item_scoped() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "repeat", "data": "rows", "content": [
+            { "type": "paragraph", "value": "${n}" }
+        ] }
+    ] }"#;
+    let (doc, _) = render(tmpl, br#"{ "rows": [ {"n":"A"}, {"n":"B"}, {"n":"C"} ] }"#);
+    let texts: Vec<String> = all_ops(&doc).iter().filter_map(text_of).collect();
+    for t in ["A", "B", "C"] {
+        assert!(
+            texts.iter().any(|x| x == t),
+            "repeat scopes ${{n}} per item: {t}"
+        );
+    }
+}
+
+#[test]
+fn repeat_missing_array_renders_nothing() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "repeat", "data": "nope", "content": [ { "type": "paragraph", "value": "x" } ] }
+    ] }"#;
+    let (doc, warnings) = render(tmpl, b"{}");
+    assert!(
+        all_ops(&doc).iter().filter_map(text_of).next().is_none(),
+        "a missing array renders nothing"
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn if_and_unless_select_branches() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "if", "when": "flag", "equals": "on",
+          "content": [ { "type": "paragraph", "value": "SHOWN" } ],
+          "else": [ { "type": "paragraph", "value": "ELSE" } ] },
+        { "type": "unless", "when": "flag", "equals": "on",
+          "content": [ { "type": "paragraph", "value": "UNLESS" } ] }
+    ] }"#;
+    let (doc, _) = render(tmpl, br#"{ "flag": "on" }"#);
+    let texts: Vec<String> = all_ops(&doc).iter().filter_map(text_of).collect();
+    assert!(
+        texts.iter().any(|t| t == "SHOWN"),
+        "if-true renders content"
+    );
+    assert!(!texts.iter().any(|t| t == "ELSE"), "if-true skips else");
+    assert!(
+        !texts.iter().any(|t| t == "UNLESS"),
+        "unless-true skips content"
+    );
+}
+
+#[test]
+fn if_truthiness_treats_false_zero_empty_as_falsy() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "if", "when": "v",
+          "content": [ { "type": "paragraph", "value": "YES" } ],
+          "else": [ { "type": "paragraph", "value": "NO" } ] }
+    ] }"#;
+    for (data, expect) in [
+        (&br#"{ "v": true }"#[..], "YES"),
+        (&br#"{ "v": false }"#[..], "NO"),
+        (&br#"{ "v": 0 }"#[..], "NO"),
+        (&br#"{ "v": 5 }"#[..], "YES"),
+        (&br#"{}"#[..], "NO"),
+    ] {
+        let (doc, _) = render(tmpl, data);
+        let texts: Vec<String> = all_ops(&doc).iter().filter_map(text_of).collect();
+        assert!(
+            texts.iter().any(|t| t == expect),
+            "data {data:?} should pick {expect}"
+        );
+    }
+}
+
 /// Count draw ops matching a predicate.
 fn ops_of(doc: &LaidOutDoc, pred: impl Fn(&DrawOp) -> bool) -> usize {
     all_ops(doc).iter().filter(|o| pred(o)).count()

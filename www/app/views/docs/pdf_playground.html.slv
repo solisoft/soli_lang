@@ -24,6 +24,7 @@
         <button id="pg-preset-receipt" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Receipt <span class="opacity-60">(QR · watermark)</span></button>
         <button id="pg-preset-report" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Report <span class="opacity-60">(annual · 5 pages)</span></button>
         <button id="pg-preset-graphics" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Graphics <span class="opacity-60">(SVG)</span></button>
+        <button id="pg-preset-dynamic" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Dynamic <span class="opacity-60">(repeat · if)</span></button>
         <div class="flex-1"></div>
         <span id="pg-status" class="text-sm font-mono text-gray-400">Loading editor…</span>
         <button id="pg-render" type="button" style="background-color:#0F766E;color:#ffffff" class="px-4 py-1.5 text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity">Render <span class="opacity-70">⌘↵</span></button>
@@ -64,7 +65,7 @@
 
   var RENDER_URL = "/docs/builtins/pdf-playground/render";
   var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/";
-  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics"];
+  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics", "dynamic"];
   var ED = {}, lastUrl = null, timer = null, statusEl, frame, suspendAuto = false;
 
   function setStatus(text, kind) {

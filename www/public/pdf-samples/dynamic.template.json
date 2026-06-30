@@ -1,0 +1,31 @@
+{
+  "fonts": ["TitilliumWeb"],
+  "options": { "margins": 48 },
+  "content": [
+    { "type": "paragraph", "spans": [ { "text": "Order ${order.id}", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 22 } },
+    { "type": "paragraph", "spans": [ { "text": "${order.customer}", "color": "64748b" } ], "options": { "fontSize": 11 } },
+    { "type": "move", "y": 14 },
+
+    { "type": "if", "when": "order.paid", "equals": "true",
+      "content": [ { "type": "paragraph", "spans": [ { "text": "PAID IN FULL", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 13 } } ],
+      "else":    [ { "type": "paragraph", "spans": [ { "text": "BALANCE DUE — ${order.balance}", "color": "ef4444", "fontWeight": "bold" } ], "options": { "fontSize": 13 } } ] },
+
+    { "type": "move", "y": 12 },
+    { "type": "paragraph", "value": "Items", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 4 },
+
+    { "type": "repeat", "data": "items", "content": [
+      { "type": "paragraph", "spans": [
+        { "text": "${qty} × ", "color": "64748b" },
+        { "text": "${name}", "fontWeight": "bold" },
+        { "text": "    ${price}" }
+      ], "options": { "fontSize": 12 } },
+      { "type": "unless", "when": "in_stock", "content": [
+        { "type": "paragraph", "spans": [ { "text": "    backordered — ships in ${eta}", "color": "f59e0b" } ], "options": { "fontSize": 10 } }
+      ] },
+      { "type": "move", "y": 3 },
+      { "type": "hr", "color": "e2e8f0" },
+      { "type": "move", "y": 7 }
+    ] }
+  ]
+}

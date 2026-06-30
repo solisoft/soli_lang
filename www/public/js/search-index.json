@@ -11894,6 +11894,25 @@
       ]
     },
     {
+      "title": "PDF control flow (repeat / if / unless)",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Data-driven PDF templates: repeat a block of elements once per array item (with scoped ${field}), and conditionally render blocks with if/unless (truthiness or string equals, optional else).",
+      "keywords": [
+        "pdf",
+        "repeat",
+        "if",
+        "unless",
+        "else",
+        "conditional",
+        "loop",
+        "each",
+        "data-driven",
+        "template"
+      ]
+    },
+    {
       "title": "Markdown.to_spans",
       "type": "method",
       "category": "Markdown",
