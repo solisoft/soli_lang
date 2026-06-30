@@ -1,15 +1,22 @@
 //! Fetch + decode images referenced by the template.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::draw::ImageData;
 use crate::error::{PdfError, Result};
 
 /// Load and decode an image from an http(s) URL, a `file://` URL / filesystem
-/// path, or a `data:` URI. Network fetches are gated by `fetch`.
-pub fn load_image(src: &str, fetch: bool, timeout: Duration) -> Result<ImageData> {
+/// path, or a `data:` URI. Network fetches are gated by `fetch`. `font_dirs`
+/// supplies fonts for `<text>` in SVG sources (ignored for raster formats).
+pub fn load_image(
+    src: &str,
+    fetch: bool,
+    timeout: Duration,
+    font_dirs: &[PathBuf],
+) -> Result<ImageData> {
     let bytes = fetch_bytes(src, fetch, timeout)?;
-    decode(&bytes)
+    decode(&bytes, font_dirs)
 }
 
 fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
@@ -54,7 +61,10 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
     }
 }
 
-fn decode(bytes: &[u8]) -> Result<ImageData> {
+fn decode(bytes: &[u8], font_dirs: &[PathBuf]) -> Result<ImageData> {
+    if looks_like_svg(bytes) {
+        return decode_svg(bytes, font_dirs);
+    }
     let img =
         image::load_from_memory(bytes).map_err(|e| PdfError::Image(format!("decode: {e}")))?;
     let has_alpha = img.color().has_alpha();
@@ -72,6 +82,109 @@ fn decode(bytes: &[u8]) -> Result<ImageData> {
     })
 }
 
+/// Sniff whether `bytes` are an SVG document. Raster formats (PNG/JPEG/GIF/WebP)
+/// open with binary magic bytes, never `<`, so this only matches XML/SVG text:
+/// after skipping a UTF-8 BOM and leading whitespace it must start with `<` and
+/// carry an `<svg` root tag within the first kilobyte.
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let s = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    let start = match s.iter().position(|b| !b.is_ascii_whitespace()) {
+        Some(i) => &s[i..],
+        None => return false,
+    };
+    if start.first() != Some(&b'<') {
+        return false;
+    }
+    let head = &start[..start.len().min(1024)];
+    contains_ci(head, b"<svg")
+}
+
+/// Case-insensitive (ASCII) substring search.
+fn contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return needle.is_empty();
+    }
+    haystack
+        .windows(needle.len())
+        .any(|w| w.eq_ignore_ascii_case(needle))
+}
+
+/// Rasterise an SVG into an RGBA8 [`ImageData`] via usvg + resvg + tiny-skia, so
+/// it flows through the same image XObject path as any raster picture. The SVG
+/// is drawn at a quality multiple of its intrinsic size, with the longest edge
+/// clamped to `[MIN_EDGE, MAX_EDGE]` px so tiny icons stay crisp when placed large
+/// and huge viewBoxes don't blow up memory. `<text>` fonts come from `font_dirs`.
+fn decode_svg(bytes: &[u8], font_dirs: &[PathBuf]) -> Result<ImageData> {
+    use resvg::{tiny_skia, usvg};
+
+    const QUALITY: f32 = 3.0;
+    const MIN_EDGE: f32 = 512.0;
+    const MAX_EDGE: f32 = 2048.0;
+
+    let mut opt = usvg::Options::default();
+    {
+        // Feed fonts to usvg by bytes (`load_font_data`) rather than
+        // `load_fonts_dir`, which needs fontdb's `fs` feature — kept off so we
+        // don't pull system-font discovery. Scans each dir's top level for faces.
+        let db = opt.fontdb_mut();
+        for dir in font_dirs {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(str::to_ascii_lowercase);
+                if matches!(ext.as_deref(), Some("ttf" | "otf" | "ttc")) {
+                    if let Ok(bytes) = std::fs::read(&path) {
+                        db.load_font_data(bytes);
+                    }
+                }
+            }
+        }
+    }
+    let tree = usvg::Tree::from_data(bytes, &opt)
+        .map_err(|e| PdfError::Image(format!("SVG parse: {e}")))?;
+
+    let size = tree.size();
+    let (w, h) = (size.width(), size.height());
+    // usvg guarantees a positive, finite size, so a plain `<= 0` check is safe.
+    if w <= 0.0 || h <= 0.0 {
+        return Err(PdfError::Image("SVG has zero size".into()));
+    }
+    let longest = w.max(h);
+    // Vectors re-rasterise cleanly when upscaled, so a small intrinsic size is
+    // still pushed up to MIN_EDGE for crispness when placed large.
+    let target = (longest * QUALITY).clamp(MIN_EDGE, MAX_EDGE);
+    let scale = target / longest;
+
+    let pw = (w * scale).round().max(1.0) as u32;
+    let ph = (h * scale).round().max(1.0) as u32;
+    let mut pixmap = tiny_skia::Pixmap::new(pw, ph)
+        .ok_or_else(|| PdfError::Image(format!("SVG pixmap alloc failed ({pw}x{ph})")))?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+
+    // tiny-skia stores premultiplied RGBA; the backend expects straight alpha
+    // (as the `image` crate yields), so demultiply each pixel.
+    let mut pixels = Vec::with_capacity((pw as usize) * (ph as usize) * 4);
+    for px in pixmap.pixels() {
+        let c = px.demultiply();
+        pixels.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+    }
+    Ok(ImageData {
+        width_px: pw as usize,
+        height_px: ph as usize,
+        has_alpha: true,
+        pixels,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,13 +194,50 @@ mod tests {
 
     #[test]
     fn decodes_data_uri() {
-        let img = load_image(PNG_1X1, false, Duration::from_secs(1)).unwrap();
+        let img = load_image(PNG_1X1, false, Duration::from_secs(1), &[]).unwrap();
         assert_eq!((img.width_px, img.height_px), (1, 1));
     }
 
     #[test]
     fn network_disabled_errors() {
-        let e = load_image("https://example.com/x.png", false, Duration::from_secs(1));
+        let e = load_image(
+            "https://example.com/x.png",
+            false,
+            Duration::from_secs(1),
+            &[],
+        );
         assert!(e.is_err());
+    }
+
+    #[test]
+    fn detects_and_rasterises_svg() {
+        // A 100x60 SVG with a filled rect — text-free, so no fonts needed.
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60"><rect width="100" height="60" fill="#0a7"/></svg>"##;
+        assert!(looks_like_svg(svg));
+        let img = decode(svg, &[]).unwrap();
+        // Intrinsic 100x60 is upscaled so the longest edge reaches MIN_EDGE (512).
+        assert!(img.has_alpha);
+        assert_eq!(img.width_px, 512);
+        assert_eq!(img.height_px, 307); // 60 * (512/100), rounded
+        assert_eq!(img.pixels.len(), img.width_px * img.height_px * 4);
+        // The fill is opaque somewhere in the middle.
+        let mid = (img.height_px / 2 * img.width_px + img.width_px / 2) * 4;
+        assert_eq!(img.pixels[mid + 3], 255);
+    }
+
+    #[test]
+    fn svg_data_uri_is_detected() {
+        let uri = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='5'/></svg>";
+        let img = load_image(uri, false, Duration::from_secs(1), &[]).unwrap();
+        assert!(img.has_alpha);
+        assert!(img.width_px >= 512);
+    }
+
+    #[test]
+    fn raster_magic_bytes_are_not_svg() {
+        // PNG magic must never be mistaken for SVG.
+        assert!(!looks_like_svg(&[
+            0x89, b'P', b'N', b'G', b'<', b's', b'v', b'g'
+        ]));
     }
 }

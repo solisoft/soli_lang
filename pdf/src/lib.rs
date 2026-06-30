@@ -8,6 +8,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub mod barcode;
+pub mod chart;
 pub mod color;
 pub mod data;
 pub mod draw;

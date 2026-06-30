@@ -11805,6 +11805,78 @@
       ]
     },
     {
+      "title": "PDF SVG images",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Embed SVG logos and icons in a PDF — the image element auto-detects and rasterises SVG so vector art stays crisp at any size.",
+      "keywords": [
+        "pdf",
+        "svg",
+        "vector",
+        "image",
+        "logo",
+        "icon",
+        "rasterise",
+        "resvg"
+      ]
+    },
+    {
+      "title": "PDF barcode element",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Render a 1D barcode (Code 128, EAN-13, EAN-8, Code 39) in a PDF, with an optional human-readable caption.",
+      "keywords": [
+        "pdf",
+        "barcode",
+        "code128",
+        "code 128",
+        "ean13",
+        "ean-13",
+        "ean8",
+        "code39",
+        "shipping",
+        "label"
+      ]
+    },
+    {
+      "title": "PDF list element",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Bulleted or numbered lists in a PDF, with nested sublists and inline rich-text items.",
+      "keywords": [
+        "pdf",
+        "list",
+        "bullet",
+        "bulleted",
+        "numbered",
+        "ordered",
+        "unordered",
+        "nested",
+        "items"
+      ]
+    },
+    {
+      "title": "PDF chart element",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points — no extra dependencies.",
+      "keywords": [
+        "pdf",
+        "chart",
+        "graph",
+        "bar chart",
+        "line chart",
+        "pie chart",
+        "report",
+        "dashboard",
+        "data"
+      ]
+    },
+    {
       "title": "Markdown.to_spans",
       "type": "method",
       "category": "Markdown",

@@ -202,9 +202,122 @@ pub enum Element {
     /// A QR code (EPC/GiroCode "scan-to-pay" or arbitrary text) rendered as a
     /// raster image at the cursor. Does not advance the cursor.
     Qr(QrEl),
+    /// A 1D barcode (Code 128 / EAN-13 / EAN-8 / Code 39) rasterised at the
+    /// cursor. Does not advance the cursor.
+    Barcode(BarcodeEl),
     /// A filled and/or stroked ellipse/circle at the cursor (top-left of its
     /// bounding box). Does not advance the cursor.
     Ellipse(EllipseEl),
+    /// A bulleted or numbered list (items may be plain text, inline rich text,
+    /// or carry a nested sublist). Flows like a paragraph and advances the cursor.
+    List(ListEl),
+    /// A bar, line, or pie chart drawn from data-bound or inline points. Flows
+    /// like a block and advances the cursor below it.
+    Chart(ChartEl),
+}
+
+/// A chart element. `kind` is `"bar"`, `"line"`, or `"pie"`. Values come either
+/// from a data binding (`data` names an array; `label`/`value` name the fields
+/// to read from each item) or from inline `points`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartEl {
+    #[serde(default = "default_chart_kind")]
+    pub kind: String,
+    /// Chart box width (pt). Defaults to the full content width.
+    #[serde(default)]
+    pub width: f32,
+    /// Chart box height (pt) for the plot area (title/labels add to the total).
+    #[serde(default = "default_chart_height")]
+    pub height: f32,
+    /// Data-binding key: an array in the data document, one entry per point.
+    #[serde(default)]
+    pub data: Option<String>,
+    /// Field name read for each point's label (default `"label"`).
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Field name read for each point's value (default `"value"`).
+    #[serde(default)]
+    pub value: Option<String>,
+    /// Inline points, used when `data` is absent.
+    #[serde(default)]
+    pub points: Option<Vec<ChartPoint>>,
+    /// Slice/bar/line colors (hex, no `#`), cycled across points. A built-in
+    /// palette is used when empty.
+    #[serde(default)]
+    pub colors: Vec<String>,
+    /// Draw a legend (pie only; bar/line label the axis instead). Default true.
+    #[serde(default = "default_true")]
+    pub legend: bool,
+    /// Draw axis lines and category labels (bar/line). Default true.
+    #[serde(default = "default_true")]
+    pub axis: bool,
+    /// Optional title drawn above the chart.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// One inline chart point.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChartPoint {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub value: f64,
+}
+
+/// A bulleted (unordered) or numbered (ordered) list.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEl {
+    /// Numbered (`1.`, `2.`, …) when true, bulleted when false (the default).
+    #[serde(default)]
+    pub ordered: bool,
+    /// First number for an ordered list (default 1).
+    #[serde(default = "default_list_start")]
+    pub start: i64,
+    /// Bullet glyph for an unordered list (default `"•"`). Must be a glyph the
+    /// loaded font covers.
+    #[serde(default)]
+    pub marker: Option<String>,
+    /// Left indent (pt) for this level, added on top of any parent level.
+    #[serde(default = "default_list_indent")]
+    pub indent: f32,
+    /// Extra vertical gap (pt) after each item.
+    #[serde(default)]
+    pub spacing: f32,
+    /// The list items.
+    #[serde(default)]
+    pub items: Vec<ListItem>,
+    /// Base text styling (font size/weight/color) for item bodies.
+    #[serde(default)]
+    pub options: TextOptions,
+}
+
+/// One list item: a bare string, or a node with an explicit body and/or a
+/// nested sublist.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ListItem {
+    /// `"plain text"` — the common case.
+    Text(String),
+    /// `{ "text"|"spans": …, "list": { … } }` — a richer item.
+    Node(ListItemNode),
+}
+
+/// A list item with an explicit body and/or a nested sublist beneath it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListItemNode {
+    /// Plain-text body (`${...}`-interpolated).
+    #[serde(default)]
+    pub text: Option<String>,
+    /// Inline rich-text body (takes precedence over `text`).
+    #[serde(default)]
+    pub spans: Option<Vec<StyledSpan>>,
+    /// A nested sublist rendered below this item, indented one level deeper.
+    #[serde(default)]
+    pub list: Option<Box<ListEl>>,
 }
 
 /// A wrapped, aligned block of text. Either a plain `value` (single style) or
@@ -416,6 +529,28 @@ pub struct QrEl {
     pub width: f32,
 }
 
+/// A 1D barcode element. `symbology` selects the encoding; `value` is the data
+/// to encode (`${...}`-interpolated first). `code128` accepts any printable
+/// ASCII; `ean13`/`ean8` need 12/7 digits (the check digit is computed);
+/// `code39` accepts uppercase letters, digits and a few symbols.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BarcodeEl {
+    #[serde(default = "default_barcode_symbology")]
+    pub symbology: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    /// Rendered width in pt. The bar pattern is scaled to fit this width.
+    #[serde(default = "default_barcode_width")]
+    pub width: f32,
+    /// Rendered bar height in pt.
+    #[serde(default = "default_barcode_height")]
+    pub height: f32,
+    /// Print the encoded value as a caption centered below the bars.
+    #[serde(default)]
+    pub human_readable: bool,
+}
+
 /// A table element.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Table {
@@ -471,6 +606,38 @@ fn default_qr_kind() -> String {
 
 fn default_qr_width() -> f32 {
     120.0
+}
+
+fn default_barcode_symbology() -> String {
+    "code128".to_string()
+}
+
+fn default_barcode_width() -> f32 {
+    160.0
+}
+
+fn default_barcode_height() -> f32 {
+    50.0
+}
+
+fn default_list_start() -> i64 {
+    1
+}
+
+fn default_list_indent() -> f32 {
+    18.0
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_chart_kind() -> String {
+    "bar".to_string()
+}
+
+fn default_chart_height() -> f32 {
+    180.0
 }
 
 fn default_page_filter() -> PageFilter {

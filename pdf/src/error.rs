@@ -56,6 +56,8 @@ pub enum RenderWarning {
     ImageSkipped { src: String, reason: String },
     /// A QR element could not be built/encoded and was skipped.
     QrSkipped { reason: String },
+    /// A typed element (barcode, chart, …) could not be built and was skipped.
+    ElementSkipped { kind: String, reason: String },
     /// An element/cell was too tall for a page and was allowed to overflow.
     Overflow(String),
 }
@@ -75,6 +77,9 @@ impl std::fmt::Display for RenderWarning {
             }
             RenderWarning::QrSkipped { reason } => {
                 write!(f, "qr code skipped: {reason}")
+            }
+            RenderWarning::ElementSkipped { kind, reason } => {
+                write!(f, "{kind} skipped: {reason}")
             }
             RenderWarning::Overflow(what) => write!(f, "content overflowed page: {what}"),
         }

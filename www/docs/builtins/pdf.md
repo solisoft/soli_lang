@@ -236,10 +236,11 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "move", "x": 0, "y": 24 }
 ```
 
-**image** — draw at the cursor, scaled to `width` (aspect preserved). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced.
+**image** — draw at the cursor, scaled to `width` (aspect preserved). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image.
 
 ```json
 { "type": "image", "value": "https://acme.example/logo.png", "width": 100 }
+{ "type": "image", "value": "file://brand/logo.svg", "width": 120 }
 ```
 
 **table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans.
@@ -286,6 +287,35 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "qr", "kind": "epc", "iban": "${payment.iban}", "name": "${payment.name}",
   "amount": "${payment.amount}", "currency": "${payment.currency}",
   "remittance": "${invoice.number}", "width": 110 }
+```
+
+**barcode** — a 1D barcode rasterised at the cursor, sized `width` × `height` pt. Does not advance the cursor. `value` is `${…}`-interpolated. `symbology` is one of `code128` (any printable ASCII), `ean13` (12 digits — the check digit is computed), `ean8` (7 digits), or `code39` (uppercase letters, digits, and `- . $ / + % space`). Set `humanReadable: true` to print the value as a caption below the bars. Invalid data (wrong length, unsupported characters) is **skipped with a warning**, not fatal.
+
+```json
+{ "type": "barcode", "symbology": "code128", "value": "ORDER-${order.id}",
+  "width": 220, "height": 56, "humanReadable": true }
+```
+
+**list** — a bulleted or numbered list; flows like a paragraph and advances the cursor. `ordered` (default `false`) numbers the items (`1.`, `2.`, …) from `start` (default `1`); otherwise each item gets a bullet (`marker`, default `"•"`). Items are plain strings, or objects carrying a `text`/`spans` body and/or a nested `list` (rendered indented one level deeper). `indent` (pt) and `spacing` (pt between items) tune the layout, and `options` styles the item text (the same `fontSize`/`fontWeight`/`alignment` as a paragraph).
+
+```json
+{ "type": "list", "ordered": true, "options": { "fontSize": 11 }, "items": [
+  "Grind the beans",
+  "Boil water to 94°C",
+  { "text": "Brew", "list": { "items": ["Bloom 30s", "Pour to 250 g"] } },
+  { "spans": [ { "text": "Enjoy " }, { "text": "responsibly", "italic": true } ] }
+] }
+```
+
+**chart** — a bar, line, or pie chart drawn from the data. Occupies `width` × `height` pt at the cursor (plus an optional `title` above) and advances the cursor below it. `kind` is `bar`, `line`, or `pie`. Points come either from a **data binding** — `data` names an array in the data document and `label`/`value` name the fields read from each item — or from inline `points`. `colors` (hex, no `#`) are cycled across points; a built-in palette is used when omitted. For `pie`, `legend` adds a swatch + percentage list; for `bar`/`line`, `axis` draws axis lines and category labels.
+
+```json
+{ "type": "chart", "kind": "bar", "title": "Revenue by month",
+  "data": "months", "label": "name", "value": "revenue", "width": 360, "height": 160 }
+
+{ "type": "chart", "kind": "pie", "width": 360, "height": 160, "points": [
+  { "label": "Rent", "value": 1200 }, { "label": "Payroll", "value": 3400 },
+  { "label": "Cloud", "value": 800 } ] }
 ```
 
 ### Cells: text & rich

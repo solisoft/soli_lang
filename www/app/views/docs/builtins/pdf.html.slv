@@ -95,6 +95,14 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
                 <h3 class="text-lg font-semibold text-white mb-1">Receipt <span class="text-xs font-normal text-amber-300 align-middle">· QR · watermark</span></h3>
                 <p class="text-sm text-gray-400">Shows the newer primitives: a diagonal <code>PAID</code> <strong>watermark</strong>, an EPC <strong>scan-to-pay QR</strong>, an <code>hr</code> rule, a tinted <code>rect</code> panel, and a <code>line</code> accent.</p>
             </div>
+            <!-- Report (SVG · charts · list · barcode) -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/report.png" alt="Quarterly report with an SVG logo, bar and pie charts, a nested list, and a barcode" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Report <span class="text-xs font-normal text-teal-300 align-middle">· SVG · charts · list · barcode</span></h3>
+                <p class="text-sm text-gray-400">One page exercising the newest elements: an <strong>SVG</strong> logo, a data-bound <code>bar</code> <strong>chart</strong> and a <code>pie</code> chart with a legend, a nested bulleted <code>list</code> with inline rich text, and a Code 128 <code>barcode</code> caption &mdash; all from one template. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
+            </div>
             <!-- Code -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">…from one call</h3>
@@ -305,8 +313,9 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">image</code>
-                <p class="text-sm text-gray-400 mt-2 mb-2">Draw an image at the cursor, scaled to <code>width</code> (height keeps aspect). Source may be an <code>http(s)</code> URL, a <code>file://</code> path, or a <code>data:</code> URI. The cursor is not advanced &mdash; position with <code>move</code>.</p>
-                <pre data-filename="image"><code class="language-json text-sm">{ "type": "image", "value": "https://acme.example/logo.png", "width": 100 }</code></pre>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Draw an image at the cursor, scaled to <code>width</code> (height keeps aspect). Source may be an <code>http(s)</code> URL, a <code>file://</code> path, or a <code>data:</code> URI. Raster formats (PNG, JPEG, WebP, GIF) <strong>and SVG</strong> are accepted &mdash; SVG is auto-detected and rasterised so a vector logo stays crisp at any size (<code>&lt;text&gt;</code> uses the fonts from <code>font_dirs</code>). The cursor is not advanced &mdash; position with <code>move</code>.</p>
+                <pre data-filename="image"><code class="language-json text-sm">{ "type": "image", "value": "https://acme.example/logo.png", "width": 100 }
+{ "type": "image", "value": "file://brand/logo.svg", "width": 120 }</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -351,6 +360,29 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
                 <code class="text-teal-300 font-mono">ellipse</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">A filled and/or stroked ellipse (a circle when <code>rx == ry</code>) whose bounding-box top-left is the cursor &mdash; status dots, badges. Does not advance the cursor.</p>
                 <pre data-filename="ellipse"><code class="language-json text-sm">{ "type": "ellipse", "rx": 6, "ry": 6, "fill": "16a34a" }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">barcode</code> <span class="text-xs font-normal text-teal-300 align-middle">· 1D</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A 1D barcode rasterised at the cursor, sized <code>width</code> × <code>height</code> pt. <code>symbology</code> is <code>code128</code> (any printable ASCII), <code>ean13</code> (12 digits, check digit computed), <code>ean8</code> (7 digits), or <code>code39</code>. <code>humanReadable</code> prints the value as a caption below the bars. Bad data is skipped with a warning. Does not advance the cursor.</p>
+                <pre data-filename="barcode"><code class="language-json text-sm">{ "type": "barcode", "symbology": "code128", "value": "ORDER-${order.id}",
+  "width": 220, "height": 56, "humanReadable": true }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">list</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A bulleted or numbered list; flows like a paragraph and advances the cursor. <code>ordered</code> numbers items from <code>start</code>; otherwise each gets a <code>marker</code> bullet. Items are strings, or objects with a <code>text</code>/<code>spans</code> body and/or a nested <code>list</code> (indented deeper). <code>indent</code>, <code>spacing</code>, and <code>options</code> (paragraph text styling) tune it.</p>
+                <pre data-filename="list (nested, ordered)"><code class="language-json text-sm">{ "type": "list", "ordered": true, "options": { "fontSize": 11 }, "items": [
+  "Grind the beans",
+  { "text": "Brew", "list": { "items": ["Bloom 30s", "Pour to 250 g"] } }
+] }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">chart</code> <span class="text-xs font-normal text-teal-300 align-middle">· bar · line · pie</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A bar, line, or pie chart in a <code>width</code> × <code>height</code> box (plus an optional <code>title</code>); advances the cursor. Points come from a <strong>data binding</strong> (<code>data</code> names an array; <code>label</code>/<code>value</code> name the fields) or inline <code>points</code>. <code>colors</code> are cycled; <code>pie</code> shows a <code>legend</code>, <code>bar</code>/<code>line</code> draw an <code>axis</code>.</p>
+                <pre data-filename="chart (data-bound bar)"><code class="language-json text-sm">{ "type": "chart", "kind": "bar", "title": "Revenue by month",
+  "data": "months", "label": "name", "value": "revenue", "width": 360, "height": 160 }</code></pre>
             </div>
         </div>
         <p class="text-sm text-gray-400 mt-3"><code>hr</code>, <code>line</code>, and <code>rect</code>/<code>ellipse</code> borders accept a <code class="text-amber-400">dash</code> array (pt on/off lengths, e.g. <code>[3, 2]</code>) for dashed strokes; <code>rect</code> accepts a <code class="text-amber-400">radius</code> (pt) for rounded corners.</p>

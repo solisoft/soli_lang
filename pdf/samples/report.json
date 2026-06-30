@@ -1,0 +1,42 @@
+{
+  "fonts": ["TitilliumWeb"],
+  "options": { "margins": 48 },
+  "content": [
+    { "type": "image", "width": 46,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='46' height='46'><rect width='46' height='46' rx='10' fill='%230f766e'/><circle cx='23' cy='23' r='11' fill='none' stroke='white' stroke-width='4'/></svg>" },
+    { "type": "move", "x": 58, "y": 4 },
+    { "type": "paragraph", "value": "Helios Coffee — Q1 report", "options": { "fontSize": 22, "fontWeight": "bold", "color": "0f766e" } },
+    { "type": "paragraph", "value": "Small-batch roastery · Lyon", "options": { "fontSize": 11, "color": "6b7280" } },
+    { "type": "move", "x": -58, "y": 22 },
+
+    { "type": "chart", "kind": "bar", "title": "Revenue by month (€)",
+      "data": "months", "label": "name", "value": "revenue",
+      "width": 460, "height": 170,
+      "colors": ["0f766e", "14b8a6", "5eead4"] },
+    { "type": "move", "y": 18 },
+
+    { "type": "chart", "kind": "pie", "title": "Spend split",
+      "width": 460, "height": 170,
+      "colors": ["0f766e", "f59e0b", "ef4444", "6366f1"],
+      "points": [
+        { "label": "Beans", "value": 5200 },
+        { "label": "Payroll", "value": 3400 },
+        { "label": "Rent", "value": 1200 },
+        { "label": "Other", "value": 800 }
+      ] },
+    { "type": "move", "y": 18 },
+
+    { "type": "paragraph", "value": "Highlights", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 6 },
+    { "type": "list", "options": { "fontSize": 11 }, "spacing": 2, "items": [
+      "Revenue up 38% versus Q4.",
+      { "text": "New single-origin lots", "list": { "items": ["Ethiopia Yirgacheffe", "Colombia Huila"] } },
+      { "spans": [ { "text": "Wholesale now " }, { "text": "42%", "fontWeight": "bold", "color": "0f766e" }, { "text": " of volume." } ] }
+    ] },
+    { "type": "move", "y": 16 },
+
+    { "type": "paragraph", "value": "Report ID", "options": { "fontSize": 11, "fontWeight": "bold" } },
+    { "type": "move", "y": 4 },
+    { "type": "barcode", "symbology": "code128", "value": "RPT-${report.id}", "width": 220, "height": 50, "humanReadable": true }
+  ]
+}

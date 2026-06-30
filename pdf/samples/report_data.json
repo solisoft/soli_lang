@@ -1,0 +1,8 @@
+{
+  "report": { "id": "2026-Q1-0417" },
+  "months": [
+    { "name": "Jan", "revenue": 4200 },
+    { "name": "Feb", "revenue": 5100 },
+    { "name": "Mar", "revenue": 6300 }
+  ]
+}

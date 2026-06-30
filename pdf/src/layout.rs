@@ -17,8 +17,9 @@ use crate::geometry::{
 use crate::images;
 use crate::interpolate::{has_page_tokens, interpolate};
 use crate::template::{
-    Alignment, Cell, CellContent, CellStyle, Element, EllipseEl, FontWeight, HrEl, LineEl,
-    PageSpec, Paragraph, QrEl, RectEl, StyledSpan, Table, TableHeaderStyle, Template, Watermark,
+    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, Element, EllipseEl, FontWeight,
+    HrEl, LineEl, ListEl, ListItem, PageSpec, Paragraph, QrEl, RectEl, StyledSpan, Table,
+    TableHeaderStyle, Template, Watermark,
 };
 use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg};
 use crate::RenderOptions;
@@ -209,7 +210,10 @@ impl<'a> Engine<'a> {
             Element::Rect(r) => self.rect(r),
             Element::Line(l) => self.line(l),
             Element::Qr(q) => self.qr(q, root),
+            Element::Barcode(b) => self.barcode(b, root),
             Element::Ellipse(e) => self.ellipse(e),
+            Element::List(l) => self.list(l, root, template),
+            Element::Chart(c) => self.chart(c, data, root, template),
         }
         Ok(())
     }
@@ -395,6 +399,259 @@ impl<'a> Engine<'a> {
             w: side,
             h: side,
         });
+    }
+
+    /// A 1D barcode rasterised through the image path and placed at the cursor,
+    /// sized `width × height` pt (the bars are scaled to fit, which is expected
+    /// for barcodes). Degrades to a warning on any error. Does not advance the
+    /// cursor — position it with `move`.
+    fn barcode(&mut self, b: &BarcodeEl, root: &Resolver) {
+        let value = match &b.value {
+            Some(s) => interpolate(s, root, &mut self.warnings),
+            None => String::new(),
+        };
+        if value.is_empty() {
+            self.warnings.push(RenderWarning::ElementSkipped {
+                kind: "barcode".to_string(),
+                reason: "empty value".to_string(),
+            });
+            return;
+        }
+
+        let img = match crate::barcode::encode_barcode(&b.symbology, &value) {
+            Ok(img) => img,
+            Err(e) => {
+                self.warnings.push(RenderWarning::ElementSkipped {
+                    kind: "barcode".to_string(),
+                    reason: e.to_string(),
+                });
+                return;
+            }
+        };
+        let idx = self.intern_generated_image(img);
+        let w = if b.width > 0.0 { b.width } else { 160.0 };
+        let h = if b.height > 0.0 { b.height } else { 50.0 };
+        self.current.push(DrawOp::Image {
+            index: idx,
+            x: self.cursor.x,
+            y: self.cursor.y,
+            w,
+            h,
+        });
+
+        if b.human_readable {
+            // A small caption centered under the bars, in the document font.
+            let size = 9.0_f32;
+            let runs = self
+                .fonts
+                .itemize(&value, FontWeight::Normal, &mut self.warnings);
+            let text_w: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
+            let ascent = self.fonts.ascent(FontWeight::Normal) * size;
+            let pieces: Vec<TextPiece> = runs
+                .into_iter()
+                .map(|r| TextPiece {
+                    slot: r.slot,
+                    text: r.text,
+                })
+                .collect();
+            self.current.push(DrawOp::Text(TextDraw {
+                x: self.cursor.x + (w - text_w).max(0.0) / 2.0,
+                baseline: self.cursor.y + h + 2.0 + ascent,
+                size,
+                color: Rgb::BLACK,
+                pieces,
+            }));
+        }
+    }
+
+    /// A bulleted/numbered list. Flows like stacked paragraphs and advances the
+    /// cursor below the last item.
+    fn list(&mut self, list: &ListEl, root: &Resolver, template: &Template) {
+        let left_base = self.cursor.x;
+        self.render_list(list, root, template, left_base);
+        // Each item body advanced cursor.y; restore the left edge for siblings.
+        self.cursor.x = left_base;
+    }
+
+    /// Render one list level, indented from `left_base`. Each item draws a marker
+    /// in a left gutter and its body in the column to the right (reusing the
+    /// paragraph machinery via a temporary cursor shift); a nested sublist
+    /// recurses one level deeper.
+    fn render_list(&mut self, list: &ListEl, root: &Resolver, template: &Template, left_base: f32) {
+        if list.items.is_empty() {
+            return;
+        }
+        let size = list.options.font_size;
+        let weight = list.options.font_weight;
+        let lh = line_height(size);
+        let indent = if list.indent > 0.0 { list.indent } else { 18.0 };
+        let marker_x = left_base + indent;
+        let gutter = self.list_marker_gutter(list, size, weight);
+        let text_x = marker_x + gutter;
+        // Markers are black, matching plain paragraph body text.
+        let color = Rgb::BLACK;
+        let mut counter = list.start;
+
+        for item in &list.items {
+            let (text, spans, nested) = match item {
+                ListItem::Text(t) => (Some(t.clone()), None, None),
+                ListItem::Node(n) => (n.text.clone(), n.spans.clone(), n.list.as_deref()),
+            };
+
+            if text.is_some() || spans.is_some() {
+                // Reserve a line so the marker and the first body line never split
+                // across a page break.
+                self.ensure_space(lh, template, root);
+                let marker_top = self.cursor.y;
+                let marker = if list.ordered {
+                    format!("{counter}.")
+                } else {
+                    list.marker.clone().unwrap_or_else(|| "•".to_string())
+                };
+                self.draw_text_line(
+                    &marker,
+                    marker_x,
+                    gutter,
+                    marker_top,
+                    size,
+                    weight,
+                    Alignment::Left,
+                    color,
+                    None,
+                    None,
+                );
+
+                let para = Paragraph {
+                    value: text.unwrap_or_default(),
+                    spans,
+                    options: list.options.clone(),
+                };
+                let saved_x = self.cursor.x;
+                self.cursor.x = text_x;
+                self.paragraph(&para, root, template);
+                self.cursor.x = saved_x;
+            }
+
+            if list.ordered {
+                counter += 1;
+            }
+            if let Some(nested) = nested {
+                self.render_list(nested, root, template, text_x);
+            }
+            if list.spacing > 0.0 {
+                self.cursor.y += list.spacing;
+            }
+        }
+    }
+
+    /// A bar/line/pie chart drawn from data-bound or inline points. Flows like a
+    /// block: a title (optional) above the plot, then the chart, then a small gap.
+    fn chart(&mut self, c: &ChartEl, data: &DataDocument, root: &Resolver, template: &Template) {
+        let series = self.chart_series(c, data, root);
+        if series.is_empty() {
+            self.warnings.push(RenderWarning::ElementSkipped {
+                kind: "chart".to_string(),
+                reason: "no data points".to_string(),
+            });
+            return;
+        }
+
+        let width = if c.width > 0.0 {
+            c.width
+        } else {
+            (self.page.content_right() - self.cursor.x).max(1.0)
+        };
+        let plot_h = c.height.max(1.0);
+        let has_title = c.title.as_deref().is_some_and(|s| !s.trim().is_empty());
+        let title_size = 12.0_f32;
+        let title_h = if has_title {
+            line_height(title_size)
+        } else {
+            0.0
+        };
+        let bottom_pad = 6.0;
+
+        self.ensure_space(title_h + plot_h + bottom_pad, template, root);
+
+        let x0 = self.cursor.x;
+        let mut y = self.cursor.y;
+        if has_title {
+            let title = interpolate(c.title.as_deref().unwrap_or(""), root, &mut self.warnings);
+            self.draw_text_line(
+                &title,
+                x0,
+                width,
+                y,
+                title_size,
+                FontWeight::Bold,
+                Alignment::Left,
+                Rgb::BLACK,
+                None,
+                None,
+            );
+            y += title_h;
+        }
+
+        let area = crate::chart::Area {
+            x: x0,
+            y,
+            w: width,
+            h: plot_h,
+        };
+        let ops = crate::chart::render_chart(c, &series, area, self.fonts, &mut self.warnings);
+        self.current.extend(ops);
+        self.cursor.y = y + plot_h + bottom_pad;
+    }
+
+    /// Resolve a chart's `(label, value)` series: from the bound data array when
+    /// `data` is set (reading the `label`/`value` fields of each item), else from
+    /// the inline `points`.
+    fn chart_series(
+        &mut self,
+        c: &ChartEl,
+        data: &DataDocument,
+        root: &Resolver,
+    ) -> Vec<(String, f64)> {
+        let label_field = c.label.as_deref().unwrap_or("label");
+        let value_field = c.value.as_deref().unwrap_or("value");
+
+        if let Some(key) = &c.data {
+            let Some(items) = data.array(key) else {
+                return Vec::new();
+            };
+            return items
+                .iter()
+                .map(|item| {
+                    let scoped = root.with_scope(item);
+                    let label = scoped.lookup(label_field).unwrap_or_default();
+                    let value = scoped
+                        .lookup(value_field)
+                        .and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    (label, value)
+                })
+                .collect();
+        }
+
+        c.points
+            .iter()
+            .flatten()
+            .map(|p| (p.label.clone().unwrap_or_default(), p.value))
+            .collect()
+    }
+
+    /// Width reserved for a list's marker column: the widest marker it will draw
+    /// (the last ordinal, or the bullet glyph) plus a half-em gap.
+    fn list_marker_gutter(&mut self, list: &ListEl, size: f32, weight: FontWeight) -> f32 {
+        let sample = if list.ordered {
+            let last = list.start + (list.items.len() as i64).max(1) - 1;
+            format!("{last}.")
+        } else {
+            list.marker.clone().unwrap_or_else(|| "•".to_string())
+        };
+        let runs = self.fonts.itemize(&sample, weight, &mut self.warnings);
+        let w: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
+        w + size * 0.5
     }
 
     /// Push a programmatically generated image (e.g. a QR raster) and return its
@@ -757,7 +1014,12 @@ impl<'a> Engine<'a> {
         if let Some(cached) = self.image_cache.get(src) {
             return *cached;
         }
-        let result = images::load_image(src, self.opts.fetch_images, self.opts.http_timeout);
+        let result = images::load_image(
+            src,
+            self.opts.fetch_images,
+            self.opts.http_timeout,
+            &self.opts.font_dirs,
+        );
         let idx = match result {
             Ok(img) => {
                 self.images.push(img);

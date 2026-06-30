@@ -1,0 +1,270 @@
+# Vendored copy of printpdf 0.9.1 (crates.io), MIT licensed — see LICENSE.
+#
+# WHY VENDORED: upstream printpdf 0.9.1 (the only published release, and current
+# `master`) pins `lopdf = "0.39.0"`, which carries RUSTSEC-2026-0187 (a stack
+# overflow when *parsing* deeply-nested PDFs). The only change here versus the
+# published manifest is bumping that pin to `lopdf = "0.43"` (the fixed line),
+# which also unifies the lopdf version with soli-pdf's own `lopdf = "0.43"`.
+#
+# Trimmed for use as a path dependency: example/test/bench targets and their
+# dev-dependencies are dropped (cargo never builds a dependency's non-lib
+# targets), and the lib is built as an rlib only (no cdylib). The src/, defaultfonts/
+# and src/res/ trees are byte-for-byte copies of the published crate.
+#
+# When upstream printpdf publishes a release using lopdf >= 0.42, delete this
+# vendored copy and restore the crates.io dependency in ../../Cargo.toml.
+
+[package]
+edition = "2021"
+name = "printpdf"
+version = "0.9.1"
+authors = [
+    "Felix Schütt <felix.schuett@maps4print.com>",
+    "Julien Schminke <julien.schminke@web.de",
+]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Rust library for reading and writing PDF files"
+homepage = "https://github.com/fschutt/printpdf"
+readme = "README.md"
+keywords = [
+    "pdf",
+    "gui",
+    "graphics",
+    "wkhtmltopdf",
+]
+categories = ["gui"]
+license = "MIT"
+repository = "https://github.com/fschutt/printpdf"
+
+[package.metadata.docs.rs]
+all-features = true
+
+# Vendored third-party code: cap its lints so it doesn't trip the host's
+# `cargo clippy -- -D warnings`. crates.io deps get this via `--cap-lints allow`
+# automatically, but a path dependency is linted like local code, so we opt out
+# explicitly here rather than patching upstream's source.
+[lints.rust]
+warnings = "allow"
+
+[lints.clippy]
+all = "allow"
+
+[features]
+bmp = [
+    "images",
+    "image/bmp",
+]
+dds = [
+    "images",
+    "image/dds",
+]
+default = ["html"]
+gif = [
+    "images",
+    "image/gif",
+]
+hdr = [
+    "images",
+    "image/hdr",
+]
+html = [
+    "text_layout_hyphenation",
+    "dep:kuchiki",
+    "dep:rust-fontconfig",
+    "dep:xmlparser",
+    "azul-layout/xml",
+    "azul-layout/pdf",
+]
+html_multithreaded = [
+    "html",
+    "rust-fontconfig/multithreading",
+    "azul-layout/font_loading_multithreaded",
+]
+ico = [
+    "images",
+    "image/ico",
+]
+images = ["dep:image"]
+jpeg = [
+    "images",
+    "image/jpeg",
+]
+js-sys = [
+    "dep:js-sys",
+    "web-sys",
+    "wasm-bindgen-futures",
+]
+png = [
+    "images",
+    "image/png",
+]
+pnm = [
+    "images",
+    "image/pnm",
+]
+rayon = [
+    "images",
+    "image/rayon",
+]
+svg = [
+    "html",
+    "dep:svg2pdf",
+    "azul-layout/svg",
+]
+text_layout = [
+    "dep:azul-css",
+    "dep:azul-core",
+    "dep:azul-layout",
+    "azul-layout/std",
+    "azul-layout/text_layout",
+    "azul-layout/font_loading",
+]
+text_layout_hyphenation = [
+    "text_layout",
+    "azul-layout/text_layout_hyphenation",
+]
+tga = [
+    "images",
+    "image/tga",
+]
+tiff = [
+    "images",
+    "image/tiff",
+]
+webp = [
+    "images",
+    "image/webp",
+]
+
+[lib]
+name = "printpdf"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies.allsorts]
+version = "0.16.1"
+features = ["flate2_rust"]
+default-features = false
+
+[dependencies.azul-core]
+version = "0.0.7"
+features = ["std"]
+optional = true
+default-features = false
+
+[dependencies.azul-css]
+version = "0.0.7"
+features = ["parser"]
+optional = true
+default-features = false
+
+[dependencies.azul-layout]
+version = "0.0.7"
+optional = true
+default-features = false
+
+[dependencies.base64]
+version = "0.22.1"
+
+[dependencies.flate2]
+version = "1.0.35"
+
+[dependencies.image]
+version = "0.25"
+optional = true
+default-features = false
+
+[dependencies.kuchiki]
+version = "0.8.1"
+optional = true
+
+# Bumped from upstream's "0.39.0" to fix RUSTSEC-2026-0187 (PDF-parse stack
+# overflow). lopdf 0.43 keeps the `time` feature, so this is a drop-in bump.
+[dependencies.lopdf]
+version = "0.43"
+features = ["time"]
+default-features = false
+
+[dependencies.rust-fontconfig]
+version = "2.0.0"
+features = [
+    "std",
+    "parsing",
+]
+optional = true
+default-features = false
+
+[dependencies.serde]
+version = "1"
+
+[dependencies.serde_derive]
+version = "1"
+
+[dependencies.serde_json]
+version = "1"
+
+[dependencies.svg2pdf]
+version = "0.13.0"
+optional = true
+
+[dependencies.time]
+version = "0.3.25"
+features = [
+    "std",
+    "serde",
+    "serde-human-readable",
+]
+default-features = false
+
+[dependencies.wasm-bindgen-futures]
+version = "0.4.50"
+optional = true
+default-features = false
+
+[dependencies.web-sys]
+version = "0.3.77"
+features = [
+    "console",
+    "ImageData",
+    "Window",
+    "Document",
+    "Blob",
+    "CanvasRenderingContext2d",
+    "HtmlCanvasElement",
+    "HtmlImageElement",
+    "ImageBitmap",
+    "BlobPropertyBag",
+]
+optional = true
+default-features = false
+
+[dependencies.weezl]
+version = "0.1.8"
+
+[dependencies.xmlparser]
+version = "0.13.6"
+optional = true
+default-features = false
+
+[target.'cfg(all(target_arch="wasm32",target_os="unknown"))'.dependencies.getrandom]
+version = "0.3"
+features = ["wasm_js"]
+
+[target.'cfg(all(target_arch="wasm32",target_os="unknown"))'.dependencies.js-sys]
+version = "0.3.40"
+optional = true
+
+[target.'cfg(all(target_arch="wasm32",target_os="unknown"))'.dependencies.wasm-bindgen-futures]
+version = "0.4.50"
+default-features = false
+
+[target.'cfg(target_family = "wasm")'.dependencies.serde_json]
+version = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies.wasm-bindgen]
+version = "0.2"

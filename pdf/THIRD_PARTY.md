@@ -36,6 +36,22 @@ text: <https://openfontlicense.org/>.
   Guidelines to Enable Data Capture for the Initiation of a SEPA Credit Transfer"
   specification (European Payments Council). No code from that spec is bundled.
 
+## Vendored crates
+
+- **printpdf** (`vendor/printpdf/`, MIT) — a byte-for-byte copy of printpdf
+  0.9.1 from crates.io © Felix Schütt, Julien Schminke. The **only** change to
+  the source is in `vendor/printpdf/Cargo.toml`: its internal `lopdf` pin is
+  bumped from `0.39.0` to `0.43` to fix **RUSTSEC-2026-0187** (a stack overflow
+  when parsing deeply-nested PDFs). Upstream 0.9.1 — the only published release,
+  and current `master` — pins `lopdf ^0.39`, so a crates.io dependency cannot be
+  patched across the caret; vendoring is the only way to ship the fixed lopdf.
+  Delete the vendor directory and restore the crates.io dependency once upstream
+  printpdf publishes a release built on `lopdf >= 0.42`.
+  Its bundled assets keep their own licenses: the default PDF base-14 font
+  subsets (`vendor/printpdf/defaultfonts/`) and the `CoatedFOGRA39.icc` profile
+  (`vendor/printpdf/src/res/`, see the adjacent `.icc.LICENSE.txt`).
+  <https://github.com/fschutt/printpdf>
+
 ## ICC color profile (CC0 / public domain)
 
 - **sRGB v2 micro** (`assets/sRGB-v2-micro.icc`) from the saucecontrol

@@ -13,7 +13,13 @@ anyhow = "1"
 thiserror = "2"
 # text_layout gives real font parsing/embedding; images enables image XObject
 # serialization. html pulls heavy deps we don't need, so it stays off.
-printpdf = { version = "0.9", default-features = false, features = ["text_layout", "images"] }
+#
+# Vendored (vendor/printpdf): a byte-for-byte copy of printpdf 0.9.1 with its
+# internal lopdf pin bumped 0.39 -> 0.43 to fix RUSTSEC-2026-0187. Upstream
+# 0.9.1 (and master) pin lopdf ^0.39, so a crates.io dep can't be patched
+# across the caret. Drop the vendor dir and restore `version = "0.9"` once
+# upstream printpdf ships a release on lopdf >= 0.42. See vendor/printpdf/Cargo.toml.
+printpdf = { path = "vendor/printpdf", default-features = false, features = ["text_layout", "images"] }
 lopdf = "0.43"
 ttf-parser = "0.25"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
@@ -30,6 +36,14 @@ subsetter = "0.1"
 # QR encoding only (we rasterize the module matrix ourselves into an RGB buffer),
 # so default features (image/svg renderers) stay off.
 qrcode = { version = "0.14", default-features = false }
+# SVG rasterisation: parse with usvg, render with resvg into a tiny-skia pixmap,
+# then feed the pixels through the normal image XObject path. `system-fonts` stays
+# off — we resolve <text> fonts from the caller's font_dirs, like the rest of the
+# engine, for deterministic/offline renders.
+resvg = { version = "0.45", default-features = false, features = ["text"] }
+# 1D barcode encoding only — we rasterise the bar pattern ourselves into an RGB
+# buffer (like QR), so the image/svg generator features stay off.
+barcoders = { version = "2", default-features = false, features = ["std"] }
 
 [[bin]]
 name = "render_pdf"
