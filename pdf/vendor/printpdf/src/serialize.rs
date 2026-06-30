@@ -91,7 +91,13 @@ pub fn serialize_pdf<W: Write>(
 ) -> () {
     let mut doc = to_lopdf_doc(pdf, opts, warnings);
     if opts.optimize {
-        // doc.compress();
+        // soli-pdf local change (upstream left this commented out): Flate-compress
+        // every uncompressed stream — page content streams and embedded font
+        // (FontFile2) streams, which printpdf otherwise writes raw. `Stream::compress`
+        // only touches streams that lack a `/Filter`, so the image XObjects already
+        // compressed via `image_optimization` are skipped (never double-encoded), and
+        // it keeps the smaller of the two, so this can only shrink the output.
+        doc.compress();
     }
 
     let _ = doc.save_to(&mut writer);

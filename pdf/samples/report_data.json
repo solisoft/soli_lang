@@ -1,8 +1,68 @@
 {
-  "report": { "id": "2026-Q1-0417" },
-  "months": [
-    { "name": "Jan", "revenue": 4200 },
-    { "name": "Feb", "revenue": 5100 },
-    { "name": "Mar", "revenue": 6300 }
+  "report": {
+    "id": "HC-FY2025-AR-0042",
+    "fy": "2025",
+    "date": "31 December 2025",
+    "place": "Lyon, France",
+    "verify_url": "https://helios.coffee/ir/fy2025/HC-FY2025-AR-0042"
+  },
+  "quarters": [
+    { "q": "Q1", "revenue": 142 },
+    { "q": "Q2", "revenue": 168 },
+    { "q": "Q3", "revenue": 175 },
+    { "q": "Q4", "revenue": 209 }
+  ],
+  "monthly": [
+    { "m": "Jan", "revenue": 42 },
+    { "m": "Feb", "revenue": 45 },
+    { "m": "Mar", "revenue": 55 },
+    { "m": "Apr", "revenue": 51 },
+    { "m": "May", "revenue": 58 },
+    { "m": "Jun", "revenue": 59 },
+    { "m": "Jul", "revenue": 54 },
+    { "m": "Aug", "revenue": 49 },
+    { "m": "Sep", "revenue": 72 },
+    { "m": "Oct", "revenue": 68 },
+    { "m": "Nov", "revenue": 71 },
+    { "m": "Dec", "revenue": 70 }
+  ],
+  "spend": [
+    { "label": "Green beans", "value": 312 },
+    { "label": "Payroll", "value": 204 },
+    { "label": "Rent & utilities", "value": 72 },
+    { "label": "Logistics", "value": 48 },
+    { "label": "Marketing", "value": 34 },
+    { "label": "Other", "value": 26 }
+  ],
+  "pnl": [
+    { "line": "Net revenue", "fy2025": "694", "fy2024": "503", "delta": "+38.0%" },
+    { "line": "Cost of goods sold", "fy2025": "(268)", "fy2024": "(212)", "delta": "+26.4%" },
+    { "line": "Gross profit", "fy2025": "426", "fy2024": "291", "delta": "+46.4%" },
+    { "line": "Operating expenses", "fy2025": "(322)", "fy2024": "(247)", "delta": "+30.4%" },
+    { "line": "EBITDA", "fy2025": "104", "fy2024": "44", "delta": "+136%" },
+    { "line": "Net profit", "fy2025": "71", "fy2024": "22", "delta": "+223%" }
+  ],
+  "regions": [
+    { "name": "Auvergne-Rhône-Alpes", "units": "41,200", "revenue": "248", "growth": "+22%" },
+    { "name": "Île-de-France", "units": "28,800", "revenue": "182", "growth": "+41%" },
+    { "name": "Provence-Alpes-Côte d'Azur", "units": "15,600", "revenue": "96", "growth": "+18%" },
+    { "name": "Occitanie", "units": "12,400", "revenue": "74", "growth": "+29%" },
+    { "name": "Grand Est", "units": "9,100", "revenue": "58", "growth": "+12%" },
+    { "name": "Export (EU)", "units": "6,300", "revenue": "36", "growth": "+66%" }
+  ],
+  "region_rev": [
+    { "name": "AURA", "value": 248 },
+    { "name": "IDF", "value": 182 },
+    { "name": "PACA", "value": 96 },
+    { "name": "OCC", "value": 74 },
+    { "name": "GE", "value": 58 },
+    { "name": "EXP", "value": 36 }
+  ],
+  "products": [
+    { "label": "Espresso blends", "value": 38 },
+    { "label": "Single origin", "value": 31 },
+    { "label": "Cold brew", "value": 12 },
+    { "label": "Equipment", "value": 10 },
+    { "label": "Decaf", "value": 9 }
   ]
 }

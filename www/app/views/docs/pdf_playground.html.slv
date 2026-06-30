@@ -22,7 +22,7 @@
         <button id="pg-preset-letter" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Letter</button>
         <button id="pg-preset-statement" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Statement <span class="opacity-60">(3 pages)</span></button>
         <button id="pg-preset-receipt" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Receipt <span class="opacity-60">(QR · watermark)</span></button>
-        <button id="pg-preset-report" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Report <span class="opacity-60">(charts · barcode)</span></button>
+        <button id="pg-preset-report" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Report <span class="opacity-60">(annual · 5 pages)</span></button>
         <button id="pg-preset-graphics" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Graphics <span class="opacity-60">(SVG)</span></button>
         <div class="flex-1"></div>
         <span id="pg-status" class="text-sm font-mono text-gray-400">Loading editor…</span>

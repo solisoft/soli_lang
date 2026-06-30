@@ -95,13 +95,13 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
                 <h3 class="text-lg font-semibold text-white mb-1">Receipt <span class="text-xs font-normal text-amber-300 align-middle">· QR · watermark</span></h3>
                 <p class="text-sm text-gray-400">Shows the newer primitives: a diagonal <code>PAID</code> <strong>watermark</strong>, an EPC <strong>scan-to-pay QR</strong>, an <code>hr</code> rule, a tinted <code>rect</code> panel, and a <code>line</code> accent.</p>
             </div>
-            <!-- Report (SVG · charts · list · barcode) -->
+            <!-- Report (multi-page annual report) -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
-                    <img src="/images/docs/pdf/report.png" alt="Quarterly report with an SVG logo, bar and pie charts, a nested list, and a barcode" class="w-full h-auto" loading="lazy" />
+                    <img src="/images/docs/pdf/report.png" alt="Five-page Helios Coffee annual report: a branded cover, KPI cards, bar/line/pie charts, and data-bound P&amp;L and regional tables" class="w-full h-auto" loading="lazy" />
                 </div>
-                <h3 class="text-lg font-semibold text-white mb-1">Report <span class="text-xs font-normal text-teal-300 align-middle">· SVG · charts · list · barcode</span></h3>
-                <p class="text-sm text-gray-400">One page exercising the newest elements: an <strong>SVG</strong> logo, a data-bound <code>bar</code> <strong>chart</strong> and a <code>pie</code> chart with a legend, a nested bulleted <code>list</code> with inline rich text, and a Code 128 <code>barcode</code> caption &mdash; all from one template. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
+                <h3 class="text-lg font-semibold text-white mb-1">Annual report <span class="text-xs font-normal text-teal-300 align-middle">· 5 pages · charts · tables</span></h3>
+                <p class="text-sm text-gray-400">The engine at full stretch: a five-page report from one template. A branded cover with an <strong>SVG</strong> sun mark and a strip of <strong>KPI cards</strong>; <code>bar</code>, <code>line</code> and <code>pie</code> <strong>charts</strong>; data-bound <strong>P&amp;L and regional tables</strong> with a filled header band; a nested <code>list</code>; a running header with a <code>Page X of Y</code> footer; a diagonal <code>CONFIDENTIAL</code> <strong>watermark</strong>; and a verification <code>QR</code> + <code>barcode</code>. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
             </div>
             <!-- Code -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">

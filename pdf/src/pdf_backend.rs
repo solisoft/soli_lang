@@ -16,11 +16,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use printpdf::{
-    Actions, BorderArray, Color as PpColor, Destination, FontId, Line, LineDashPattern, LinePoint,
-    LinkAnnotation, Mm, Op, PaintMode, ParsedFont, PdfDocument, PdfFontHandle, PdfPage,
-    PdfSaveOptions, Point, Polygon as PpPolygon, PolygonRing, Pt, RawImage, RawImageData,
-    RawImageFormat, Rect as PpRect, Rgb as PpRgb, TextItem, TextMatrix, WindingOrder, XObjectId,
-    XObjectTransform,
+    Actions, BorderArray, Color as PpColor, Destination, FontId, ImageCompression,
+    ImageOptimizationOptions, Line, LineDashPattern, LinePoint, LinkAnnotation, Mm, Op, PaintMode,
+    ParsedFont, PdfDocument, PdfFontHandle, PdfPage, PdfSaveOptions, Point, Polygon as PpPolygon,
+    PolygonRing, Pt, RawImage, RawImageData, RawImageFormat, Rect as PpRect, Rgb as PpRgb,
+    TextItem, TextMatrix, WindingOrder, XObjectId, XObjectTransform,
 };
 
 use crate::color::Rgb;
@@ -132,10 +132,21 @@ pub fn emit(doc: &LaidOutDoc, fonts: &FontRegistry) -> Result<Vec<u8>> {
     }
 
     let mut warnings = Vec::new();
-    // Disable image re-optimization: we already hand printpdf decoded raw
-    // samples, and re-encoding would pull in extra codec requirements.
+    // Flate-compress the embedded image XObjects (logos, QR, barcode). Without
+    // this, printpdf stores the raw RGB(A) samples uncompressed — a single
+    // 512x512 logo is ~768 KB, so an image-bearing document balloons to MBs.
+    // We force lossless `Flate` (never the default `Auto`, which can pick lossy
+    // JPEG and would smudge a scannable QR/barcode) and keep `auto_optimize`
+    // off so the transparent-logo alpha channel is preserved verbatim.
     let save_opts = PdfSaveOptions {
-        image_optimization: None,
+        image_optimization: Some(ImageOptimizationOptions {
+            quality: None,
+            max_image_size: None,
+            dither_greyscale: None,
+            convert_to_greyscale: Some(false),
+            auto_optimize: Some(false),
+            format: Some(ImageCompression::Flate),
+        }),
         ..PdfSaveOptions::default()
     };
     let bytes = pdf.save(&save_opts, &mut warnings);

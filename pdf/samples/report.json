@@ -1,42 +1,276 @@
 {
   "fonts": ["TitilliumWeb"],
-  "options": { "margins": 48 },
+  "options": {
+    "page": "a4",
+    "margins": { "top": 38, "right": 50, "bottom": 46, "left": 50 },
+    "header_height": 46,
+    "watermark": {
+      "text": "CONFIDENTIAL",
+      "angle": 45,
+      "color": "f1f5f9",
+      "fontSize": 92,
+      "front": false,
+      "pages": "all"
+    }
+  },
+
+  "header": [
+    { "type": "image", "width": 22,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><rect width='22' height='22' rx='6' fill='%230f766e'/><circle cx='11' cy='11' r='5.5' fill='none' stroke='white' stroke-width='2'/></svg>" },
+    { "type": "move", "x": 30, "y": 5 },
+    { "type": "paragraph", "spans": [ { "text": "HELIOS COFFEE", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 10.5 } },
+    { "type": "move", "x": -30, "y": -12.6 },
+    { "type": "paragraph", "spans": [ { "text": "Annual Report · Fiscal Year 2025", "color": "94a3b8" } ], "options": { "fontSize": 9.5, "alignment": "right" } },
+    { "type": "move", "y": 8 },
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 }
+  ],
+
+  "footer": [
+    { "type": "paragraph", "value": "Helios Coffee SAS  ·  FY2025 Annual Report  ·  Confidential  ·  Page #PAGE# of #TOTAL_PAGE#", "options": { "fontSize": 8.5, "alignment": "center" } }
+  ],
+
   "content": [
-    { "type": "image", "width": 46,
-      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='46' height='46'><rect width='46' height='46' rx='10' fill='%230f766e'/><circle cx='23' cy='23' r='11' fill='none' stroke='white' stroke-width='4'/></svg>" },
-    { "type": "move", "x": 58, "y": 4 },
-    { "type": "paragraph", "value": "Helios Coffee — Q1 report", "options": { "fontSize": 22, "fontWeight": "bold", "color": "0f766e" } },
-    { "type": "paragraph", "value": "Small-batch roastery · Lyon", "options": { "fontSize": 11, "color": "6b7280" } },
-    { "type": "move", "x": -58, "y": 22 },
+    { "type": "rect", "width": 495.276, "height": 316, "fill": "0f766e", "radius": 18 },
 
-    { "type": "chart", "kind": "bar", "title": "Revenue by month (€)",
-      "data": "months", "label": "name", "value": "revenue",
-      "width": 460, "height": 170,
-      "colors": ["0f766e", "14b8a6", "5eead4"] },
-    { "type": "move", "y": 18 },
+    { "type": "move", "x": 219.638, "y": 44 },
+    { "type": "image", "width": 56,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 54 54'><g fill='none' stroke='white' stroke-width='4' stroke-linecap='round'><circle cx='27' cy='27' r='10'/><line x1='27' y1='3' x2='27' y2='11'/><line x1='27' y1='43' x2='27' y2='51'/><line x1='3' y1='27' x2='11' y2='27'/><line x1='43' y1='27' x2='51' y2='27'/><line x1='10' y1='10' x2='15.7' y2='15.7'/><line x1='38.3' y1='38.3' x2='44' y2='44'/><line x1='10' y1='44' x2='15.7' y2='38.3'/><line x1='38.3' y1='15.7' x2='44' y2='10'/></g></svg>" },
+    { "type": "move", "x": -219.638, "y": 86 },
 
-    { "type": "chart", "kind": "pie", "title": "Spend split",
-      "width": 460, "height": 170,
-      "colors": ["0f766e", "f59e0b", "ef4444", "6366f1"],
-      "points": [
-        { "label": "Beans", "value": 5200 },
-        { "label": "Payroll", "value": 3400 },
-        { "label": "Rent", "value": 1200 },
-        { "label": "Other", "value": 800 }
-      ] },
-    { "type": "move", "y": 18 },
+    { "type": "paragraph", "spans": [ { "text": "ANNUAL REPORT", "color": "5eead4", "fontWeight": "bold" } ], "options": { "fontSize": 12, "alignment": "center", "bookmark": "Cover" } },
+    { "type": "move", "y": 2 },
+    { "type": "paragraph", "spans": [ { "text": "Helios Coffee", "color": "ffffff", "fontWeight": "bold" } ], "options": { "fontSize": 44, "alignment": "center" } },
+    { "type": "move", "y": 2 },
+    { "type": "paragraph", "spans": [ { "text": "Fiscal Year ${report.fy}", "color": "5eead4" } ], "options": { "fontSize": 16, "alignment": "center" } },
 
-    { "type": "paragraph", "value": "Highlights", "options": { "fontSize": 14, "fontWeight": "bold" } },
-    { "type": "move", "y": 6 },
-    { "type": "list", "options": { "fontSize": 11 }, "spacing": 2, "items": [
-      "Revenue up 38% versus Q4.",
-      { "text": "New single-origin lots", "list": { "items": ["Ethiopia Yirgacheffe", "Colombia Huila"] } },
-      { "spans": [ { "text": "Wholesale now " }, { "text": "42%", "fontWeight": "bold", "color": "0f766e" }, { "text": " of volume." } ] }
-    ] },
-    { "type": "move", "y": 16 },
+    { "type": "move", "x": 202.638, "y": 14 },
+    { "type": "hr", "color": "f59e0b", "thickness": 2.5, "width": 90 },
+    { "type": "move", "x": -202.638, "y": 10 },
 
-    { "type": "paragraph", "value": "Report ID", "options": { "fontSize": 11, "fontWeight": "bold" } },
+    { "type": "paragraph", "spans": [ { "text": "Small-batch coffee roasting in Lyon, France", "color": "ffffff" } ], "options": { "fontSize": 11, "alignment": "center" } },
+    { "type": "move", "y": 12 },
+    { "type": "paragraph", "spans": [ { "text": "PREPARED FOR THE BOARD OF DIRECTORS", "color": "5eead4" } ], "options": { "fontSize": 9, "alignment": "center" } },
+
+    { "type": "move", "y": 67 },
+
+    { "type": "rect", "width": 495.276, "height": 70, "fill": "f8fafc", "border": "e2e8f0", "radius": 12 },
+    { "type": "move", "x": 123.819, "y": 14 },
+    { "type": "line", "dy": 42, "color": "e2e8f0", "width": 1 },
+    { "type": "move", "x": 123.819 },
+    { "type": "line", "dy": 42, "color": "e2e8f0", "width": 1 },
+    { "type": "move", "x": 123.819 },
+    { "type": "line", "dy": 42, "color": "e2e8f0", "width": 1 },
+    { "type": "move", "x": -371.457, "y": -14 },
+    { "type": "move", "y": 9 },
+    { "type": "table", "options": { "padding_x": 4, "padding_y": 4 },
+      "rows": [[
+        { "content": [ { "type": "text", "value": "€694k", "fontSize": 21, "fontWeight": "bold" }, { "type": "text", "value": "NET REVENUE", "fontSize": 7.5 }, { "type": "text", "value": "+38% YoY", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "61.4%", "fontSize": 21, "fontWeight": "bold" }, { "type": "text", "value": "GROSS MARGIN", "fontSize": 7.5 }, { "type": "text", "value": "+2.3 pts", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "42%", "fontSize": 21, "fontWeight": "bold" }, { "type": "text", "value": "WHOLESALE MIX", "fontSize": 7.5 }, { "type": "text", "value": "of volume", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "318", "fontSize": 21, "fontWeight": "bold" }, { "type": "text", "value": "ACTIVE ACCOUNTS", "fontSize": 7.5 }, { "type": "text", "value": "+57 net", "fontSize": 8 } ], "width": 123.819, "alignment": "center" }
+      ]] },
+
+    { "type": "move", "y": 24 },
+    { "type": "paragraph", "spans": [ { "text": "Document ${report.id}   ·   ${report.date}   ·   ${report.place}", "color": "64748b" } ], "options": { "fontSize": 9.5, "alignment": "center" } },
+
+
+    { "type": "move", "y": 3000 },
+    { "type": "paragraph", "spans": [ { "text": "01 — OVERVIEW", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 10 } },
+    { "type": "paragraph", "value": "Executive summary", "options": { "fontSize": 23, "fontWeight": "bold", "bookmark": "Overview" } },
     { "type": "move", "y": 4 },
-    { "type": "barcode", "symbology": "code128", "value": "RPT-${report.id}", "width": 220, "height": 50, "humanReadable": true }
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 },
+    { "type": "move", "y": 10 },
+
+    { "type": "paragraph", "spans": [
+      { "text": "FY2025 was a breakout year for Helios Coffee. Net revenue reached " },
+      { "text": "€694k", "fontWeight": "bold", "color": "0f766e" },
+      { "text": ", up " },
+      { "text": "38% year over year", "fontWeight": "bold" },
+      { "text": ", while gross margin expanded 2.3 points to 61.4% on a richer single-origin mix and improved roasting yields. Wholesale now accounts for " },
+      { "text": "42% of volume", "fontWeight": "bold", "color": "0f766e" },
+      { "text": " across 318 active accounts, and net profit more than tripled to €71k." }
+    ], "options": { "fontSize": 11 } },
+
+    { "type": "move", "y": 14 },
+
+    { "type": "rect", "width": 495.276, "height": 66, "fill": "f0fdfa", "border": "99f6e4", "radius": 12 },
+    { "type": "move", "x": 123.819, "y": 13 },
+    { "type": "line", "dy": 40, "color": "99f6e4", "width": 1 },
+    { "type": "move", "x": 123.819 },
+    { "type": "line", "dy": 40, "color": "99f6e4", "width": 1 },
+    { "type": "move", "x": 123.819 },
+    { "type": "line", "dy": 40, "color": "99f6e4", "width": 1 },
+    { "type": "move", "x": -371.457, "y": -13 },
+    { "type": "move", "y": 8 },
+    { "type": "table", "options": { "padding_x": 4, "padding_y": 4 },
+      "rows": [[
+        { "content": [ { "type": "text", "value": "€694k", "fontSize": 20, "fontWeight": "bold" }, { "type": "text", "value": "NET REVENUE", "fontSize": 7.5 }, { "type": "text", "value": "+38% YoY", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "€426k", "fontSize": 20, "fontWeight": "bold" }, { "type": "text", "value": "GROSS PROFIT", "fontSize": 7.5 }, { "type": "text", "value": "61.4% margin", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "€104k", "fontSize": 20, "fontWeight": "bold" }, { "type": "text", "value": "EBITDA", "fontSize": 7.5 }, { "type": "text", "value": "+136% YoY", "fontSize": 8 } ], "width": 123.819, "alignment": "center" },
+        { "content": [ { "type": "text", "value": "€71k", "fontSize": 20, "fontWeight": "bold" }, { "type": "text", "value": "NET PROFIT", "fontSize": 7.5 }, { "type": "text", "value": "+223% YoY", "fontSize": 8 } ], "width": 123.819, "alignment": "center" }
+      ]] },
+
+    { "type": "move", "y": 22 },
+    { "type": "chart", "kind": "pie", "title": "Operating spend by category (€k)",
+      "data": "spend", "label": "label", "value": "value",
+      "width": 495.276, "height": 178,
+      "colors": ["0f766e", "14b8a6", "f59e0b", "6366f1", "ef4444", "94a3b8"] },
+
+    { "type": "move", "y": 14 },
+    { "type": "paragraph", "value": "Highlights", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 4 },
+    { "type": "list", "options": { "fontSize": 11 }, "spacing": 3, "marker": "•", "items": [
+      { "spans": [ { "text": "Revenue up " }, { "text": "38%", "fontWeight": "bold", "color": "0f766e" }, { "text": " on stronger wholesale demand and two new flagship blends." } ] },
+      { "text": "Launched two single-origin lots", "list": { "marker": "–", "items": ["Ethiopia Yirgacheffe (washed)", "Colombia Huila (honey)"] } },
+      { "spans": [ { "text": "Opened the second roastery line, lifting capacity " }, { "text": "+60%", "fontWeight": "bold", "color": "0f766e" }, { "text": "." } ] },
+      { "text": "Export channel reached €36k in its first full year (+66%)." }
+    ] },
+
+
+    { "type": "move", "y": 3000 },
+    { "type": "paragraph", "spans": [ { "text": "02 — FINANCIALS", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 10 } },
+    { "type": "paragraph", "value": "Financial performance", "options": { "fontSize": 23, "fontWeight": "bold", "bookmark": "Financials" } },
+    { "type": "move", "y": 4 },
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 },
+    { "type": "move", "y": 10 },
+
+    { "type": "chart", "kind": "bar", "title": "Quarterly net revenue (€k)",
+      "data": "quarters", "label": "q", "value": "revenue",
+      "width": 495.276, "height": 150,
+      "colors": ["0f766e", "0f766e", "0f766e", "f59e0b"] },
+
+    { "type": "move", "y": 12 },
+    { "type": "chart", "kind": "line", "title": "Monthly revenue trend (€k)",
+      "data": "monthly", "label": "m", "value": "revenue",
+      "width": 495.276, "height": 140,
+      "colors": ["0f766e"] },
+
+    { "type": "move", "y": 14 },
+    { "type": "paragraph", "value": "Profit & loss summary", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 6 },
+    { "type": "table", "data": "pnl",
+      "options": { "padding_x": 8, "padding_y": 6, "header": { "fillColor": "0f766e", "textColor": "ffffff", "borderColor": "0f766e" } },
+      "header_columns": [
+        { "text": "Line item", "width": 200, "alignment": "left", "fontWeight": "bold" },
+        { "text": "FY 2025 (€k)", "width": 100, "alignment": "right", "fontWeight": "bold" },
+        { "text": "FY 2024 (€k)", "width": 100, "alignment": "right", "fontWeight": "bold" },
+        { "text": "Chg YoY", "width": 95, "alignment": "right", "fontWeight": "bold" }
+      ],
+      "rows": [[
+        { "text": "${line}", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${fy2025}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${fy2024}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${delta}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" }
+      ]] },
+
+    { "type": "move", "y": 12 },
+    { "type": "rect", "width": 495.276, "height": 40, "fill": "ecfdf5", "border": "99f6e4", "radius": 10 },
+    { "type": "move", "x": 16, "y": 12 },
+    { "type": "paragraph", "spans": [
+      { "text": "Net profit ", "fontSize": 12 },
+      { "text": "€71k", "fontSize": 12, "fontWeight": "bold", "color": "0f766e" },
+      { "text": "  ·  EBITDA margin 15.0%  ·  Net margin 10.2%  ·  Cash at year-end ", "fontSize": 12 },
+      { "text": "€128k", "fontSize": 12, "fontWeight": "bold", "color": "0f766e" }
+    ] },
+    { "type": "move", "x": -16, "y": 16 },
+
+
+    { "type": "move", "y": 3000 },
+    { "type": "paragraph", "spans": [ { "text": "03 — MARKETS", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 10 } },
+    { "type": "paragraph", "value": "Markets & product mix", "options": { "fontSize": 23, "fontWeight": "bold", "bookmark": "Markets" } },
+    { "type": "move", "y": 4 },
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 },
+    { "type": "move", "y": 10 },
+
+    { "type": "paragraph", "value": "Regional performance", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 6 },
+    { "type": "table", "data": "regions",
+      "options": { "padding_x": 8, "padding_y": 6, "header": { "fillColor": "0f766e", "textColor": "ffffff", "borderColor": "0f766e" } },
+      "header_columns": [
+        { "text": "Region", "width": 200, "alignment": "left", "fontWeight": "bold" },
+        { "text": "Units (kg)", "width": 100, "alignment": "right", "fontWeight": "bold" },
+        { "text": "Revenue (€k)", "width": 100, "alignment": "right", "fontWeight": "bold" },
+        { "text": "Growth", "width": 95, "alignment": "right", "fontWeight": "bold" }
+      ],
+      "rows": [[
+        { "text": "${name}", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${units}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${revenue}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+        { "text": "${growth}", "alignment": "right", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" }
+      ]] },
+
+    { "type": "move", "y": 16 },
+    { "type": "chart", "kind": "bar", "title": "Net revenue by region (€k)",
+      "data": "region_rev", "label": "name", "value": "value",
+      "width": 495.276, "height": 150,
+      "colors": ["14b8a6"] },
+
+    { "type": "move", "y": 14 },
+    { "type": "chart", "kind": "pie", "title": "Revenue by product line (% of total)",
+      "data": "products", "label": "label", "value": "value",
+      "width": 495.276, "height": 168,
+      "colors": ["0f766e", "14b8a6", "f59e0b", "6366f1", "94a3b8"] },
+
+
+    { "type": "move", "y": 3000 },
+    { "type": "paragraph", "spans": [ { "text": "04 — OUTLOOK & GOVERNANCE", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 10 } },
+    { "type": "paragraph", "value": "Outlook & governance", "options": { "fontSize": 23, "fontWeight": "bold", "bookmark": "Outlook" } },
+    { "type": "move", "y": 4 },
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 },
+    { "type": "move", "y": 10 },
+
+    { "type": "paragraph", "value": "Strategic priorities for FY2026", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 4 },
+    { "type": "list", "ordered": true, "options": { "fontSize": 11 }, "spacing": 4, "items": [
+      { "spans": [ { "text": "Scale wholesale", "fontWeight": "bold" }, { "text": " to 55% of volume by signing 80 net new accounts, with a dedicated field team." } ] },
+      { "spans": [ { "text": "Vertically integrate sourcing", "fontWeight": "bold" }, { "text": " through two direct-trade partnerships in Ethiopia and Colombia." } ] },
+      { "spans": [ { "text": "Launch the subscription channel", "fontWeight": "bold" }, { "text": " targeting €90k of recurring DTC revenue." } ] },
+      { "spans": [ { "text": "Invest in roasting capacity", "fontWeight": "bold" }, { "text": " with a third line to hold gross margin above 60% at volume." } ] }
+    ] },
+
+    { "type": "move", "y": 14 },
+    { "type": "paragraph", "value": "Principal risks", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 6 },
+    { "type": "table",
+      "options": { "padding_x": 8, "padding_y": 6, "header": { "fillColor": "334155", "textColor": "ffffff", "borderColor": "334155" } },
+      "header_columns": [
+        { "text": "Risk", "width": 180, "alignment": "left", "fontWeight": "bold" },
+        { "text": "Mitigation", "width": 315, "alignment": "left", "fontWeight": "bold" }
+      ],
+      "rows": [
+        [ { "text": "Green-bean price volatility", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+          { "text": "Forward contracts covering 60% of forecast volume; diversified origins.", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" } ],
+        [ { "text": "FX exposure (USD beans)", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+          { "text": "Quarterly hedging policy approved by the Board; natural EUR pricing.", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" } ],
+        [ { "text": "Key-talent retention", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" },
+          { "text": "Roaster apprenticeship programme and equity participation plan.", "alignment": "left", "borderSides": { "top": false, "left": false, "right": false }, "borderColor": "e2e8f0" } ]
+      ] },
+
+    { "type": "move", "y": 18 },
+    { "type": "paragraph", "value": "Verification", "options": { "fontSize": 14, "fontWeight": "bold" } },
+    { "type": "move", "y": 6 },
+    { "type": "qr", "kind": "text", "value": "${report.verify_url}", "width": 82 },
+    { "type": "move", "x": 100, "y": 8 },
+    { "type": "paragraph", "spans": [
+      { "text": "Scan to verify this report online.\n", "fontSize": 10 },
+      { "text": "Document ID  ", "fontSize": 9, "color": "64748b" },
+      { "text": "${report.id}", "fontSize": 10, "fontWeight": "bold", "mono": true }
+    ] },
+    { "type": "move", "y": 28 },
+    { "type": "barcode", "symbology": "code128", "value": "${report.id}", "width": 220, "height": 44, "humanReadable": true },
+    { "type": "move", "x": -100, "y": 72 },
+
+    { "type": "hr", "color": "e2e8f0", "thickness": 1 },
+    { "type": "move", "y": 10 },
+    { "type": "paragraph", "spans": [
+      { "text": "Approved by the Board of Directors — Lyon, ", "fontSize": 10 },
+      { "text": "31 December 2025", "fontSize": 10, "fontWeight": "bold" },
+      { "text": ".", "fontSize": 10 }
+    ] },
+    { "type": "move", "y": 4 },
+    { "type": "paragraph", "spans": [
+      { "text": "Helios Coffee SAS · RCS Lyon 894 217 663 · VAT FR62 894217663 · ", "fontSize": 9, "color": "94a3b8" },
+      { "text": "helios.coffee/investors", "fontSize": 9, "color": "0f766e", "link": "https://helios.coffee/investors" }
+    ] }
   ]
 }
