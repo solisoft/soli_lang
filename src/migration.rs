@@ -215,7 +215,10 @@ impl MigrationRunner {
             .map_err(|e| format!("Failed to list databases: {}", e))?;
         if !databases.iter().any(|d| d == &self.config.database) {
             client.create_database(&self.config.database).map_err(|e| {
-                format!("Failed to create database '{}': {}", self.config.database, e)
+                format!(
+                    "Failed to create database '{}': {}",
+                    self.config.database, e
+                )
             })?;
             println!("  \x1b[32mCreated database\x1b[0m {}", self.config.database);
         }
