@@ -286,19 +286,42 @@ pub struct ChartEl {
     /// Inline points, used when `data` is absent.
     #[serde(default)]
     pub points: Option<Vec<ChartPoint>>,
+    /// Multiple data-bound series (grouped/stacked bars, multi-line). With `data`
+    /// set, `label` names the category field and each entry's `field` is read per
+    /// item. When present, the single-series `value` is ignored.
+    #[serde(default)]
+    pub values: Option<Vec<SeriesDef>>,
+    /// Bar layout when there are multiple series: `"grouped"` (default) or
+    /// `"stacked"`. Ignored for line/pie.
+    #[serde(default)]
+    pub mode: Option<String>,
     /// Slice/bar/line colors (hex, no `#`), cycled across points. A built-in
     /// palette is used when empty.
     #[serde(default)]
     pub colors: Vec<String>,
-    /// Draw a legend (pie only; bar/line label the axis instead). Default true.
+    /// Draw a legend: pie always; bar/line only when there are multiple series.
     #[serde(default = "default_true")]
     pub legend: bool,
     /// Draw axis lines and category labels (bar/line). Default true.
     #[serde(default = "default_true")]
     pub axis: bool,
+    /// Draw horizontal value-axis gridlines + tick labels (bar/line). Default false.
+    #[serde(default)]
+    pub gridlines: bool,
     /// Optional title drawn above the chart.
     #[serde(default)]
     pub title: Option<String>,
+}
+
+/// One series of a multi-series chart: the per-item field to read, plus an
+/// optional legend `name` and `color` (hex, no `#`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SeriesDef {
+    pub field: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 /// One inline chart point.

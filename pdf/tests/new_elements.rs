@@ -346,6 +346,23 @@ fn if_truthiness_treats_false_zero_empty_as_falsy() {
     }
 }
 
+// --- Multi-series charts -----------------------------------------------------
+
+#[test]
+fn multi_series_data_bound_grouped_bars() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "chart", "kind": "bar", "data": "q", "label": "name", "legend": false,
+          "values": [ { "field": "a" }, { "field": "b" } ], "width": 300, "height": 150 }
+    ] }"#;
+    let data = br#"{ "q": [ {"name":"Q1","a":1,"b":2}, {"name":"Q2","a":3,"b":4} ] }"#;
+    let (doc, _) = render(tmpl, data);
+    assert_eq!(
+        ops_of(&doc, |o| matches!(o, DrawOp::FillRect { .. })),
+        4,
+        "2 series × 2 categories = 4 bars"
+    );
+}
+
 /// Count draw ops matching a predicate.
 fn ops_of(doc: &LaidOutDoc, pred: impl Fn(&DrawOp) -> bool) -> usize {
     all_ops(doc).iter().filter(|o| pred(o)).count()

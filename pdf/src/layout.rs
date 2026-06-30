@@ -617,8 +617,8 @@ impl<'a> Engine<'a> {
     /// A bar/line/pie chart drawn from data-bound or inline points. Flows like a
     /// block: a title (optional) above the plot, then the chart, then a small gap.
     fn chart(&mut self, c: &ChartEl, data: &DataDocument, root: &Resolver, template: &Template) {
-        let series = self.chart_series(c, data, root);
-        if series.is_empty() {
+        let (categories, series) = self.chart_series(c, data, root);
+        if categories.is_empty() || series.iter().all(|s| s.values.is_empty()) {
             self.warnings.push(RenderWarning::ElementSkipped {
                 kind: "chart".to_string(),
                 reason: "no data points".to_string(),
@@ -668,46 +668,91 @@ impl<'a> Engine<'a> {
             w: width,
             h: plot_h,
         };
-        let ops = crate::chart::render_chart(c, &series, area, self.fonts, &mut self.warnings);
+        let ops = crate::chart::render_chart(
+            c,
+            &categories,
+            &series,
+            area,
+            self.fonts,
+            &mut self.warnings,
+        );
         self.current.extend(ops);
         self.cursor.y = y + plot_h + bottom_pad;
     }
 
-    /// Resolve a chart's `(label, value)` series: from the bound data array when
-    /// `data` is set (reading the `label`/`value` fields of each item), else from
-    /// the inline `points`.
+    /// Resolve a chart's categories + series. Multi-series when `values` is set
+    /// (one bound array, several value fields); otherwise a single series from
+    /// `data` + `value`, or from the inline `points`.
     fn chart_series(
         &mut self,
         c: &ChartEl,
         data: &DataDocument,
         root: &Resolver,
-    ) -> Vec<(String, f64)> {
+    ) -> (Vec<String>, Vec<crate::chart::Series>) {
         let label_field = c.label.as_deref().unwrap_or("label");
         let value_field = c.value.as_deref().unwrap_or("value");
 
-        if let Some(key) = &c.data {
-            let Some(items) = data.array(key) else {
-                return Vec::new();
+        // Multi-series: one bound array, a value field per series.
+        if let Some(defs) = &c.values {
+            let Some(items) = c.data.as_deref().and_then(|k| data.array(k)) else {
+                return (Vec::new(), Vec::new());
             };
-            return items
+            let categories = items
                 .iter()
                 .map(|item| {
-                    let scoped = root.with_scope(item);
-                    let label = scoped.lookup(label_field).unwrap_or_default();
-                    let value = scoped
-                        .lookup(value_field)
-                        .and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok())
-                        .unwrap_or(0.0);
-                    (label, value)
+                    root.with_scope(item)
+                        .lookup(label_field)
+                        .unwrap_or_default()
                 })
                 .collect();
+            let series = defs
+                .iter()
+                .map(|d| crate::chart::Series {
+                    name: d.name.clone(),
+                    color: d.color.clone(),
+                    values: items
+                        .iter()
+                        .map(|item| {
+                            root.with_scope(item)
+                                .lookup(&d.field)
+                                .as_deref()
+                                .map(parse_num)
+                                .unwrap_or(0.0)
+                        })
+                        .collect(),
+                })
+                .collect();
+            return (categories, series);
         }
 
-        c.points
-            .iter()
-            .flatten()
-            .map(|p| (p.label.clone().unwrap_or_default(), p.value))
-            .collect()
+        // Single series: bound array, or inline points.
+        if let Some(key) = &c.data {
+            let Some(items) = data.array(key) else {
+                return (Vec::new(), Vec::new());
+            };
+            let mut categories = Vec::with_capacity(items.len());
+            let mut values = Vec::with_capacity(items.len());
+            for item in items {
+                let scoped = root.with_scope(item);
+                categories.push(scoped.lookup(label_field).unwrap_or_default());
+                values.push(
+                    scoped
+                        .lookup(value_field)
+                        .as_deref()
+                        .map(parse_num)
+                        .unwrap_or(0.0),
+                );
+            }
+            return (categories, vec![single_series(values)]);
+        }
+
+        let mut categories = Vec::new();
+        let mut values = Vec::new();
+        for p in c.points.iter().flatten() {
+            categories.push(p.label.clone().unwrap_or_default());
+            values.push(p.value);
+        }
+        (categories, vec![single_series(values)])
     }
 
     /// Width reserved for a list's marker column: the widest marker it will draw
@@ -1520,6 +1565,20 @@ impl<'a> Engine<'a> {
 /// Footer band height = stacked footer paragraph line-heights + padding.
 /// Bezier circle/quadrant constant: control-point offset = radius × KAPPA.
 const KAPPA: f32 = 0.552_285;
+
+/// Parse a chart value: trims, accepts a comma decimal separator, defaults to 0.
+fn parse_num(s: &str) -> f64 {
+    s.trim().replace(',', ".").parse::<f64>().unwrap_or(0.0)
+}
+
+/// A nameless, palette-colored single chart series.
+fn single_series(values: Vec<f64>) -> crate::chart::Series {
+    crate::chart::Series {
+        name: None,
+        color: None,
+        values,
+    }
+}
 
 /// Template truthiness for `if`/`unless`: a rendered scalar is falsy when it is
 /// empty, `false`, `0`, or `null` (case-insensitive); anything else is truthy.

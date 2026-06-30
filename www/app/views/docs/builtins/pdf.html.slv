@@ -381,9 +381,14 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">chart</code> <span class="text-xs font-normal text-teal-300 align-middle">· bar · line · pie</span>
-                <p class="text-sm text-gray-400 mt-2 mb-2">A bar, line, or pie chart in a <code>width</code> × <code>height</code> box (plus an optional <code>title</code>); advances the cursor. Points come from a <strong>data binding</strong> (<code>data</code> names an array; <code>label</code>/<code>value</code> name the fields) or inline <code>points</code>. <code>colors</code> are cycled; <code>pie</code> shows a <code>legend</code>, <code>bar</code>/<code>line</code> draw an <code>axis</code>.</p>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A bar, line, or pie chart in a <code>width</code> × <code>height</code> box (plus an optional <code>title</code>); advances the cursor. Points come from a <strong>data binding</strong> (<code>data</code> names an array; <code>label</code>/<code>value</code> name the fields) or inline <code>points</code>. <code>colors</code> are cycled; <code>pie</code> shows a <code>legend</code>, <code>bar</code>/<code>line</code> draw an <code>axis</code> and (opt-in) <code>gridlines</code> with value-axis labels.</p>
                 <pre data-filename="chart (data-bound bar)"><code class="language-json text-sm">{ "type": "chart", "kind": "bar", "title": "Revenue by month",
   "data": "months", "label": "name", "value": "revenue", "width": 360, "height": 160 }</code></pre>
+                <p class="text-sm text-gray-400 mt-3 mb-2"><strong>Multiple series</strong> &mdash; replace <code>value</code> with <code>values</code>: an array of <code>{ field, name?, color? }</code>. Each series reads its own <code>field</code> from every item; bars render <strong>grouped</strong> (or <strong>stacked</strong> with <code>mode: "stacked"</code>), <code>line</code> draws one line per series, and both show a legend of the series names.</p>
+                <pre data-filename="chart (grouped, multi-series)"><code class="language-json text-sm">{ "type": "chart", "kind": "bar", "data": "quarters", "label": "q", "gridlines": true,
+  "values": [ { "field": "fy24", "name": "FY 2024", "color": "94a3b8" },
+              { "field": "fy25", "name": "FY 2025", "color": "0f766e" } ],
+  "width": 460, "height": 160 }</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">

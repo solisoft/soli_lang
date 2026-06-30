@@ -308,7 +308,16 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 ] }
 ```
 
-**chart** — a bar, line, or pie chart drawn from the data. Occupies `width` × `height` pt at the cursor (plus an optional `title` above) and advances the cursor below it. `kind` is `bar`, `line`, or `pie`. Points come either from a **data binding** — `data` names an array in the data document and `label`/`value` name the fields read from each item — or from inline `points`. `colors` (hex, no `#`) are cycled across points; a built-in palette is used when omitted. For `pie`, `legend` adds a swatch + percentage list; for `bar`/`line`, `axis` draws axis lines and category labels.
+**chart** — a bar, line, or pie chart drawn from the data. Occupies `width` × `height` pt at the cursor (plus an optional `title` above) and advances the cursor below it. `kind` is `bar`, `line`, or `pie`. Points come either from a **data binding** — `data` names an array in the data document and `label`/`value` name the fields read from each item — or from inline `points`. `colors` (hex, no `#`) are cycled across points; a built-in palette is used when omitted. For `pie`, `legend` adds a swatch + percentage list; for `bar`/`line`, `axis` draws axis lines and category labels, and `gridlines: true` adds horizontal value-axis gridlines with tick labels.
+
+**Multiple series.** Instead of a single `value`, give `values` — an array of `{ field, name?, color? }`. `data`/`label` still name the array and the category field, and each series reads its own `field` from every item. Bars render **grouped** side-by-side (or **stacked** with `mode: "stacked"`); `line` draws one line per series; both show a legend of the series `name`s.
+
+```json
+{ "type": "chart", "kind": "bar", "data": "quarters", "label": "q", "gridlines": true,
+  "values": [ { "field": "fy24", "name": "FY 2024", "color": "94a3b8" },
+              { "field": "fy25", "name": "FY 2025", "color": "0f766e" } ],
+  "width": 460, "height": 160 }
+```
 
 ```json
 { "type": "chart", "kind": "bar", "title": "Revenue by month",

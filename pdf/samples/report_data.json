@@ -7,10 +7,10 @@
     "verify_url": "https://helios.coffee/ir/fy2025/HC-FY2025-AR-0042"
   },
   "quarters": [
-    { "q": "Q1", "revenue": 142 },
-    { "q": "Q2", "revenue": 168 },
-    { "q": "Q3", "revenue": 175 },
-    { "q": "Q4", "revenue": 209 }
+    { "q": "Q1", "revenue": 142, "prev": 103 },
+    { "q": "Q2", "revenue": 168, "prev": 122 },
+    { "q": "Q3", "revenue": 175, "prev": 127 },
+    { "q": "Q4", "revenue": 209, "prev": 151 }
   ],
   "monthly": [
     { "m": "Jan", "revenue": 42 },

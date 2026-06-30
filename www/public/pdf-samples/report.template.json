@@ -134,10 +134,13 @@
     { "type": "hr", "color": "e2e8f0", "thickness": 1 },
     { "type": "move", "y": 10 },
 
-    { "type": "chart", "kind": "bar", "title": "Quarterly net revenue (€k)",
-      "data": "quarters", "label": "q", "value": "revenue",
-      "width": 495.276, "height": 150,
-      "colors": ["0f766e", "0f766e", "0f766e", "f59e0b"] },
+    { "type": "chart", "kind": "bar", "title": "Quarterly net revenue (€k) — FY2024 vs FY2025",
+      "data": "quarters", "label": "q", "gridlines": true,
+      "values": [
+        { "field": "prev", "name": "FY 2024", "color": "94a3b8" },
+        { "field": "revenue", "name": "FY 2025", "color": "0f766e" }
+      ],
+      "width": 495.276, "height": 158 },
 
     { "type": "move", "y": 12 },
     { "type": "chart", "kind": "line", "title": "Monthly revenue trend (€k)",

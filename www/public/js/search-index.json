@@ -11863,7 +11863,7 @@
       "type": "feature",
       "category": "PDF",
       "path": "/docs/builtins/pdf#section-template",
-      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points — no extra dependencies.",
+      "description": "Bar, line, and pie charts in a PDF, drawn from data-bound or inline points — single- or multi-series (grouped/stacked bars, multi-line), with legends and value-axis gridlines.",
       "keywords": [
         "pdf",
         "chart",
@@ -11871,6 +11871,12 @@
         "bar chart",
         "line chart",
         "pie chart",
+        "grouped",
+        "stacked",
+        "multi-series",
+        "series",
+        "gridlines",
+        "legend",
         "report",
         "dashboard",
         "data"
