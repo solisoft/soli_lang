@@ -232,6 +232,12 @@ pub struct StyledSpan {
     pub font_size: Option<f32>,
     #[serde(default, deserialize_with = "de_opt_font_weight")]
     pub font_weight: Option<FontWeight>,
+    /// Italic face (requires an italic font in the family). Inherits if unset.
+    #[serde(default)]
+    pub italic: Option<bool>,
+    /// Monospace face (uses the loaded mono font, e.g. for `code`). Inherits if unset.
+    #[serde(default)]
+    pub mono: Option<bool>,
     /// Text color (hex, no `#`); inherits black / the paragraph default if unset.
     #[serde(default)]
     pub color: Option<String>,
@@ -250,6 +256,12 @@ pub struct TextOptions {
     pub font_size: f32,
     #[serde(default, deserialize_with = "de_font_weight")]
     pub font_weight: FontWeight,
+    /// Render in the italic face (requires an italic font in the family).
+    #[serde(default)]
+    pub italic: bool,
+    /// Render in the monospace face (the loaded mono font).
+    #[serde(default)]
+    pub mono: bool,
     /// Optional external URL; when set, the text becomes a clickable link.
     #[serde(default)]
     pub link: Option<String>,
@@ -271,6 +283,8 @@ impl Default for TextOptions {
             alignment: Alignment::Left,
             font_size: default_font_size(),
             font_weight: FontWeight::Normal,
+            italic: false,
+            mono: false,
             link: None,
             bookmark: None,
             anchor: None,

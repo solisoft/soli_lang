@@ -328,11 +328,21 @@ A `paragraph` may carry `spans` instead of `value` to mix weight, size, color, a
   { "text": "Amount due: " },
   { "text": "EUR 600.00", "fontWeight": "bold", "color": "0F766E", "fontSize": 16 },
   { "text": "  —  " },
-  { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" }
+  { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" },
+  { "text": " (", "italic": true }, { "text": "see README", "mono": true }, { "text": ")", "italic": true }
 ] }
 ```
 
-Span fields: `text` (required), `fontSize`, `fontWeight`, `color` (hex), `link` (external URL).
+Span fields: `text` (required), `fontSize`, `fontWeight`, `italic` (bool), `mono` (bool — monospace, e.g. for `code`), `color` (hex), `link` (external URL). `italic` and `mono` need the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); if a face is missing the span degrades to the nearest available one.
+
+**From markdown.** [`Markdown.to_spans(md)`](markdown) parses inline markdown — `**bold**`, `*italic*`, `` `code` `` (→ mono), `[text](url)` — into exactly this spans array, so you can author rich text as markdown:
+
+```soli
+let spans = Markdown.to_spans("Pay **now**, read the `README`, see [docs](https://x).")
+let template = { "fonts": ["titillium"],
+  "content": [ { "type": "paragraph", "spans": spans } ] }
+let pdf = pdf_render(template.to_json(), "{}")
+```
 
 ### Payment QR (scan-to-pay)
 

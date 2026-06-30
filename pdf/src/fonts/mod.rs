@@ -3,17 +3,18 @@
 //! **No fonts are embedded in the binary.** All faces are loaded at runtime
 //! from the directories in `RenderOptions::font_dirs` (CLI `--font-dir`). The
 //! template's `fonts: [...]` field names the family to use as the primary text
-//! face; its Regular/Bold styles are resolved from the loaded files, and every
-//! other loaded font (e.g. a CJK font) becomes a fallback for characters the
-//! primary can't cover.
+//! face; its Regular/Bold/Italic/BoldItalic styles are resolved from the loaded
+//! files. A monospaced font (e.g. JetBrains Mono) supplies the `code`/mono
+//! faces, and every other loaded font (e.g. a CJK font) becomes a coverage
+//! fallback for characters the primary can't cover.
 //!
-//! Text is split into runs by which face covers each character (primary weight
-//! → fallback faces, in load order). Advance widths come from `ttf-parser`;
-//! printpdf does the actual glyph encoding + embedding.
+//! Text is split into runs by which face covers each character (the requested
+//! styled face → fallback faces, in load order). Advance widths come from
+//! `ttf-parser`; printpdf does the actual glyph encoding + embedding.
 
 mod subset;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -22,22 +23,53 @@ use ttf_parser::Face;
 use crate::error::{PdfError, RenderWarning, Result};
 use crate::template::FontWeight;
 
+/// A primary/monospace face style: which (monospace? × bold? × italic?)
+/// combination to draw with. `FaceKey::default()` is the plain Regular face.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct FaceKey {
+    pub mono: bool,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+impl From<FontWeight> for FaceKey {
+    fn from(w: FontWeight) -> Self {
+        FaceKey {
+            mono: false,
+            bold: matches!(w, FontWeight::Bold),
+            italic: false,
+        }
+    }
+}
+
 /// Which face a run of text should be drawn with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum FontSlot {
-    Regular,
-    Bold,
-    /// A fallback face, by load index.
+    /// A primary-family or monospace styled face.
+    Styled(FaceKey),
+    /// A coverage fallback face, by load index.
     Fallback(usize),
+}
+
+impl FontSlot {
+    /// The plain Regular slot (always present in the registry).
+    pub const REGULAR: FontSlot = FontSlot::Styled(FaceKey {
+        mono: false,
+        bold: false,
+        italic: false,
+    });
 }
 
 /// One loaded face. The `ttf-parser` `Face` is re-parsed on demand (cheap; it
 /// only reads the table directory) so the struct isn't self-referential.
+#[derive(Clone)]
 struct LoadedFace {
     bytes: Vec<u8>,
     /// Lowercased file stem, used for family matching (e.g. "titilliumweb-bold").
     key: String,
     is_bold: bool,
+    is_italic: bool,
+    is_mono: bool,
     units_per_em: f32,
     ascent: f32,
     descent: f32,
@@ -46,7 +78,7 @@ struct LoadedFace {
 
 impl LoadedFace {
     fn load(bytes: Vec<u8>, key: String) -> Result<LoadedFace> {
-        let (upem, ascent, descent, cap_height, is_bold);
+        let (upem, ascent, descent, cap_height, is_bold, is_italic, is_mono);
         {
             let face = Face::parse(&bytes, 0)
                 .map_err(|e| PdfError::Font(format!("ttf-parser failed for {key}: {e}")))?;
@@ -63,12 +95,19 @@ impl LoadedFace {
                 .filter(|c| *c > 0)
                 .map(|c| c as f32 / u)
                 .unwrap_or(0.7);
+            // Style detection: trust the font's OS/2 / post flags, but fall back
+            // to the filename (e.g. "...-BoldItalic", "JetBrainsMono-...") since
+            // not every face sets the flags reliably.
             is_bold = face.is_bold() || key.contains("bold");
+            is_italic = face.is_italic() || key.contains("italic") || key.contains("oblique");
+            is_mono = face.is_monospaced() || key.contains("mono");
         }
         Ok(LoadedFace {
             bytes,
             key,
             is_bold,
+            is_italic,
+            is_mono,
             units_per_em: upem,
             ascent,
             descent,
@@ -109,19 +148,21 @@ pub struct Run {
     pub text: String,
 }
 
-/// The loaded font set: a primary family (Regular/Bold) plus fallback faces.
+/// The loaded font set: styled faces (primary family + monospace) keyed by
+/// style, plus coverage fallback faces.
 pub struct FontRegistry {
-    regular: LoadedFace,
-    bold: LoadedFace,
+    faces: HashMap<FaceKey, LoadedFace>,
     fallbacks: Vec<LoadedFace>,
 }
 
 impl FontRegistry {
     /// Build a registry from the fonts found in `dirs`. `families` (from the
-    /// template's `fonts` field) selects the primary face; any other loaded
-    /// font becomes a fallback. Returns an error if no usable font is found.
+    /// template's `fonts` field) selects the primary family; its Regular/Bold/
+    /// Italic/BoldItalic faces — and any monospaced face — are bucketed by style,
+    /// while every other loaded font becomes a coverage fallback. Errors if no
+    /// usable font is found.
     pub fn from_font_dirs(dirs: &[PathBuf], families: &[String]) -> Result<FontRegistry> {
-        let mut faces: Vec<LoadedFace> = Vec::new();
+        let mut loaded: Vec<LoadedFace> = Vec::new();
         for dir in dirs {
             for path in font_files(dir) {
                 if let Ok(bytes) = fs::read(&path) {
@@ -131,45 +172,70 @@ impl FontRegistry {
                         .unwrap_or("font")
                         .to_ascii_lowercase();
                     if let Ok(face) = LoadedFace::load(bytes, key) {
-                        faces.push(face);
+                        loaded.push(face);
                     }
                 }
             }
         }
-        if faces.is_empty() {
+        if loaded.is_empty() {
             return Err(PdfError::Font(format!(
                 "no usable fonts found in {dirs:?}; provide a font directory (RenderOptions::font_dirs / --font-dir)"
             )));
         }
 
-        // Choose Regular and Bold, preferring a requested family.
-        let regular_idx = pick(&faces, families, false)
-            .or_else(|| faces.iter().position(|f| !f.is_bold))
-            .unwrap_or(0);
-        let bold_idx =
-            pick(&faces, families, true).or_else(|| faces.iter().position(|f| f.is_bold));
+        // If any non-mono face matches a requested family, only those become the
+        // primary family; otherwise treat every non-mono face as primary so
+        // bold/italic still resolve even when the family name doesn't match.
+        let any_family_match = loaded
+            .iter()
+            .any(|f| !f.is_mono && families.iter().any(|fam| f.matches_family(fam)));
 
-        // Extract regular and bold (bold defaults to a copy of regular).
-        let regular = faces[regular_idx].clone_face();
-        let bold = match bold_idx {
-            Some(i) if i != regular_idx => faces[i].clone_face(),
-            _ => faces[regular_idx].clone_face(),
-        };
-
-        // Everything not chosen becomes a fallback, preserving order.
-        let mut fallbacks = Vec::new();
-        for (i, f) in faces.into_iter().enumerate() {
-            if i == regular_idx || Some(i) == bold_idx {
-                continue;
+        let mut faces: HashMap<FaceKey, LoadedFace> = HashMap::new();
+        let mut fallbacks: Vec<LoadedFace> = Vec::new();
+        for f in loaded {
+            if f.is_mono {
+                faces
+                    .entry(FaceKey {
+                        mono: true,
+                        bold: f.is_bold,
+                        italic: f.is_italic,
+                    })
+                    .or_insert(f);
+            } else if !any_family_match || families.iter().any(|fam| f.matches_family(fam)) {
+                faces
+                    .entry(FaceKey {
+                        mono: false,
+                        bold: f.is_bold,
+                        italic: f.is_italic,
+                    })
+                    .or_insert(f);
+            } else {
+                fallbacks.push(f);
             }
-            fallbacks.push(f);
         }
 
-        Ok(FontRegistry {
-            regular,
-            bold,
-            fallbacks,
-        })
+        // Guarantee a plain Regular face — `face_of` uses it as the final
+        // fallback, so it must exist.
+        if !faces.contains_key(&FaceKey::default()) {
+            let regular = faces
+                .values()
+                .find(|f| !f.is_bold && !f.is_italic && !f.is_mono)
+                .cloned()
+                .or_else(|| fallbacks.first().cloned())
+                .or_else(|| faces.values().next().cloned());
+            match regular {
+                Some(f) => {
+                    faces.insert(FaceKey::default(), f);
+                }
+                None => {
+                    return Err(PdfError::Font(
+                        "no usable primary font found in the font directories".to_string(),
+                    ))
+                }
+            }
+        }
+
+        Ok(FontRegistry { faces, fallbacks })
     }
 
     /// Append a fallback face from raw font bytes (TTF/OTF).
@@ -208,56 +274,99 @@ impl FontRegistry {
         subset::subset_face(&lf.bytes, 0, &gids)
     }
 
-    fn primary_slot(weight: FontWeight) -> FontSlot {
-        match weight {
-            FontWeight::Bold => FontSlot::Bold,
-            FontWeight::Normal => FontSlot::Regular,
-        }
+    /// The guaranteed plain Regular face.
+    fn regular(&self) -> &LoadedFace {
+        self.faces
+            .get(&FaceKey::default())
+            .expect("a Regular face is guaranteed at load")
     }
 
-    fn primary_face(&self, weight: FontWeight) -> &LoadedFace {
-        match weight {
-            FontWeight::Bold => &self.bold,
-            FontWeight::Normal => &self.regular,
+    /// Resolve a styled face, degrading gracefully when an exact face isn't
+    /// loaded: drop italic, then bold — *keeping* monospace as long as possible
+    /// — then drop monospace, ultimately the plain Regular.
+    fn resolve_styled(&self, key: FaceKey) -> &LoadedFace {
+        let candidates = [
+            FaceKey {
+                mono: key.mono,
+                bold: key.bold,
+                italic: key.italic,
+            },
+            FaceKey {
+                mono: key.mono,
+                bold: key.bold,
+                italic: false,
+            },
+            FaceKey {
+                mono: key.mono,
+                bold: false,
+                italic: key.italic,
+            },
+            FaceKey {
+                mono: key.mono,
+                bold: false,
+                italic: false,
+            },
+            FaceKey {
+                mono: false,
+                bold: key.bold,
+                italic: key.italic,
+            },
+            FaceKey {
+                mono: false,
+                bold: key.bold,
+                italic: false,
+            },
+            FaceKey {
+                mono: false,
+                bold: false,
+                italic: key.italic,
+            },
+            FaceKey::default(),
+        ];
+        for k in candidates {
+            if let Some(f) = self.faces.get(&k) {
+                return f;
+            }
         }
+        self.regular()
     }
 
     fn face_of(&self, slot: FontSlot) -> &LoadedFace {
         match slot {
-            FontSlot::Regular => &self.regular,
-            FontSlot::Bold => &self.bold,
-            FontSlot::Fallback(i) => self.fallbacks.get(i).unwrap_or(&self.regular),
+            FontSlot::Styled(key) => self.resolve_styled(key),
+            FontSlot::Fallback(i) => self.fallbacks.get(i).unwrap_or_else(|| self.regular()),
         }
     }
 
     /// Ascent (em fraction) for the primary face of `weight`.
     pub fn ascent(&self, weight: FontWeight) -> f32 {
-        self.primary_face(weight).ascent
+        self.resolve_styled(FaceKey::from(weight)).ascent
     }
 
     /// Descent (em fraction, negative) for the primary face of `weight`.
     pub fn descent(&self, weight: FontWeight) -> f32 {
-        self.primary_face(weight).descent
+        self.resolve_styled(FaceKey::from(weight)).descent
     }
 
     /// Cap height (em fraction) for the primary face of `weight`. Used to
     /// optically center cell text rather than centering the full ascent box.
     pub fn cap_height(&self, weight: FontWeight) -> f32 {
-        self.primary_face(weight).cap_height
+        self.resolve_styled(FaceKey::from(weight)).cap_height
     }
 
-    /// Split `text` into runs by font coverage: the primary face for `weight`,
-    /// then fallback faces in load order. Characters covered by no loaded font
-    /// are dropped (keeping the PDF free of `.notdef` references) and raise a
-    /// single warning.
+    /// Split `text` into runs by font coverage: the requested styled face
+    /// (`key`, which accepts a `FontWeight` or a full `FaceKey`), then fallback
+    /// faces in load order. Characters covered by no loaded font are dropped
+    /// (keeping the PDF free of `.notdef` references) and raise a single warning.
     pub fn itemize(
         &self,
         text: &str,
-        weight: FontWeight,
+        key: impl Into<FaceKey>,
         warnings: &mut Vec<RenderWarning>,
     ) -> Vec<Run> {
-        let primary_slot = Self::primary_slot(weight);
-        let primary = self.primary_face(weight).parse();
+        let key = key.into();
+        let primary_slot = FontSlot::Styled(key);
+        let primary = self.resolve_styled(key).parse();
         let fallbacks: Vec<Face> = self.fallbacks.iter().map(|f| f.parse()).collect();
 
         let mut runs: Vec<Run> = Vec::new();
@@ -292,9 +401,9 @@ impl FontRegistry {
     }
 
     /// Width (pt) of `text` at `size`, accounting for font fallback.
-    pub fn measure(&self, text: &str, weight: FontWeight, size: f32) -> f32 {
+    pub fn measure(&self, text: &str, key: impl Into<FaceKey>, size: f32) -> f32 {
         let mut sink = Vec::new();
-        self.itemize(text, weight, &mut sink)
+        self.itemize(text, key, &mut sink)
             .iter()
             .map(|run| self.measure_run(run, size))
             .sum()
@@ -317,33 +426,6 @@ impl FontRegistry {
         let lf = self.face_of(slot);
         advance(&lf.parse(), lf.units_per_em, ch, size)
     }
-}
-
-impl LoadedFace {
-    fn clone_face(&self) -> LoadedFace {
-        LoadedFace {
-            bytes: self.bytes.clone(),
-            key: self.key.clone(),
-            is_bold: self.is_bold,
-            units_per_em: self.units_per_em,
-            ascent: self.ascent,
-            descent: self.descent,
-            cap_height: self.cap_height,
-        }
-    }
-}
-
-/// Pick the first face matching one of `families` with the requested boldness.
-fn pick(faces: &[LoadedFace], families: &[String], want_bold: bool) -> Option<usize> {
-    for fam in families {
-        if let Some(i) = faces
-            .iter()
-            .position(|f| f.is_bold == want_bold && f.matches_family(fam))
-        {
-            return Some(i);
-        }
-    }
-    None
 }
 
 /// List `.ttf`/`.otf`/`.ttc` files in `dir`, sorted by name. Missing dir → empty.
@@ -374,7 +456,8 @@ mod tests {
     #[test]
     fn loads_primary_family() {
         let r = pdf_fonts();
-        // Only Titillium R/B in ./fonts → no fallbacks.
+        // ./fonts holds Titillium R/B/I/BI + JetBrains Mono R/B/I — all are either
+        // the primary family or monospaced, so none become coverage fallbacks.
         assert_eq!(r.fallback_count(), 0);
     }
 
@@ -384,16 +467,68 @@ mod tests {
         let mut w = Vec::new();
         let runs = r.itemize("Invoice", FontWeight::Normal, &mut w);
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].slot, FontSlot::Regular);
+        assert_eq!(runs[0].slot, FontSlot::REGULAR);
         assert!(w.is_empty());
     }
 
     #[test]
     fn bold_resolves_to_bold_face() {
         let r = pdf_fonts();
-        // The bold face differs from regular (separate file).
-        assert!(r.bold.is_bold);
-        assert!(!r.regular.is_bold);
+        assert!(
+            r.faces[&FaceKey {
+                mono: false,
+                bold: true,
+                italic: false
+            }]
+                .is_bold
+        );
+        assert!(!r.faces[&FaceKey::default()].is_bold);
+    }
+
+    #[test]
+    fn italic_and_mono_faces_load_and_route() {
+        let r = pdf_fonts();
+        for key in [
+            FaceKey {
+                mono: false,
+                bold: false,
+                italic: true,
+            },
+            FaceKey {
+                mono: false,
+                bold: true,
+                italic: true,
+            },
+            FaceKey {
+                mono: true,
+                bold: false,
+                italic: false,
+            },
+        ] {
+            assert!(r.faces.contains_key(&key), "missing face {key:?}");
+        }
+        let mut w = Vec::new();
+        let mono = FaceKey {
+            mono: true,
+            bold: false,
+            italic: false,
+        };
+        let runs = r.itemize("x", mono, &mut w);
+        assert_eq!(runs[0].slot, FontSlot::Styled(mono));
+    }
+
+    #[test]
+    fn missing_style_degrades_without_panicking() {
+        // mono-bold-italic isn't shipped (only mono R/B/I) → resolves to a loaded
+        // face via degradation rather than panicking.
+        let r = pdf_fonts();
+        let key = FaceKey {
+            mono: true,
+            bold: true,
+            italic: true,
+        };
+        let w = r.char_advance(FontSlot::Styled(key), 'x', 12.0);
+        assert!(w > 0.0);
     }
 
     #[test]
@@ -401,16 +536,16 @@ mod tests {
         let r = pdf_fonts();
         let mut w = Vec::new();
         let runs = r.itemize("Invoice こんにちは", FontWeight::Normal, &mut w);
-        assert!(runs.iter().all(|run| run.slot == FontSlot::Regular));
+        assert!(runs.iter().all(|run| run.slot == FontSlot::REGULAR));
         assert_eq!(w.len(), 1);
         assert!(matches!(w[0], RenderWarning::MissingGlyph { .. }));
     }
 
     #[test]
     fn cjk_fallback_when_available() {
-        // The lang app's font folder carries Titillium + Noto Sans JP. Skip if
-        // absent (crate built in isolation).
-        let dirs = [PathBuf::from("../lang/font")];
+        // The lang app's font folder carries Titillium + JetBrains Mono + Noto
+        // Sans JP. Skip if absent (crate built in isolation).
+        let dirs = [PathBuf::from("../font")];
         let r = match FontRegistry::from_font_dirs(&dirs, &["titillium".to_string()]) {
             Ok(r) if r.fallback_count() > 0 => r,
             _ => return,
@@ -418,7 +553,7 @@ mod tests {
         let mut w = Vec::new();
         let runs = r.itemize("Invoice こんにちは世界", FontWeight::Normal, &mut w);
         assert_eq!(runs.len(), 2);
-        assert_eq!(runs[0].slot, FontSlot::Regular);
+        assert_eq!(runs[0].slot, FontSlot::REGULAR);
         assert!(matches!(runs[1].slot, FontSlot::Fallback(_)));
         assert!(w.is_empty());
     }

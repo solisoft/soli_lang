@@ -536,6 +536,8 @@ impl<'a> Engine<'a> {
     ) {
         let base_size = p.options.font_size;
         let base_weight = p.options.font_weight;
+        let base_italic = p.options.italic;
+        let base_mono = p.options.mono;
 
         // Resolve spans into measured segments + a link table.
         let mut links: Vec<String> = Vec::new();
@@ -550,6 +552,8 @@ impl<'a> Engine<'a> {
                 text,
                 size: span.font_size.unwrap_or(base_size),
                 weight: span.font_weight.unwrap_or(base_weight),
+                italic: span.italic.unwrap_or(base_italic),
+                mono: span.mono.unwrap_or(base_mono),
                 color: span
                     .color
                     .as_deref()

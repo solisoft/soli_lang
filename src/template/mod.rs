@@ -704,6 +704,96 @@ pub fn markdown_to_html(markdown: &str) -> String {
     html_output
 }
 
+/// One inline span produced by [`markdown_to_spans`]: a run of text plus the
+/// inline styles that were active over it. Maps onto a PDF `StyledSpan`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MdSpan {
+    pub text: String,
+    pub bold: bool,
+    pub italic: bool,
+    pub mono: bool,
+    pub link: Option<String>,
+}
+
+/// Convert **inline** markdown into a flat list of styled spans, suitable for a
+/// PDF paragraph's `spans`. Bold (`**`/`__`) → bold, emphasis (`*`/`_`) →
+/// italic, inline code (`` `…` ``) → monospace, and links → a clickable span.
+/// Block structure is flattened to one inline flow (blocks joined by a space;
+/// soft breaks → space, hard breaks → `\n`); strikethrough renders as plain
+/// text (there is no struck face). Adjacent same-style runs are merged.
+pub fn markdown_to_spans(markdown: &str) -> Vec<MdSpan> {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+    fn push(
+        spans: &mut Vec<MdSpan>,
+        text: &str,
+        bold: bool,
+        italic: bool,
+        mono: bool,
+        link: Option<&str>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        if let Some(last) = spans.last_mut() {
+            if last.bold == bold
+                && last.italic == italic
+                && last.mono == mono
+                && last.link.as_deref() == link
+            {
+                last.text.push_str(text);
+                return;
+            }
+        }
+        spans.push(MdSpan {
+            text: text.to_string(),
+            bold,
+            italic,
+            mono,
+            link: link.map(str::to_string),
+        });
+    }
+
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let mut spans: Vec<MdSpan> = Vec::new();
+    let mut strong = 0u32;
+    let mut emph = 0u32;
+    let mut links: Vec<String> = Vec::new();
+    let mut blocks_seen = 0u32;
+
+    for ev in Parser::new_ext(markdown, options) {
+        let link = links.last().map(|s| s.as_str());
+        match ev {
+            Event::Start(Tag::Strong) => strong += 1,
+            Event::End(TagEnd::Strong) => strong = strong.saturating_sub(1),
+            Event::Start(Tag::Emphasis) => emph += 1,
+            Event::End(TagEnd::Emphasis) => emph = emph.saturating_sub(1),
+            Event::Start(Tag::Link { dest_url, .. }) => links.push(dest_url.to_string()),
+            Event::End(TagEnd::Link) => {
+                links.pop();
+            }
+            // New top-level block after the first → separate with a space so the
+            // inline flow doesn't run words together.
+            Event::Start(Tag::Paragraph | Tag::Heading { .. } | Tag::Item) => {
+                if blocks_seen > 0 {
+                    push(&mut spans, " ", false, false, false, None);
+                }
+                blocks_seen += 1;
+            }
+            Event::Text(t) => push(&mut spans, &t, strong > 0, emph > 0, false, link),
+            Event::Code(t) => push(&mut spans, &t, strong > 0, emph > 0, true, link),
+            Event::SoftBreak => push(&mut spans, " ", strong > 0, emph > 0, false, link),
+            Event::HardBreak => push(&mut spans, "\n", strong > 0, emph > 0, false, link),
+            _ => {}
+        }
+    }
+    spans
+}
+
 /// Convert markdown text to HTML while escaping raw HTML and neutralizing unsafe links.
 pub fn markdown_to_safe_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Event, Options, Parser, Tag};
@@ -790,6 +880,35 @@ mod tests {
     use super::*;
     use crate::interpreter::value::{HashKey, HashPairs};
     use std::fs;
+
+    #[test]
+    fn markdown_to_spans_maps_inline_styles() {
+        let spans = markdown_to_spans("a **b** _c_ `d` [e](http://x) ~~f~~");
+        // Find by a unique character (plain spans merge with adjacent spaces).
+        let find = |t: char| {
+            spans
+                .iter()
+                .find(|s| s.text.contains(t))
+                .unwrap_or_else(|| panic!("no span containing {t}"))
+        };
+        let a = find('a');
+        assert!(!a.bold && !a.italic && !a.mono && a.link.is_none());
+        assert!(find('b').bold);
+        assert!(find('c').italic);
+        assert!(find('d').mono);
+        assert_eq!(find('e').link.as_deref(), Some("http://x"));
+        // strikethrough has no struck face → renders as plain text
+        let f = find('f');
+        assert!(!f.bold && !f.italic && !f.mono && f.link.is_none());
+    }
+
+    #[test]
+    fn markdown_to_spans_nested_bold_italic() {
+        let spans = markdown_to_spans("**_x_**");
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].bold && spans[0].italic);
+        assert_eq!(spans[0].text, "x");
+    }
 
     #[test]
     fn test_is_markdown_template() {

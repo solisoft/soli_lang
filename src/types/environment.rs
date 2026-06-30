@@ -1523,6 +1523,27 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        markdown_class.methods.insert(
+            "to_safe_html".to_string(),
+            MethodInfo {
+                name: "to_safe_html".to_string(),
+                params: vec![("markdown".to_string(), Type::String)],
+                return_type: Type::String,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        // Markdown.to_spans(markdown) -> Array of span hashes for PDF inline rich text.
+        markdown_class.methods.insert(
+            "to_spans".to_string(),
+            MethodInfo {
+                name: "to_spans".to_string(),
+                params: vec![("markdown".to_string(), Type::String)],
+                return_type: Type::Array(Box::new(Type::Any)),
+                is_private: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("Markdown".to_string(), markdown_class);
 
         // Cache class

@@ -63,13 +63,14 @@ pub fn emit(doc: &LaidOutDoc, fonts: &FontRegistry) -> Result<Vec<u8>> {
     let mut pdf = PdfDocument::new("invoice");
     let mut font_warnings = Vec::new();
 
-    // Register fonts. Regular + Bold are always embedded; a fallback slot is
-    // only registered when the document actually references it (the CJK fallback
-    // is large). Each face is subset to just the characters used in its slot
-    // before embedding (retaining glyph ids, so printpdf is none the wiser).
+    // Register fonts. Regular is always embedded (it's the fallback target for
+    // any slot that ends up unregistered); every other styled/fallback slot is
+    // embedded only when the document actually references it (bold/italic/mono
+    // and the large CJK fallback). Each face is subset to just the characters
+    // used in its slot before embedding (retaining glyph ids, so printpdf is
+    // none the wiser).
     let mut used: BTreeMap<FontSlot, BTreeSet<char>> = BTreeMap::new();
-    used.entry(FontSlot::Regular).or_default();
-    used.entry(FontSlot::Bold).or_default();
+    used.entry(FontSlot::REGULAR).or_default();
     for page in &doc.pages {
         for op in &page.ops {
             match op {
@@ -301,7 +302,7 @@ fn emit_op(
             for TextPiece { slot, text } in pieces {
                 let fid = font_ids
                     .get(slot)
-                    .or_else(|| font_ids.get(&FontSlot::Regular))
+                    .or_else(|| font_ids.get(&FontSlot::REGULAR))
                     .expect("at least Regular font registered");
                 out.push(Op::SetFont {
                     font: PdfFontHandle::External(fid.clone()),
@@ -392,7 +393,7 @@ fn emit_text(
         // Fall back to Regular if a slot wasn't registered (shouldn't happen).
         let fid = font_ids
             .get(slot)
-            .or_else(|| font_ids.get(&FontSlot::Regular))
+            .or_else(|| font_ids.get(&FontSlot::REGULAR))
             .expect("at least Regular font registered");
         out.push(Op::SetFont {
             font: PdfFontHandle::External(fid.clone()),
@@ -434,7 +435,7 @@ fn emit_styled_text(
     {
         let fid = font_ids
             .get(slot)
-            .or_else(|| font_ids.get(&FontSlot::Regular))
+            .or_else(|| font_ids.get(&FontSlot::REGULAR))
             .expect("at least Regular font registered");
         out.push(Op::SetFillColor {
             col: pp_color(*color),

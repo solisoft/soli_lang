@@ -2,7 +2,7 @@
 
 use crate::color::Rgb;
 use crate::error::RenderWarning;
-use crate::fonts::{FontRegistry, FontSlot};
+use crate::fonts::{FaceKey, FontRegistry, FontSlot};
 use crate::template::{Alignment, FontWeight};
 
 /// Line height multiplier applied to the font size.
@@ -97,6 +97,8 @@ pub struct StyledSeg {
     pub text: String,
     pub size: f32,
     pub weight: FontWeight,
+    pub italic: bool,
+    pub mono: bool,
     pub color: Rgb,
     /// Index into the caller's link table, if this segment is a clickable link.
     pub link: Option<usize>,
@@ -136,14 +138,19 @@ pub fn layout_styled_lines(
             if !first {
                 chars.push(StyledChar {
                     ch: '\n',
-                    slot: FontSlot::Regular,
+                    slot: FontSlot::REGULAR,
                     size: seg.size,
                     color: seg.color,
                     link: seg.link,
                 });
             }
             first = false;
-            for run in reg.itemize(part, seg.weight, warnings) {
+            let key = FaceKey {
+                mono: seg.mono,
+                bold: matches!(seg.weight, FontWeight::Bold),
+                italic: seg.italic,
+            };
+            for run in reg.itemize(part, key, warnings) {
                 for ch in run.text.chars() {
                     chars.push(StyledChar {
                         ch,

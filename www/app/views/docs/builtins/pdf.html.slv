@@ -77,7 +77,7 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
                     <img src="/images/docs/pdf/letter.png" alt="Minimal typographic letter" class="w-full h-auto" loading="lazy" />
                 </div>
                 <h3 class="text-lg font-semibold text-white mb-1">Letter <span class="text-xs font-normal text-gray-400 align-middle">· plain PDF</span></h3>
-                <p class="text-sm text-gray-400">The simplest case &mdash; only paragraphs, <code>move</code>, and alignment, no tables. A right-aligned dateline, wrapped body, bold sign-off.</p>
+                <p class="text-sm text-gray-400">Paragraphs, <code>move</code>, and alignment &mdash; no tables. A right-aligned dateline, wrapped body, bold sign-off, and a P.S. line of <strong>inline rich text</strong> mixing <em>italic</em>, monospace, bold, and a link.</p>
             </div>
             <!-- Statement (multi-page) -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -361,9 +361,17 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
   { "text": "Amount due: " },
   { "text": "EUR 600.00", "fontWeight": "bold", "color": "0F766E", "fontSize": 16 },
   { "text": "  —  " },
-  { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" }
+  { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" },
+  { "text": " see ", "italic": true }, { "text": "README", "mono": true }
 ] }</code></pre>
-        <p class="text-sm text-gray-400 mt-2">Span fields: <code>text</code> (required), <code>fontSize</code>, <code>fontWeight</code>, <code>color</code> (hex), <code>link</code> (external URL).</p>
+        <p class="text-sm text-gray-400 mt-2">Span fields: <code>text</code> (required), <code>fontSize</code>, <code>fontWeight</code>, <code>italic</code> (bool), <code>mono</code> (bool &mdash; monospace, e.g. for <code>code</code>), <code>color</code> (hex), <code>link</code> (external URL). <code>italic</code>/<code>mono</code> use the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); a missing face degrades to the nearest available one.</p>
+        <div class="rounded-xl bg-teal-500/5 border border-teal-400/20 p-4 mt-3">
+            <p class="text-sm text-gray-300 leading-6"><strong>Author it as markdown.</strong> <code class="text-teal-300">Markdown.to_spans(md)</code> turns inline markdown &mdash; <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code> (&rarr; mono), <code>[text](url)</code> &mdash; into exactly this <code>spans</code> array.</p>
+            <pre class="!mt-2 !mb-0"><code class="language-soli text-sm">let spans = Markdown.to_spans("Pay **now**, read the `README`, see [docs](https://x).")
+let template = { "fonts": ["titillium"],
+  "content": [ { "type": "paragraph", "spans": spans } ] }
+let pdf = pdf_render(template.to_json(), "{}")</code></pre>
+        </div>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Cells: text &amp; rich</h3>
         <p class="text-gray-400 mb-3">A cell is either a simple <strong>text</strong> cell, or a <strong>rich</strong> cell whose <code>content</code> stacks multiple items &mdash; text lines <em>and</em> images &mdash; vertically in one cell.</p>

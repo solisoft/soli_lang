@@ -8,10 +8,16 @@ embedded — they are loaded at runtime from a font directory (see README).
 Shipped on disk for local dev/tests (in `fonts/`) and for the lang app
 (`../lang/font/`); the library loads them at runtime via `font_dirs`.
 
-- **Titillium Web** (`fonts/TitilliumWeb-Regular.ttf`, `TitilliumWeb-Bold.ttf`)
+- **Titillium Web** (`fonts/TitilliumWeb-Regular.ttf`, `TitilliumWeb-Bold.ttf`,
+  `TitilliumWeb-Italic.ttf`, `TitilliumWeb-BoldItalic.ttf`)
   © Accademia di Belle Arti di Urbino and students of MA course of Visual
   Design. Licensed under SIL OFL 1.1.
   <https://fonts.google.com/specimen/Titillium+Web>
+
+- **JetBrains Mono** (`fonts/JetBrainsMono-Regular.ttf`, `-Bold.ttf`, `-Italic.ttf`)
+  — the monospace face for inline `code` spans. © The JetBrains Mono Project
+  Authors. Licensed under SIL OFL 1.1.
+  <https://github.com/JetBrains/JetBrainsMono>
 
 - **Noto Sans JP** (`../lang/font/NotoSansJP-Regular.ttf`) — CJK / full-Unicode
   fallback. A static `wght=400` instance produced from the Google Fonts variable

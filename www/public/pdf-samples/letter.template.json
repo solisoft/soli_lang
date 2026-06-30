@@ -14,6 +14,18 @@
     { "type": "paragraph", "value": "${letter.body1}", "options": { "fontSize": 11 } },
     { "type": "move", "y": 8 },
     { "type": "paragraph", "value": "${letter.body2}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 10 },
+    { "type": "paragraph", "options": { "fontSize": 11 }, "spans": [
+      { "text": "P.S. Inline rich text — run " },
+      { "text": "soli serve .", "mono": true },
+      { "text": " to preview, read the " },
+      { "text": "style guide", "italic": true },
+      { "text": " for the " },
+      { "text": "details", "fontWeight": "bold" },
+      { "text": ", or visit " },
+      { "text": "our docs", "link": "https://soli.example/docs", "color": "1D4ED8" },
+      { "text": "." }
+    ] },
     { "type": "move", "y": 16 },
     { "type": "paragraph", "value": "${letter.closing}", "options": { "fontSize": 11 } },
     { "type": "move", "y": 6 },

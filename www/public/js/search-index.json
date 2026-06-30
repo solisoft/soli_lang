@@ -11803,6 +11803,27 @@
         "electronic invoice",
         "zugferd"
       ]
+    },
+    {
+      "title": "Markdown.to_spans",
+      "type": "method",
+      "category": "Markdown",
+      "path": "/docs/builtins/markdown#def-markdown-to-spans",
+      "signature": "Markdown.to_spans(markdown)",
+      "description": "Parse inline markdown (bold/italic/code/link) into a PDF paragraph's spans array.",
+      "keywords": [
+        "markdown",
+        "spans",
+        "pdf",
+        "inline",
+        "rich text",
+        "bold",
+        "italic",
+        "code",
+        "monospace",
+        "link",
+        "to_spans"
+      ]
     }
   ]
 }

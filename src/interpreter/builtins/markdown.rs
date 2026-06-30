@@ -10,12 +10,13 @@
 //! // => "<h1>Hello</h1>\n<p>This is <strong>bold</strong>.</p>\n"
 //! ```
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
-use crate::template::{markdown_to_html, markdown_to_safe_html};
+use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
+use crate::template::{markdown_to_html, markdown_to_safe_html, markdown_to_spans};
 
 /// Register the `Markdown` class with its static methods.
 pub fn register_markdown_builtins(env: &mut Environment) {
@@ -59,6 +60,46 @@ pub fn register_markdown_builtins(env: &mut Environment) {
                 Ok(Value::String(markdown_to_safe_html(&md).into()))
             },
         )),
+    );
+
+    // Markdown.to_spans(string) -> Array<Hash>
+    // Parses inline markdown into PDF paragraph spans: `**bold**` -> fontWeight,
+    // `*italic*` -> italic, `` `code` `` -> mono, `[t](url)` -> link. The hashes
+    // use the camelCase keys a PDF template's `spans` expects.
+    static_methods.insert(
+        "to_spans".to_string(),
+        Rc::new(NativeFunction::new("Markdown.to_spans", Some(1), |args| {
+            let md = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Markdown.to_spans() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let spans: Vec<Value> = markdown_to_spans(&md)
+                .into_iter()
+                .map(|s| {
+                    let mut pairs: Vec<(&str, Value)> =
+                        vec![("text", Value::String(s.text.into()))];
+                    if s.bold {
+                        pairs.push(("fontWeight", Value::String("bold".into())));
+                    }
+                    if s.italic {
+                        pairs.push(("italic", Value::Bool(true)));
+                    }
+                    if s.mono {
+                        pairs.push(("mono", Value::Bool(true)));
+                    }
+                    if let Some(url) = s.link {
+                        pairs.push(("link", Value::String(url.into())));
+                    }
+                    hash_from_pairs(pairs)
+                })
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(spans))))
+        })),
     );
 
     let markdown_class = Class {
