@@ -75,6 +75,48 @@ cargo build --release
 cargo install --path .
 ```
 
+## Docker
+
+Soli ships an official container image on the GitHub Container Registry, rebuilt
+and published for every release.
+
+```bash
+# Pull the latest release (or pin a version, e.g. :v1.13.5)
+docker pull ghcr.io/solisoft/soli_lang:latest
+```
+
+The image's entrypoint **is** the `soli` binary, so any `soli` subcommand works
+as the container command:
+
+```bash
+docker run --rm ghcr.io/solisoft/soli_lang:latest --version
+```
+
+### Run a Soli app in a container
+
+Mount your project into the container and publish the server port. The server
+binds `0.0.0.0` by default, so the published port is reachable from the host:
+
+```bash
+docker run --rm -p 5011:5011 \
+  -v "$(pwd):/app" -w /app \
+  ghcr.io/solisoft/soli_lang:latest serve . --port 5011
+```
+
+Your app is now available at `http://localhost:5011`.
+
+### Build the image yourself
+
+The repository ships a multi-stage `Dockerfile` that compiles a release binary
+and copies it into a slim Debian runtime:
+
+```bash
+git clone https://github.com/solisoft/soli_lang.git
+cd soli_lang
+docker build -t soli .
+docker run --rm soli --version
+```
+
 ## Create a New MVC Project
 
 ```bash

@@ -150,7 +150,50 @@ soli serve . --dev</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Project Structure</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">Docker</h2>
+
+    <p class="text-gray-400 mb-6">
+        Soli ships an official container image on the GitHub Container Registry, rebuilt and published for every release.
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># Pull the latest release (or pin a version, e.g. :v1.13.5)
+docker pull ghcr.io/solisoft/soli_lang:latest</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-6">
+        The image's entrypoint <strong class="text-white">is</strong> the <code class="text-indigo-300">soli</code> binary,
+        so any <code class="text-indigo-300">soli</code> subcommand works as the container command:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">docker run --rm ghcr.io/solisoft/soli_lang:latest --version</code></pre>
+
+    <h3 class="text-xl font-semibold text-white mb-4 mt-8">Run a Soli app in a container</h3>
+
+    <p class="text-gray-400 mb-4 text-sm">
+        Mount your project into the container and publish the server port. The server binds
+        <code class="text-indigo-300">0.0.0.0</code> by default, so the published port is reachable from the host:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">docker run --rm -p 5011:5011 \
+  -v "$(pwd):/app" -w /app \
+  ghcr.io/solisoft/soli_lang:latest serve . --port 5011</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-6 text-sm">
+        Your app is now available at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>.
+    </p>
+
+    <h3 class="text-xl font-semibold text-white mb-4 mt-8">Build the image yourself</h3>
+
+    <p class="text-gray-400 mb-4 text-sm">
+        The repository ships a multi-stage <code class="text-indigo-300">Dockerfile</code> that compiles a release binary
+        and copies it into a slim Debian runtime:
+    </p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">git clone https://github.com/solisoft/soli_lang.git
+cd soli_lang
+docker build -t soli .
+docker run --rm soli --version</code></pre>
+
+    <h2 class="text-2xl font-bold text-white mb-6 mt-12">Project Structure</h2>
 
     <p class="text-gray-400 mb-6">Understanding the layout of a Soli MVC application.</p>
 
