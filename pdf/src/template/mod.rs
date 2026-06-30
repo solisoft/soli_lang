@@ -138,6 +138,48 @@ pub struct Watermark {
     pub font_size: f32,
     #[serde(default = "default_bold_weight", deserialize_with = "de_font_weight")]
     pub font_weight: FontWeight,
+    /// Draw the stamp *on top of* the content (an overlay) instead of behind it.
+    /// Default `false` (behind). Use `true` so panels/images can't hide it.
+    #[serde(default)]
+    pub front: bool,
+    /// Explicit center X (pt) of the stamp. Defaults to the page horizontal center.
+    #[serde(default)]
+    pub x: Option<f32>,
+    /// Explicit center Y (pt) of the stamp. Defaults to the page vertical center.
+    #[serde(default)]
+    pub y: Option<f32>,
+    /// Convenience vertical placement when `y` is unset: `"top"` | `"center"` |
+    /// `"bottom"`. Ignored if `y` is given.
+    #[serde(default)]
+    pub anchor: Option<String>,
+    /// Which pages to stamp: `"all"` (default) / `"first"` / `"last"`, or an
+    /// explicit list of 1-based page numbers (e.g. `[1, 3]`).
+    #[serde(default = "default_page_filter")]
+    pub pages: PageFilter,
+}
+
+/// Which pages a document watermark applies to.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PageFilter {
+    /// `"all"` | `"first"` | `"last"`.
+    Keyword(String),
+    /// Explicit 1-based page numbers.
+    Pages(Vec<usize>),
+}
+
+impl PageFilter {
+    /// Whether page `pageno` (1-based) of a `total`-page document is stamped.
+    pub fn matches(&self, pageno: usize, total: usize) -> bool {
+        match self {
+            PageFilter::Keyword(k) => match k.to_ascii_lowercase().as_str() {
+                "first" => pageno == 1,
+                "last" => pageno == total,
+                _ => true, // "all" or anything unrecognized
+            },
+            PageFilter::Pages(ps) => ps.contains(&pageno),
+        }
+    }
 }
 
 /// One flow element.
@@ -373,6 +415,11 @@ pub struct Table {
     pub rows: Vec<Vec<Cell>>,
     #[serde(default)]
     pub options: TableOptions,
+    /// Optional stamp drawn centered over this table's box (always on top), e.g.
+    /// a per-table `PAID`/`VOID` mark. `front`/`pages` on it are ignored here —
+    /// it follows the table.
+    #[serde(default)]
+    pub watermark: Option<Watermark>,
 }
 
 /// Table-level options. Note these keys are snake_case in the template
@@ -410,6 +457,10 @@ fn default_qr_kind() -> String {
 
 fn default_qr_width() -> f32 {
     120.0
+}
+
+fn default_page_filter() -> PageFilter {
+    PageFilter::Keyword("all".to_string())
 }
 
 fn default_watermark_angle() -> f32 {

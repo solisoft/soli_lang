@@ -176,7 +176,7 @@ A template has five top-level keys:
 | `margins` | number \| object | `56.693` (20 mm) | Page margins (pt). |
 | `page` | string \| object | `a4` | Page size: a preset (`a4`/`letter`/`legal`/`a5`/`a3`) or `{ width, height }` in pt. |
 | `orientation` | string | `portrait` | `landscape` swaps width/height. |
-| `watermark` | object | — | A diagonal stamp centered behind the content of **every** page. |
+| `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
 
 **`page`** is a preset name (`a4`, `letter`, `legal`, `a5`, `a3`) or a custom
 `{ "width": …, "height": … }` in points; **`orientation`: "landscape"** swaps the
@@ -191,9 +191,33 @@ the bottom margin. Lengths are points (1 mm ≈ 2.835 pt; A4 = 595×842 pt).
 "options": { "margins": 40 }
 ```
 
-**`watermark`** fields: `text` (required), `angle` (degrees, default `45`), `color`
-(hex, default light grey), `fontSize` (pt, default `96`), `fontWeight` (default
-`bold`).
+**`watermark`** fields:
+
+| field | default | meaning |
+|---|---|---|
+| `text` | — | The stamp text (required). |
+| `angle` | `45` | Rotation in degrees. |
+| `color` | light grey | Hex fill, no `#`. |
+| `fontSize` | `96` | Point size. |
+| `fontWeight` | `bold` | `normal` / `bold`. |
+| `front` | `false` | Draw **on top** of the content (an overlay) instead of behind it — use this so panels/images can't hide it. |
+| `x` / `y` | page center | Explicit center point (pt). |
+| `anchor` | `center` | Vertical placement when `y` is unset: `top` / `center` / `bottom`. |
+| `pages` | `all` | Which pages to stamp: `"all"` / `"first"` / `"last"`, or a list of 1-based page numbers (`[1, 3]`). |
+
+```json
+"options": { "watermark": { "text": "PAID", "front": true, "anchor": "top", "pages": "first" } }
+```
+
+**Per-table watermark.** A `table` element can carry its own `watermark` (same
+fields) — it's stamped centered over *that table's* box, always on top, so you can
+mark a single table `PAID`/`VOID` without touching the rest of the page (`front`
+and `pages` are ignored here — the stamp follows the table):
+
+```json
+{ "type": "table", "data": "items", "rows": [ ... ],
+  "watermark": { "text": "PAID", "fontSize": 104, "color": "e8c4c4" } }
+```
 
 ### Elements
 

@@ -116,6 +116,12 @@ impl<'a> Engine<'a> {
         }
         self.finish_page(template, &root);
 
+        // Apply the document watermark now that every page exists, so `pages`
+        // (incl. "last") and `front` (on-top vs behind) can be honored.
+        if let Some(wm) = &template.options.watermark {
+            self.apply_document_watermark(wm);
+        }
+
         let doc = LaidOutDoc {
             page: self.page,
             pages: self.pages,
@@ -131,10 +137,9 @@ impl<'a> Engine<'a> {
     fn begin_page(&mut self, template: &Template, root: &Resolver) {
         self.current = Vec::new();
         self.cursor = Cursor::new(self.page.content_left(), self.page.content_top());
-        // Watermark first, so it sits behind everything else on the page.
-        if let Some(wm) = &template.options.watermark {
-            self.draw_watermark(wm);
-        }
+        // The document watermark is applied in a post-layout pass
+        // (`apply_document_watermark`) so it can honor `front`/`pages` once the
+        // total page count is known.
         // Draw the header band (its own local cursor at the top).
         if !template.header.is_empty() {
             let saved = self.cursor;
@@ -399,20 +404,21 @@ impl<'a> Engine<'a> {
         self.images.len() - 1
     }
 
-    /// Push a centered, rotated watermark for the current page. The text-matrix
-    /// origin is computed so the text's cap-height band is centered on the page,
-    /// matching printpdf's `TranslateRotate` matrix `[cosθ,-sinθ,sinθ,cosθ,x,y]`
-    /// with `θ = (360 - angle)°`.
-    fn draw_watermark(&mut self, wm: &Watermark) {
+    /// Build a rotated-text op for `wm`, centered on the **logical** point
+    /// `center` (top-left origin, y down). The text-matrix origin is computed so
+    /// the text's cap-height band is centered on that point, matching printpdf's
+    /// `TranslateRotate` matrix `[cosθ,-sinθ,sinθ,cosθ,x,y]` with `θ = (360 - angle)°`.
+    /// Returns `None` for empty/unmeasurable text.
+    fn watermark_op(&mut self, wm: &Watermark, center: (f32, f32)) -> Option<DrawOp> {
         if wm.text.trim().is_empty() {
-            return;
+            return None;
         }
         let size = wm.font_size;
         let weight = wm.font_weight;
         let runs = self.fonts.itemize(&wm.text, weight, &mut self.warnings);
         let width: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
         if width <= 0.0 {
-            return;
+            return None;
         }
         let cap = self.fonts.cap_height(weight) * size;
         let pieces: Vec<TextPiece> = runs
@@ -425,20 +431,54 @@ impl<'a> Engine<'a> {
 
         let theta = (360.0 - wm.angle).to_radians();
         let (s, c) = (theta.sin(), theta.cos());
-        let (cx, cy) = (self.page.width / 2.0, self.page.height / 2.0);
-        // Map text-space cap-band center (width/2, cap/2) onto the page center.
+        // RotatedText origin is PDF space (bottom-left), so flip the logical y.
+        let (cx, cy) = (center.0, self.page.height - center.1);
+        // Map text-space cap-band center (width/2, cap/2) onto the target point.
         let x = cx - c * (width / 2.0) - s * (cap / 2.0);
         let y = cy + s * (width / 2.0) - c * (cap / 2.0);
 
         let color = color::parse_hex_or(wm.color.as_deref(), Rgb::LIGHT_GREY);
-        self.current.push(DrawOp::RotatedText {
+        Some(DrawOp::RotatedText {
             x,
             y,
             angle: wm.angle,
             size,
             color,
             pieces,
+        })
+    }
+
+    /// Logical center point for a document watermark: explicit `x`/`y` win,
+    /// then the `anchor` vertical hint, else the page center.
+    fn watermark_center(&self, wm: &Watermark) -> (f32, f32) {
+        let cx = wm.x.unwrap_or(self.page.width / 2.0);
+        let cy = wm.y.unwrap_or_else(|| match wm.anchor.as_deref() {
+            Some(a) if a.eq_ignore_ascii_case("top") => self.page.height * 0.28,
+            Some(a) if a.eq_ignore_ascii_case("bottom") => self.page.height * 0.72,
+            _ => self.page.height / 2.0,
         });
+        (cx, cy)
+    }
+
+    /// Stamp the document watermark onto every page selected by `wm.pages`,
+    /// behind the content (default) or on top of it when `wm.front` is set.
+    fn apply_document_watermark(&mut self, wm: &Watermark) {
+        let center = self.watermark_center(wm);
+        let op = match self.watermark_op(wm, center) {
+            Some(op) => op,
+            None => return,
+        };
+        let total = self.pages.len();
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            if !wm.pages.matches(i + 1, total) {
+                continue;
+            }
+            if wm.front {
+                page.ops.push(op.clone());
+            } else {
+                page.ops.insert(0, op.clone());
+            }
+        }
     }
 
     fn paragraph(&mut self, p: &Paragraph, root: &Resolver, template: &Template) {
@@ -745,6 +785,10 @@ impl<'a> Engine<'a> {
         let columns = compute_columns(t, available, table_left);
         let pad_x = t.options.padding_x;
         let pad_y = t.options.padding_y;
+        // Remember where the table starts so a per-table watermark can be
+        // centered over its box once the rows are laid out.
+        let wm_y_start = self.cursor.y;
+        let wm_pages_before = self.pages.len();
 
         // Body rows: either the literal rows or the data-bound expansion.
         let bound_items: Vec<&serde_json::Value> = match &t.data {
@@ -779,6 +823,25 @@ impl<'a> Engine<'a> {
         } else {
             for row in &t.rows {
                 self.draw_body_row(row, &columns, pad_x, pad_y, root, t, template, root)?;
+            }
+        }
+
+        // Per-table watermark: stamp it centered over the table's box, on top.
+        if let Some(wm) = &t.watermark {
+            let table_width: f32 = columns.iter().map(|col| col.width).sum();
+            let cx = table_left + table_width / 2.0;
+            if self.pages.len() == wm_pages_before {
+                // Table fit on one page: center between its top and the cursor.
+                let cy = (wm_y_start + self.cursor.y) / 2.0;
+                if let Some(op) = self.watermark_op(wm, (cx, cy)) {
+                    self.current.push(op);
+                }
+            } else {
+                // Table paginated: stamp the portion on the page it started on.
+                let cy = (wm_y_start + self.page.content_bottom()) / 2.0;
+                if let Some(op) = self.watermark_op(wm, (cx, cy)) {
+                    self.pages[wm_pages_before].ops.push(op);
+                }
             }
         }
         Ok(())
