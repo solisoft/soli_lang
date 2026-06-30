@@ -200,6 +200,28 @@ impl MigrationRunner {
         }
     }
 
+    /// Ensure the configured database exists, creating it if absent. Lets
+    /// `db:migrate up` (and `down`/`status`) bootstrap a brand-new database
+    /// instead of failing with a 404 when no one has created it yet — the
+    /// database-level analogue of the `_migrations` collection bootstrap.
+    fn ensure_database(&self) -> Result<(), String> {
+        let mut client = SoliDBClient::connect(&self.config.host)
+            .map_err(|e| format!("Failed to connect: {}", e))?;
+        if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
+            client = client.with_basic_auth(username, password);
+        }
+        let databases = client
+            .list_databases()
+            .map_err(|e| format!("Failed to list databases: {}", e))?;
+        if !databases.iter().any(|d| d == &self.config.database) {
+            client.create_database(&self.config.database).map_err(|e| {
+                format!("Failed to create database '{}': {}", self.config.database, e)
+            })?;
+            println!("  \x1b[32mCreated database\x1b[0m {}", self.config.database);
+        }
+        Ok(())
+    }
+
     /// Get all migration files sorted by version
     pub fn get_migrations(&self) -> Result<Vec<Migration>, String> {
         if !self.migrations_path.exists() {
@@ -444,6 +466,7 @@ let db = MigrationDb();
 
     /// Run all pending migrations
     pub fn migrate_up(&self) -> Result<MigrationResult, String> {
+        self.ensure_database()?;
         let migrations = self.get_migrations()?;
         let applied = self.get_applied_migrations()?;
 
@@ -480,6 +503,7 @@ let db = MigrationDb();
 
     /// Rollback the last migration
     pub fn migrate_down(&self) -> Result<MigrationResult, String> {
+        self.ensure_database()?;
         let migrations = self.get_migrations()?;
         let applied = self.get_applied_migrations()?;
 
@@ -512,6 +536,7 @@ let db = MigrationDb();
 
     /// Show migration status
     pub fn status(&self) -> Result<MigrationStatus, String> {
+        self.ensure_database()?;
         let migrations = self.get_migrations()?;
         let applied = self.get_applied_migrations()?;
 
