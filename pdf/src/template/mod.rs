@@ -72,6 +72,10 @@ pub struct TemplateOptions {
     /// `"portrait"` (default) or `"landscape"` (swaps width/height).
     #[serde(default)]
     pub orientation: Option<String>,
+    /// Page background fill color (hex, no `#`) painted behind every page,
+    /// beneath any watermark and content. Defaults to none (white paper).
+    #[serde(default)]
+    pub background: Option<String>,
 }
 
 /// Page size: a preset name or explicit dimensions in points.
@@ -388,6 +392,10 @@ pub struct TextOptions {
     /// Accepts `linkTo` (camelCase, consistent with `fontSize`) or `link_to`.
     #[serde(default, alias = "link_to")]
     pub link_to: Option<String>,
+    /// Text fill color (hex, no `#`) for the whole paragraph (also list items and
+    /// footer lines). Defaults to black. Use `spans` for per-run colors.
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 impl Default for TextOptions {
@@ -402,6 +410,7 @@ impl Default for TextOptions {
             bookmark: None,
             anchor: None,
             link_to: None,
+            color: None,
         }
     }
 }

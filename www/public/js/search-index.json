@@ -11877,6 +11877,23 @@
       ]
     },
     {
+      "title": "PDF text color & page background",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Color a whole paragraph with options.color (hex, no #), and paint a page background with options.background. Inline SVG data-URI colors accept literal # or %23.",
+      "keywords": [
+        "pdf",
+        "color",
+        "colour",
+        "text color",
+        "background",
+        "page background",
+        "fill",
+        "paragraph"
+      ]
+    },
+    {
       "title": "Markdown.to_spans",
       "type": "method",
       "category": "Markdown",

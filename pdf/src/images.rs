@@ -33,7 +33,10 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
                 .decode(payload)
                 .map_err(|e| PdfError::Image(format!("base64 decode: {e}")))
         } else {
-            Ok(payload.as_bytes().to_vec())
+            // Leniently percent-decode: `%23` → `#` (SVG colors copied from a
+            // browser), while a bare `%` not followed by two hex digits stays
+            // literal so SVG percentages like `width='50%'` survive.
+            Ok(percent_decode_lenient(payload))
         }
     } else if src.starts_with("http://") || src.starts_with("https://") {
         if !fetch {
@@ -58,6 +61,37 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
     } else {
         let path = src.strip_prefix("file://").unwrap_or(src);
         std::fs::read(path).map_err(PdfError::from)
+    }
+}
+
+/// Leniently percent-decode a non-base64 `data:` payload. Decodes well-formed
+/// `%XX` escapes (so `%23` → `#`), but leaves a `%` that is not followed by two
+/// hex digits untouched — SVG legitimately uses `%` for percentages (e.g.
+/// `width='50%'`), which a strict decoder would corrupt or reject.
+fn percent_decode_lenient(s: &str) -> Vec<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(hi), Some(lo)) = (hex_val(b[i + 1]), hex_val(b[i + 2])) {
+                out.push(hi * 16 + lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    out
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -196,6 +230,27 @@ mod tests {
     fn decodes_data_uri() {
         let img = load_image(PNG_1X1, false, Duration::from_secs(1), &[]).unwrap();
         assert_eq!((img.width_px, img.height_px), (1, 1));
+    }
+
+    #[test]
+    fn data_uri_percent_decodes_leniently() {
+        // %23 -> '#' (an SVG color copied from a browser).
+        assert_eq!(
+            percent_decode_lenient("fill='%230f766e'"),
+            b"fill='#0f766e'".to_vec()
+        );
+        assert_eq!(percent_decode_lenient("a%20b%2Fc"), b"a b/c".to_vec());
+        // A bare '%' (SVG percentage) and a dangling '%' stay literal.
+        assert_eq!(
+            percent_decode_lenient("width='50%'"),
+            b"width='50%'".to_vec()
+        );
+        assert_eq!(percent_decode_lenient("x%2"), b"x%2".to_vec());
+        // The recommended literal '#' is unchanged.
+        assert_eq!(
+            percent_decode_lenient("fill='#abc'"),
+            b"fill='#abc'".to_vec()
+        );
     }
 
     #[test]

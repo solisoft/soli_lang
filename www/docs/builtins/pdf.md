@@ -176,6 +176,7 @@ A template has five top-level keys:
 | `margins` | number \| object | `56.693` (20 mm) | Page margins (pt). |
 | `page` | string \| object | `a4` | Page size: a preset (`a4`/`letter`/`legal`/`a5`/`a3`) or `{ width, height }` in pt. |
 | `orientation` | string | `portrait` | `landscape` swaps width/height. |
+| `background` | string | — | Page background fill (hex, no `#`) painted behind every page, beneath any watermark and content. Omit for white paper. |
 | `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
 
 **`page`** is a preset name (`a4`, `letter`, `legal`, `a5`, `a3`) or a custom
@@ -223,11 +224,11 @@ and `pages` are ignored here — the stamp follows the table):
 
 Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 
-**paragraph** — wrapped, aligned text; advances the cursor down.
+**paragraph** — wrapped, aligned text; advances the cursor down. `options` accepts `alignment`, `fontSize`, `fontWeight`, `italic`, `mono`, `color` (hex, no `#` — applies to the whole paragraph), `link`/`linkTo`, `bookmark`, and `anchor`. For per-run styling (mixed colors/weights on one line) use `spans` instead of `value`.
 
 ```json
 { "type": "paragraph", "value": "Invoice ${invoice.number}",
-  "options": { "alignment": "left", "fontSize": 24, "fontWeight": "bold" } }
+  "options": { "alignment": "left", "fontSize": 24, "fontWeight": "bold", "color": "0f766e" } }
 ```
 
 **move** — relative cursor move. Positive `y` = down, negative `y` = up; positive `x` = right.
@@ -236,7 +237,7 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "move", "x": 0, "y": 24 }
 ```
 
-**image** — draw at the cursor, scaled to `width` (aspect preserved). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image.
+**image** — draw at the cursor, scaled to `width` (aspect preserved). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image. In an inline SVG `data:` URI, write colors as either a literal `#` (`fill='#0f766e'`) or the URL-encoded `%23` (`fill='%230f766e'`) — both work; SVG percentages like `width='50%'` are left intact.
 
 ```json
 { "type": "image", "value": "https://acme.example/logo.png", "width": 100 }

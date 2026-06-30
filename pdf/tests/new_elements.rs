@@ -220,6 +220,55 @@ fn empty_chart_is_skipped_with_warning() {
     );
 }
 
+// --- Polish bundle: paragraph color + page background ------------------------
+
+#[test]
+fn plain_paragraph_honors_options_color() {
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "paragraph", "value": "Teal", "options": { "color": "0f766e" } }
+    ] }"#;
+    let (doc, _) = render(tmpl, b"{}");
+    let teal = soli_pdf::color::parse_hex("0f766e").unwrap();
+    let colored = all_ops(&doc)
+        .iter()
+        .any(|op| matches!(op, DrawOp::Text(td) if td.color == teal));
+    assert!(colored, "plain paragraph text uses options.color");
+}
+
+#[test]
+fn page_background_is_leading_full_page_fill() {
+    let tmpl = br#"{ "fonts": ["titillium"], "options": { "background": "f0fdfa" },
+        "content": [ { "type": "paragraph", "value": "x" } ] }"#;
+    let (doc, _) = render(tmpl, b"{}");
+    let bg = soli_pdf::color::parse_hex("f0fdfa").unwrap();
+    match &doc.pages[0].ops[0] {
+        DrawOp::FillRect { x, y, w, h, color } => {
+            assert_eq!((*x, *y), (0.0, 0.0), "background fill starts at the origin");
+            assert!(*w > 0.0 && *h > 0.0, "background fill covers the page");
+            assert_eq!(*color, bg, "background fill uses options.background");
+        }
+        other => panic!("first op should be the page-background fill, got {other:?}"),
+    }
+}
+
+#[test]
+fn behind_watermark_sits_above_the_page_background() {
+    // With a background, a behind-content watermark must be op[1] (over the bg),
+    // not op[0] (under it).
+    let tmpl = br#"{ "fonts": ["titillium"],
+        "options": { "background": "f0fdfa", "watermark": { "text": "DRAFT" } },
+        "content": [ { "type": "paragraph", "value": "x" } ] }"#;
+    let (doc, _) = render(tmpl, b"{}");
+    assert!(
+        matches!(doc.pages[0].ops[0], DrawOp::FillRect { .. }),
+        "bg first"
+    );
+    assert!(
+        matches!(doc.pages[0].ops[1], DrawOp::RotatedText { .. }),
+        "watermark sits just above the background"
+    );
+}
+
 /// Count draw ops matching a predicate.
 fn ops_of(doc: &LaidOutDoc, pred: impl Fn(&DrawOp) -> bool) -> usize {
     all_ops(doc).iter().filter(|o| pred(o)).count()

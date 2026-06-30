@@ -120,7 +120,7 @@ impl<'a> Engine<'a> {
         // Apply the document watermark now that every page exists, so `pages`
         // (incl. "last") and `front` (on-top vs behind) can be honored.
         if let Some(wm) = &template.options.watermark {
-            self.apply_document_watermark(wm);
+            self.apply_document_watermark(wm, template.options.background.is_some());
         }
 
         let doc = LaidOutDoc {
@@ -138,6 +138,23 @@ impl<'a> Engine<'a> {
     fn begin_page(&mut self, template: &Template, root: &Resolver) {
         self.current = Vec::new();
         self.cursor = Cursor::new(self.page.content_left(), self.page.content_top());
+        // Page background fill (the very first op, behind everything). The
+        // document watermark's behind-content pass inserts itself *after* this
+        // (see `apply_document_watermark`) so the stamp stays visible over it.
+        if let Some(bg) = template
+            .options
+            .background
+            .as_deref()
+            .and_then(color::parse_hex)
+        {
+            self.current.push(DrawOp::FillRect {
+                x: 0.0,
+                y: 0.0,
+                w: self.page.width,
+                h: self.page.height,
+                color: bg,
+            });
+        }
         // The document watermark is applied in a post-layout pass
         // (`apply_document_watermark`) so it can honor `front`/`pages` once the
         // total page count is known.
@@ -488,8 +505,8 @@ impl<'a> Engine<'a> {
         let marker_x = left_base + indent;
         let gutter = self.list_marker_gutter(list, size, weight);
         let text_x = marker_x + gutter;
-        // Markers are black, matching plain paragraph body text.
-        let color = Rgb::BLACK;
+        // Markers follow the list's text color (default black), matching body.
+        let color = color::parse_hex_or(list.options.color.as_deref(), Rgb::BLACK);
         let mut counter = list.start;
 
         for item in &list.items {
@@ -719,12 +736,15 @@ impl<'a> Engine<'a> {
 
     /// Stamp the document watermark onto every page selected by `wm.pages`,
     /// behind the content (default) or on top of it when `wm.front` is set.
-    fn apply_document_watermark(&mut self, wm: &Watermark) {
+    fn apply_document_watermark(&mut self, wm: &Watermark, bg_present: bool) {
         let center = self.watermark_center(wm);
         let op = match self.watermark_op(wm, center) {
             Some(op) => op,
             None => return,
         };
+        // A page-background fill is always the first op (see `begin_page`); a
+        // behind-content watermark must sit just above it, not below.
+        let behind_at = if bg_present { 1 } else { 0 };
         let total = self.pages.len();
         for (i, page) in self.pages.iter_mut().enumerate() {
             if !wm.pages.matches(i + 1, total) {
@@ -733,7 +753,7 @@ impl<'a> Engine<'a> {
             if wm.front {
                 page.ops.push(op.clone());
             } else {
-                page.ops.insert(0, op.clone());
+                page.ops.insert(behind_at.min(page.ops.len()), op.clone());
             }
         }
     }
@@ -773,7 +793,7 @@ impl<'a> Engine<'a> {
                 size,
                 weight,
                 p.options.alignment,
-                Rgb::BLACK,
+                color::parse_hex_or(p.options.color.as_deref(), Rgb::BLACK),
                 p.options.link.as_deref(),
                 p.options.link_to.as_deref(),
             );
@@ -970,6 +990,7 @@ impl<'a> Engine<'a> {
         let region_left = self.page.content_left();
         let region_width = self.page.content_width();
         let ascent = self.fonts.ascent(weight) * size;
+        let color = color::parse_hex_or(p.options.color.as_deref(), Rgb::BLACK);
         if has_page_tokens(&interpolated) {
             // Defer to pass 2: page number + alignment recompute.
             self.current.push(DrawOp::PageText(PageTextDraw {
@@ -977,7 +998,7 @@ impl<'a> Engine<'a> {
                 region_width,
                 baseline: top + ascent,
                 size,
-                color: Rgb::BLACK,
+                color,
                 alignment: p.options.alignment,
                 weight,
                 raw: interpolated,
@@ -999,7 +1020,7 @@ impl<'a> Engine<'a> {
                 x,
                 baseline: top + ascent,
                 size,
-                color: Rgb::BLACK,
+                color,
                 pieces,
             }));
         }
