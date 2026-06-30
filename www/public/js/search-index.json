@@ -11727,6 +11727,82 @@
         "notify subscribers",
         "topic"
       ]
+    },
+    {
+      "title": "file_write_base64",
+      "type": "function",
+      "category": "File",
+      "path": "/docs/builtins/pdf#section-serving",
+      "signature": "file_write_base64(path, b64)",
+      "description": "Decode a base64 string and write the raw bytes to a file — the natural partner to pdf_render/pdf_facturx and other builtins that return base64.",
+      "keywords": [
+        "base64",
+        "write file",
+        "binary",
+        "pdf",
+        "decode",
+        "save",
+        "bytes"
+      ]
+    },
+    {
+      "title": "pdf_render",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-render",
+      "signature": "pdf_render(template, data, options?)",
+      "description": "Render a PDF from a JSON layout template and a JSON data document, in-process (no headless browser). Returns the PDF as a base64 string.",
+      "keywords": [
+        "pdf",
+        "render",
+        "generate",
+        "document",
+        "invoice",
+        "base64",
+        "template",
+        "report"
+      ]
+    },
+    {
+      "title": "pdf_facturx",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-facturx",
+      "signature": "pdf_facturx(template, data, xml, options?)",
+      "description": "Render a PDF/A-3b Factur-X (EN 16931) electronic invoice, embedding the caller-provided Cross-Industry-Invoice (CII) XML. Returns base64.",
+      "keywords": [
+        "pdf",
+        "facturx",
+        "factur-x",
+        "invoice",
+        "en16931",
+        "pdf/a-3b",
+        "cii",
+        "xml",
+        "electronic invoice",
+        "zugferd"
+      ]
+    },
+    {
+      "title": "pdf_facturx_from_invoice",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-facturx-from-invoice",
+      "signature": "pdf_facturx_from_invoice(template, invoice, options?)",
+      "description": "Render a Factur-X PDF/A-3b from a typed invoice document — generates the CII XML and computes totals and the VAT breakdown from the line items.",
+      "keywords": [
+        "pdf",
+        "facturx",
+        "factur-x",
+        "invoice",
+        "en16931",
+        "cii",
+        "vat",
+        "totals",
+        "typed invoice",
+        "electronic invoice",
+        "zugferd"
+      ]
     }
   ]
 }

@@ -1,0 +1,57 @@
+{
+  "template_uuid": "9ea01428-3628-4083-8cad-081572ac2758",
+  "data": {
+    "invoice": {
+      "number": "#12345",
+      "created_at": "Nov 28th, 2025",
+      "due_date": "Dec 28th, 2025",
+      "due_amount": "$600"
+    },
+    "infos": {
+      "text": "lorem ipsum"
+    },
+    "company": {
+      "name": "PDFx",
+      "address": "1 Rue de champs Elysées",
+      "zipcode": "75000",
+      "city": "PARIS",
+      "country": "France",
+      "phone": "+033 612348032"
+    },
+    "customer": {
+      "company": "John Doe",
+      "address": "123 Main St, Anytown, USA",
+      "zipcode": "12345",
+      "city": "NYC",
+      "country": "USA",
+      "phone": "+001 1234567890"
+    },
+    "items": [
+      {
+        "name": "Item 1",
+        "amount": 100,
+        "total_amount": 100,
+        "qty": 1
+      },
+      {
+        "name": "Item 2",
+        "amount": 200,
+        "total_amount": 400,
+        "qty": 2
+      }
+    ],
+    "total": {
+      "amount": 500,
+      "vat": "100",
+      "due_amount": 600
+    },
+    "payment": {
+      "name": "PDFx",
+      "iban": "FR7630006000011234567890189",
+      "bic": "",
+      "amount": "600.00",
+      "currency": "EUR",
+      "remittance": "#12345"
+    }
+  }
+}

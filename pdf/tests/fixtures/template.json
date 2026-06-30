@@ -1,0 +1,538 @@
+{
+  "fonts": [
+    "titillium"
+  ],
+  "options": {
+    "header_height": 0
+  },
+  "header": [],
+  "footer": [
+    {
+      "type": "paragraph",
+      "value": "Page #PAGE# of #TOTAL_PAGE#",
+      "options": {
+        "alignment": "right",
+        "fontSize": 8
+      }
+    }
+  ],
+  "content": [
+    {
+      "type": "paragraph",
+      "value": "Invoice こんにちは世界",
+      "options": {
+        "fontSize": 24
+      }
+    },
+    {
+      "type": "move",
+      "x": 412,
+      "y": -30
+    },
+    {
+      "type": "image",
+      "value": "https://pdfx.fr/logo.jpg",
+      "width": 100
+    },
+    {
+      "type": "move",
+      "x": -412,
+      "y": -60
+    },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "text": "Invoice number",
+            "width": 100,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "bold",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          },
+          {
+            "text": "${invoice.number}",
+            "width": 120,
+            "fontSize": 10,
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          }
+        ],
+        [
+          {
+            "text": "Creation Date",
+            "width": 100,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          },
+          {
+            "text": "${invoice.created_at}",
+            "width": 120,
+            "fontSize": 10,
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          }
+        ],
+        [
+          {
+            "text": "Due Date",
+            "width": 100,
+            "fontSize": 10,
+            "alignment": "left",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          },
+          {
+            "text": "${invoice.due_date}",
+            "width": 120,
+            "fontSize": 10,
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          }
+        ]
+      ],
+      "options": {
+        "header": {},
+        "data": {},
+        "padding_x": 0,
+        "padding_y": 1
+      }
+    },
+    {
+      "type": "move",
+      "y": 20
+    },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "content": [
+              {
+                "type": "text",
+                "value": "${company.name}",
+                "fontSize": 12,
+                "fontWeight": "bold"
+              },
+              {
+                "type": "text",
+                "value": "${company.address}",
+                "fontSize": 10,
+                "fontWeight": "normal"
+              },
+              {
+                "type": "text",
+                "value": "${company.zipcode} ${company.city}",
+                "fontSize": 10
+              },
+              {
+                "type": "text",
+                "value": "${company.country}",
+                "fontSize": 10
+              },
+              {
+                "type": "text",
+                "value": "Phone: ${company.phone}",
+                "fontSize": 10
+              }
+            ],
+            "width": 200,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          },
+          {
+            "content": [
+              {
+                "type": "text",
+                "value": "Invoice to",
+                "fontSize": 12,
+                "fontWeight": "bold"
+              },
+              {
+                "type": "text",
+                "value": "${customer.company}",
+                "fontSize": 10,
+                "fontWeight": "normal"
+              },
+              {
+                "type": "text",
+                "value": "${customer.address}",
+                "fontSize": 10
+              },
+              {
+                "type": "text",
+                "value": "${customer.zipcode} ${customer.city}",
+                "fontSize": 10
+              },
+              {
+                "type": "text",
+                "value": "${customer.country}",
+                "fontSize": 10
+              },
+              {
+                "type": "text",
+                "value": "Phone: ${customer.phone}",
+                "fontSize": 10
+              }
+            ],
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "top": "false",
+              "bottom": "false"
+            }
+          }
+        ]
+      ],
+      "options": {
+        "header": {},
+        "data": {},
+        "padding_x": 0,
+        "padding_y": 1
+      }
+    },
+    {
+      "type": "move",
+      "y": 40
+    },
+    {
+      "type": "paragraph",
+      "value": "${invoice.due_amount} due on ${invoice.due_date}",
+      "options": {
+        "fontSize": 20,
+        "fontWeight": "bold"
+      }
+    },
+    {
+      "type": "move",
+      "y": 40
+    },
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [
+        {
+          "text": "Description",
+          "width": 300,
+          "borderSides": {
+            "right": "false",
+            "left": "false",
+            "top": "false"
+          }
+        },
+        {
+          "text": "Qty",
+          "width": 30,
+          "alignment": "center",
+          "borderSides": {
+            "right": "false",
+            "left": "false",
+            "top": "false"
+          }
+        },
+        {
+          "text": "Unit Price",
+          "width": 60,
+          "alignment": "right",
+          "borderSides": {
+            "right": "false",
+            "left": "false",
+            "top": "false"
+          }
+        },
+        {
+          "text": "Price",
+          "width": 100,
+          "alignment": "right",
+          "borderSides": {
+            "right": "false",
+            "left": "false",
+            "top": "false"
+          }
+        }
+      ],
+      "rows": [
+        [
+          {
+            "text": "${name}",
+            "width": 300,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "${qty}",
+            "width": 30,
+            "fontSize": 10,
+            "alignment": "center",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "${amount}",
+            "width": 60,
+            "fontSize": 10,
+            "alignment": "right",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "${total_amount}",
+            "width": 100,
+            "fontSize": 10,
+            "alignment": "right",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          }
+        ]
+      ],
+      "options": {
+        "header": {
+          "fillColor": "fff",
+          "borderColor": "000",
+          "textColor": "000"
+        },
+        "data": {},
+        "padding_x": 0,
+        "padding_y": 3
+      }
+    },
+    {
+      "type": "move",
+      "y": 20
+    },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "text": "",
+            "width": 250,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "Total amount",
+            "width": 180,
+            "fontSize": 10,
+            "alignment": "Left",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            },
+            "borderColor": "EEEEEE"
+          },
+          {
+            "text": "${total.amount}",
+            "width": 60,
+            "fontSize": 10,
+            "alignment": "right",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            }
+          }
+        ],
+        [
+          {
+            "text": "",
+            "width": 250,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "VAT amount",
+            "width": 180,
+            "fontSize": 10,
+            "alignment": "Left",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            },
+            "borderColor": "EEEEEE"
+          },
+          {
+            "text": "${total.vat}",
+            "width": 60,
+            "fontSize": 10,
+            "alignment": "right",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            }
+          }
+        ],
+        [
+          {
+            "text": "",
+            "width": 250,
+            "fontSize": 10,
+            "alignment": "left",
+            "fontWeight": "normal",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false",
+              "top": "false"
+            }
+          },
+          {
+            "text": "Due amount",
+            "width": 180,
+            "fontSize": 10,
+            "alignment": "Left",
+            "fontWeight": "bold",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            },
+            "borderColor": "EEEEEE"
+          },
+          {
+            "text": "${total.due_amount}",
+            "width": 60,
+            "fontSize": 10,
+            "alignment": "right",
+            "borderSides": {
+              "right": "false",
+              "left": "false",
+              "bottom": "false"
+            }
+          }
+        ]
+      ],
+      "options": {
+        "header": {},
+        "data": {},
+        "padding_x": 0,
+        "padding_y": 3
+      }
+    },
+    {
+      "type": "move",
+      "y": 10
+    },
+    {
+      "type": "paragraph",
+      "value": "${infos.text}",
+      "options": {
+        "alignment": "left",
+        "fontSize": 10
+      }
+    },
+    {
+      "type": "move",
+      "y": 20
+    },
+    {
+      "type": "hr",
+      "color": "cccccc",
+      "thickness": 0.5
+    },
+    {
+      "type": "move",
+      "y": 8
+    },
+    {
+      "type": "paragraph",
+      "value": "Scan to pay",
+      "options": {
+        "fontSize": 10,
+        "fontWeight": "bold"
+      }
+    },
+    {
+      "type": "move",
+      "y": 6
+    },
+    {
+      "type": "qr",
+      "kind": "epc",
+      "name": "${payment.name}",
+      "iban": "${payment.iban}",
+      "bic": "${payment.bic}",
+      "amount": "${payment.amount}",
+      "currency": "${payment.currency}",
+      "remittance": "${payment.remittance}",
+      "width": 110
+    }
+  ]
+}

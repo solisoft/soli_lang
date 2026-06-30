@@ -1,0 +1,30 @@
+{
+  "data": {
+    "company": {
+      "name": "Atelier Nord",
+      "tagline": "Design & fabrication studio",
+      "email": "studio@ateliernord.fr"
+    },
+    "customer": {
+      "name": "Maison Lumière",
+      "address": "14 Rue des Archives",
+      "city": "75004 Paris, France"
+    },
+    "invoice": {
+      "number": "AN-2025-0042",
+      "issued": "28 Nov 2025",
+      "due": "28 Dec 2025",
+      "terms": "Bank transfer within 30 days — IBAN FR76 3000 4000 0312 3456 7890 143. Late payments accrue 1.5% monthly."
+    },
+    "items": [
+      { "name": "Brand identity system", "qty": 1, "rate": "€2,400", "amount": "€2,400" },
+      { "name": "Signage fabrication (6 panels)", "qty": 6, "rate": "€180", "amount": "€1,080" },
+      { "name": "On-site installation", "qty": 1, "rate": "€520", "amount": "€520" }
+    ],
+    "totals": {
+      "subtotal": "€4,000",
+      "vat": "€800",
+      "due": "€4,800"
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    { "type": "paragraph", "value": "${company.name} · ${company.email} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 8 } }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${company.name}", "fontSize": 19, "fontWeight": "bold" },
+            { "type": "text", "value": "Estimate", "fontSize": 10 }
+          ],
+          "width": 300, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "text": "QUOTE", "width": 181, "fontSize": 26, "fontWeight": "bold", "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "1F2430", "textColor": "E7A33E" }, "padding_x": 18, "padding_y": 18 }
+    },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "text": "Quote ${quote.number}   ·   Prepared for ${customer.name}   ·   Valid until ${quote.valid_until}",
+          "width": 481, "fontSize": 10, "fontWeight": "bold", "alignment": "center",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "FBEFD6", "textColor": "7A5310" }, "padding_x": 12, "padding_y": 9 }
+    },
+    { "type": "move", "y": 24 },
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [
+        { "text": "SCOPE", "width": 300, "fontSize": 9, "fontWeight": "bold", "alignment": "left",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "QTY",   "width": 50,  "fontSize": 9, "fontWeight": "bold", "alignment": "center","borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "RATE",  "width": 70,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "EST.",  "width": 81,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 300, "fontSize": 10, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE7E0" },
+          { "text": "${qty}",    "width": 50,  "fontSize": 10, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE7E0" },
+          { "text": "${rate}",   "width": 70,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE7E0" },
+          { "text": "${amount}", "width": 81,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE7E0" }
+        ]
+      ],
+      "options": { "header": { "fillColor": "F4F1EA", "textColor": "1F2430", "borderColor": "1F2430" }, "padding_x": 6, "padding_y": 7 }
+    },
+    { "type": "move", "y": 12 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 271, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Estimated total", "width": 130, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "E7A33E" },
+          { "text": "${quote.total}", "width": 80, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "E7A33E" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 7 }
+    },
+    { "type": "move", "y": 22 },
+    {
+      "type": "paragraph",
+      "value": "${quote.note}",
+      "options": { "fontSize": 10, "alignment": "left" }
+    }
+  ]
+}

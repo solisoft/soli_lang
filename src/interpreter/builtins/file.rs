@@ -60,6 +60,14 @@ fn current_jail() -> Option<&'static Path> {
     FILE_JAIL.get().map(|p| p.as_path())
 }
 
+/// The app-root jail directory, if one is installed. Other builtins that
+/// resolve their own relative paths (e.g. the PDF builtin's font directories)
+/// use this so their paths line up with `slurp`/`File` rather than the process
+/// CWD.
+pub fn jail_root() -> Option<&'static Path> {
+    current_jail()
+}
+
 /// Resolve a user-supplied path, enforcing the jail when it is set.
 ///
 /// - If the jail is unset: pass the path through unchanged.

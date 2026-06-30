@@ -1,0 +1,27 @@
+{
+  "data": {
+    "company": {
+      "name": "Helios Coffee Roasters",
+      "tagline": "Small-batch roastery · Lyon",
+      "email": "hello@helioscoffee.fr"
+    },
+    "customer": { "name": "Café Lumière" },
+    "receipt": {
+      "number": "RC-2025-0488",
+      "paid_on": "28 Nov 2025",
+      "note": "Paid in full — thank you. This receipt doubles as your VAT document; keep it for your records."
+    },
+    "items": [
+      { "name": "Ethiopia Yirgacheffe — whole bean, 1kg", "qty": 6, "price": "€32", "amount": "€192" },
+      { "name": "Colombia Huila — whole bean, 1kg", "qty": 4, "price": "€28", "amount": "€112" },
+      { "name": "Decaf Sumatra — whole bean, 1kg", "qty": 2, "price": "€30", "amount": "€60" },
+      { "name": "Filter papers (#4, 100-pack)", "qty": 10, "price": "€4", "amount": "€40" }
+    ],
+    "totals": { "subtotal": "€404.00", "tax": "€32.32", "total": "€436.32" },
+    "payment": {
+      "iban": "FR7630006000011234567890189",
+      "bic": "AGRIFRPP",
+      "amount": "436.32"
+    }
+  }
+}

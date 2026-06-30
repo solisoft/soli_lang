@@ -1,0 +1,444 @@
+{
+  "data": {
+    "company": {
+      "name": "Northwind Trading Co.",
+      "tagline": "Design & production partners"
+    },
+    "customer": {
+      "account": "NW-0481",
+      "name": "Maison Lumi\u00e8re"
+    },
+    "statement": {
+      "number": "ST-2025-0042",
+      "period": "Sep 1 \u2013 Nov 30, 2025",
+      "note": "Statement reflects all billable activity for the period. Balance is due within 30 days of the statement date. Questions? accounts@northwind.example"
+    },
+    "lines": [
+      {
+        "date": "Sep 11",
+        "desc": "Consulting \u2014 discovery workshop",
+        "qty": 1,
+        "unit": "$180",
+        "amount": "$180"
+      },
+      {
+        "date": "Sep 21",
+        "desc": "Brand audit",
+        "qty": 1,
+        "unit": "$60",
+        "amount": "$60"
+      },
+      {
+        "date": "Sep 27",
+        "desc": "Logo exploration",
+        "qty": 8,
+        "unit": "$60",
+        "amount": "$480"
+      },
+      {
+        "date": "Sep 12",
+        "desc": "Wordmark refinement",
+        "qty": 1,
+        "unit": "$320",
+        "amount": "$320"
+      },
+      {
+        "date": "Sep 07",
+        "desc": "Color system",
+        "qty": 1,
+        "unit": "$60",
+        "amount": "$60"
+      },
+      {
+        "date": "Sep 14",
+        "desc": "Typography pairing",
+        "qty": 4,
+        "unit": "$60",
+        "amount": "$240"
+      },
+      {
+        "date": "Sep 08",
+        "desc": "Stationery design",
+        "qty": 1,
+        "unit": "$320",
+        "amount": "$320"
+      },
+      {
+        "date": "Sep 14",
+        "desc": "Business cards",
+        "qty": 1,
+        "unit": "$480",
+        "amount": "$480"
+      },
+      {
+        "date": "Sep 04",
+        "desc": "Signage \u2014 exterior panel",
+        "qty": 2,
+        "unit": "$480",
+        "amount": "$960"
+      },
+      {
+        "date": "Sep 02",
+        "desc": "Signage \u2014 interior wayfinding",
+        "qty": 4,
+        "unit": "$45",
+        "amount": "$180"
+      },
+      {
+        "date": "Sep 08",
+        "desc": "Vinyl lettering",
+        "qty": 1,
+        "unit": "$320",
+        "amount": "$320"
+      },
+      {
+        "date": "Sep 28",
+        "desc": "Window graphics",
+        "qty": 1,
+        "unit": "$120",
+        "amount": "$120"
+      },
+      {
+        "date": "Sep 14",
+        "desc": "Packaging \u2014 primary box",
+        "qty": 1,
+        "unit": "$320",
+        "amount": "$320"
+      },
+      {
+        "date": "Sep 04",
+        "desc": "Packaging \u2014 sleeve",
+        "qty": 2,
+        "unit": "$320",
+        "amount": "$640"
+      },
+      {
+        "date": "Sep 27",
+        "desc": "Label die-cut",
+        "qty": 1,
+        "unit": "$60",
+        "amount": "$60"
+      },
+      {
+        "date": "Sep 19",
+        "desc": "Tissue print",
+        "qty": 2,
+        "unit": "$150",
+        "amount": "$300"
+      },
+      {
+        "date": "Sep 04",
+        "desc": "Web \u2014 homepage layout",
+        "qty": 8,
+        "unit": "$60",
+        "amount": "$480"
+      },
+      {
+        "date": "Sep 19",
+        "desc": "Web \u2014 product template",
+        "qty": 1,
+        "unit": "$480",
+        "amount": "$480"
+      },
+      {
+        "date": "Sep 07",
+        "desc": "Web \u2014 CMS setup",
+        "qty": 6,
+        "unit": "$320",
+        "amount": "$1,920"
+      },
+      {
+        "date": "Sep 14",
+        "desc": "Web \u2014 accessibility pass",
+        "qty": 3,
+        "unit": "$240",
+        "amount": "$720"
+      },
+      {
+        "date": "Sep 19",
+        "desc": "Photography \u2014 half day",
+        "qty": 6,
+        "unit": "$150",
+        "amount": "$900"
+      },
+      {
+        "date": "Sep 10",
+        "desc": "Photo retouching",
+        "qty": 2,
+        "unit": "$75",
+        "amount": "$150"
+      },
+      {
+        "date": "Oct 23",
+        "desc": "Icon set (24)",
+        "qty": 2,
+        "unit": "$60",
+        "amount": "$120"
+      },
+      {
+        "date": "Oct 19",
+        "desc": "Illustration spot",
+        "qty": 2,
+        "unit": "$320",
+        "amount": "$640"
+      },
+      {
+        "date": "Oct 16",
+        "desc": "Print management",
+        "qty": 3,
+        "unit": "$240",
+        "amount": "$720"
+      },
+      {
+        "date": "Oct 10",
+        "desc": "Press check",
+        "qty": 1,
+        "unit": "$60",
+        "amount": "$60"
+      },
+      {
+        "date": "Oct 17",
+        "desc": "Paper sourcing",
+        "qty": 4,
+        "unit": "$75",
+        "amount": "$300"
+      },
+      {
+        "date": "Oct 25",
+        "desc": "Foil stamping setup",
+        "qty": 3,
+        "unit": "$75",
+        "amount": "$225"
+      },
+      {
+        "date": "Oct 16",
+        "desc": "Motion \u2014 logo sting",
+        "qty": 4,
+        "unit": "$45",
+        "amount": "$180"
+      },
+      {
+        "date": "Oct 22",
+        "desc": "Social templates",
+        "qty": 1,
+        "unit": "$320",
+        "amount": "$320"
+      },
+      {
+        "date": "Oct 19",
+        "desc": "Email header set",
+        "qty": 3,
+        "unit": "$150",
+        "amount": "$450"
+      },
+      {
+        "date": "Oct 23",
+        "desc": "Presentation deck",
+        "qty": 3,
+        "unit": "$480",
+        "amount": "$1,440"
+      },
+      {
+        "date": "Oct 16",
+        "desc": "Copywriting \u2014 tagline",
+        "qty": 6,
+        "unit": "$60",
+        "amount": "$360"
+      },
+      {
+        "date": "Oct 27",
+        "desc": "Copywriting \u2014 about page",
+        "qty": 1,
+        "unit": "$120",
+        "amount": "$120"
+      },
+      {
+        "date": "Oct 16",
+        "desc": "Proofreading",
+        "qty": 1,
+        "unit": "$45",
+        "amount": "$45"
+      },
+      {
+        "date": "Oct 24",
+        "desc": "Localization (FR)",
+        "qty": 2,
+        "unit": "$480",
+        "amount": "$960"
+      },
+      {
+        "date": "Oct 22",
+        "desc": "Project management",
+        "qty": 6,
+        "unit": "$120",
+        "amount": "$720"
+      },
+      {
+        "date": "Oct 23",
+        "desc": "Stakeholder review",
+        "qty": 4,
+        "unit": "$150",
+        "amount": "$600"
+      },
+      {
+        "date": "Oct 01",
+        "desc": "Asset handoff",
+        "qty": 6,
+        "unit": "$150",
+        "amount": "$900"
+      },
+      {
+        "date": "Oct 06",
+        "desc": "Brand guidelines PDF",
+        "qty": 1,
+        "unit": "$240",
+        "amount": "$240"
+      },
+      {
+        "date": "Oct 02",
+        "desc": "Consulting \u2014 discovery workshop",
+        "qty": 2,
+        "unit": "$120",
+        "amount": "$240"
+      },
+      {
+        "date": "Oct 05",
+        "desc": "Brand audit",
+        "qty": 2,
+        "unit": "$180",
+        "amount": "$360"
+      },
+      {
+        "date": "Oct 13",
+        "desc": "Logo exploration",
+        "qty": 6,
+        "unit": "$60",
+        "amount": "$360"
+      },
+      {
+        "date": "Oct 06",
+        "desc": "Wordmark refinement",
+        "qty": 6,
+        "unit": "$180",
+        "amount": "$1,080"
+      },
+      {
+        "date": "Nov 18",
+        "desc": "Color system",
+        "qty": 2,
+        "unit": "$75",
+        "amount": "$150"
+      },
+      {
+        "date": "Nov 27",
+        "desc": "Typography pairing",
+        "qty": 4,
+        "unit": "$320",
+        "amount": "$1,280"
+      },
+      {
+        "date": "Nov 09",
+        "desc": "Stationery design",
+        "qty": 4,
+        "unit": "$150",
+        "amount": "$600"
+      },
+      {
+        "date": "Nov 22",
+        "desc": "Business cards",
+        "qty": 4,
+        "unit": "$90",
+        "amount": "$360"
+      },
+      {
+        "date": "Nov 05",
+        "desc": "Signage \u2014 exterior panel",
+        "qty": 1,
+        "unit": "$75",
+        "amount": "$75"
+      },
+      {
+        "date": "Nov 05",
+        "desc": "Signage \u2014 interior wayfinding",
+        "qty": 2,
+        "unit": "$90",
+        "amount": "$180"
+      },
+      {
+        "date": "Nov 01",
+        "desc": "Vinyl lettering",
+        "qty": 6,
+        "unit": "$480",
+        "amount": "$2,880"
+      },
+      {
+        "date": "Nov 06",
+        "desc": "Window graphics",
+        "qty": 2,
+        "unit": "$120",
+        "amount": "$240"
+      },
+      {
+        "date": "Nov 01",
+        "desc": "Packaging \u2014 primary box",
+        "qty": 1,
+        "unit": "$180",
+        "amount": "$180"
+      },
+      {
+        "date": "Nov 18",
+        "desc": "Packaging \u2014 sleeve",
+        "qty": 3,
+        "unit": "$480",
+        "amount": "$1,440"
+      },
+      {
+        "date": "Nov 19",
+        "desc": "Label die-cut",
+        "qty": 3,
+        "unit": "$75",
+        "amount": "$225"
+      },
+      {
+        "date": "Nov 23",
+        "desc": "Tissue print",
+        "qty": 8,
+        "unit": "$480",
+        "amount": "$3,840"
+      },
+      {
+        "date": "Nov 21",
+        "desc": "Web \u2014 homepage layout",
+        "qty": 1,
+        "unit": "$240",
+        "amount": "$240"
+      },
+      {
+        "date": "Nov 28",
+        "desc": "Web \u2014 product template",
+        "qty": 8,
+        "unit": "$180",
+        "amount": "$1,440"
+      },
+      {
+        "date": "Nov 13",
+        "desc": "Web \u2014 CMS setup",
+        "qty": 4,
+        "unit": "$180",
+        "amount": "$720"
+      },
+      {
+        "date": "Nov 04",
+        "desc": "Web \u2014 accessibility pass",
+        "qty": 6,
+        "unit": "$180",
+        "amount": "$1,080"
+      }
+    ],
+    "totals": {
+      "subtotal": "$35,060",
+      "tax": "$2,805",
+      "balance": "$37,865"
+    }
+  }
+}

@@ -1,0 +1,474 @@
+//! Serde model for the JSON layout template.
+//!
+//! Field names mostly follow the camelCase used in the template
+//! (`fontSize`, `fontWeight`, `borderSides`); a few top-level keys are
+//! snake_case (`header_columns`, `header_height`, `padding_x`) and are renamed
+//! per field.
+
+mod cell;
+pub use cell::*;
+
+use serde::Deserialize;
+
+use crate::error::{PdfError, Result};
+
+/// Horizontal text alignment. Parsed case-insensitively (`"Left"` == `"left"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Alignment {
+    #[default]
+    Left,
+    Right,
+    Center,
+}
+
+/// Font weight. Parsed case-insensitively.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FontWeight {
+    #[default]
+    Normal,
+    Bold,
+}
+
+/// The whole template document.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Template {
+    #[serde(default)]
+    pub fonts: Vec<String>,
+    #[serde(default)]
+    pub options: TemplateOptions,
+    #[serde(default)]
+    pub header: Vec<Element>,
+    #[serde(default)]
+    pub footer: Vec<Element>,
+    #[serde(default)]
+    pub content: Vec<Element>,
+}
+
+impl Template {
+    /// Parse a template from JSON bytes.
+    pub fn parse(bytes: &[u8]) -> Result<Template> {
+        serde_json::from_slice(bytes).map_err(PdfError::from)
+    }
+}
+
+/// Document-level options.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TemplateOptions {
+    /// Height (pt) of the header band reserved at the top of every page.
+    #[serde(default)]
+    pub header_height: f32,
+    /// Optional diagonal watermark/stamp drawn behind the content of every page.
+    #[serde(default)]
+    pub watermark: Option<Watermark>,
+    /// Page margins (pt). A single number applies to all four sides; an object
+    /// overrides individual sides. Unset sides default to ~20 mm. The top margin
+    /// is the gap above the header; the bottom margin the gap below the footer.
+    #[serde(default)]
+    pub margins: Option<MarginsSpec>,
+    /// Page size: a preset name (`a4`/`letter`/`legal`/`a5`/`a3`) or a custom
+    /// `{ width, height }` in points. Defaults to A4.
+    #[serde(default)]
+    pub page: Option<PageSpec>,
+    /// `"portrait"` (default) or `"landscape"` (swaps width/height).
+    #[serde(default)]
+    pub orientation: Option<String>,
+}
+
+/// Page size: a preset name or explicit dimensions in points.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PageSpec {
+    Named(String),
+    Custom { width: f32, height: f32 },
+}
+
+/// Page margins: either one value for all sides, or per-side overrides.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum MarginsSpec {
+    All(f32),
+    Sides(MarginSides),
+}
+
+/// Per-side margin overrides (pt); unset sides fall back to the default.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MarginSides {
+    #[serde(default)]
+    pub top: Option<f32>,
+    #[serde(default)]
+    pub right: Option<f32>,
+    #[serde(default)]
+    pub bottom: Option<f32>,
+    #[serde(default)]
+    pub left: Option<f32>,
+}
+
+impl MarginsSpec {
+    /// Resolve to `(top, right, bottom, left)` in points, filling unset sides
+    /// with `default` and clamping negatives to zero.
+    pub fn resolve(&self, default: f32) -> (f32, f32, f32, f32) {
+        match self {
+            MarginsSpec::All(v) => {
+                let v = v.max(0.0);
+                (v, v, v, v)
+            }
+            MarginsSpec::Sides(s) => (
+                s.top.unwrap_or(default).max(0.0),
+                s.right.unwrap_or(default).max(0.0),
+                s.bottom.unwrap_or(default).max(0.0),
+                s.left.unwrap_or(default).max(0.0),
+            ),
+        }
+    }
+}
+
+/// A diagonal page watermark/stamp (e.g. "DRAFT", "PAID", "COPY"), centered and
+/// drawn behind the page content.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Watermark {
+    pub text: String,
+    /// Rotation in degrees (default 45).
+    #[serde(default = "default_watermark_angle")]
+    pub angle: f32,
+    /// Fill color (hex, no `#`); defaults to a light grey.
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default = "default_watermark_size")]
+    pub font_size: f32,
+    #[serde(default = "default_bold_weight", deserialize_with = "de_font_weight")]
+    pub font_weight: FontWeight,
+}
+
+/// One flow element.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Element {
+    Paragraph(Paragraph),
+    Move(MoveOp),
+    Image(ImageEl),
+    Table(Table),
+    /// A horizontal rule (full content width, or `width` pt) drawn at the
+    /// cursor; advances the cursor below it.
+    Hr(HrEl),
+    /// A filled and/or stroked rectangle placed at the cursor (top-left). Does
+    /// not advance the cursor — position it with `move`.
+    Rect(RectEl),
+    /// A stroked line segment from the cursor to `cursor + (dx, dy)`. Does not
+    /// advance the cursor.
+    Line(LineEl),
+    /// A QR code (EPC/GiroCode "scan-to-pay" or arbitrary text) rendered as a
+    /// raster image at the cursor. Does not advance the cursor.
+    Qr(QrEl),
+    /// A filled and/or stroked ellipse/circle at the cursor (top-left of its
+    /// bounding box). Does not advance the cursor.
+    Ellipse(EllipseEl),
+}
+
+/// A wrapped, aligned block of text. Either a plain `value` (single style) or
+/// an array of styled `spans` (inline rich text). When `spans` is present it
+/// takes precedence over `value`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Paragraph {
+    #[serde(default)]
+    pub value: String,
+    /// Inline rich text: a sequence of styled segments rendered on one flow,
+    /// wrapped together. Each span overrides the paragraph `options` it omits.
+    #[serde(default)]
+    pub spans: Option<Vec<StyledSpan>>,
+    #[serde(default)]
+    pub options: TextOptions,
+}
+
+/// One styled segment of inline rich text. Unset fields inherit the paragraph's
+/// `options`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StyledSpan {
+    pub text: String,
+    #[serde(default)]
+    pub font_size: Option<f32>,
+    #[serde(default, deserialize_with = "de_opt_font_weight")]
+    pub font_weight: Option<FontWeight>,
+    /// Text color (hex, no `#`); inherits black / the paragraph default if unset.
+    #[serde(default)]
+    pub color: Option<String>,
+    /// External URL; makes this span a clickable link.
+    #[serde(default)]
+    pub link: Option<String>,
+}
+
+/// Text styling for paragraphs.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextOptions {
+    #[serde(default, deserialize_with = "de_alignment")]
+    pub alignment: Alignment,
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
+    #[serde(default, deserialize_with = "de_font_weight")]
+    pub font_weight: FontWeight,
+    /// Optional external URL; when set, the text becomes a clickable link.
+    #[serde(default)]
+    pub link: Option<String>,
+    /// Add this paragraph to the PDF outline (sidebar bookmarks) with this label.
+    #[serde(default)]
+    pub bookmark: Option<String>,
+    /// Name this paragraph as a jump target for `link_to`.
+    #[serde(default)]
+    pub anchor: Option<String>,
+    /// Make the text a clickable internal jump to the paragraph with this `anchor`.
+    /// Accepts `linkTo` (camelCase, consistent with `fontSize`) or `link_to`.
+    #[serde(default, alias = "link_to")]
+    pub link_to: Option<String>,
+}
+
+impl Default for TextOptions {
+    fn default() -> Self {
+        TextOptions {
+            alignment: Alignment::Left,
+            font_size: default_font_size(),
+            font_weight: FontWeight::Normal,
+            link: None,
+            bookmark: None,
+            anchor: None,
+            link_to: None,
+        }
+    }
+}
+
+/// A relative cursor move. Positive `y` is DOWN the page, negative `y` is UP
+/// (screen convention); positive `x` is right.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MoveOp {
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
+}
+
+/// An image element (and inline image inside a rich cell).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImageEl {
+    /// http(s) URL, `file://` path, or `data:` URI.
+    pub value: String,
+    /// Target width in pt; height is derived to preserve aspect ratio.
+    #[serde(default)]
+    pub width: f32,
+}
+
+/// A horizontal rule. Spans the content width unless `width` is given.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HrEl {
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default = "default_stroke_width")]
+    pub thickness: f32,
+    #[serde(default)]
+    pub width: Option<f32>,
+    /// Dash pattern (pt on/off lengths, e.g. `[3, 2]`); omit for a solid rule.
+    #[serde(default)]
+    pub dash: Option<Vec<f32>>,
+}
+
+/// A filled and/or stroked rectangle.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RectEl {
+    #[serde(default)]
+    pub width: f32,
+    #[serde(default)]
+    pub height: f32,
+    /// Fill color (hex, no `#`); omit for no fill.
+    #[serde(default)]
+    pub fill: Option<String>,
+    /// Border color (hex, no `#`); omit for no border.
+    #[serde(default)]
+    pub border: Option<String>,
+    #[serde(default = "default_stroke_width")]
+    pub border_width: f32,
+    /// Corner radius (pt); when set, the rectangle is drawn with rounded corners.
+    #[serde(default)]
+    pub radius: Option<f32>,
+    /// Border dash pattern (pt on/off lengths); omit for a solid border.
+    #[serde(default)]
+    pub dash: Option<Vec<f32>>,
+}
+
+/// A stroked line segment, relative to the cursor.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LineEl {
+    #[serde(default)]
+    pub dx: f32,
+    #[serde(default)]
+    pub dy: f32,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default = "default_stroke_width")]
+    pub width: f32,
+    /// Dash pattern (pt on/off lengths); omit for a solid line.
+    #[serde(default)]
+    pub dash: Option<Vec<f32>>,
+}
+
+/// A filled and/or stroked ellipse. `rx`/`ry` are the radii (pt); a circle has
+/// `rx == ry`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EllipseEl {
+    #[serde(default)]
+    pub rx: f32,
+    #[serde(default)]
+    pub ry: f32,
+    #[serde(default)]
+    pub fill: Option<String>,
+    #[serde(default)]
+    pub border: Option<String>,
+    #[serde(default = "default_stroke_width")]
+    pub border_width: f32,
+    #[serde(default)]
+    pub dash: Option<Vec<f32>>,
+}
+
+/// A QR code element. `kind = "epc"` builds an EPC069-12 SEPA Credit Transfer
+/// ("GiroCode") payload from the payment fields; `kind = "text"` encodes `value`
+/// verbatim. All string fields are `${...}`-interpolated before encoding.
+#[derive(Debug, Clone, Deserialize)]
+pub struct QrEl {
+    #[serde(default = "default_qr_kind")]
+    pub kind: String,
+    /// Raw payload for `kind = "text"`.
+    #[serde(default)]
+    pub value: Option<String>,
+    // EPC (GiroCode) fields:
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub iban: Option<String>,
+    #[serde(default)]
+    pub bic: Option<String>,
+    #[serde(default)]
+    pub amount: Option<String>,
+    #[serde(default)]
+    pub currency: Option<String>,
+    #[serde(default)]
+    pub remittance: Option<String>,
+    #[serde(default)]
+    pub purpose: Option<String>,
+    /// Rendered side length in pt (the QR is square).
+    #[serde(default = "default_qr_width")]
+    pub width: f32,
+}
+
+/// A table element.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Table {
+    /// If set, the (single) template row in `rows` is repeated once per item of
+    /// `data[<this key>]`, with `${field}` resolving against each item.
+    #[serde(default)]
+    pub data: Option<String>,
+    #[serde(default)]
+    pub header_columns: Vec<Cell>,
+    #[serde(default)]
+    pub rows: Vec<Vec<Cell>>,
+    #[serde(default)]
+    pub options: TableOptions,
+}
+
+/// Table-level options. Note these keys are snake_case in the template
+/// (`padding_x`, `padding_y`), so no blanket camelCase rename here.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TableOptions {
+    #[serde(default)]
+    pub header: TableHeaderStyle,
+    #[serde(default)]
+    pub padding_x: f32,
+    #[serde(default)]
+    pub padding_y: f32,
+}
+
+/// Styling applied to the header row.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableHeaderStyle {
+    pub fill_color: Option<String>,
+    pub border_color: Option<String>,
+    pub text_color: Option<String>,
+}
+
+fn default_font_size() -> f32 {
+    12.0
+}
+
+fn default_stroke_width() -> f32 {
+    0.5
+}
+
+fn default_qr_kind() -> String {
+    "epc".to_string()
+}
+
+fn default_qr_width() -> f32 {
+    120.0
+}
+
+fn default_watermark_angle() -> f32 {
+    45.0
+}
+
+fn default_watermark_size() -> f32 {
+    96.0
+}
+
+fn default_bold_weight() -> FontWeight {
+    FontWeight::Bold
+}
+
+// --- case-insensitive enum deserializers ---
+
+fn de_alignment<'de, D>(d: D) -> std::result::Result<Alignment, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(d)?;
+    Ok(parse_alignment(&s))
+}
+
+fn de_font_weight<'de, D>(d: D) -> std::result::Result<FontWeight, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(d)?;
+    Ok(parse_font_weight(&s))
+}
+
+pub(crate) fn de_opt_alignment<'de, D>(d: D) -> std::result::Result<Option<Alignment>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(d)?;
+    Ok(s.map(|s| parse_alignment(&s)))
+}
+
+pub(crate) fn de_opt_font_weight<'de, D>(d: D) -> std::result::Result<Option<FontWeight>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(d)?;
+    Ok(s.map(|s| parse_font_weight(&s)))
+}
+
+fn parse_alignment(s: &str) -> Alignment {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "right" => Alignment::Right,
+        "center" | "centre" => Alignment::Center,
+        _ => Alignment::Left,
+    }
+}
+
+fn parse_font_weight(s: &str) -> FontWeight {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "bold" | "semibold" | "700" | "600" => FontWeight::Bold,
+        _ => FontWeight::Normal,
+    }
+}

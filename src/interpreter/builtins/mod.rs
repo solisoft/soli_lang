@@ -72,6 +72,7 @@ pub mod mock_http;
 pub mod model;
 pub mod named_routes;
 pub mod nanoid;
+pub mod pdf;
 pub mod pop3;
 pub mod primitives;
 pub mod rate_limit;
@@ -513,6 +514,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register VAPID / Web Push builtins
     vapid::register_vapid_builtins(env);
+
+    // Register PDF / Factur-X builtins
+    pdf::register_pdf_builtins(env);
 
     // Register test-only builtins (skipped in serve mode)
     if include_test_builtins {

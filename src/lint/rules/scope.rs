@@ -149,6 +149,11 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "vapid_sign",
     "vapid_encrypt",
     "vapid_send",
+    // PDF / Factur-X generation
+    "pdf_render",
+    "pdf_facturx",
+    "pdf_facturx_from_invoice",
+    "file_write_base64",
     // Module system
     "import",
     "export",

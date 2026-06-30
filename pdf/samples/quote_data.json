@@ -1,0 +1,17 @@
+{
+  "data": {
+    "company": { "name": "Atelier Nord", "email": "studio@ateliernord.fr" },
+    "customer": { "name": "Maison Lumière" },
+    "quote": {
+      "number": "Q-2025-0117",
+      "valid_until": "31 Dec 2025",
+      "total": "€4,800",
+      "note": "This estimate is indicative and excludes shipping. Acceptance by reply email converts it into a firm order; a 30% deposit schedules fabrication."
+    },
+    "items": [
+      { "name": "Brand identity system", "qty": 1, "rate": "€2,400", "amount": "€2,400" },
+      { "name": "Signage fabrication (6 panels)", "qty": 6, "rate": "€180", "amount": "€1,080" },
+      { "name": "On-site installation", "qty": 1, "rate": "€520", "amount": "€520" }
+    ]
+  }
+}

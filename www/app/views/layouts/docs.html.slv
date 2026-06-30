@@ -353,7 +353,7 @@
 
             <!-- Content Area -->
             <div class="px-4 py-8 lg:px-8 lg:py-12 pt-20 lg:pt-12">
-                <div class="xl:grid xl:grid-cols-[minmax(0,1fr)_220px] xl:gap-12">
+                <div class="<% if defined("hide_toc") and hide_toc %>min-w-0<% else %>xl:grid xl:grid-cols-[minmax(0,1fr)_220px] xl:gap-12<% end %>">
                     <div class="min-w-0">
                         <article id="doc-article" class="prose prose-invert max-w-none animate-fade-in prose-docs">
                             <!-- Two nested wrappers absorb up to 2 stray </div> tags from
@@ -379,13 +379,16 @@
                         </footer>
                     </div>
 
-                    <!-- Right rail: on-this-page TOC -->
+                    <!-- Right rail: on-this-page TOC (omitted when hide_toc is set) -->
+                    <% if defined("hide_toc") and hide_toc %>
+                    <% else %>
                     <aside class="hidden xl:block">
                         <div class="sticky top-20">
                             <p class="text-[10px] font-mono tracking-[0.22em] uppercase text-gray-500 mb-3">On this page</p>
                             <nav id="page-toc" class="toc border-l border-white/10 pl-4"></nav>
                         </div>
                     </aside>
+                    <% end %>
                 </div>
             </div>
         </main>

@@ -1,0 +1,105 @@
+{
+  "fonts": ["titillium"],
+  "options": {
+    "header_height": 0,
+    "watermark": { "text": "PAID", "angle": 45, "color": "E7D8C9", "fontSize": 120, "fontWeight": "bold" }
+  },
+  "footer": [
+    { "type": "paragraph", "value": "${company.name} · ${company.email} · Page #PAGE# of #TOTAL_PAGE#", "options": { "alignment": "center", "fontSize": 8 } }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${company.name}", "fontSize": 19, "fontWeight": "bold" },
+            { "type": "text", "value": "${company.tagline}", "fontSize": 9 }
+          ],
+          "width": 300, "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "text": "RECEIPT", "width": 181, "fontSize": 26, "fontWeight": "bold", "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "3B2A20", "textColor": "E9C77D" }, "padding_x": 18, "padding_y": 18 }
+    },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "text": "Receipt ${receipt.number}   ·   Paid ${receipt.paid_on}   ·   ${customer.name}",
+          "width": 481, "fontSize": 10, "fontWeight": "bold", "alignment": "center",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "F3ECE3", "textColor": "5A4632" }, "padding_x": 12, "padding_y": 9 }
+    },
+    { "type": "move", "y": 24 },
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [
+        { "text": "ITEM",  "width": 300, "fontSize": 9, "fontWeight": "bold", "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "QTY",   "width": 50,  "fontSize": 9, "fontWeight": "bold", "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "PRICE", "width": 70,  "fontSize": 9, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "TOTAL", "width": 81,  "fontSize": 9, "fontWeight": "bold", "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 300, "fontSize": 10, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE2D7" },
+          { "text": "${qty}",    "width": 50,  "fontSize": 10, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE2D7" },
+          { "text": "${price}",  "width": 70,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE2D7" },
+          { "text": "${amount}", "width": 81,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAE2D7" }
+        ]
+      ],
+      "options": { "header": { "fillColor": "F3ECE3", "textColor": "3B2A20", "borderColor": "3B2A20" }, "padding_x": 6, "padding_y": 7 }
+    },
+    { "type": "move", "y": 12 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Subtotal", "width": 100, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${totals.subtotal}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ],
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Tax (8%)", "width": 100, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${totals.tax}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ],
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Total paid", "width": 100, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "3B2A20" },
+          { "text": "${totals.total}", "width": 80, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "3B2A20" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    { "type": "move", "y": 16 },
+    { "type": "hr", "color": "D8CDBE", "thickness": 1 },
+    { "type": "move", "y": 16 },
+    { "type": "rect", "width": 481, "height": 132, "fill": "F8F4EE", "border": "E2D6C6", "border_width": 1 },
+    { "type": "move", "x": 18, "y": 16 },
+    { "type": "paragraph", "value": "Scan to pay", "options": { "fontWeight": "bold", "fontSize": 12 } },
+    { "type": "move", "y": 3 },
+    { "type": "line", "dx": 46, "dy": 0, "color": "B07A2E", "width": 2 },
+    { "type": "move", "y": 7 },
+    { "type": "paragraph", "value": "Point your banking app at the EPC code — it pre-fills the transfer.", "options": { "fontSize": 9 } },
+    { "type": "move", "y": 2 },
+    { "type": "qr", "kind": "epc", "name": "${company.name}", "iban": "${payment.iban}", "bic": "${payment.bic}", "amount": "${payment.amount}", "remittance": "Receipt ${receipt.number}", "width": 80 },
+    { "type": "move", "x": 100, "y": 2 },
+    { "type": "paragraph", "value": "${company.name}", "options": { "fontSize": 10, "fontWeight": "bold" } },
+    { "type": "paragraph", "value": "IBAN  ${payment.iban}", "options": { "fontSize": 9 } },
+    { "type": "paragraph", "value": "BIC   ${payment.bic}", "options": { "fontSize": 9 } },
+    { "type": "paragraph", "value": "Amount  €${payment.amount}", "options": { "fontSize": 9 } },
+    { "type": "move", "x": -118, "y": 34 },
+    { "type": "paragraph", "value": "${receipt.note}", "options": { "fontSize": 9 } }
+  ]
+}

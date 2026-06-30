@@ -494,6 +494,42 @@ impl TypeEnvironment {
             },
         );
 
+        // file_write_base64(path, base64_data) -> Bool (decodes + writes bytes)
+        self.functions.insert(
+            "file_write_base64".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String],
+                return_type: Box::new(Type::Bool),
+            },
+        );
+
+        // pdf_render(template_json, data_json, options?) -> String (base64 PDF)
+        self.functions.insert(
+            "pdf_render".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_facturx(template_json, data_json, xml, options?) -> String (base64 PDF/A-3b)
+        self.functions.insert(
+            "pdf_facturx".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_facturx_from_invoice(template_json, invoice_json, options?) -> String (base64 PDF/A-3b)
+        self.functions.insert(
+            "pdf_facturx_from_invoice".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // String functions
         // split(String, String) -> Array
         self.functions.insert(

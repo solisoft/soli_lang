@@ -224,6 +224,9 @@ mail-parser = "0.11.3"
 # builtins/mailer/smtp.rs), mirroring the POP3 client.
 mail-builder = "0.4"
 
+# JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
+soli-pdf = { path = "pdf" }
+
 [dev-dependencies]
 pretty_assertions = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }

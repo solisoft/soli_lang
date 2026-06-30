@@ -1,0 +1,17 @@
+{
+  "data": {
+    "company": {
+      "name": "Atelier Nord",
+      "tagline": "Design & fabrication studio",
+      "email": "studio@ateliernord.fr"
+    },
+    "letter": {
+      "place_date": "Paris · 28 November 2025",
+      "greeting": "Dear Maison Lumière,",
+      "body1": "Thank you for trusting us with the rebranding of your flagship boutique. We have completed the identity system and the six signage panels, and scheduled installation for the week of 15 December as agreed.",
+      "body2": "The final invoice (AN-2025-0042) is attached separately. Please don't hesitate to reach out if anything needs adjusting before installation day — we'd rather get it right than get it fast.",
+      "closing": "Warm regards,",
+      "signature": "Camille Mercier — Atelier Nord"
+    }
+  }
+}

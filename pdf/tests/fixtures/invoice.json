@@ -1,0 +1,31 @@
+{
+  "number": "#12345",
+  "issue_date": "2025-11-28",
+  "due_date": "2025-12-28",
+  "currency": "EUR",
+  "note": "lorem ipsum",
+  "seller": {
+    "name": "PDFx",
+    "address_line": "1 Rue de champs Elysées",
+    "postcode": "75000",
+    "city": "PARIS",
+    "country": "FR",
+    "country_name": "France",
+    "phone": "+033 612348032",
+    "vat_id": "FRXX999999999",
+    "iban": "FR7630006000011234567890189"
+  },
+  "buyer": {
+    "name": "John Doe",
+    "address_line": "123 Main St",
+    "postcode": "12345",
+    "city": "NYC",
+    "country": "US",
+    "country_name": "USA",
+    "phone": "+001 1234567890"
+  },
+  "lines": [
+    { "name": "Item 1", "quantity": 1, "unit_price": 100, "vat_rate": 20.0 },
+    { "name": "Item 2", "quantity": 2, "unit_price": 200, "vat_rate": 20.0 }
+  ]
+}

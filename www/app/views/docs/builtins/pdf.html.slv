@@ -1,0 +1,520 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            <span class="text-white">PDF &amp; Factur-X</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-teal-300 to-emerald-400 bg-clip-text text-transparent">PDF &amp; Factur-X Generation</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Render a PDF from a <strong>JSON layout template</strong> + a <strong>JSON data</strong> document, entirely in-process &mdash; no headless browser, no wkhtmltopdf, no Node. Three builtins:
+            <code class="text-teal-300">pdf_render</code> for an ordinary PDF, <code class="text-teal-300">pdf_facturx</code> for a
+            <strong>PDF/A&#8209;3b Factur&#8209;X (EN&nbsp;16931)</strong> electronic invoice with a Cross-Industry-Invoice XML you supply, and <code class="text-teal-300">pdf_facturx_from_invoice</code> which <em>generates</em> that XML (and the totals) from a typed invoice. The Factur-X output validates clean against veraPDF (146/146 rules).
+        </p>
+        <div class="mt-6">
+            <a href="/docs/builtins/pdf-playground" style="background-color:#0F766E;color:#ffffff" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold hover:opacity-90 transition-opacity">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
+                Open the live playground
+            </a>
+        </div>
+    </div>
+
+    <!-- Quickstart -->
+    <section id="section-quickstart" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Quickstart</h2>
+        <p class="text-gray-400 mb-4">Both builtins take the template and data as JSON <em>strings</em> and return the PDF as a <strong>base64 string</strong> (Soli has no bytes type). Save it with <code>file_write_base64</code>, or return it from a controller.</p>
+        <pre data-filename="A plain PDF"><code class="language-soli text-sm">let template = slurp("pdf/invoice.json")
+let data     = JSON.stringify({ "invoice": { "number": "AN-2025-0042" }, "items": [ ... ] })
+
+let pdf = pdf_render(template, data)          # base64 string
+file_write_base64("out/invoice.pdf", pdf)</code></pre>
+        <pre data-filename="A Factur-X (PDF/A-3b) invoice"><code class="language-soli text-sm">let xml = slurp("pdf/factur-x.xml")           # your EN 16931 CII XML
+
+let pdf = pdf_facturx(template, data, xml, {
+  "profile": "en16931",
+  "title":   "Invoice AN-2025-0042"
+})
+file_write_base64("out/invoice.pdf", pdf)     # opens normally AND validates as Factur-X</code></pre>
+        <pre data-filename="Factur-X from a typed invoice (XML + totals generated)" class="mt-3"><code class="language-soli text-sm">let invoice = slurp("pdf/invoice.json")       # typed invoice, see below
+
+let pdf = pdf_facturx_from_invoice(template, invoice, { "profile": "en16931" })
+file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XML are computed</code></pre>
+    </section>
+
+    <!-- Gallery -->
+    <section id="section-gallery" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5z M4 15l4-4 3 3 5-5 4 4" /></svg>
+            </span>
+            Samples
+        </h2>
+        <p class="text-gray-400 mb-6">Every sample below is one template file rendered with the engine. The visual language is deliberate: solid colour <em>bands</em> (a filled table-header row) and hairline accent <em>rules</em> (cell borders) carry the identity; body text stays disciplined black. The full templates live in <code>pdf/samples/</code>.</p>
+
+        <div class="grid gap-6 md:grid-cols-2">
+            <!-- Modern invoice -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/invoice_modern.png" alt="Modern teal invoice" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Modern invoice <span class="text-xs font-normal text-teal-300 align-middle">· Factur-X ready</span></h3>
+                <p class="text-sm text-gray-400">A full-width teal identity band (<code>fillColor</code> + white <code>textColor</code>), a tinted line-items header, a data-bound rows table, and an accent rule above the total.</p>
+            </div>
+            <!-- Quote -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/quote.png" alt="Charcoal and amber quote" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Quote <span class="text-xs font-normal text-amber-300 align-middle">· plain PDF</span></h3>
+                <p class="text-sm text-gray-400">The same engine, a different identity: a charcoal band with an amber accent and a tinted &ldquo;valid until&rdquo; strip. Proof the design system flexes by data, not by code.</p>
+            </div>
+            <!-- Letter -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/letter.png" alt="Minimal typographic letter" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Letter <span class="text-xs font-normal text-gray-400 align-middle">· plain PDF</span></h3>
+                <p class="text-sm text-gray-400">The simplest case &mdash; only paragraphs, <code>move</code>, and alignment, no tables. A right-aligned dateline, wrapped body, bold sign-off.</p>
+            </div>
+            <!-- Statement (multi-page) -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/statement.png" alt="Multi-page statement of account" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Statement <span class="text-xs font-normal text-sky-300 align-middle">· 3 pages</span></h3>
+                <p class="text-sm text-gray-400">A 60-line statement of account that <strong>paginates automatically</strong>. The table's column header repeats at the top of every page and the footer counts &ldquo;Page X of Y&rdquo;.</p>
+            </div>
+            <!-- Receipt (QR + watermark) -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/receipt.png" alt="Paid receipt with a scan-to-pay QR code and PAID watermark" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Receipt <span class="text-xs font-normal text-amber-300 align-middle">· QR · watermark</span></h3>
+                <p class="text-sm text-gray-400">Shows the newer primitives: a diagonal <code>PAID</code> <strong>watermark</strong>, an EPC <strong>scan-to-pay QR</strong>, an <code>hr</code> rule, a tinted <code>rect</code> panel, and a <code>line</code> accent.</p>
+            </div>
+            <!-- Code -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">…from one call</h3>
+                <pre class="!mt-0" data-filename="invoice.sl"><code class="language-soli text-sm">def create
+  let tpl  = slurp("pdf/invoice.json")
+  let data = Invoice.find(params["id"]).to_json()
+  let pdf  = pdf_render(tpl, data)
+  file_write_base64(
+    "storage/inv-" + params["id"] + ".pdf",
+    pdf
+  )
+  render("invoices/show")
+end</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Functions -->
+    <section id="section-functions" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </span>
+            Functions
+        </h2>
+
+        <section id="def-pdf-render" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-indigo-400">pdf_render(template, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render a PDF from a JSON layout <code>template</code> and a JSON <code>data</code> document. Returns the PDF as a base64 string.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">template</code> : <code class="text-purple-400">String</code> &mdash; the layout template JSON (see the Template reference below).</div>
+                    <div><code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> &mdash; the data document JSON. May be <code>{ "data": {...} }</code> or a bare object.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; see <a href="#section-options" class="text-teal-300 hover:underline">Options</a>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF bytes.</div>
+            </div>
+        </section>
+
+        <section id="def-pdf-facturx" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-indigo-400">pdf_facturx(template, data, xml, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render the visual PDF, then embed the caller-provided Cross-Industry-Invoice <code>xml</code> and apply everything PDF/A&#8209;3b + Factur-X require: the embedded <code>factur-x.xml</code> file, the <code>/AF</code> + name-tree wiring, an sRGB OutputIntent, and the strict XMP packet (PDF/A id + Factur-X extension schema). Returns base64 PDF/A&#8209;3b bytes.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">template</code>, <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> &mdash; as above.</div>
+                    <div><code class="text-amber-400">xml</code> : <code class="text-purple-400">String</code> &mdash; your EN 16931 CII XML. <strong>The library embeds it; it does not generate it</strong> &mdash; so its contents (totals, VAT, party data) are yours to get right.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
+            </div>
+        </section>
+
+        <section id="def-pdf-facturx-from-invoice" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-indigo-400">pdf_facturx_from_invoice(template, invoice, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render the visual PDF <strong>and</strong> generate the EN 16931 CII XML from a single typed <a href="#section-typed-invoice" class="text-teal-300 hover:underline">invoice document</a>, then embed it. Line totals, the VAT breakdown and the grand/amount-due totals are <em>computed</em> from the line items &mdash; so the human-readable PDF and the machine-readable XML can never disagree. Returns base64 PDF/A&#8209;3b bytes.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">template</code> : <code class="text-purple-400">String</code> &mdash; the layout template JSON, using the <code>invoice.*</code> / <code>company.*</code> / <code>customer.*</code> / <code>items[]</code> / <code>total.*</code> / <code>infos.text</code> paths the invoice maps onto.</div>
+                    <div><code class="text-amber-400">invoice</code> : <code class="text-purple-400">String</code> &mdash; the typed invoice JSON (see <a href="#section-typed-invoice" class="text-teal-300 hover:underline">Typed invoice document</a>).</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
+            </div>
+        </section>
+
+        <section id="section-options" class="scroll-mt-20 mb-2">
+            <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
+            <div class="overflow-x-auto rounded-xl border border-white/10">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-white/5 text-gray-300">
+                        <tr><th class="px-4 py-2 font-semibold">Key</th><th class="px-4 py-2 font-semibold">Type</th><th class="px-4 py-2 font-semibold">Default</th><th class="px-4 py-2 font-semibold">Meaning</th></tr>
+                    </thead>
+                    <tbody class="text-gray-400 divide-y divide-white/5">
+                        <tr><td class="px-4 py-2"><code>font_dirs</code></td><td class="px-4 py-2">Array&lt;String&gt;</td><td class="px-4 py-2"><code>["font"]</code></td><td class="px-4 py-2">Directories to load fonts from. No fonts are bundled.</td></tr>
+                        <tr><td class="px-4 py-2"><code>fetch_images</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>true</code></td><td class="px-4 py-2">Fetch <code>http(s)</code> images. Set <code>false</code> for offline/deterministic output.</td></tr>
+                        <tr><td class="px-4 py-2"><code>profile</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>en16931</code></td><td class="px-4 py-2"><span class="text-gray-500">(Factur-X)</span> Factur-X profile &mdash; see the profile table.</td></tr>
+                        <tr><td class="px-4 py-2"><code>title</code> / <code>author</code> / <code>subject</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2"><span class="text-gray-500">(Factur-X)</span> Document metadata (XMP + Info dict).</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+
+    <!-- Saving / serving -->
+    <section id="section-serving" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Saving &amp; serving</h2>
+        <p class="text-gray-400 mb-4"><code class="text-indigo-400">file_write_base64(path, b64)</code> decodes the base64 string and writes the bytes &mdash; the natural partner to either builtin.</p>
+        <pre data-filename="Save to disk"><code class="language-soli text-sm">let pdf = pdf_render(tpl, data)
+file_write_base64("storage/invoice.pdf", pdf)</code></pre>
+        <p class="text-gray-400 mt-4 mb-2">To stream it as a download, return base64 with a PDF content type and let your front-end / proxy decode, or persist then redirect to the file:</p>
+        <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def download
+  let pdf = pdf_render(slurp("pdf/invoice.json"), Invoice.find(params["id"]).to_json())
+  let path = "storage/inv-" + params["id"] + ".pdf"
+  file_write_base64(path, pdf)
+  redirect("/" + path)
+end</code></pre>
+    </section>
+
+    <!-- Storing on a model -->
+    <section id="section-store-model" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Storing a PDF on a model</h2>
+        <p class="text-gray-400 mb-4">The builtins return base64, so persisting a generated PDF is a question of <em>where the bytes live</em> &mdash; three options, lightest commitment last.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-2">Uploader <span class="text-xs font-normal align-middle px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-300">recommended</span></h3>
+        <p class="text-gray-400 mb-3">Declare an <a href="/docs/database/models" class="text-teal-300 hover:underline">uploader</a> and attach the generated bytes &mdash; Soli stores the blob in SoliDB, keeps only its id on the document, and serves it back. No HTTP upload is involved; <code>attach_&lt;field&gt;</code> just needs a file hash.</p>
+        <pre data-filename="app/models/invoice.sl"><code class="language-soli text-sm">class Invoice < Model
+  uploader("pdf", {
+    "multiple":      false,
+    "content_types": ["application/pdf"],
+    "max_size":      10_000_000,
+    "collection":    "invoice_pdfs"
+  })
+
+  # Render the Factur-X for this record and file it as the `pdf` attachment.
+  def store_pdf(template, invoice_json)
+    let pdf = pdf_facturx_from_invoice(template, invoice_json, { "profile": "en16931" })
+    this.attach_pdf({
+      "data":         pdf,                          # pass base64 as-is — stored as raw bytes (decoded automatically)
+      "filename":     "invoice-#{this.number}.pdf",
+      "content_type": "application/pdf",
+      "size":         Base64.decode(pdf).length()   # raw byte count, for the max_size cap
+    })
+  end
+end</code></pre>
+        <p class="text-gray-400 mt-3 mb-5">Add <code>uploads("invoices")</code> to <code>config/routes.sl</code> and the file is served at <code>/invoices/:id/pdf</code>; <code>this.pdf_url()</code> returns the link. <code>detach_pdf()</code> removes it, and deleting the record cleans up the blob.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-2">Direct blob storage</h3>
+        <p class="text-gray-400 mb-3">Skip the DSL and keep the blob id yourself:</p>
+        <pre data-filename="Store + read a blob"><code class="language-soli text-sm">let client  = Solidb(getenv("SOLIDB_HOST"), getenv("SOLIDB_DATABASE"))
+let blob_id = solidb_store_blob(client, "invoice_pdfs", pdf,
+                                "invoice.pdf", "application/pdf")
+invoice.update({ "pdf_blob_id": blob_id })
+
+# read it back (returns base64)
+let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code></pre>
+
+        <h3 class="text-lg font-semibold text-white mt-5 mb-2">Inline field</h3>
+        <p class="text-gray-400 mb-3">Simplest &mdash; store the base64 string straight on the document:</p>
+        <pre data-filename="Inline"><code class="language-soli text-sm">invoice.update({ "pdf": pdf })</code></pre>
+        <p class="text-gray-400 mt-3">Fine for small, occasional PDFs. Avoid it when the PDFs are large or you query that collection often: every read of the record carries the full base64 (a 135&nbsp;KB PDF &asymp; 180&nbsp;KB of text). Blob storage keeps the document lean and the bytes out of band.</p>
+    </section>
+
+    <!-- TEMPLATE REFERENCE -->
+    <section id="section-template" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>
+            </span>
+            Template reference
+        </h2>
+
+        <h3 class="text-lg font-semibold text-white mt-2 mb-3">Document shape</h3>
+        <p class="text-gray-400 mb-3">A template has five top-level keys. <code>content</code> is the flow; <code>header</code>/<code>footer</code> repeat on every page.</p>
+        <pre data-filename="template.json"><code class="language-json text-sm">{
+  "fonts":   ["titillium"],          // family to use as the primary text face
+  "options": {
+    "header_height": 0,              // reserved top band height (pt)
+    "margins": { "top": 90, "left": 70, "right": 70, "bottom": 80 }, // pt; or a single number for all sides
+    "watermark": { "text": "PAID", "angle": 45, "color": "e8c4c4", "fontSize": 96 }
+  },
+  "header":  [ /* elements drawn at the top of every page */ ],
+  "footer":  [ /* elements drawn at the bottom; may use #PAGE# / #TOTAL_PAGE# */ ],
+  "content": [ /* the document flow */ ]
+}</code></pre>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mt-3 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">key</th><th class="px-4 py-2">type</th><th class="px-4 py-2">meaning</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">fonts</code></td><td class="px-4 py-2">string[]</td><td class="px-4 py-2">Families to load. The <strong>first</strong> is the primary text face; the rest are <strong>fallbacks</strong> for characters it can't cover (e.g. a CJK font). Resolved from files in <code>font_dirs</code> &mdash; see <strong>Fonts</strong> below.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">options</code></td><td class="px-4 py-2">object</td><td class="px-4 py-2">Document options: <code>header_height</code> (pt), <code>margins</code>, <code>watermark</code> &mdash; detailed below.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">header</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Elements drawn in the reserved top band on <strong>every</strong> page, from their own cursor at the top margin. Sized by <code>options.header_height</code>; they do not paginate.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">footer</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Paragraphs drawn in the bottom band on <strong>every</strong> page. May contain <code>#PAGE#</code> / <code>#TOTAL_PAGE#</code>, substituted after pagination. The band auto-sizes above the bottom margin.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">content</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">The page body, laid out top-to-bottom; paginates automatically when it overflows.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-3">All five keys are optional. Lengths are in points (A4 = 595&times;842&nbsp;pt; 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt).</p>
+        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.page</code> &mdash; a preset (<code>a4</code>, <code>letter</code>, <code>legal</code>, <code>a5</code>, <code>a3</code>) or a custom <code>{ "width": …, "height": … }</code> in points; <code class="text-amber-400">options.orientation</code>: <code>"landscape"</code> swaps width/height. Defaults to A4 portrait.</p>
+        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.margins</code> &mdash; page margins in points: a single number for all four sides, or an object overriding individual sides (unset sides keep the 20&nbsp;mm default). The <strong>top</strong> margin is the gap above the header, the <strong>bottom</strong> margin the gap below the footer; <code>header_height</code> reserves the header band below the top margin. 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt.</p>
+        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.watermark</code> draws a diagonal stamp centered behind the content of <strong>every</strong> page. Fields: <code>text</code> (required), <code>angle</code> (deg, default&nbsp;45), <code>color</code> (hex, default light grey), <code>fontSize</code> (pt, default&nbsp;96), <code>fontWeight</code> (default&nbsp;bold).</p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Elements</h3>
+        <p class="text-gray-400 mb-3">Each element in an array has a <code>type</code>. The cursor flows top-down; lengths are in points (A4 is 595&times;842&nbsp;pt, default margins 20&nbsp;mm).</p>
+
+        <div class="space-y-4">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">paragraph</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Wrapped, aligned text. Advances the cursor down by the consumed height.</p>
+                <pre data-filename="paragraph"><code class="language-json text-sm">{ "type": "paragraph", "value": "Invoice ${invoice.number}",
+  "options": { "alignment": "left|right|center", "fontSize": 24, "fontWeight": "normal|bold" } }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">move</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Relative cursor move. Positive <code>y</code> goes <strong>down</strong>, negative <code>y</code> goes <strong>up</strong>; positive <code>x</code> is right. Use it for spacing between blocks, or to place an element absolutely (e.g. a logo at top-right).</p>
+                <pre data-filename="move"><code class="language-json text-sm">{ "type": "move", "x": 0, "y": 24 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">image</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Draw an image at the cursor, scaled to <code>width</code> (height keeps aspect). Source may be an <code>http(s)</code> URL, a <code>file://</code> path, or a <code>data:</code> URI. The cursor is not advanced &mdash; position with <code>move</code>.</p>
+                <pre data-filename="image"><code class="language-json text-sm">{ "type": "image", "value": "https://acme.example/logo.png", "width": 100 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">table</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A grid of cells. Optional <code>data</code> binds the single template row to an array, repeating it once per item (<code>${field}</code> resolves against each item). A non-empty <code>header_columns</code> row repeats on every page the table spans.</p>
+                <pre data-filename="table (data-bound)"><code class="language-json text-sm">{ "type": "table", "data": "items",
+  "header_columns": [ { "text": "DESCRIPTION", "width": 280, "fontWeight": "bold",
+                        "borderSides": { "bottom": "true" } }, ... ],
+  "rows": [ [ { "text": "${name}", "width": 280 }, { "text": "${amount}", "alignment": "right" } ] ],
+  "options": { "header": { "fillColor": "0F766E", "textColor": "FFFFFF", "borderColor": "0F766E" },
+               "padding_x": 6, "padding_y": 7 } }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">hr</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A horizontal rule across the content width (or <code>width</code> pt). Advances the cursor below it &mdash; a flow separator.</p>
+                <pre data-filename="hr"><code class="language-json text-sm">{ "type": "hr", "color": "cccccc", "thickness": 0.5 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">rect</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A filled and/or stroked rectangle at the cursor (top-left) &mdash; header bands, totals boxes, signature boxes. Does <strong>not</strong> advance the cursor; position with <code>move</code>.</p>
+                <pre data-filename="rect"><code class="language-json text-sm">{ "type": "rect", "width": 515, "height": 26, "fill": "f4f4f5", "border": "000000", "borderWidth": 0.5 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">line</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A stroked segment from the cursor to <code>cursor + (dx, dy)</code>. Does not advance the cursor.</p>
+                <pre data-filename="line"><code class="language-json text-sm">{ "type": "line", "dx": 200, "dy": 0, "color": "cccccc", "width": 0.5 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">qr</code> <span class="text-xs font-normal text-teal-300 align-middle">· scan-to-pay</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A QR code (square, side = <code>width</code> pt) at the cursor. An EPC SEPA "GiroCode" or arbitrary text &mdash; see <a href="#section-qr" class="text-teal-300 hover:underline">Payment QR</a>. Does not advance the cursor.</p>
+                <pre data-filename="qr (EPC scan-to-pay)"><code class="language-json text-sm">{ "type": "qr", "kind": "epc",
+  "name": "${payment.name}", "iban": "${payment.iban}",
+  "amount": "${payment.amount}", "currency": "${payment.currency}",
+  "remittance": "${invoice.number}", "width": 110 }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">ellipse</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A filled and/or stroked ellipse (a circle when <code>rx == ry</code>) whose bounding-box top-left is the cursor &mdash; status dots, badges. Does not advance the cursor.</p>
+                <pre data-filename="ellipse"><code class="language-json text-sm">{ "type": "ellipse", "rx": 6, "ry": 6, "fill": "16a34a" }</code></pre>
+            </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-3"><code>hr</code>, <code>line</code>, and <code>rect</code>/<code>ellipse</code> borders accept a <code class="text-amber-400">dash</code> array (pt on/off lengths, e.g. <code>[3, 2]</code>) for dashed strokes; <code>rect</code> accepts a <code class="text-amber-400">radius</code> (pt) for rounded corners.</p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Inline rich text</h3>
+        <p class="text-gray-400 mb-3">A <code>paragraph</code> may carry <code>spans</code> instead of <code>value</code> to mix weight, size, colour, and inline links <strong>within one wrapped flow</strong>. Each span inherits the paragraph <code>options</code> for fields it omits; the line height follows the largest span on each line.</p>
+        <pre data-filename="inline rich text"><code class="language-json text-sm">{ "type": "paragraph", "options": { "fontSize": 12 }, "spans": [
+  { "text": "Amount due: " },
+  { "text": "EUR 600.00", "fontWeight": "bold", "color": "0F766E", "fontSize": 16 },
+  { "text": "  —  " },
+  { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" }
+] }</code></pre>
+        <p class="text-sm text-gray-400 mt-2">Span fields: <code>text</code> (required), <code>fontSize</code>, <code>fontWeight</code>, <code>color</code> (hex), <code>link</code> (external URL).</p>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Cells: text &amp; rich</h3>
+        <p class="text-gray-400 mb-3">A cell is either a simple <strong>text</strong> cell, or a <strong>rich</strong> cell whose <code>content</code> stacks multiple items &mdash; text lines <em>and</em> images &mdash; vertically in one cell.</p>
+        <pre data-filename="rich cell"><code class="language-json text-sm">{ "content": [
+    { "type": "text",  "value": "${company.name}", "fontSize": 12, "fontWeight": "bold" },
+    { "type": "text",  "value": "${company.city}", "fontSize": 10 },
+    { "type": "image", "value": "file://logo.png", "width": 80 }
+  ],
+  "width": 200, "alignment": "left",
+  "borderSides": { "right": "false", "left": "false", "top": "false", "bottom": "false" } }</code></pre>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Styling &amp; colours</h3>
+        <div class="text-sm text-gray-400 space-y-1 mb-4">
+            <div><code class="text-amber-400">alignment</code> &mdash; <code>left</code> / <code>right</code> / <code>center</code> (case-insensitive).</div>
+            <div><code class="text-amber-400">fontSize</code> &mdash; points. <code class="text-amber-400">fontWeight</code> &mdash; <code>normal</code> / <code>bold</code>.</div>
+            <div><code class="text-amber-400">link</code> &mdash; an external URL on a paragraph's <code>options</code> or a text cell's style; the text becomes a clickable, borderless link annotation. The Factur-X output stays PDF/A-3b conformant (the Print flag is set for you).</div>
+            <div><code class="text-amber-400">bookmark</code> / <code class="text-amber-400">anchor</code> / <code class="text-amber-400">linkTo</code> (paragraph <code>options</code>) &mdash; navigation: <code>bookmark</code> adds a PDF outline entry, <code>anchor</code> names a jump target, and <code>linkTo</code> makes the text a clickable internal jump to an <code>anchor</code> (a clickable table of contents).</div>
+            <div><code class="text-amber-400">width</code> &mdash; column width (pt). Width-less columns split the remaining space; over-wide rows scale to fit.</div>
+            <div><code class="text-amber-400">borderSides</code> &mdash; <code>{ "top": "true", "bottom": "false", "left": "...", "right": "..." }</code>. Values are strings or bools. When the key is present, omitted sides default to <code>true</code>; when the whole key is absent, the cell has no borders.</div>
+            <div><code class="text-amber-400">borderColor</code> &mdash; hex without <code>#</code>, 3 or 6 digits (<code>"fff"</code>, <code>"EEEEEE"</code>). Default border is light grey.</div>
+            <div><code class="text-amber-400">header.fillColor / textColor / borderColor</code> &mdash; the header row's band fill, text colour, and border colour. Body text is always black; accents come from bands and rules.</div>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Interpolation</h3>
+        <div class="text-sm text-gray-400 space-y-1 mb-2">
+            <div><code class="text-amber-400">${a.b.c}</code> &mdash; dotted path into the data document. Missing paths render empty (with a warning).</div>
+            <div>Inside a data-bound table, <code class="text-amber-400">${field}</code> resolves against the current row item first, then the root.</div>
+            <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#TOTAL_PAGE#</code> &mdash; page tokens, substituted after pagination (footer alignment is recomputed).</div>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Fonts</h3>
+        <p class="text-gray-400 mb-2">No fonts are embedded in the binary &mdash; place font files in a <code>font/</code> folder (the default <code>font_dirs</code>). The template's <code>fonts</code> field names the primary family; its Regular/Bold styles are resolved from the files, and any <em>other</em> loaded font becomes a fallback for characters the primary can't cover (e.g. a CJK font for <code>こんにちは</code>). Characters no loaded font covers are dropped with a warning, keeping the PDF valid.</p>
+        <pre data-filename="app/font/"><code class="language-bash text-sm">font/
+  TitilliumWeb-Regular.ttf
+  TitilliumWeb-Bold.ttf
+  NotoSansJP-Regular.ttf   # optional CJK fallback</code></pre>
+
+        <h3 id="section-qr" class="scroll-mt-20 text-lg font-semibold text-white mt-8 mb-3">Payment QR <span class="text-xs font-normal text-teal-300 align-middle">· scan-to-pay</span></h3>
+        <p class="text-gray-400 mb-3">A <code>qr</code> element renders a QR code as a raster image (square, side = <code>width</code>&nbsp;pt). Two kinds:</p>
+        <div class="text-sm text-gray-400 space-y-1 mb-4">
+            <div><code class="text-amber-400">"kind": "epc"</code> (default) &mdash; an <strong>EPC069-12 "GiroCode"</strong> SEPA Credit Transfer. The buyer scans it in their banking app and the payee, IBAN, amount and reference are pre-filled. All string fields are <code>${…}</code>-interpolated.</div>
+            <div><code class="text-amber-400">"kind": "text"</code> &mdash; encodes <code>value</code> verbatim.</div>
+        </div>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm text-left text-gray-400">
+                <thead class="text-xs uppercase text-gray-500 border-b border-white/10"><tr><th class="py-2 pr-4">field</th><th class="py-2">notes</th></tr></thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">name</code></td><td class="py-2">Beneficiary (seller) name. Required, &le;&nbsp;70 chars.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">iban</code></td><td class="py-2">Beneficiary IBAN. Required, &le;&nbsp;34 chars.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">bic</code></td><td class="py-2">Optional within the EEA.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">amount</code></td><td class="py-2">Decimal, re-formatted to 2&nbsp;dp. Must be <strong>EUR</strong>, within <code>0.01…999999999.99</code>.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">currency</code></td><td class="py-2">Must be <code>EUR</code> (EPC is EUR-only); defaults to <code>EUR</code>.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">remittance</code></td><td class="py-2">Unstructured reference, e.g. the invoice number. &le;&nbsp;140 chars.</td></tr>
+                    <tr><td class="py-2 pr-4"><code class="text-amber-400">purpose</code></td><td class="py-2">Optional 4-char purpose code.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Invalid input (non-EUR, missing IBAN, over-long fields) is <strong>skipped with a warning</strong>, never fatal. With <code>pdf_facturx_from_invoice</code>, a ready-made <code>payment</code> block is exposed in the render data &mdash; give the seller an <code>iban</code> (and optional <code>bic</code>) and bind the QR straight to it:</p>
+        <pre data-filename="qr bound to the invoice"><code class="language-json text-sm">{ "type": "qr", "kind": "epc",
+  "name": "${payment.name}", "iban": "${payment.iban}", "bic": "${payment.bic}",
+  "amount": "${payment.amount}", "currency": "${payment.currency}",
+  "remittance": "${payment.remittance}", "width": 110 }</code></pre>
+        <p class="text-sm text-gray-400 mt-2"><code>payment.amount</code> is the amount due with <strong>no</strong> currency symbol (e.g. <code>600.00</code>), <code>payment.currency</code> the ISO code, and <code>payment.remittance</code> the invoice number.</p>
+    </section>
+
+    <!-- Factur-X -->
+    <section id="section-facturx" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Factur-X &amp; PDF/A-3b</h2>
+        <p class="text-gray-400 mb-4">The <code>profile</code> sets the embedded file's <code>/AFRelationship</code> and the XMP <code>fx:ConformanceLevel</code>; it should match your XML's <code>BT-24</code> guideline id. Default is <strong>EN&nbsp;16931</strong>.</p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">profile</th><th class="px-4 py-2">Contents</th><th class="px-4 py-2">AFRelationship</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2"><code>minimum</code></td><td class="px-4 py-2">Parties + totals only</td><td class="px-4 py-2">Data</td></tr>
+                    <tr><td class="px-4 py-2"><code>basicwl</code></td><td class="px-4 py-2">Header + totals, no lines</td><td class="px-4 py-2">Data</td></tr>
+                    <tr><td class="px-4 py-2"><code>basic</code></td><td class="px-4 py-2">Line items, subset of EN 16931</td><td class="px-4 py-2">Alternative</td></tr>
+                    <tr class="bg-teal-500/5"><td class="px-4 py-2"><code class="text-teal-300">en16931</code></td><td class="px-4 py-2">Full EN 16931 model (default)</td><td class="px-4 py-2">Alternative</td></tr>
+                    <tr><td class="px-4 py-2"><code>extended</code></td><td class="px-4 py-2">EN 16931 + extra business terms</td><td class="px-4 py-2">Alternative</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-2">Validate the output with the two standard gates:</p>
+        <pre data-filename="Validate"><code class="language-bash text-sm"># PDF/A-3b structure, fonts, OutputIntent, XMP
+verapdf -f 3b invoice.pdf            # → PASS, 146/146 rules
+
+# Factur-X XML + profile (XSD + Schematron)
+java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
+
+        <h3 id="section-typed-invoice" class="scroll-mt-20 text-lg font-semibold text-white mt-8 mb-3">Typed invoice document</h3>
+        <p class="text-gray-400 mb-3"><code class="text-teal-300">pdf_facturx_from_invoice</code> takes a <em>typed invoice</em> instead of separate data + XML. Totals and the VAT breakdown are computed from the lines, then mapped onto the template (<code>invoice.*</code>, <code>company.*</code> = seller, <code>customer.*</code> = buyer, <code>items[]</code>, <code>total.*</code>, <code>infos.text</code>) and emitted as CII XML.</p>
+        <pre data-filename="pdf/invoice.json"><code class="language-json text-sm">{
+  "number": "#12345",
+  "issue_date": "2025-11-28",
+  "due_date": "2025-12-28",
+  "currency": "EUR",
+  "note": "Thank you for your business.",
+  "seller": {
+    "name": "PDFx", "address_line": "1 Rue des Champs-Élysées",
+    "postcode": "75000", "city": "PARIS",
+    "country": "FR", "country_name": "France",
+    "phone": "+33 6 12 34 80 32", "vat_id": "FRXX999999999",
+    "iban": "FR7630006000011234567890189"
+  },
+  "buyer": {
+    "name": "John Doe", "address_line": "123 Main St",
+    "postcode": "12345", "city": "NYC", "country": "US", "country_name": "USA"
+  },
+  "lines": [
+    { "name": "Item 1", "quantity": 1, "unit_price": 100, "vat_rate": 20.0 },
+    { "name": "Item 2", "quantity": 2, "unit_price": 200, "vat_rate": 20.0 }
+  ]
+}</code></pre>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mt-3">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">Field</th><th class="px-4 py-2">Notes</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2"><code>number</code>, <code>issue_date</code>, <code>currency</code></td><td class="px-4 py-2">Required. <code>issue_date</code> is <code>YYYY-MM-DD</code>.</td></tr>
+                    <tr><td class="px-4 py-2"><code>due_date</code>, <code>note</code>, <code>type_code</code></td><td class="px-4 py-2">Optional. <code>type_code</code> defaults to <code>380</code> (commercial invoice).</td></tr>
+                    <tr><td class="px-4 py-2"><code>currency_symbol</code></td><td class="px-4 py-2">Optional; otherwise derived from the code (<code>EUR</code>→<code>€</code>, <code>USD</code>→<code>$</code>, …).</td></tr>
+                    <tr><td class="px-4 py-2"><code>prepaid</code></td><td class="px-4 py-2">Optional amount already paid; subtracted to give the amount due.</td></tr>
+                    <tr><td class="px-4 py-2"><code>seller</code> / <code>buyer</code></td><td class="px-4 py-2"><code>name</code>, <code>address_line</code>, <code>postcode</code>, <code>city</code>, <code>country</code> (ISO-2), <code>country_name</code>, <code>phone</code>, <code>vat_id</code>. The seller's <code>vat_id</code> is required by EN 16931 when VAT is charged.</td></tr>
+                    <tr><td class="px-4 py-2"><code>seller.iban</code> / <code>seller.bic</code></td><td class="px-4 py-2">Optional. When present, exposed as the <code>payment.*</code> render-data block for an EPC <a href="#section-qr" class="text-teal-300 hover:underline">scan-to-pay QR</a>.</td></tr>
+                    <tr><td class="px-4 py-2"><code>lines[]</code></td><td class="px-4 py-2"><code>name</code>, <code>unit_price</code>, <code>quantity</code> (default <code>1</code>), <code>vat_rate</code> (percent), <code>unit_code</code> (default <code>C62</code>), <code>vat_category</code> (default <code>S</code>).</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mt-3">Amounts accept a number (<code>100</code>, <code>100.5</code>) or a numeric string (<code>"100.50"</code>) and are kept exact to the cent.</p>
+    </section>
+
+    <!-- Performance -->
+    <section id="section-performance" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-teal-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </span>
+            Performance
+        </h2>
+        <p class="text-gray-400 mb-4">Generation is in-process and CPU-bound &mdash; no browser to spawn. The numbers below load-test a controller action that renders a real invoice (the Quote sample) on <em>every</em> request, measured with <a href="https://github.com/hatoo/oha" class="text-teal-300 hover:underline">oha</a> on a release build (16 cores). <code>/health</code> is the bare-framework baseline, to show the overhead is the PDF, not the HTTP path.</p>
+        <pre data-filename="The benchmarked endpoint"><code class="language-soli text-sm">def pdf_bench
+  let pdf = pdf_render(slurp("pdf/template.json"), slurp("pdf/data.json"),
+                       { "fetch_images": false })
+  return { "status": 200, "headers": {"Content-Type": "text/plain"},
+           "body": "generated " + len(pdf) + " base64 bytes" }
+end</code></pre>
+        <pre data-filename="Run it" class="mt-3"><code class="language-bash text-sm">oha -n 6000 -c 50 http://127.0.0.1:8080/pdf-bench
+#   Requests/sec: 9423   ·   p50 5 ms   ·   p99 9 ms   ·   100% success</code></pre>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mt-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">Endpoint</th><th class="px-4 py-2">Requests/sec</th><th class="px-4 py-2">Avg</th><th class="px-4 py-2">p50</th><th class="px-4 py-2">p99</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2"><code>/pdf-bench</code> <span class="text-gray-500">(renders a PDF)</span></td><td class="px-4 py-2 text-teal-300 font-semibold">~9,400</td><td class="px-4 py-2">5 ms</td><td class="px-4 py-2">5 ms</td><td class="px-4 py-2">9 ms</td></tr>
+                    <tr><td class="px-4 py-2"><code>/health</code> <span class="text-gray-500">(framework only)</span></td><td class="px-4 py-2">~57,000</td><td class="px-4 py-2">0.8 ms</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">&mdash;</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 text-sm mt-3">Each embedded face is <strong>subset to the glyphs actually used</strong> before embedding, so a typical invoice weighs ~30&nbsp;KB and a CJK invoice drops from multiple MB to a few hundred KB &mdash; which is also why throughput is high (there's little font data to compress per request). The CJK fallback is only loaded when a document needs it.</p>
+    </section>
+</div>

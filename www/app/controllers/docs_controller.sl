@@ -6,11 +6,12 @@ fn index
 end
 
 # Helper to render docs pages with consistent context
-fn render_docs(view, title, section, subsection)
+fn render_docs(view, title, section, subsection, hide_toc = false)
     render(view, {
         "title": title,
         "section": section,
         "subsection": subsection,
+        "hide_toc": hide_toc,
         "layout": "layouts/docs"
     })
 end
@@ -406,6 +407,25 @@ end
 
 fn builtins_image
     render_docs("docs/builtins/image", "Image Class", "builtins", "image")
+end
+
+fn builtins_pdf
+    render_docs("docs/builtins/pdf", "PDF & Factur-X", "builtins", "pdf")
+end
+
+fn pdf_playground
+    render_docs("docs/pdf_playground", "PDF Playground", "builtins", "pdf", true)
+end
+
+fn pdf_playground_render
+    let template = params["template"] ?? ""
+    let data = params["data"] ?? "{}"
+    try
+        let pdf = pdf_render(template, data, { "fetch_images": false, "font_dirs": ["font"] })
+        return { "status": 200, "headers": {"Content-Type": "text/plain"}, "body": pdf }
+    catch e
+        return { "status": 400, "headers": {"Content-Type": "text/plain"}, "body": str(e) }
+    end
 end
 
 fn builtins_file

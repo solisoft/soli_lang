@@ -1,0 +1,192 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-6">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins/pdf" class="text-gray-400 hover:text-white transition-colors">PDF &amp; Factur-X</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            <span class="text-white">Playground</span>
+        </nav>
+        <h1 class="text-3xl font-bold tracking-tight text-white sm:text-4xl mb-3">
+            <span class="bg-gradient-to-r from-teal-300 to-emerald-400 bg-clip-text text-transparent">PDF Playground</span>
+        </h1>
+        <p class="text-lg text-gray-300 leading-7">
+            Edit the layout <strong>template</strong> and the <strong>data</strong> on the left; the PDF re-renders on the right as you type. It's the real engine &mdash; the same <code class="text-teal-300">pdf_render</code> builtin running server-side.
+        </p>
+    </div>
+
+    <!-- Presets + actions -->
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Samples</span>
+        <button id="pg-preset-invoice" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-teal-500/15 text-teal-200 border border-teal-400/20 hover:bg-teal-500/25 transition-colors">Invoice</button>
+        <button id="pg-preset-quote" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Quote</button>
+        <button id="pg-preset-letter" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Letter</button>
+        <button id="pg-preset-statement" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Statement <span class="opacity-60">(3 pages)</span></button>
+        <button id="pg-preset-receipt" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Receipt <span class="opacity-60">(QR · watermark)</span></button>
+        <div class="flex-1"></div>
+        <span id="pg-status" class="text-sm font-mono text-gray-400">Loading editor…</span>
+        <button id="pg-render" type="button" style="background-color:#0F766E;color:#ffffff" class="px-4 py-1.5 text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity">Render <span class="opacity-70">⌘↵</span></button>
+    </div>
+
+    <!-- Editor + preview -->
+    <div class="grid gap-5 lg:grid-cols-2">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1.5">template.json <span class="text-gray-600">— layout</span></label>
+                <div id="pg-template-editor" class="w-full h-[340px] rounded-lg border border-white/10 overflow-hidden"></div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 mb-1.5">data.json <span class="text-gray-600">— values for placeholders</span></label>
+                <div id="pg-data-editor" class="w-full h-[240px] rounded-lg border border-white/10 overflow-hidden"></div>
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1.5">Preview <span class="text-gray-600">— live</span></label>
+            <iframe id="pg-preview" title="PDF preview" class="w-full h-[600px] rounded-lg border border-white/10 bg-white"></iframe>
+        </div>
+    </div>
+
+    <p class="text-xs text-gray-500 mt-4">
+        Tip: a data-bound table (<code>"data": "items"</code>) repeats its row once per array element &mdash; see the Statement sample paginate across pages with a repeating header. Remote images are disabled here. Full
+        <a href="/docs/builtins/pdf" class="text-teal-300 hover:underline">template reference</a>.
+    </p>
+</div>
+
+<script>
+// PDF playground. Inline (not external) so it re-runs on the docs site's
+// instant-nav <body> swaps. Avoids ${...} / #{...} so the view engine leaves it
+// alone. Uses the Monaco editor, loaded from the same CDN style as the rest of
+// the docs (highlight.js / fuse.js).
+(function () {
+  "use strict";
+  if (!document.getElementById("pg-template-editor")) return;
+
+  var RENDER_URL = "/docs/builtins/pdf-playground/render";
+  var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/";
+  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt"];
+  var ED = {}, lastUrl = null, timer = null, statusEl, frame, suspendAuto = false;
+
+  function setStatus(text, kind) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = "text-sm font-mono " +
+      (kind === "error" ? "text-rose-400" : kind === "ok" ? "text-teal-300" : "text-gray-400");
+  }
+
+  function val(name) { return ED[name] ? ED[name].getValue() : ""; }
+
+  // Highlight the active sample button (Tailwind class swap).
+  var PRESET_BASE = "px-3 py-1.5 text-sm rounded-lg border transition-colors ";
+  var PRESET_ON = "bg-teal-500/15 text-teal-200 border-teal-400/20 hover:bg-teal-500/25";
+  var PRESET_OFF = "bg-white/5 text-gray-200 border-white/10 hover:bg-white/10";
+  function setActivePreset(name) {
+    PRESETS.forEach(function (n) {
+      var b = document.getElementById("pg-preset-" + n);
+      if (b) b.className = PRESET_BASE + (n === name ? PRESET_ON : PRESET_OFF);
+    });
+  }
+
+  function b64ToBlob(b64) {
+    var bin = atob(b64.trim()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  function render() {
+    if (!ED.template) return;
+    var body = new URLSearchParams();
+    body.set("template", val("template"));
+    body.set("data", val("data"));
+    setStatus("Rendering…");
+    var t0 = performance.now();
+    fetch(RENDER_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
+      .then(function (res) { return res.text().then(function (t) { return { ok: res.ok, text: t }; }); })
+      .then(function (r) {
+        var ms = Math.round(performance.now() - t0);
+        if (!r.ok) { setStatus("✗ " + (r.text || "render failed"), "error"); return; }
+        var blob = b64ToBlob(r.text);
+        if (lastUrl) URL.revokeObjectURL(lastUrl);
+        lastUrl = URL.createObjectURL(blob);
+        if (frame) frame.src = lastUrl;
+        setStatus("✓ " + Math.round(blob.size / 1024) + " KB · " + ms + " ms", "ok");
+      })
+      .catch(function (e) { setStatus("✗ " + e, "error"); });
+  }
+
+  function schedule() {
+    if (suspendAuto) return; // ignore change events fired by programmatic setValue
+    clearTimeout(timer); setStatus("…"); timer = setTimeout(render, 650);
+  }
+
+  function loadPreset(name) {
+    setActivePreset(name);
+    setStatus("Loading " + name + "…");
+    Promise.all([
+      fetch("/pdf-samples/" + name + ".template.json").then(function (r) { return r.text(); }),
+      fetch("/pdf-samples/" + name + ".data.json").then(function (r) { return r.text(); })
+    ]).then(function (p) {
+      // setValue fires onDidChangeModelContent, which would debounce a second
+      // render. Suspend that auto-render across both setValue calls (and until the
+      // change events flush on the next tick) so a preset loads in exactly ONE render.
+      suspendAuto = true;
+      ED.template.setValue(p[0].trim());
+      ED.data.setValue(p[1].trim());
+      render();
+      setTimeout(function () { suspendAuto = false; }, 0);
+    });
+  }
+
+  function makeEditor(id, value) {
+    var el = document.getElementById(id);
+    el.innerHTML = "";
+    return monaco.editor.create(el, {
+      value: value || "", language: "json", theme: "vs-dark",
+      automaticLayout: true, minimap: { enabled: false }, fontSize: 12.5,
+      scrollBeyondLastLine: false, tabSize: 2, lineNumbers: "on",
+      renderLineHighlight: "none", padding: { top: 10, bottom: 10 }
+    });
+  }
+
+  function startMonaco() {
+    window.MonacoEnvironment = {
+      getWorkerUrl: function () {
+        var src = "self.MonacoEnvironment={baseUrl:'" + MONACO_BASE + "'};" +
+                  "importScripts('" + MONACO_BASE + "vs/base/worker/workerMain.js');";
+        return "data:text/javascript;charset=utf-8," + encodeURIComponent(src);
+      }
+    };
+    window.require.config({ paths: { vs: MONACO_BASE + "vs" } });
+    window.require(["vs/editor/editor.main"], function () {
+      ED.template = makeEditor("pg-template-editor", "");
+      ED.data = makeEditor("pg-data-editor", "");
+      ED.template.onDidChangeModelContent(schedule);
+      ED.data.onDidChangeModelContent(schedule);
+      PRESETS.forEach(function (n) {
+        var b = document.getElementById("pg-preset-" + n);
+        if (b) b.addEventListener("click", function () { loadPreset(n); });
+      });
+      var rb = document.getElementById("pg-render");
+      if (rb) rb.addEventListener("click", render);
+      ED.template.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
+      ED.data.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
+      loadPreset("invoice");
+    });
+  }
+
+  function ensureMonaco() {
+    if (window.monaco && window.monaco.editor) { startMonaco(); return; }
+    if (window.require && window.require.config) { startMonaco(); return; }
+    var existing = document.getElementById("__monaco-loader");
+    if (existing) { existing.addEventListener("load", startMonaco, { once: true }); return; }
+    var s = document.createElement("script");
+    s.id = "__monaco-loader";
+    s.src = MONACO_BASE + "vs/loader.js";
+    s.addEventListener("load", startMonaco, { once: true });
+    s.addEventListener("error", function () { setStatus("✗ could not load the editor (offline?)", "error"); });
+    document.head.appendChild(s);
+  }
+
+  statusEl = document.getElementById("pg-status");
+  frame = document.getElementById("pg-preview");
+  ensureMonaco();
+})();
+</script>

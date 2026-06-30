@@ -1,0 +1,136 @@
+{
+  "fonts": ["titillium"],
+  "options": { "header_height": 0 },
+  "footer": [
+    {
+      "type": "paragraph",
+      "value": "${company.name} · ${company.email} · Thank you for your business",
+      "options": { "alignment": "center", "fontSize": 8 }
+    }
+  ],
+  "content": [
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "${company.name}", "fontSize": 19, "fontWeight": "bold" },
+            { "type": "text", "value": "${company.tagline}", "fontSize": 9 }
+          ],
+          "width": 300,
+          "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        },
+        {
+          "text": "INVOICE",
+          "width": 181,
+          "fontSize": 26,
+          "fontWeight": "bold",
+          "alignment": "right",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": {
+        "header": { "fillColor": "0F766E", "textColor": "FFFFFF" },
+        "padding_x": 18,
+        "padding_y": 18
+      }
+    },
+    { "type": "move", "y": 26 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          {
+            "content": [
+              { "type": "text", "value": "BILLED TO", "fontSize": 9, "fontWeight": "bold" },
+              { "type": "text", "value": "${customer.name}", "fontSize": 12, "fontWeight": "bold" },
+              { "type": "text", "value": "${customer.address}", "fontSize": 10 },
+              { "type": "text", "value": "${customer.city}", "fontSize": 10 }
+            ],
+            "width": 300,
+            "alignment": "left",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          },
+          {
+            "content": [
+              { "type": "text", "value": "Invoice no.   ${invoice.number}", "fontSize": 10, "fontWeight": "bold" },
+              { "type": "text", "value": "Issued   ${invoice.issued}", "fontSize": 10 },
+              { "type": "text", "value": "Due   ${invoice.due}", "fontSize": 10 }
+            ],
+            "width": 181,
+            "alignment": "right",
+            "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+          }
+        ]
+      ],
+      "options": { "padding_x": 0, "padding_y": 2 }
+    },
+    { "type": "move", "y": 26 },
+    {
+      "type": "table",
+      "data": "items",
+      "header_columns": [
+        { "text": "DESCRIPTION", "width": 280, "fontSize": 9, "fontWeight": "bold", "alignment": "left",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "QTY",         "width": 50,  "fontSize": 9, "fontWeight": "bold", "alignment": "center","borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "RATE",        "width": 70,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } },
+        { "text": "AMOUNT",      "width": 81,  "fontSize": 9, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" } }
+      ],
+      "rows": [
+        [
+          { "text": "${name}",   "width": 280, "fontSize": 10, "alignment": "left",   "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAECEF" },
+          { "text": "${qty}",    "width": 50,  "fontSize": 10, "alignment": "center", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAECEF" },
+          { "text": "${rate}",   "width": 70,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAECEF" },
+          { "text": "${amount}", "width": 81,  "fontSize": 10, "alignment": "right",  "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "true" }, "borderColor": "EAECEF" }
+        ]
+      ],
+      "options": {
+        "header": { "fillColor": "E6F2F1", "textColor": "0F4F4A", "borderColor": "0F766E" },
+        "padding_x": 6,
+        "padding_y": 7
+      }
+    },
+    { "type": "move", "y": 14 },
+    {
+      "type": "table",
+      "header_columns": [],
+      "rows": [
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Subtotal", "width": 100, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${totals.subtotal}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ],
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "VAT (20%)", "width": 100, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "${totals.vat}", "width": 80, "fontSize": 10, "alignment": "right", "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } }
+        ],
+        [
+          { "text": "", "width": 301, "borderSides": { "top": "false", "left": "false", "right": "false", "bottom": "false" } },
+          { "text": "Amount due", "width": 100, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "0F766E" },
+          { "text": "${totals.due}", "width": 80, "fontSize": 14, "fontWeight": "bold", "alignment": "right", "borderSides": { "top": "true", "left": "false", "right": "false", "bottom": "false" }, "borderColor": "0F766E" }
+        ]
+      ],
+      "options": { "padding_x": 6, "padding_y": 6 }
+    },
+    { "type": "move", "y": 28 },
+    {
+      "type": "table",
+      "header_columns": [
+        {
+          "content": [
+            { "type": "text", "value": "Payment", "fontSize": 10, "fontWeight": "bold" },
+            { "type": "text", "value": "${invoice.terms}", "fontSize": 10 }
+          ],
+          "width": 481,
+          "alignment": "left",
+          "borderSides": { "top": "false", "bottom": "false", "left": "false", "right": "false" }
+        }
+      ],
+      "rows": [],
+      "options": { "header": { "fillColor": "F4F6F6" }, "padding_x": 14, "padding_y": 12 }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "fonts": ["titillium"],
+  "footer": [
+    { "type": "paragraph", "value": "${company.name} — ${company.email}", "options": { "alignment": "center", "fontSize": 8 } }
+  ],
+  "content": [
+    { "type": "paragraph", "value": "${company.name}", "options": { "fontSize": 22, "fontWeight": "bold" } },
+    { "type": "paragraph", "value": "${company.tagline}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 8 },
+    { "type": "paragraph", "value": "${letter.place_date}", "options": { "alignment": "right", "fontSize": 10 } },
+    { "type": "move", "y": 18 },
+    { "type": "paragraph", "value": "${letter.greeting}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 10 },
+    { "type": "paragraph", "value": "${letter.body1}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 8 },
+    { "type": "paragraph", "value": "${letter.body2}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 16 },
+    { "type": "paragraph", "value": "${letter.closing}", "options": { "fontSize": 11 } },
+    { "type": "move", "y": 6 },
+    { "type": "paragraph", "value": "${letter.signature}", "options": { "fontSize": 11, "fontWeight": "bold" } }
+  ]
+}

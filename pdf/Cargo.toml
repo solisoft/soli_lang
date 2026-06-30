@@ -1,0 +1,47 @@
+[package]
+name = "soli-pdf"
+version = "0.1.0"
+edition = "2021"
+description = "Render a PDF from a JSON layout template + data, and embed a Factur-X (EN 16931) CII XML to produce a PDF/A-3b electronic invoice."
+license = "MIT"
+include = ["src/**/*", "assets/**/*", "Cargo.toml", "README.md"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+# text_layout gives real font parsing/embedding; images enables image XObject
+# serialization. html pulls heavy deps we don't need, so it stays off.
+printpdf = { version = "0.9", default-features = false, features = ["text_layout", "images"] }
+lopdf = "0.43"
+ttf-parser = "0.25"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+# rustls-tls (no openssl) to match the solilang host and avoid a native-tls pull.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+flate2 = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+# Floor 0.3.51: lopdf 0.43 uses time's FormatItem::StringLiteral (added in 0.3.5x),
+# so consumers must resolve a recent enough time.
+time = { version = "0.3.51", features = ["formatting", "macros"] }
+md-5 = "0.10"
+subsetter = "0.1"
+# QR encoding only (we rasterize the module matrix ourselves into an RGB buffer),
+# so default features (image/svg renderers) stay off.
+qrcode = { version = "0.14", default-features = false }
+
+[[bin]]
+name = "render_pdf"
+path = "src/bin/render_pdf.rs"
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "render"
+harness = false
