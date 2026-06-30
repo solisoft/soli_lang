@@ -2,18 +2,24 @@
   "fonts": ["TitilliumWeb"],
   "options": { "margins": 48 },
   "content": [
-    { "type": "paragraph", "spans": [ { "text": "Order ${order.id}", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 22 } },
-    { "type": "paragraph", "spans": [ { "text": "${order.customer}", "color": "64748b" } ], "options": { "fontSize": 11 } },
-    { "type": "move", "y": 14 },
+    { "type": "image", "width": 36,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect width='36' height='36' rx='9' fill='#0f766e'/><circle cx='18' cy='18' r='9' fill='none' stroke='white' stroke-width='3'/></svg>" },
+    { "type": "move", "x": 46, "y": 2 },
+    { "type": "paragraph", "spans": [ { "text": "Helios Coffee", "color": "0f172a", "fontWeight": "bold" } ], "options": { "fontSize": 15 } },
+    { "type": "paragraph", "spans": [ { "text": "ORDER CONFIRMATION", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 9 } },
+    { "type": "move", "x": -46, "y": 18 },
+
+    { "type": "paragraph", "spans": [ { "text": "Order ${order.id}", "color": "0f172a", "fontWeight": "bold" } ], "options": { "fontSize": 20 } },
+    { "type": "paragraph", "spans": [ { "text": "${order.customer}   ·   ${order.date}", "color": "64748b" } ], "options": { "fontSize": 11 } },
+    { "type": "move", "y": 12 },
 
     { "type": "if", "when": "order.paid", "equals": "true",
       "content": [ { "type": "paragraph", "spans": [ { "text": "PAID IN FULL", "color": "0f766e", "fontWeight": "bold" } ], "options": { "fontSize": 13 } } ],
       "else":    [ { "type": "paragraph", "spans": [ { "text": "BALANCE DUE — ${order.balance}", "color": "ef4444", "fontWeight": "bold" } ], "options": { "fontSize": 13 } } ] },
-
     { "type": "move", "y": 12 },
+
     { "type": "paragraph", "value": "Items", "options": { "fontSize": 14, "fontWeight": "bold" } },
     { "type": "move", "y": 4 },
-
     { "type": "repeat", "data": "items", "content": [
       { "type": "paragraph", "spans": [
         { "text": "${qty} × ", "color": "64748b" },
@@ -26,6 +32,17 @@
       { "type": "move", "y": 3 },
       { "type": "hr", "color": "e2e8f0" },
       { "type": "move", "y": 7 }
-    ] }
+    ] },
+
+    { "type": "move", "y": 6 },
+    { "type": "paragraph", "spans": [ { "text": "Subtotal    ${order.subtotal}", "color": "64748b" } ], "options": { "fontSize": 11, "alignment": "right" } },
+    { "type": "paragraph", "spans": [ { "text": "Shipping    ${order.shipping}", "color": "64748b" } ], "options": { "fontSize": 11, "alignment": "right" } },
+    { "type": "move", "y": 3 },
+    { "type": "paragraph", "spans": [ { "text": "Total    ${order.total}", "color": "0f172a", "fontWeight": "bold" } ], "options": { "fontSize": 14, "alignment": "right" } },
+    { "type": "move", "y": 18 },
+
+    { "type": "if", "when": "order.paid", "equals": "true",
+      "content": [ { "type": "paragraph", "spans": [ { "text": "Thank you for your business.", "color": "64748b" } ], "options": { "fontSize": 10 } } ],
+      "else":    [ { "type": "paragraph", "spans": [ { "text": "Payment due within 14 days of delivery.  ·  hello@helios.coffee", "color": "64748b" } ], "options": { "fontSize": 10 } } ] }
   ]
 }

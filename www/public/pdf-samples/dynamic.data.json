@@ -1,8 +1,18 @@
 {
-  "order": { "id": "SO-4821", "customer": "Café Lumière · Lyon", "paid": false, "balance": "€84.00" },
+  "order": {
+    "id": "SO-4821",
+    "customer": "Café Lumière · Lyon",
+    "date": "30 June 2026",
+    "paid": false,
+    "balance": "€84.00",
+    "subtotal": "€131.00",
+    "shipping": "€8.00",
+    "total": "€139.00"
+  },
   "items": [
     { "qty": 3, "name": "Ethiopia Yirgacheffe (1 kg)", "price": "€69.00", "in_stock": true },
     { "qty": 2, "name": "Colombia Huila (1 kg)", "price": "€44.00", "in_stock": false, "eta": "5 days" },
-    { "qty": 1, "name": "Cold brew concentrate", "price": "€18.00", "in_stock": true }
+    { "qty": 1, "name": "Cold brew concentrate", "price": "€18.00", "in_stock": true },
+    { "qty": 4, "name": "Unbleached filter papers", "price": "€8.00", "in_stock": true }
   ]
 }
