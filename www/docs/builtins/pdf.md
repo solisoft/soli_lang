@@ -336,6 +336,10 @@ Span fields: `text` (required), `fontSize`, `fontWeight`, `color` (hex), `link` 
 
 ### Payment QR (scan-to-pay)
 
+**How it works.** An EPC QR encodes a **SEPA bank transfer** — not a card charge or a payment link. The customer opens their **banking app**, scans the code, and the transfer is **pre-filled** (payee name, IBAN, BIC, amount, reference); they just confirm. It's a *push* payment the payer approves in their own bank, so nothing is charged automatically and there's no real-time callback — you reconcile incoming transfers by the **remittance reference** (your invoice/receipt number). It's **EUR / SEPA only**, recognized by SEPA-area banking apps (ubiquitous as the "GiroCode" in the DACH region); apps outside SEPA generally won't read it. The code is built and rasterized into the PDF locally — no network call.
+
+Under the hood it's a fixed EPC069-12 text block (not a URL): a `BCD` service tag + version, `SCT` (SEPA Credit Transfer), then BIC, beneficiary name, IBAN, `EUR<amount>` (leave the amount empty to let the payer enter it), and your reference. The whole payload must stay ≤ 331 bytes and uses error-correction level **M**, as EPC mandates.
+
 A `qr` element renders a QR code as a raster image (square, side = `width` pt). Two kinds:
 
 - **`"kind": "epc"`** (default) — an **EPC069-12 "GiroCode"** SEPA Credit Transfer. The buyer scans it in their banking app and the payee/IBAN/amount/reference are pre-filled. All string fields are `${…}`-interpolated.
