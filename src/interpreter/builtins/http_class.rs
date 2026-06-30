@@ -115,6 +115,13 @@ where
 }
 
 pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
+    validate_url_for_ssrf_impl(url, ssrf_test_mode())
+}
+
+/// SSRF check with an explicit `test_mode` flag. Splitting this out lets tests
+/// force the blocklist on/off without flipping the process-global
+/// `SSRF_TEST_MODE` (which races other tests that enable it).
+fn validate_url_for_ssrf_impl(url: &str, test_mode: bool) -> Result<(), String> {
     let url = url.trim();
 
     if url.is_empty() {
@@ -182,7 +189,7 @@ pub fn validate_url_for_ssrf(url: &str) -> Result<(), String> {
             .and_then(|v| v.parse::<i32>().ok())
             .map(|n| n != 0)
             .unwrap_or(false);
-        if !ssrf_test_mode() && !dev_allowed {
+        if !test_mode && !dev_allowed {
             return Err("Access to private/localhost addresses is not allowed".to_string());
         }
     }
@@ -2619,10 +2626,6 @@ mod parallel_logging_tests {
         }
     }
 
-    // SEC-017 — `validate_url_for_ssrf` honors only the in-process
-    // `SSRF_TEST_MODE` flag, not `APP_ENV=test`.
-    static SSRF_FLAG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     // SEC-018 — `http_max_response_bytes` honours the env override.
     #[test]
     fn http_max_response_bytes_default_50_mib() {
@@ -2638,63 +2641,41 @@ mod parallel_logging_tests {
 
     #[test]
     fn ssrf_validate_ignores_app_env_test() {
-        // Serialise with other tests that touch the flag / APP_ENV so
-        // parallel runs don't see each other's transient state.
-        let _guard = SSRF_FLAG_TEST_LOCK.lock().unwrap();
-        let prev_flag = super::SSRF_TEST_MODE.load(std::sync::atomic::Ordering::SeqCst);
-        let prev_env = std::env::var("APP_ENV").ok();
-
-        // Force flag off, even with APP_ENV=test set.
-        super::SSRF_TEST_MODE.store(false, std::sync::atomic::Ordering::SeqCst);
-        std::env::set_var("APP_ENV", "test");
-        let err = super::validate_url_for_ssrf("http://127.0.0.1/").unwrap_err();
+        // The blocklist is bypassed only by the explicit test-mode flag — never
+        // by `APP_ENV` (which `validate_url_for_ssrf` doesn't read). Passing the
+        // flag directly keeps this race-free with tests that toggle the
+        // process-global `SSRF_TEST_MODE`.
+        let err = super::validate_url_for_ssrf_impl("http://127.0.0.1/", false).unwrap_err();
         assert!(
             err.contains("private/localhost"),
-            "APP_ENV=test alone must NOT bypass the blocklist; got: {}",
+            "blocklist must fire when test-mode is off; got: {}",
             err
         );
-
-        // With the flag explicitly enabled, loopback is allowed.
-        super::enable_ssrf_test_mode();
-        assert!(super::validate_url_for_ssrf("http://127.0.0.1/").is_ok());
-
-        // Restore.
-        super::SSRF_TEST_MODE.store(prev_flag, std::sync::atomic::Ordering::SeqCst);
-        match prev_env {
-            Some(v) => std::env::set_var("APP_ENV", v),
-            None => std::env::remove_var("APP_ENV"),
-        }
+        // With the flag on, loopback is allowed.
+        assert!(super::validate_url_for_ssrf_impl("http://127.0.0.1/", true).is_ok());
     }
 
     // SEC-087 — IPv6 literals must be parsed correctly so the SSRF blocklist
     // sees the real address, not the `[` byte the previous string-splitting
     // parser handed it.
 
-    /// All these tests run with the SSRF test-mode flag forced OFF so the
-    /// blocklist actually fires. Serialised behind `SSRF_FLAG_TEST_LOCK`
-    /// because the flag is process-global.
-    fn with_ssrf_blocklist_active<F: FnOnce()>(body: F) {
-        let _guard = SSRF_FLAG_TEST_LOCK.lock().unwrap();
-        let prev_flag = super::SSRF_TEST_MODE.load(std::sync::atomic::Ordering::SeqCst);
-        super::SSRF_TEST_MODE.store(false, std::sync::atomic::Ordering::SeqCst);
-        body();
-        super::SSRF_TEST_MODE.store(prev_flag, std::sync::atomic::Ordering::SeqCst);
-    }
+    // SEC-087 — IPv6 literals must be parsed correctly so the SSRF blocklist
+    // sees the real address, not the `[` byte the previous string-splitting
+    // parser handed it. These pass `false` for `test_mode` so the blocklist is
+    // forced active without touching the process-global `SSRF_TEST_MODE`.
 
     #[test]
     fn ssrf_rejects_ipv6_loopback_literal() {
-        with_ssrf_blocklist_active(|| {
-            for url in ["http://[::1]/", "http://[::1]:8080/path"] {
-                let err =
-                    super::validate_url_for_ssrf(url).unwrap_err_or_else_else_panic_with_url(url);
-                assert!(
-                    err.contains("private/localhost"),
-                    "expected loopback rejection for {}, got: {}",
-                    url,
-                    err
-                );
-            }
-        });
+        for url in ["http://[::1]/", "http://[::1]:8080/path"] {
+            let err = super::validate_url_for_ssrf_impl(url, false)
+                .unwrap_err_or_else_else_panic_with_url(url);
+            assert!(
+                err.contains("private/localhost"),
+                "expected loopback rejection for {}, got: {}",
+                url,
+                err
+            );
+        }
     }
 
     #[test]
@@ -2703,67 +2684,52 @@ mod parallel_logging_tests {
         // is_blocked_ip's v6_to_ipv4_mapped branch handles this; the
         // SEC-087 fix is making sure the URL parser hands the right
         // address to that branch in the first place.
-        with_ssrf_blocklist_active(|| {
-            let err = super::validate_url_for_ssrf("http://[::ffff:127.0.0.1]/")
-                .expect_err("IPv4-mapped loopback must be rejected");
-            assert!(err.contains("private/localhost"), "{}", err);
-        });
+        let err = super::validate_url_for_ssrf_impl("http://[::ffff:127.0.0.1]/", false)
+            .expect_err("IPv4-mapped loopback must be rejected");
+        assert!(err.contains("private/localhost"), "{}", err);
     }
 
     #[test]
     fn ssrf_rejects_ipv6_ula_literal() {
-        with_ssrf_blocklist_active(|| {
-            let err = super::validate_url_for_ssrf("http://[fd00::1]/")
-                .expect_err("ULA fd00::/8 must be rejected");
-            assert!(err.contains("private/localhost"), "{}", err);
-        });
+        let err = super::validate_url_for_ssrf_impl("http://[fd00::1]/", false)
+            .expect_err("ULA fd00::/8 must be rejected");
+        assert!(err.contains("private/localhost"), "{}", err);
     }
 
     #[test]
     fn ssrf_rejects_ipv6_link_local_literal() {
-        with_ssrf_blocklist_active(|| {
-            let err = super::validate_url_for_ssrf("http://[fe80::1]/")
-                .expect_err("link-local fe80::/10 must be rejected");
-            assert!(err.contains("private/localhost"), "{}", err);
-        });
+        let err = super::validate_url_for_ssrf_impl("http://[fe80::1]/", false)
+            .expect_err("link-local fe80::/10 must be rejected");
+        assert!(err.contains("private/localhost"), "{}", err);
     }
 
     #[test]
     fn ssrf_rejects_ipv6_documentation_prefix() {
-        with_ssrf_blocklist_active(|| {
-            let err = super::validate_url_for_ssrf("http://[2001:db8::1]/")
-                .expect_err("RFC3849 docs prefix must be rejected");
-            assert!(err.contains("private/localhost"), "{}", err);
-        });
+        let err = super::validate_url_for_ssrf_impl("http://[2001:db8::1]/", false)
+            .expect_err("RFC3849 docs prefix must be rejected");
+        assert!(err.contains("private/localhost"), "{}", err);
     }
 
     #[test]
     fn ssrf_allows_public_ipv6_literal() {
         // Cloudflare DNS is the canonical "public reachable IPv6" — make
         // sure the new parser-based path doesn't accidentally over-block.
-        with_ssrf_blocklist_active(|| {
-            super::validate_url_for_ssrf("http://[2606:4700:4700::1111]/")
-                .expect("public IPv6 literal must be allowed");
-        });
+        super::validate_url_for_ssrf_impl("http://[2606:4700:4700::1111]/", false)
+            .expect("public IPv6 literal must be allowed");
     }
 
     #[test]
     fn ssrf_existing_ipv4_and_hostname_behaviour_unchanged() {
         // SEC-087 regression coverage: the parser swap must not change
         // the behaviour for the two cases that already worked.
-        with_ssrf_blocklist_active(|| {
-            // Loopback IPv4 — still blocked.
-            let err = super::validate_url_for_ssrf("http://127.0.0.1/")
-                .expect_err("IPv4 loopback must still be rejected");
-            assert!(err.contains("private/localhost"), "{}", err);
-            // Public hostname — still allowed.
-            super::validate_url_for_ssrf("https://example.com/")
-                .expect("public hostname must remain allowed");
-            // Blocked scheme — still rejected by the scheme guard.
-            let err = super::validate_url_for_ssrf("file:///etc/passwd")
-                .expect_err("file:// must remain rejected");
-            assert!(err.contains("not allowed"), "{}", err);
-        });
+        let err = super::validate_url_for_ssrf_impl("http://127.0.0.1/", false)
+            .expect_err("IPv4 loopback must still be rejected");
+        assert!(err.contains("private/localhost"), "{}", err);
+        super::validate_url_for_ssrf_impl("https://example.com/", false)
+            .expect("public hostname must remain allowed");
+        let err = super::validate_url_for_ssrf_impl("file:///etc/passwd", false)
+            .expect_err("file:// must remain rejected");
+        assert!(err.contains("not allowed"), "{}", err);
     }
 
     /// Tiny extension trait so the test loop above can produce a useful

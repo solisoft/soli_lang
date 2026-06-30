@@ -1249,32 +1249,28 @@ impl Parser {
                         ));
                     }
                 } else {
-                    // Check for named argument: identifier followed by colon
-                    if let TokenKind::Identifier(name) = &self.peek().kind {
-                        let name = name.clone();
-                        // Look ahead to see if next token is colon
-                        let next_token = self.peek_nth(1);
-                        if next_token.kind == TokenKind::Colon {
-                            // This is a named argument
-                            self.advance(); // consume identifier
-                            self.advance(); // consume colon
-                            let value = self.expression()?;
-                            let span = start_span.merge(&value.span);
-                            arguments.push(Argument::Named(NamedArgument { name, value, span }));
-                            seen_named = true;
-                        } else {
-                            // This is a positional argument
-                            let expr = self.expression()?;
-                            if seen_named {
-                                return Err(ParserError::general(
-                                    "positional argument cannot follow named argument".to_string(),
-                                    expr.span,
-                                ));
-                            }
-                            arguments.push(Argument::Positional(expr));
-                        }
+                    // Named argument: a label followed by `:`. The label is an
+                    // identifier, or a reserved word usable as a label
+                    // (`from`/`in`) — mirroring `parse_command_arg`, so the paren
+                    // form `f(from: x)` parses like the command form `f from: x`
+                    // (and `soli fmt` can rewrite one to the other).
+                    let label = match &self.peek().kind {
+                        TokenKind::Identifier(name) => Some(name.clone()),
+                        TokenKind::From => Some("from".to_string()),
+                        TokenKind::In => Some("in".to_string()),
+                        _ => None,
+                    };
+                    if let Some(name) = label.filter(|_| self.peek_nth(1).kind == TokenKind::Colon)
+                    {
+                        // This is a named argument
+                        self.advance(); // consume label
+                        self.advance(); // consume colon
+                        let value = self.expression()?;
+                        let span = start_span.merge(&value.span);
+                        arguments.push(Argument::Named(NamedArgument { name, value, span }));
+                        seen_named = true;
                     } else {
-                        // Positional argument (expression starting with literal, etc.)
+                        // Positional argument
                         let expr = self.expression()?;
                         if seen_named {
                             return Err(ParserError::general(
