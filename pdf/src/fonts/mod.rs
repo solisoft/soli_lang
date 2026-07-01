@@ -17,6 +17,7 @@ mod subset;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use ttf_parser::Face;
 
@@ -60,8 +61,11 @@ impl FontSlot {
     });
 }
 
-/// One loaded face. The `ttf-parser` `Face` is re-parsed on demand (cheap; it
-/// only reads the table directory) so the struct isn't self-referential.
+/// One loaded face. Advance widths and coverage are precomputed once at load
+/// into `advances` (char → advance in em fractions), so metric lookups during
+/// layout are a hashmap hit rather than a fresh `Face::parse` + cmap/hmtx walk
+/// per character — layout used to re-parse the sfnt table directory ~900×/render
+/// (see `benches/render.rs`). The raw `bytes` are kept for subsetting/embedding.
 #[derive(Clone)]
 struct LoadedFace {
     bytes: Vec<u8>,
@@ -70,20 +74,23 @@ struct LoadedFace {
     is_bold: bool,
     is_italic: bool,
     is_mono: bool,
-    units_per_em: f32,
     ascent: f32,
     descent: f32,
     cap_height: f32,
+    /// Covered chars → advance width as an em fraction (`advance_units / upem`).
+    /// A char is "covered" iff present here; missing chars fall back to the
+    /// default advance in [`LoadedFace::advance`].
+    advances: HashMap<char, f32>,
 }
 
 impl LoadedFace {
     fn load(bytes: Vec<u8>, key: String) -> Result<LoadedFace> {
-        let (upem, ascent, descent, cap_height, is_bold, is_italic, is_mono);
+        let (ascent, descent, cap_height, is_bold, is_italic, is_mono);
+        let mut advances: HashMap<char, f32> = HashMap::new();
         {
             let face = Face::parse(&bytes, 0)
                 .map_err(|e| PdfError::Font(format!("ttf-parser failed for {key}: {e}")))?;
             let u = face.units_per_em() as f32;
-            upem = u;
             ascent = face.ascender() as f32 / u;
             descent = face.descender() as f32 / u;
             // Cap height is what makes uppercase/digits look optically centered.
@@ -101,6 +108,26 @@ impl LoadedFace {
             is_bold = face.is_bold() || key.contains("bold");
             is_italic = face.is_italic() || key.contains("italic") || key.contains("oblique");
             is_mono = face.is_monospaced() || key.contains("mono");
+
+            // Precompute the advance for every char the (Unicode) cmap maps to a
+            // glyph. This mirrors the old per-char path exactly: coverage =
+            // "glyph_index present", advance = `glyph_hor_advance / upem`.
+            if let Some(cmap) = face.tables().cmap {
+                for subtable in cmap.subtables {
+                    if !subtable.is_unicode() {
+                        continue;
+                    }
+                    subtable.codepoints(|cp| {
+                        if let Some(ch) = char::from_u32(cp) {
+                            if let Some(gid) = face.glyph_index(ch) {
+                                if let Some(adv) = face.glyph_hor_advance(gid) {
+                                    advances.entry(ch).or_insert(adv as f32 / u);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
         }
         Ok(LoadedFace {
             bytes,
@@ -108,10 +135,10 @@ impl LoadedFace {
             is_bold,
             is_italic,
             is_mono,
-            units_per_em: upem,
             ascent,
             descent,
             cap_height,
+            advances,
         })
     }
 
@@ -123,22 +150,25 @@ impl LoadedFace {
         let fam = family.to_ascii_lowercase().replace([' ', '-', '_'], "");
         self.key.replace([' ', '-', '_'], "").contains(&fam)
     }
-}
 
-fn covers(face: &Face, ch: char) -> bool {
-    ch.is_whitespace() || face.glyph_index(ch).is_some()
-}
+    /// Whether this face can draw `ch` (whitespace is always considered covered,
+    /// matching the drawing path, which simply advances the cursor for it).
+    fn covers(&self, ch: char) -> bool {
+        ch.is_whitespace() || self.advances.contains_key(&ch)
+    }
 
-fn advance(face: &Face, units_per_em: f32, ch: char, size: f32) -> f32 {
-    if let Some(gid) = face.glyph_index(ch) {
-        if let Some(adv) = face.glyph_hor_advance(gid) {
-            return adv as f32 / units_per_em * size;
+    /// Advance width (pt) of `ch` at `size`. Uncovered chars fall back to a
+    /// nominal width (a narrow space, else half an em) — identical to the
+    /// pre-cache per-glyph path.
+    fn advance(&self, ch: char, size: f32) -> f32 {
+        if let Some(em) = self.advances.get(&ch) {
+            em * size
+        } else if ch == ' ' {
+            0.25 * size
+        } else {
+            0.5 * size
         }
     }
-    if ch == ' ' {
-        return 0.25 * size;
-    }
-    0.5 * size
 }
 
 /// A maximal run of characters drawn with one face.
@@ -153,6 +183,18 @@ pub struct Run {
 pub struct FontRegistry {
     faces: HashMap<FaceKey, LoadedFace>,
     fallbacks: Vec<LoadedFace>,
+}
+
+/// Key for the process-wide [`FontRegistry::cached`] map.
+#[derive(PartialEq, Eq, Hash)]
+struct CacheKey {
+    dirs: Vec<PathBuf>,
+    families: Vec<String>,
+}
+
+fn font_cache() -> &'static Mutex<HashMap<CacheKey, Arc<FontRegistry>>> {
+    static CACHE: OnceLock<Mutex<HashMap<CacheKey, Arc<FontRegistry>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 impl FontRegistry {
@@ -236,6 +278,40 @@ impl FontRegistry {
         }
 
         Ok(FontRegistry { faces, fallbacks })
+    }
+
+    /// Like [`from_font_dirs`], but memoized process-wide, keyed by
+    /// canonicalized `dirs` + `families`. Font files don't change while a
+    /// server is running, so repeated renders with the same font
+    /// configuration reuse one already-loaded registry instead of paying a
+    /// full directory scan + read + parse of every font file on every call —
+    /// this was the dominant per-render cost (see `benches/render.rs`).
+    pub fn cached(dirs: &[PathBuf], families: &[String]) -> Result<Arc<FontRegistry>> {
+        let key = CacheKey {
+            dirs: dirs
+                .iter()
+                .map(|d| fs::canonicalize(d).unwrap_or_else(|_| d.clone()))
+                .collect(),
+            families: families.to_vec(),
+        };
+        if let Some(hit) = font_cache().lock().unwrap().get(&key) {
+            return Ok(hit.clone());
+        }
+        let registry = Arc::new(FontRegistry::from_font_dirs(dirs, families)?);
+        font_cache().lock().unwrap().insert(key, registry.clone());
+        Ok(registry)
+    }
+
+    /// Raw bytes of every loaded face (primary/mono styles + coverage
+    /// fallbacks), for feeding to a font source that wants bytes rather than
+    /// directories — e.g. SVG `<text>` rendering, which would otherwise
+    /// re-scan and re-read `font_dirs` from disk on its own.
+    pub fn all_font_bytes(&self) -> Vec<&[u8]> {
+        self.faces
+            .values()
+            .map(|f| f.bytes.as_slice())
+            .chain(self.fallbacks.iter().map(|f| f.bytes.as_slice()))
+            .collect()
     }
 
     /// Append a fallback face from raw font bytes (TTF/OTF).
@@ -366,15 +442,14 @@ impl FontRegistry {
     ) -> Vec<Run> {
         let key = key.into();
         let primary_slot = FontSlot::Styled(key);
-        let primary = self.resolve_styled(key).parse();
-        let fallbacks: Vec<Face> = self.fallbacks.iter().map(|f| f.parse()).collect();
+        let primary = self.resolve_styled(key);
 
         let mut runs: Vec<Run> = Vec::new();
         let mut missing = false;
         for ch in text.chars() {
-            let slot = if covers(&primary, ch) {
+            let slot = if primary.covers(ch) {
                 primary_slot
-            } else if let Some(i) = fallbacks.iter().position(|f| covers(f, ch)) {
+            } else if let Some(i) = self.fallbacks.iter().position(|f| f.covers(ch)) {
                 FontSlot::Fallback(i)
             } else {
                 // No loaded font covers this character. Drop it (rather than
@@ -412,19 +487,13 @@ impl FontRegistry {
     /// Width (pt) of a single run's text at `size`.
     pub fn measure_run(&self, run: &Run, size: f32) -> f32 {
         let lf = self.face_of(run.slot);
-        let face = lf.parse();
-        run.text
-            .chars()
-            .map(|c| advance(&face, lf.units_per_em, c, size))
-            .sum()
+        run.text.chars().map(|c| lf.advance(c, size)).sum()
     }
 
     /// Advance width (pt) of a single character in `slot` at `size`. Used by the
-    /// styled (inline-rich-text) wrapper. `parse()` is zero-copy/lazy, so the
-    /// per-character cost is small.
+    /// styled (inline-rich-text) wrapper — a cached hashmap lookup.
     pub fn char_advance(&self, slot: FontSlot, ch: char, size: f32) -> f32 {
-        let lf = self.face_of(slot);
-        advance(&lf.parse(), lf.units_per_em, ch, size)
+        self.face_of(slot).advance(ch, size)
     }
 }
 

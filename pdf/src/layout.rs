@@ -1137,7 +1137,7 @@ impl<'a> Engine<'a> {
             src,
             self.opts.fetch_images,
             self.opts.http_timeout,
-            &self.opts.font_dirs,
+            &self.fonts.all_font_bytes(),
         );
         let idx = match result {
             Ok(img) => {

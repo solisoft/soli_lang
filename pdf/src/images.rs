@@ -1,22 +1,23 @@
 //! Fetch + decode images referenced by the template.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::draw::ImageData;
 use crate::error::{PdfError, Result};
 
 /// Load and decode an image from an http(s) URL, a `file://` URL / filesystem
-/// path, or a `data:` URI. Network fetches are gated by `fetch`. `font_dirs`
-/// supplies fonts for `<text>` in SVG sources (ignored for raster formats).
+/// path, or a `data:` URI. Network fetches are gated by `fetch`. `font_bytes`
+/// supplies fonts for `<text>` in SVG sources (ignored for raster formats) —
+/// pass the already-loaded [`crate::fonts::FontRegistry::all_font_bytes`]
+/// rather than re-reading `font_dirs` from disk per image.
 pub fn load_image(
     src: &str,
     fetch: bool,
     timeout: Duration,
-    font_dirs: &[PathBuf],
+    font_bytes: &[&[u8]],
 ) -> Result<ImageData> {
     let bytes = fetch_bytes(src, fetch, timeout)?;
-    decode(&bytes, font_dirs)
+    decode(&bytes, font_bytes)
 }
 
 fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
@@ -95,9 +96,9 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
-fn decode(bytes: &[u8], font_dirs: &[PathBuf]) -> Result<ImageData> {
+fn decode(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     if looks_like_svg(bytes) {
-        return decode_svg(bytes, font_dirs);
+        return decode_svg(bytes, font_bytes);
     }
     let img =
         image::load_from_memory(bytes).map_err(|e| PdfError::Image(format!("decode: {e}")))?;
@@ -147,8 +148,8 @@ fn contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
 /// it flows through the same image XObject path as any raster picture. The SVG
 /// is drawn at a quality multiple of its intrinsic size, with the longest edge
 /// clamped to `[MIN_EDGE, MAX_EDGE]` px so tiny icons stay crisp when placed large
-/// and huge viewBoxes don't blow up memory. `<text>` fonts come from `font_dirs`.
-fn decode_svg(bytes: &[u8], font_dirs: &[PathBuf]) -> Result<ImageData> {
+/// and huge viewBoxes don't blow up memory. `<text>` fonts come from `font_bytes`.
+fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     use resvg::{tiny_skia, usvg};
 
     const QUALITY: f32 = 3.0;
@@ -159,24 +160,11 @@ fn decode_svg(bytes: &[u8], font_dirs: &[PathBuf]) -> Result<ImageData> {
     {
         // Feed fonts to usvg by bytes (`load_font_data`) rather than
         // `load_fonts_dir`, which needs fontdb's `fs` feature — kept off so we
-        // don't pull system-font discovery. Scans each dir's top level for faces.
+        // don't pull system-font discovery. `font_bytes` is already loaded (the
+        // render's `FontRegistry`), so this is a memcpy, not a disk re-read.
         let db = opt.fontdb_mut();
-        for dir in font_dirs {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let ext = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(str::to_ascii_lowercase);
-                if matches!(ext.as_deref(), Some("ttf" | "otf" | "ttc")) {
-                    if let Ok(bytes) = std::fs::read(&path) {
-                        db.load_font_data(bytes);
-                    }
-                }
-            }
+        for &bytes in font_bytes {
+            db.load_font_data(bytes.to_vec());
         }
     }
     let tree = usvg::Tree::from_data(bytes, &opt)

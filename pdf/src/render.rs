@@ -27,7 +27,7 @@ pub fn render_with_warnings(
 ) -> Result<RenderOutput> {
     let template = Template::parse(template_json)?;
     let data = DataDocument::parse(data_json)?;
-    let fonts = FontRegistry::from_font_dirs(&opts.font_dirs, &template.fonts)?;
+    let fonts = FontRegistry::cached(&opts.font_dirs, &template.fonts)?;
 
     let engine = Engine::new(&template, &fonts, opts);
     let (mut doc, mut warnings) = engine.layout(&template, &data)?;
