@@ -9,6 +9,43 @@ use crate::fonts::FontSlot;
 use crate::geometry::Page;
 use crate::template::Alignment;
 
+/// The logical structure role of a piece of tagged content (PDF/UA). Set by
+/// layout on a [`DrawOp::Tagged`] wrapper; the backend emits it as the marked
+/// content tag and the `accessibility` pass turns it into a StructElem.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StructRole {
+    /// A heading, level 1..=6 → `H1`..`H6`.
+    Heading(u8),
+    /// Body text → `P`.
+    Paragraph,
+    /// An image/figure → `Figure`; `alt` becomes the element's `/Alt` (required
+    /// for UA — a `Figure` without alt text is a conformance failure, so layout
+    /// warns when it's missing).
+    Figure { alt: Option<String> },
+}
+
+impl StructRole {
+    /// The PDF structure type / marked-content tag (`H1`, `P`, `Figure`, …).
+    pub fn tag(&self) -> String {
+        match self {
+            StructRole::Heading(n) => format!("H{}", (*n).clamp(1, 6)),
+            StructRole::Paragraph => "P".to_string(),
+            StructRole::Figure { .. } => "Figure".to_string(),
+        }
+    }
+}
+
+/// One resolved marked-content leaf: the structure element the backend assigned
+/// an MCID to, ready for the `accessibility` pass to build the tree from.
+#[derive(Debug, Clone)]
+pub struct StructLeaf {
+    /// 0-based page index the MCID lives on.
+    pub page: usize,
+    /// The marked-content id within that page (0-based, in stream order).
+    pub mcid: u32,
+    pub role: StructRole,
+}
+
 /// A point on a [`DrawOp::Polygon`] path. `bezier` marks a cubic control point.
 #[derive(Debug, Clone, Copy)]
 pub struct PolyPoint {
@@ -140,6 +177,15 @@ pub enum DrawOp {
         x: f32,
         baseline: f32,
         pieces: Vec<StyledPiece>,
+    },
+    /// Tagged content (only produced when `tagged`): wraps a real content op so
+    /// the backend emits it inside a `/<role> <</MCID n>> BDC … EMC` sequence
+    /// and records it in the structure tree. Non-tagged renders never contain
+    /// this. Counting only these ops for MCIDs makes the numbering robust to
+    /// artifact ops (watermarks, backgrounds) inserted around them.
+    Tagged {
+        role: StructRole,
+        inner: Box<DrawOp>,
     },
 }
 

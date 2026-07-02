@@ -156,30 +156,7 @@ pub fn emit(
     used.entry(FontSlot::REGULAR).or_default();
     for page in &doc.pages {
         for op in &page.ops {
-            match op {
-                DrawOp::Text(t) => {
-                    for piece in &t.pieces {
-                        used.entry(piece.slot)
-                            .or_default()
-                            .extend(piece.text.chars());
-                    }
-                }
-                DrawOp::RotatedText { pieces, .. } => {
-                    for piece in pieces {
-                        used.entry(piece.slot)
-                            .or_default()
-                            .extend(piece.text.chars());
-                    }
-                }
-                DrawOp::StyledText { pieces, .. } => {
-                    for piece in pieces {
-                        used.entry(piece.slot)
-                            .or_default()
-                            .extend(piece.text.chars());
-                    }
-                }
-                _ => {}
-            }
+            collect_used_chars(op, &mut used);
         }
     }
 
@@ -198,33 +175,38 @@ pub fn emit(
     for page in &doc.pages {
         let mut ops: Vec<Op> = Vec::new();
         if doc.tagged {
-            // Tagged output: wrap each text op in a `/P` marked-content
-            // sequence with a per-page MCID (the structure tree references
-            // these), and mark everything else as an `/Artifact` (decoration,
-            // ignored by assistive tech). The `accessibility` post-pass then
-            // builds the StructTreeRoot from the MCIDs in the stream.
+            // Tagged output: layout wrapped every real content op in a
+            // `DrawOp::Tagged` with its structure role. Emit each such op inside
+            // a `/<role> <</MCID n>> BDC … EMC` sequence (the structure tree
+            // references these MCIDs), and mark other drawing ops as `/Artifact`
+            // (decoration/pagination, ignored by assistive tech). Link/InternalLink
+            // are annotations, not content-stream marks, so they emit unwrapped.
+            // MCIDs count Tagged ops only, so watermark/background ops inserted
+            // around them can't shift the numbering.
             let mut mcid = 0i64;
             for op in &page.ops {
-                let is_text = matches!(
-                    op,
-                    DrawOp::Text(_) | DrawOp::StyledText { .. } | DrawOp::RotatedText { .. }
-                );
-                if is_text {
-                    let mut props = std::collections::BTreeMap::new();
-                    props.insert("MCID".to_string(), printpdf::DictItem::Int(mcid));
-                    ops.push(Op::BeginMarkedContentWithProperties {
-                        tag: "P".to_string(),
-                        properties: printpdf::DictItem::Dict { map: props },
-                    });
-                    emit_op(op, doc, &font_ids, &image_ids, &mut ops);
-                    ops.push(Op::EndMarkedContent);
-                    mcid += 1;
-                } else {
-                    ops.push(Op::BeginMarkedContent {
-                        tag: "Artifact".to_string(),
-                    });
-                    emit_op(op, doc, &font_ids, &image_ids, &mut ops);
-                    ops.push(Op::EndMarkedContent);
+                match op {
+                    DrawOp::Tagged { role, inner } => {
+                        let mut props = std::collections::BTreeMap::new();
+                        props.insert("MCID".to_string(), printpdf::DictItem::Int(mcid));
+                        ops.push(Op::BeginMarkedContentWithProperties {
+                            tag: role.tag(),
+                            properties: printpdf::DictItem::Dict { map: props },
+                        });
+                        emit_op(inner, doc, &font_ids, &image_ids, &mut ops);
+                        ops.push(Op::EndMarkedContent);
+                        mcid += 1;
+                    }
+                    DrawOp::Link { .. } | DrawOp::InternalLink { .. } => {
+                        emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+                    }
+                    _ => {
+                        ops.push(Op::BeginMarkedContent {
+                            tag: "Artifact".to_string(),
+                        });
+                        emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+                        ops.push(Op::EndMarkedContent);
+                    }
                 }
             }
         } else {
@@ -503,7 +485,61 @@ fn emit_op(
                 });
             }
         }
+        // The tagged emit loop unwraps `Tagged` before calling emit_op; this arm
+        // is only reached defensively (e.g. a Tagged op on a non-tagged page).
+        DrawOp::Tagged { inner, .. } => emit_op(inner, doc, font_ids, image_ids, out),
     }
+}
+
+/// Accumulate the characters each font slot needs, recursing through `Tagged`
+/// wrappers so tagged text still gets its glyphs subset and embedded.
+fn collect_used_chars(op: &DrawOp, used: &mut BTreeMap<FontSlot, BTreeSet<char>>) {
+    match op {
+        DrawOp::Text(t) => {
+            for piece in &t.pieces {
+                used.entry(piece.slot)
+                    .or_default()
+                    .extend(piece.text.chars());
+            }
+        }
+        DrawOp::RotatedText { pieces, .. } => {
+            for piece in pieces {
+                used.entry(piece.slot)
+                    .or_default()
+                    .extend(piece.text.chars());
+            }
+        }
+        DrawOp::StyledText { pieces, .. } => {
+            for piece in pieces {
+                used.entry(piece.slot)
+                    .or_default()
+                    .extend(piece.text.chars());
+            }
+        }
+        DrawOp::Tagged { inner, .. } => collect_used_chars(inner, used),
+        _ => {}
+    }
+}
+
+/// Reproduce the tagged emit loop's MCID assignment as a flat list of structure
+/// leaves for the `accessibility` pass. Both walk `doc.pages` counting only
+/// `Tagged` ops in stream order, so the MCIDs are guaranteed to match.
+pub fn struct_leaves(doc: &LaidOutDoc) -> Vec<crate::draw::StructLeaf> {
+    let mut leaves = Vec::new();
+    for (page_idx, page) in doc.pages.iter().enumerate() {
+        let mut mcid = 0u32;
+        for op in &page.ops {
+            if let DrawOp::Tagged { role, .. } = op {
+                leaves.push(crate::draw::StructLeaf {
+                    page: page_idx,
+                    mcid,
+                    role: role.clone(),
+                });
+                mcid += 1;
+            }
+        }
+    }
+    leaves
 }
 
 fn emit_text(

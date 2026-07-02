@@ -609,6 +609,11 @@ pub struct ImageEl {
     /// the box ("contain"), aspect preserved, never stretched.
     #[serde(default)]
     pub height: f32,
+    /// Alternative text describing the image, used as the `Figure` element's
+    /// `/Alt` in tagged output. Required for PDF/UA; layout warns when a tagged
+    /// document has an image without it.
+    #[serde(default)]
+    pub alt: Option<String>,
 }
 
 /// A horizontal rule. Spans the content width unless `width` is given.

@@ -6,8 +6,8 @@
 use crate::color::{self, Rgb};
 use crate::data::{DataDocument, Resolver};
 use crate::draw::{
-    DrawOp, ImageData, LaidOutDoc, PageTextDraw, PolyPoint, RenderedPage, StyledPiece, TextDraw,
-    TextPiece,
+    DrawOp, ImageData, LaidOutDoc, PageTextDraw, PolyPoint, RenderedPage, StructRole, StyledPiece,
+    TextDraw, TextPiece,
 };
 use crate::error::{RenderWarning, Result};
 use crate::fonts::{FaceKey, FontRegistry};
@@ -51,6 +51,16 @@ pub struct Engine<'a> {
     /// set, the layout region is the CURRENT COLUMN instead of the page body,
     /// and overflow hops to the next column before starting a new page.
     columns: Option<ColumnFlow>,
+    /// Emit a tagged (accessible) PDF. When set, content ops are wrapped in
+    /// [`DrawOp::Tagged`] with a structure role.
+    tagged: bool,
+    /// The structure role for body text currently being drawn (baseline `P`,
+    /// raised to `H1..6` inside a heading paragraph). `None` means "not content"
+    /// so it emits unwrapped (→ artifact).
+    content_role: Option<StructRole>,
+    /// While true (header band), content ops emit unwrapped so headers/footers
+    /// become artifacts rather than tagged content.
+    artifact_mode: bool,
 }
 
 /// Multi-column flow state. All coordinates are logical (top-left origin).
@@ -136,6 +146,39 @@ impl<'a> Engine<'a> {
             bookmarks: Vec::new(),
             anchors: std::collections::HashMap::new(),
             columns: None,
+            tagged: template.options.tagged,
+            content_role: None,
+            artifact_mode: false,
+        }
+    }
+
+    // --- tagged-content helpers ---
+
+    /// Push a content op, wrapping it in [`DrawOp::Tagged`] with the current
+    /// `content_role` when tagging is on and we're not in an artifact band.
+    fn push_text(&mut self, op: DrawOp) {
+        match (
+            self.tagged && !self.artifact_mode,
+            self.content_role.clone(),
+        ) {
+            (true, Some(role)) => self.current.push(DrawOp::Tagged {
+                role,
+                inner: Box::new(op),
+            }),
+            _ => self.current.push(op),
+        }
+    }
+
+    /// Push a content op with an explicit structure role (used for figures,
+    /// which aren't governed by the paragraph `content_role`).
+    fn push_tagged(&mut self, op: DrawOp, role: StructRole) {
+        if self.tagged && !self.artifact_mode {
+            self.current.push(DrawOp::Tagged {
+                role,
+                inner: Box::new(op),
+            });
+        } else {
+            self.current.push(op);
         }
     }
 
@@ -199,6 +242,8 @@ impl<'a> Engine<'a> {
         });
 
         self.begin_page(template, &root);
+        // Body text is tagged as `P` by default; headings raise this per block.
+        self.content_role = Some(StructRole::Paragraph);
         for el in &template.content {
             self.element(el, data, &root, template)?;
         }
@@ -258,11 +303,16 @@ impl<'a> Engine<'a> {
         if !template.header.is_empty() {
             let saved = self.cursor;
             let saved_flow = self.columns.take();
+            // The header band is a running artifact (pagination furniture), not
+            // tagged content — assistive tech should skip it.
+            let saved_artifact = self.artifact_mode;
+            self.artifact_mode = true;
             self.cursor = Cursor::new(self.page.content_left(), self.page.header_top());
             for el in &template.header {
                 // Header elements should not paginate; ignore errors softly.
                 let _ = self.element(el, &DataDocument::empty(), root, template);
             }
+            self.artifact_mode = saved_artifact;
             self.cursor = saved;
             self.columns = saved_flow;
         }
@@ -310,6 +360,16 @@ impl<'a> Engine<'a> {
                         img.height,
                         src.width_px as f32,
                     );
+                    // A body image is a `Figure` in tagged output; its `alt`
+                    // becomes `/Alt` (missing alt is a UA gap — warn).
+                    let fig = StructRole::Figure {
+                        alt: img.alt.clone(),
+                    };
+                    if self.tagged && !self.artifact_mode && img.alt.is_none() {
+                        self.warnings.push(RenderWarning::MissingAlt {
+                            src: img.value.clone(),
+                        });
+                    }
                     if self.columns.is_some() {
                         // Inside columns an image is a FLOW element: cap it to the
                         // remaining column width and advance the cursor below it.
@@ -319,22 +379,28 @@ impl<'a> Engine<'a> {
                             w = avail;
                         }
                         self.ensure_space(h, template, root);
-                        self.current.push(DrawOp::Image {
-                            index: idx,
-                            x: self.cursor.x,
-                            y: self.cursor.y,
-                            w,
-                            h,
-                        });
+                        self.push_tagged(
+                            DrawOp::Image {
+                                index: idx,
+                                x: self.cursor.x,
+                                y: self.cursor.y,
+                                w,
+                                h,
+                            },
+                            fig,
+                        );
                         self.cursor.y += h;
                     } else {
-                        self.current.push(DrawOp::Image {
-                            index: idx,
-                            x: self.cursor.x,
-                            y: self.cursor.y,
-                            w,
-                            h,
-                        });
+                        self.push_tagged(
+                            DrawOp::Image {
+                                index: idx,
+                                x: self.cursor.x,
+                                y: self.cursor.y,
+                                w,
+                                h,
+                            },
+                            fig,
+                        );
                         // Image placement is explicit; the cursor is not advanced.
                     }
                 }
@@ -656,13 +722,18 @@ impl<'a> Engine<'a> {
         };
         let idx = self.intern_generated_image(img);
         let side = if q.width > 0.0 { q.width } else { 120.0 };
-        self.current.push(DrawOp::Image {
-            index: idx,
-            x: self.cursor.x,
-            y: self.cursor.y,
-            w: side,
-            h: side,
-        });
+        self.push_tagged(
+            DrawOp::Image {
+                index: idx,
+                x: self.cursor.x,
+                y: self.cursor.y,
+                w: side,
+                h: side,
+            },
+            StructRole::Figure {
+                alt: Some("QR code".to_string()),
+            },
+        );
     }
 
     /// A 1D barcode rasterised through the image path and placed at the cursor,
@@ -695,13 +766,18 @@ impl<'a> Engine<'a> {
         let idx = self.intern_generated_image(img);
         let w = if b.width > 0.0 { b.width } else { 160.0 };
         let h = if b.height > 0.0 { b.height } else { 50.0 };
-        self.current.push(DrawOp::Image {
-            index: idx,
-            x: self.cursor.x,
-            y: self.cursor.y,
-            w,
-            h,
-        });
+        self.push_tagged(
+            DrawOp::Image {
+                index: idx,
+                x: self.cursor.x,
+                y: self.cursor.y,
+                w,
+                h,
+            },
+            StructRole::Figure {
+                alt: Some(format!("Barcode: {value}")),
+            },
+        );
 
         if b.human_readable {
             // A small caption centered under the bars, in the document font.
@@ -718,7 +794,7 @@ impl<'a> Engine<'a> {
                     text: r.text,
                 })
                 .collect();
-            self.current.push(DrawOp::Text(TextDraw {
+            self.push_text(DrawOp::Text(TextDraw {
                 x: self.cursor.x + (w - text_w).max(0.0) / 2.0,
                 baseline: self.cursor.y + h + 2.0 + ascent,
                 size,
@@ -1108,8 +1184,23 @@ impl<'a> Engine<'a> {
     }
 
     fn paragraph(&mut self, p: &Paragraph, root: &Resolver, template: &Template) {
+        // A bookmarked paragraph is a section heading: tag it `H<level>` (level
+        // from `bookmarkLevel`, default 1). Plain paragraphs keep the `P`
+        // baseline. Save/restore so following blocks (tables, lists) don't
+        // inherit the heading role.
+        let prev_role = self.content_role.clone();
+        if self.tagged && !self.artifact_mode {
+            let role = if p.options.bookmark.is_some() || p.options.bookmark_level.is_some() {
+                let level = p.options.bookmark_level.unwrap_or(1).clamp(1, 6) as u8;
+                StructRole::Heading(level)
+            } else {
+                StructRole::Paragraph
+            };
+            self.content_role = Some(role);
+        }
         if let Some(spans) = &p.spans {
             self.paragraph_styled(p, spans, root, template);
+            self.content_role = prev_role;
             return;
         }
         let text = interpolate(&p.value, root, &mut self.warnings);
@@ -1174,6 +1265,7 @@ impl<'a> Engine<'a> {
         }
         // Block spacing: the declarative alternative to a trailing `move`.
         self.cursor.y += p.options.spacing.unwrap_or(0.0);
+        self.content_role = prev_role;
     }
 
     /// Inline rich text: a paragraph defined as styled `spans`. Wraps the spans
@@ -1318,7 +1410,7 @@ impl<'a> Engine<'a> {
             }
 
             if !pieces.is_empty() {
-                self.current.push(DrawOp::StyledText {
+                self.push_text(DrawOp::StyledText {
                     x: x0,
                     baseline,
                     pieces,
@@ -1441,7 +1533,7 @@ impl<'a> Engine<'a> {
                 let mut end_x = region_left;
                 for (pieces, ww) in word_pieces {
                     if !pieces.is_empty() {
-                        self.current.push(DrawOp::Text(TextDraw {
+                        self.push_text(DrawOp::Text(TextDraw {
                             x,
                             baseline,
                             size,
@@ -1488,7 +1580,7 @@ impl<'a> Engine<'a> {
             return;
         }
         let baseline = top + ascent;
-        self.current.push(DrawOp::Text(TextDraw {
+        self.push_text(DrawOp::Text(TextDraw {
             x,
             baseline,
             size,

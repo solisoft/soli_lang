@@ -39,7 +39,8 @@ pub fn render_with_warnings(
     // emitted. Before stationery/attachments/encryption so those post-passes
     // (which don't touch structure) run on top.
     if doc.tagged {
-        pdf = crate::accessibility::apply_tags(&pdf, doc.lang.as_deref())?;
+        let leaves = pdf_backend::struct_leaves(&doc);
+        pdf = crate::accessibility::apply_tags(&pdf, doc.lang.as_deref(), &leaves)?;
     }
     if let Some(letterhead) = &opts.stationery {
         pdf = crate::stationery::apply_stationery(&pdf, letterhead)?;

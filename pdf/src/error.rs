@@ -60,6 +60,9 @@ pub enum RenderWarning {
     ElementSkipped { kind: String, reason: String },
     /// An element/cell was too tall for a page and was allowed to overflow.
     Overflow(String),
+    /// A tagged (PDF/UA) render has an image with no `alt` text — the `Figure`
+    /// will be emitted without the `/Alt` conformance requires.
+    MissingAlt { src: String },
 }
 
 impl std::fmt::Display for RenderWarning {
@@ -82,6 +85,12 @@ impl std::fmt::Display for RenderWarning {
                 write!(f, "{kind} skipped: {reason}")
             }
             RenderWarning::Overflow(what) => write!(f, "content overflowed page: {what}"),
+            RenderWarning::MissingAlt { src } => {
+                write!(
+                    f,
+                    "tagged image {src:?} has no alt text (PDF/UA needs /Alt)"
+                )
+            }
         }
     }
 }

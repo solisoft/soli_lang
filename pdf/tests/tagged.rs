@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use lopdf::{Document, Object};
-use soli_pdf::{render_to_bytes, RenderOptions};
+use soli_pdf::{render_to_bytes, render_with_warnings, RenderOptions};
 
 fn opts() -> RenderOptions {
     RenderOptions {
@@ -123,5 +123,105 @@ fn tagged_is_rejected_for_facturx() {
     assert!(
         msg.contains("incompatible with Factur-X"),
         "unexpected error: {msg}"
+    );
+}
+
+/// Count StructElems whose `/S` is the given structure type.
+fn count_role(doc: &Document, tag: &[u8]) -> usize {
+    doc.objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .filter(|d| {
+            d.get(b"Type").ok().and_then(|t| t.as_name().ok()) == Some(b"StructElem")
+                && d.get(b"S").ok().and_then(|s| s.as_name().ok()) == Some(tag)
+        })
+        .count()
+}
+
+#[test]
+fn bookmarked_paragraphs_become_headings() {
+    let tpl = br#"{ "fonts": [], "options": { "tagged": true },
+      "content": [
+        { "type": "paragraph", "value": "Title", "options": { "bookmark": "T", "bookmarkLevel": 1 } },
+        { "type": "paragraph", "value": "Section", "options": { "bookmarkLevel": 2 } },
+        { "type": "paragraph", "value": "Body copy." }
+      ] }"#;
+    let pdf = render_to_bytes(tpl, b"{}", &opts()).expect("render");
+    let doc = Document::load_mem(&pdf).expect("load");
+    assert_eq!(count_role(&doc, b"H1"), 1, "one H1");
+    assert_eq!(count_role(&doc, b"H2"), 1, "one H2");
+    assert_eq!(count_role(&doc, b"P"), 1, "one plain P");
+}
+
+// A 2x2 red square SVG — rasterises offline (no fetch), so it interns as a figure.
+const IMG: &str = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8' fill='red'/></svg>";
+
+#[test]
+fn image_with_alt_becomes_a_figure() {
+    let tpl = format!(
+        r#"{{ "fonts": [], "options": {{ "tagged": true }},
+          "content": [ {{ "type": "image", "value": "{IMG}", "width": 20, "alt": "A red square" }} ] }}"#
+    );
+    let out = render_with_warnings(tpl.as_bytes(), b"{}", &opts()).expect("render");
+    let doc = Document::load_mem(&out.pdf).expect("load");
+    assert_eq!(count_role(&doc, b"Figure"), 1, "one Figure element");
+    // The Figure carries the alt text as /Alt.
+    let fig_alt = doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .find(|d| d.get(b"S").ok().and_then(|s| s.as_name().ok()) == Some(b"Figure"))
+        .and_then(|d| d.get(b"Alt").ok())
+        .and_then(|a| a.as_str().ok())
+        .map(|b| b.to_vec());
+    assert_eq!(fig_alt.as_deref(), Some(&b"A red square"[..]));
+    // Providing alt means no missing-alt warning.
+    assert!(!out.warnings.iter().any(|w| format!("{w}").contains("alt")));
+}
+
+#[test]
+fn tagged_image_without_alt_warns() {
+    let tpl = format!(
+        r#"{{ "fonts": [], "options": {{ "tagged": true }},
+          "content": [ {{ "type": "image", "value": "{IMG}", "width": 20 }} ] }}"#
+    );
+    let out = render_with_warnings(tpl.as_bytes(), b"{}", &opts()).expect("render");
+    assert!(
+        out.warnings.iter().any(|w| format!("{w}").contains("alt")),
+        "a tagged image with no alt should warn: {:?}",
+        out.warnings
+    );
+    // It's still emitted as a Figure (just without /Alt).
+    let doc = Document::load_mem(&out.pdf).expect("load");
+    assert_eq!(count_role(&doc, b"Figure"), 1);
+}
+
+#[test]
+fn header_and_footer_text_are_artifacts_not_content() {
+    let tpl = br#"{ "fonts": [], "options": { "tagged": true, "header_height": 20 },
+      "header": [ { "type": "paragraph", "value": "Running header" } ],
+      "footer": [ { "type": "paragraph", "value": "Running footer" } ],
+      "content": [ { "type": "paragraph", "value": "The only body paragraph." } ] }"#;
+    let pdf = render_to_bytes(tpl, b"{}", &opts()).expect("render");
+    let doc = Document::load_mem(&pdf).expect("load");
+    // Header/footer are pagination artifacts — only the body paragraph is a /P.
+    assert_eq!(
+        count_role(&doc, b"P"),
+        1,
+        "header/footer must not be tagged as P"
+    );
+}
+
+#[test]
+fn tagged_output_carries_pdfua_xmp() {
+    let pdf = render_to_bytes(TAGGED, b"{}", &opts()).expect("render");
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(
+        text.contains("pdfuaid"),
+        "XMP should declare the PDF/UA namespace"
+    );
+    assert!(
+        text.contains("part>1"),
+        "XMP should declare pdfuaid:part = 1"
     );
 }

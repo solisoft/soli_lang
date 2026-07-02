@@ -455,6 +455,10 @@
             "properties": {
               "type": {
                 "const": "image"
+              },
+              "alt": {
+                "type": "string",
+                "description": "Alternative text for the figure in tagged (PDF/UA) output."
               }
             }
           },

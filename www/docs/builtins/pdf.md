@@ -246,22 +246,38 @@ and `pages` are ignored here — the stamp follows the table):
 ### Accessible / tagged output
 
 Set `"tagged": true` (with an optional `"lang"`) to emit a **tagged PDF**: the
-renderer wraps each text run in marked content and adds the document structure
-assistive tech relies on — a `StructTreeRoot`, `MarkInfo`, a `ParentTree`,
-per-page `StructParents`, logical tab order (`/Tabs /S`) and the document
-`/Lang`. Decorative marks (rules, watermarks, background art) are tagged as
-artifacts so screen readers skip them.
+renderer wraps each piece of content in marked content with a **semantic role**
+and adds the document structure assistive tech relies on — a `StructTreeRoot`,
+`MarkInfo`, a `ParentTree`, per-page `StructParents`, logical tab order
+(`/Tabs /S`), the document `/Lang`, and an XMP `pdfuaid` identifier.
 
 ```json
 "options": { "tagged": true, "lang": "fr-FR" }
 ```
 
-This is the structural baseline that makes readers announce a sensible reading
-order. Full **PDF/UA** conformance additionally needs semantic roles
-(headings, lists, table `TH`/`TD`, figures with alt text) and a UA identifier —
-those are on the roadmap. Tagging is **incompatible with Factur-X**
-(`pdf_facturx*`): PDF/A-3b validation rejects the generic structure tree, so the
-combination is refused with an error.
+Roles are derived from the template:
+
+| Content | Structure role |
+|---|---|
+| A bookmarked paragraph (`bookmark` / `bookmarkLevel`) | `H1`…`H6` (level = `bookmarkLevel`) |
+| Any other paragraph | `P` |
+| An `image`, `qr` or `barcode` | `Figure` (with `/Alt` from the image's `alt`) |
+| Rules, watermarks, background art, running header/footer | `Artifact` (screen readers skip them) |
+
+Give every meaningful `image` an `alt` — a `Figure` without alt text fails
+PDF/UA, so a tagged render **warns** for each image missing one:
+
+```json
+{ "type": "image", "value": "logo.png", "width": 120, "alt": "Acme logo" }
+```
+
+Headings, paragraphs and figures are fully mapped. **Lists and tables are
+currently tagged as paragraphs** (readable, but not yet `L`/`Table`
+structured) — that mapping, plus alt text on decorative-vs-informative images,
+is the remaining PDF/UA work; full conformance also wants a semantic role for
+every element. Tagging is **incompatible with Factur-X** (`pdf_facturx*`):
+PDF/A-3b validation rejects the structure tree, so the combination is refused
+with an error.
 
 ### Elements
 
@@ -297,11 +313,11 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "page_break" }
 ```
 
-**image** — draw at the cursor. Sizing: `width` only → height derives from the aspect ratio; `height` only → width derives; **both** → the image scales to fit inside the `width`×`height` box ("contain", aspect preserved, never stretched). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image. In an inline SVG `data:` URI, write colors as either a literal `#` (`fill='#0f766e'`) or the URL-encoded `%23` (`fill='%230f766e'`) — both work; SVG percentages like `width='50%'` are left intact.
+**image** — draw at the cursor. Sizing: `width` only → height derives from the aspect ratio; `height` only → width derives; **both** → the image scales to fit inside the `width`×`height` box ("contain", aspect preserved, never stretched). `value` is an `http(s)` URL, `file://` path, or `data:` URI. `alt` supplies the figure's alt text for [tagged output](#accessible--tagged-output). The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image. In an inline SVG `data:` URI, write colors as either a literal `#` (`fill='#0f766e'`) or the URL-encoded `%23` (`fill='%230f766e'`) — both work; SVG percentages like `width='50%'` are left intact.
 
 ```json
 { "type": "image", "value": "https://acme.example/logo.png", "width": 100 }
-{ "type": "image", "value": "file://brand/logo.svg", "width": 120 }
+{ "type": "image", "value": "file://brand/logo.svg", "width": 120, "alt": "Acme logo" }
 ```
 
 **table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans; a non-empty **`footer_columns`** row closes the table AND repeats just above every intra-table page break (the "carried forward" subtotal band — its cells interpolate against the root data, not row items). `options.stripe` (hex) zebra-stripes every second body row; a cell's own `fill` paints its background (over the stripe — totals, highlights); `colspan` merges a cell across column slots (summary rows); `valign` (`top`/`middle`/`bottom`) positions a cell's content vertically in its row.
