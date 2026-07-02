@@ -2,7 +2,7 @@
 //!
 //! Supported symbologies: **Code 128**, **EAN-13**, **EAN-8**, **Code 39**.
 //! The bar pattern from [`barcoders`] is rasterised here into an [`ImageData`]
-//! (RGB8, black bars on white, with a horizontal quiet zone), so it flows
+//! (Gray8, black bars on white, with a horizontal quiet zone), so it flows
 //! through the same image XObject path as a QR code or any other picture — no
 //! image/SVG generator features from `barcoders` are pulled in.
 
@@ -11,7 +11,7 @@ use barcoders::sym::code39::Code39;
 use barcoders::sym::ean13::EAN13;
 use barcoders::sym::ean8::EAN8;
 
-use crate::draw::ImageData;
+use crate::draw::{ImageData, PixelFormat};
 use crate::error::{PdfError, Result};
 
 /// Horizontal pixels per narrow module in the rasterised image.
@@ -22,7 +22,7 @@ const QUIET_MODULES: usize = 10;
 /// `height` in points, so it only sets the source resolution.
 const HEIGHT_PX: usize = 120;
 
-/// Encode `value` in `symbology` and rasterise it to an RGB8 [`ImageData`]
+/// Encode `value` in `symbology` and rasterise it to a Gray8 [`ImageData`]
 /// (black bars on white, with a quiet zone). Returns an error for an unknown
 /// symbology or data the symbology rejects (wrong length, bad characters, …).
 pub fn encode_barcode(symbology: &str, value: &str) -> Result<ImageData> {
@@ -55,8 +55,10 @@ fn encode_pattern(symbology: &str, value: &str) -> Result<Vec<u8>> {
     }
 }
 
-/// Rasterise a 0/1 module row into an RGB8 image: each module column is
+/// Rasterise a 0/1 module row into a Gray8 image: each module column is
 /// `MODULE_PX` wide and spans the full height, framed by a quiet zone.
+/// Grayscale keeps the buffer — and the flate work the backend does on every
+/// save — a third of RGB8.
 fn rasterize(pattern: &[u8]) -> Result<ImageData> {
     if pattern.is_empty() {
         return Err(PdfError::Image("barcode: empty bar pattern".into()));
@@ -64,7 +66,7 @@ fn rasterize(pattern: &[u8]) -> Result<ImageData> {
     let modules = pattern.len() + 2 * QUIET_MODULES;
     let width_px = modules * MODULE_PX;
     let height_px = HEIGHT_PX;
-    let mut pixels = vec![255u8; width_px * height_px * 3]; // white RGB8
+    let mut pixels = vec![255u8; width_px * height_px]; // white Gray8
 
     for (i, &bit) in pattern.iter().enumerate() {
         if bit == 0 {
@@ -73,19 +75,15 @@ fn rasterize(pattern: &[u8]) -> Result<ImageData> {
         let x0 = (QUIET_MODULES + i) * MODULE_PX;
         for y in 0..height_px {
             let row = y * width_px;
-            for dx in 0..MODULE_PX {
-                let off = (row + x0 + dx) * 3;
-                pixels[off] = 0;
-                pixels[off + 1] = 0;
-                pixels[off + 2] = 0;
-            }
+            pixels[row + x0..row + x0 + MODULE_PX].fill(0);
         }
     }
 
     Ok(ImageData {
         width_px,
         height_px,
-        has_alpha: false,
+        format: PixelFormat::Gray8,
+        source_key: None,
         pixels,
     })
 }
@@ -97,9 +95,9 @@ mod tests {
     #[test]
     fn encodes_code128_text() {
         let img = encode_barcode("code128", "ABC-1234").unwrap();
-        assert!(!img.has_alpha);
+        assert_eq!(img.format, PixelFormat::Gray8);
         assert_eq!(img.height_px, HEIGHT_PX);
-        assert_eq!(img.pixels.len(), img.width_px * img.height_px * 3);
+        assert_eq!(img.pixels.len(), img.width_px * img.height_px);
         // At least one black column exists (a bar was drawn).
         assert!(img.pixels.contains(&0));
     }

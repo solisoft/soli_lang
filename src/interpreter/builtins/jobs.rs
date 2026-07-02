@@ -649,6 +649,53 @@ pub fn register_jobs_builtins(env: &mut Environment) {
             Ok(resolved.unwrap_or(Value::Null))
         })),
     );
+
+    // Internal: if the named job class opted into the in-process background pool
+    // (`static background: Bool = true`), hand it off and return true so the callback
+    // acks SolidB immediately; otherwise return false so it runs inline. Args
+    // cross the pool thread as JSON (`Value` isn't `Send`).
+    env.define(
+        "__soli_try_background_job".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_try_background_job",
+            Some(2),
+            |args| {
+                let name = match &args[0] {
+                    Value::String(s) => s.to_string(),
+                    other => {
+                        return Err(format!(
+                            "__soli_try_background_job() expects string name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                // Resolve exactly like `__soli_get_class` (which the prelude uses
+                // for `cls`) so the two never disagree: registry first, then the
+                // interpreter's current env.
+                use crate::interpreter::executor::current_env_lookup;
+                let resolved = lookup_job_class(&name).or_else(|| current_env_lookup(&name));
+                let wants_background = match resolved {
+                    Some(Value::Class(class)) => read_static_background(&class),
+                    _ => false,
+                };
+                if !wants_background {
+                    return Ok(Value::Bool(false));
+                }
+                let args_json = match value_to_json(&args[1]) {
+                    Ok(json) => json.to_string(),
+                    Err(e) => {
+                        return Err(format!(
+                            "__soli_try_background_job() failed to serialize args: {}",
+                            e
+                        ))
+                    }
+                };
+                Ok(Value::Bool(crate::serve::background_jobs::enqueue(
+                    name, args_json,
+                )))
+            },
+        )),
+    );
 }
 
 fn register_job_class(env: &mut Environment) {
@@ -930,6 +977,16 @@ pub fn read_static_cron(class: &Class) -> Option<String> {
     }
 }
 
+/// Whether a job class opted into the in-process background pool with
+/// `static background: Bool = true`. Only an explicit boolean `true` counts; anything
+/// else (absent, false, non-bool) means run inline as before.
+pub fn read_static_background(class: &Class) -> bool {
+    matches!(
+        class.static_fields.borrow().get("background"),
+        Some(Value::Bool(true))
+    )
+}
+
 /// Idempotently register a `static cron`-declared schedule against SolidB.
 /// Equivalent to `Cron.schedule(name, expr, handler, {})` but callable from
 /// Rust during worker boot.
@@ -993,6 +1050,13 @@ fn __soli_jobs_run(req) {
         }
     }
     try {
+        // Jobs that opt in with `static background: Bool = true` run on the in-process
+        // background pool. Ack SolidB immediately so a long job never trips its
+        // callback timeout (and never gets retried as a duplicate). Falls
+        // through to inline execution when the pool is disabled.
+        if __soli_try_background_job(name, job_args) {
+            return {"status": 200, "body": "queued"};
+        }
         cls.perform(job_args);
         return {"status": 200, "body": "ok"};
     } catch err {

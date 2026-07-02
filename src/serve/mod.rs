@@ -8,6 +8,7 @@
 
 mod asset_cache;
 pub mod dev_bar;
+pub mod dev_store;
 mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
@@ -17,6 +18,7 @@ pub mod nav;
 pub mod phase_log;
 pub mod prefetch;
 pub mod prod_log;
+pub mod route_log;
 mod router;
 mod server_constants;
 pub mod span_log;
@@ -26,6 +28,7 @@ pub mod websocket;
 
 // Modularized subcomponents
 pub(crate) mod app_loader;
+pub mod background_jobs;
 pub mod engine_loader;
 pub mod env_loader;
 mod error_logging;
@@ -552,7 +555,7 @@ pub fn serve_folder_with_options_and_workers(
     // declarations to SolidB.
     let jobs_dir = app_dir.join("jobs");
     if jobs_dir.exists() {
-        app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut file_tracker);
+        app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut file_tracker, true);
     }
     boot_trace("jobs loaded");
 
@@ -1440,6 +1443,40 @@ fn run_hyper_server_worker_pool(
         );
     }
 
+    // Background job pool: jobs that opt in with `static background: Bool = true` run
+    // here so a long handler acks SolidB immediately (no callback timeout, no
+    // duplicate retry) and never occupies a web worker. Only started when jobs
+    // are actually active — a callback secret is set and `app/jobs` exists.
+    // `SOLI_JOB_WORKERS` sizes it (default 2); 0 disables backgrounding, so all
+    // jobs run inline exactly as before.
+    {
+        let jobs_secret_set = std::env::var("SOLI_WEBHOOK_SECRET")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                std::env::var("SOLI_JOBS_SECRET")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            })
+            .is_some();
+        let num_job_workers = std::env::var("SOLI_JOB_WORKERS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(2);
+        if jobs_dir.exists() && jobs_secret_set && num_job_workers > 0 {
+            background_jobs::start_pool(background_jobs::PoolConfig {
+                models_dir: models_dir.clone(),
+                helpers_dir: helpers_dir.clone(),
+                views_dir: views_dir.clone(),
+                jobs_dir: jobs_dir.clone(),
+                routes: worker_routes.clone(),
+                runtime_handle: runtime_handle.clone(),
+                dev_mode,
+                num_workers: num_job_workers,
+            });
+        }
+    }
+
     for i in 0..num_workers {
         // Role for this worker. When the pool isn't split, every worker drains
         // all channels (prior behavior). Otherwise the first `num_http_workers`
@@ -1658,6 +1695,10 @@ fn worker_loop(
     // log block doesn't consume, and it's the heaviest of the gates.
     span_log::set_enabled(dev_mode);
 
+    // Matched route per request — feeds the dev bar's "requests" panel and the
+    // `X-Soli-Route` response header the client patch reads.
+    route_log::set_enabled(dev_mode || log_channels.collect_timing());
+
     // Load middleware in this worker (needed for scoped middleware resolution by name)
     {
         let mut file_tracker = FileTracker::new();
@@ -1721,7 +1762,7 @@ fn worker_loop(
     // declarations to SolidB.
     if jobs_dir.exists() {
         let mut tracker = FileTracker::new();
-        app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker);
+        app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker, true);
     }
 
     let _worker_routes = get_routes();
@@ -1907,7 +1948,13 @@ fn worker_loop(
             last_jobs_version = current_jobs;
             if jobs_dir.exists() {
                 let mut tracker = FileTracker::new();
-                app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker);
+                app_loader::load_jobs_in_worker(
+                    worker_id,
+                    interpreter,
+                    &jobs_dir,
+                    &mut tracker,
+                    true,
+                );
             }
             // Update VM globals so production-mode bytecode sees reloaded job classes
             if let Some(ref mut vm) = vm {
@@ -2767,6 +2814,26 @@ async fn handle_hyper_request(
         // Source code endpoint
         if path == "/__dev/source" && method == "GET" {
             return handle_dev_source(req, peer_addr).await;
+        }
+        // Per-request dev snapshot: the dev bar's requests panel fetches this to
+        // re-render a listed request's panels (db / http / kv / flame). Reads
+        // the process-wide store (populated on the worker thread at finalize),
+        // so it's safe to serve straight from the async handler. Dev-only; the
+        // store is empty in production so this never leaks anything.
+        if method == "GET" {
+            if let Some(id) = path.strip_prefix("/__solidev/request/") {
+                return Ok(match dev_store::get(id) {
+                    Some(ctx) => Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "text/html; charset=utf-8")
+                        .body(full(Bytes::from(dev_bar::render_for_inspect(&ctx))))
+                        .unwrap(),
+                    None => Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(full(Bytes::from("unknown or expired request id")))
+                        .unwrap(),
+                });
+            }
         }
     }
 
@@ -4254,6 +4321,25 @@ fn value_to_json(value: &Value) -> serde_json::Value {
     json::value_to_json(value)
 }
 
+/// Record a VM→interpreter handler demotion: bump the metrics counter
+/// (`soli_vm_handler_demotions_total` on `/_metrics`) and, when
+/// `SOLI_ENGINE_LOG=1`, log which handler was demoted and why. Demotions are
+/// cached in `vm.failed_handlers`, so this fires once per handler per worker.
+fn record_vm_demotion(handler: &str, err: &RuntimeError) {
+    crate::metrics::Metrics::global()
+        .vm_handler_demotions_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    static ENGINE_LOG: OnceLock<bool> = OnceLock::new();
+    let log = *ENGINE_LOG.get_or_init(|| {
+        std::env::var("SOLI_ENGINE_LOG")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    });
+    if log {
+        eprintln!("[soli engine] handler '{handler}' demoted to the interpreter: {err}");
+    }
+}
+
 /// Call the route handler with the request hash.
 fn call_handler(
     interpreter: &mut Interpreter,
@@ -4397,7 +4483,8 @@ fn call_handler(
                             body,
                         };
                     }
-                    Err(_) => {
+                    Err(err) => {
+                        record_vm_demotion(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
                         vm.reset();
                     }
@@ -5000,7 +5087,8 @@ fn call_class_method(
                         vm.reset();
                         return Ok(result);
                     }
-                    Err(_) => {
+                    Err(err) => {
+                        record_vm_demotion(&handler_key, &err);
                         vm.failed_handlers.insert(handler_key);
                         vm.reset();
                     }
@@ -5610,6 +5698,7 @@ fn handle_request(
         middleware_log::clear();
         view_log::clear();
         span_log::clear();
+        route_log::clear();
     }
 
     // E2E test client: clear any render captured by a prior request on this
@@ -5818,6 +5907,11 @@ fn handle_request(
         }
     };
 
+    // Record the matched route (post wildcard-expansion) for the dev bar's
+    // "requests" panel + the `X-Soli-Route` header. Early-outs on the gate in
+    // production. 404s never reach here, so a miss leaves the route unset.
+    route_log::record(&handler_name);
+
     // Skip body parsing for GET/HEAD requests (no body to parse)
     let parsed_body = if data.method == "GET" || data.method == "HEAD" {
         ParsedBody::default()
@@ -6001,60 +6095,83 @@ fn handle_request(
         // a thread-local, so the snapshot must happen before we cross the
         // channel back to the hyper handler.
         if let Some(start) = dev_started {
+            // Tag EVERY dev-mode response (HTML, JSON, HTMx fragment, …) with
+            // its matched route so the client-side fetch/XHR patch can attribute
+            // each request to a controller#action in the dev bar's requests
+            // panel. Set before the HTML-only guard below so XHR/HTMx responses
+            // — which never get a dev bar injected — still carry it.
+            let route = route_log::snapshot();
+            if let Some(handler) = &route {
+                resp.headers
+                    .push(("X-Soli-Route".to_string(), handler.clone()));
+            }
+            // Stable per-request id: the requests-panel drill-down fetches
+            // `/__solidev/request/:id` to inspect any listed request's panels.
+            let request_id = Uuid::new_v4().to_string();
+            resp.headers
+                .push(("X-Soli-Request-Id".to_string(), request_id.clone()));
+
+            // Server-side handler time (µs). The requests panel shows this as
+            // each row's duration — the real time spent in the app — rather
+            // than the client-observed round-trip (which folds in queue +
+            // network + transfer and is what `performance.now()` would measure).
+            let elapsed_us = start.elapsed().as_micros() as u64;
+            resp.headers
+                .push(("X-Soli-Render-Us".to_string(), elapsed_us.to_string()));
+
             let is_html = resp
                 .headers
                 .iter()
                 .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
-            // HTMx partial responses share the page that already carries the
-            // dev bar; injecting again would append a second one into the
-            // live DOM on each swap.
+
+            // Build the per-request snapshot for EVERY dev response (not just
+            // HTML), so an XHR/HTMx call's panels can be inspected later via the
+            // requests panel. Close the root span first so the flamegraph has
+            // its top-level rectangle (span_log only records a span on close).
+            span_log::close_request_root();
+            let ctx = dev_bar::DevBarContext {
+                method: method.as_ref().to_string(),
+                path: path.clone(),
+                status: resp.status,
+                elapsed_us,
+                request_id: request_id.clone(),
+                route: route.clone(),
+                queries: crate::interpreter::builtins::model::query_log::snapshot(),
+                http_requests: crate::interpreter::builtins::http_log::snapshot(),
+                kv_calls: crate::interpreter::builtins::kv_log::snapshot(),
+                phases: phase_log::snapshot(),
+                middlewares: middleware_log::snapshot(),
+                views: view_log::snapshot(),
+                spans: span_log::snapshot(),
+            };
+
+            // Feed coarse totals into the always-on Prometheus metrics (Phase A).
+            // Kept HTML-scoped, matching the prior behavior.
+            if is_html {
+                let mw_total_us: u64 = ctx.middlewares.iter().map(|(_, us)| *us).sum();
+                if mw_total_us > 0 {
+                    crate::metrics::Metrics::global()
+                        .record_middleware(std::time::Duration::from_micros(mw_total_us));
+                }
+                let db_total_ns: u64 = ctx
+                    .queries
+                    .iter()
+                    .map(|q| (q.duration_ms * 1_000_000.0) as u64)
+                    .sum();
+                if db_total_ns > 0 {
+                    crate::metrics::Metrics::global()
+                        .record_db_queries(std::time::Duration::from_nanos(db_total_ns));
+                }
+            }
+
+            // Stash for the `/__solidev/request/:id` drill-down endpoint.
+            dev_store::put(request_id, ctx.clone());
+
+            // Inject the bar only into full HTML pages. HTMx partial responses
+            // share the page that already carries the dev bar; injecting again
+            // would append a second one into the live DOM on each swap.
             if is_html && !is_htmx_request {
                 if let Ok(body_str) = std::str::from_utf8(&resp.body) {
-                    let queries = crate::interpreter::builtins::model::query_log::snapshot();
-                    let http_requests = crate::interpreter::builtins::http_log::snapshot();
-                    let kv_calls = crate::interpreter::builtins::kv_log::snapshot();
-                    let phases = phase_log::snapshot();
-                    let middlewares = middleware_log::snapshot();
-                    let views = view_log::snapshot();
-
-                    // Feed coarse totals into the always-on Prometheus metrics (Phase A).
-                    // These give production-visible numbers even when the rich per-item dev bar is off.
-                    {
-                        let mw_total_us: u64 = middlewares.iter().map(|(_, us)| *us).sum();
-                        if mw_total_us > 0 {
-                            crate::metrics::Metrics::global()
-                                .record_middleware(std::time::Duration::from_micros(mw_total_us));
-                        }
-
-                        let db_total_ns: u64 = queries
-                            .iter()
-                            .map(|q| (q.duration_ms * 1_000_000.0) as u64)
-                            .sum();
-                        if db_total_ns > 0 {
-                            crate::metrics::Metrics::global()
-                                .record_db_queries(std::time::Duration::from_nanos(db_total_ns));
-                        }
-                    }
-
-                    // Close the root request span *before* snapshotting —
-                    // span_log only records a span on close, so without this
-                    // the top-level request rectangle would be missing from
-                    // the flamegraph.
-                    span_log::close_request_root();
-                    let spans = span_log::snapshot();
-                    let ctx = dev_bar::DevBarContext {
-                        method: method.as_ref(),
-                        path: path.as_str(),
-                        status: resp.status,
-                        started: start,
-                        queries,
-                        http_requests,
-                        kv_calls,
-                        phases,
-                        middlewares,
-                        views,
-                        spans,
-                    };
                     resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into_bytes();
                 }
             }

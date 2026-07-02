@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Introduction</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Welcome to <strong>Soli MVC</strong>, a modern web framework designed for developers who value both elegance and performance. Soli combines the expressiveness of dynamic languages with the convenience of a batteries-included web framework.
+            Welcome to <strong>Soli</strong>, a dynamically-typed, high-performance web framework and programming language written in Rust. Soli combines the expressiveness of Ruby with a batteries-included MVC stack &mdash; 170,000+ requests/second and sub-millisecond response times, powered by a bytecode VM.
         </p>
     </div>
 
@@ -18,32 +18,258 @@
             <div>
                 <h4 class="text-lg font-semibold text-blue-400 mb-1">What you'll learn</h4>
                 <p class="text-blue-200/80 text-sm">
-                    This guide will introduce you to the MVC pattern, Soli's philosophy, and help you understand how to build applications with Soli.
+                    This guide tours Soli's full feature surface &mdash; language, web framework, database, realtime, and tooling &mdash; then gets you from zero to a running app in three commands.
                 </p>
             </div>
         </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">What is Soli?</h2>
-    <p class="text-gray-400 mb-6">Soli is a <strong>high-performance</strong> programming language and web framework written in Rust. It features:</p>
+    <p class="text-gray-400 mb-6">
+        Soli is two things in one: a <strong>dynamically-typed language</strong> with optional type annotations, and a <strong>batteries-included MVC web framework</strong> built on top of it. No compile step gates execution &mdash; but <code class="text-indigo-300">soli check</code> will static type-check the parts you've annotated.
+    </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-2xl font-bold text-indigo-400">170,000+</div>
+            <p class="text-xs text-gray-400 mt-1">requests/second, single server</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-2xl font-bold text-purple-400">Sub-millisecond</div>
+            <p class="text-xs text-gray-400 mt-1">typical response times</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div class="text-2xl font-bold text-pink-400">3 commands</div>
+            <p class="text-xs text-gray-400 mt-1">from install to running app</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Feature Tour</h2>
+    <p class="text-gray-400 mb-6">A map of what Soli ships with. Each group links to the full deep-dive.</p>
+
+    <!-- Language -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+        </span>
+        Language
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Expressive Syntax</h3>
-            <p class="text-sm text-gray-400">Inspired by Ruby and modern languages for maximum developer happiness.</p>
+            <h4 class="font-semibold text-white mb-1 text-sm">Dynamic + optional types</h4>
+            <p class="text-sm text-gray-400">Write fast, annotate where it pays off &mdash; runtime checks, IDE support, docs.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Reliable Runtime</h3>
-            <p class="text-sm text-gray-400">Built in Rust for a stable, memory-safe runtime.</p>
+            <h4 class="font-semibold text-white mb-1 text-sm">Classes &amp; interfaces</h4>
+            <p class="text-sm text-gray-400">Familiar OOP with inheritance &mdash; <code class="text-indigo-300">class Foo &lt; Bar</code>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Batteries Included</h3>
-            <p class="text-sm text-gray-400">Built-in ORM, WebSockets, and hot-reload development server.</p>
+            <h4 class="font-semibold text-white mb-1 text-sm">Pattern matching</h4>
+            <p class="text-sm text-gray-400"><code class="text-indigo-300">match</code> with guards and destructuring.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Type Annotations</h3>
-            <p class="text-sm text-gray-400">Optional type annotations for documentation, IDE support, and runtime validation.</p>
+            <h4 class="font-semibold text-white mb-1 text-sm">Enums</h4>
+            <p class="text-sm text-gray-400">First-class enumerated types.</p>
         </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Closures &amp; pipelines</h4>
+            <p class="text-sm text-gray-400"><code class="text-indigo-300">fn(x) {}</code>, <code class="text-indigo-300">|x| {}</code>, and the <code class="text-indigo-300">|&gt;</code> pipeline operator.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Error handling</h4>
+            <p class="text-sm text-gray-400"><code class="text-indigo-300">try/catch/finally</code> plus postfix <code class="text-indigo-300">rescue</code>.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Modern conveniences</h4>
+            <p class="text-sm text-gray-400">String interpolation, <code class="text-indigo-300">??</code>, <code class="text-indigo-300">&amp;.</code>, spread/rest, named params.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Metaprogramming</h4>
+            <p class="text-sm text-gray-400"><code class="text-indigo-300">define_method</code>, <code class="text-indigo-300">method_missing</code>, and more.</p>
+        </div>
+    </div>
+    <div class="mb-10 text-sm">
+        <a href="/docs/language" class="text-indigo-400 hover:text-indigo-300">Full language reference &rarr;</a>
+    </div>
+
+    <!-- Web Framework -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/20 text-purple-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>
+        </span>
+        Web Framework
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Convention over configuration</h4>
+            <p class="text-sm text-gray-400">Autoloaded controllers, models, services, policies, jobs, mailers.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Declarative routing</h4>
+            <p class="text-sm text-gray-400"><code class="text-purple-300">resources()</code>, nesting, namespaces, named route helpers.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">ERB-style views</h4>
+            <p class="text-sm text-gray-400"><code class="text-purple-300">.html.slv</code> templates with layouts and partials.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Middleware pipeline</h4>
+            <p class="text-sm text-gray-400">Request/response interceptors for auth, CORS, logging.</p>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-10 text-sm">
+        <a href="/docs/core-concepts/routing" class="text-purple-400 hover:text-purple-300">Routing &rarr;</a>
+        <a href="/docs/core-concepts/controllers" class="text-purple-400 hover:text-purple-300">Controllers &rarr;</a>
+        <a href="/docs/core-concepts/views" class="text-purple-400 hover:text-purple-300">Views &rarr;</a>
+        <a href="/docs/core-concepts/middleware" class="text-purple-400 hover:text-purple-300">Middleware &rarr;</a>
+    </div>
+
+    <!-- Data & Persistence -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 1.1 3.6 2 8 2s8-.9 8-2V7M4 7c0 1.1 3.6 2 8 2s8-.9 8-2M4 7c0-1.1 3.6-2 8-2s8 .9 8 2" /></svg>
+        </span>
+        Data &amp; Persistence
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">SoliDB</h4>
+            <p class="text-sm text-gray-400">Built-in document database, queried with AQL.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Active-Record-style Model API</h4>
+            <p class="text-sm text-gray-400"><code class="text-emerald-300">find</code>, <code class="text-emerald-300">where</code>, <code class="text-emerald-300">order</code>, <code class="text-emerald-300">create</code>, <code class="text-emerald-300">update</code>.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Relationships</h4>
+            <p class="text-sm text-gray-400"><code class="text-emerald-300">belongs_to</code>, <code class="text-emerald-300">has_many</code>, has-and-belongs-to-many.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Validations, migrations &amp; more</h4>
+            <p class="text-sm text-gray-400">Callbacks, state machines, query scopes.</p>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-10 text-sm">
+        <a href="/docs/database/models" class="text-emerald-400 hover:text-emerald-300">Models &rarr;</a>
+        <a href="/docs/database/query-builder" class="text-emerald-400 hover:text-emerald-300">Query Builder &rarr;</a>
+        <a href="/docs/database/relationships" class="text-emerald-400 hover:text-emerald-300">Relationships &rarr;</a>
+        <a href="/docs/database/migrations" class="text-emerald-400 hover:text-emerald-300">Migrations &rarr;</a>
+    </div>
+
+    <!-- Realtime -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        </span>
+        Realtime
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">WebSockets</h4>
+            <p class="text-sm text-gray-400">First-class bidirectional connections.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Live View</h4>
+            <p class="text-sm text-gray-400">Server-rendered reactive components &mdash; no client JS needed.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Streaming / SSE</h4>
+            <p class="text-sm text-gray-400">Push updates to the browser as they happen.</p>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-10 text-sm">
+        <a href="/docs/core-concepts/websockets" class="text-cyan-400 hover:text-cyan-300">WebSockets &rarr;</a>
+        <a href="/docs/core-concepts/liveview" class="text-cyan-400 hover:text-cyan-300">Live View &rarr;</a>
+        <a href="/docs/core-concepts/streaming" class="text-cyan-400 hover:text-cyan-300">Streaming &rarr;</a>
+    </div>
+
+    <!-- Batteries Included -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.36 6.36l-.7-.7M6.34 6.34l-.7-.7m12.02 0l-.7.7M6.34 17.66l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+        </span>
+        Batteries Included
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Auth &amp; security</h4>
+            <p class="text-sm text-gray-400">JWT auth, policy-based authorization, CSRF, XSS sanitization, Argon2, secure cookies.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Sessions</h4>
+            <p class="text-sm text-gray-400">Four pluggable backends: in-memory, disk, SoliDB, or SoliKV.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Jobs &amp; cron</h4>
+            <p class="text-sm text-gray-400"><code class="text-amber-300">perform_later</code>, <code class="text-amber-300">perform_in</code>, <code class="text-amber-300">perform_at</code>, scheduled jobs.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Mailer</h4>
+            <p class="text-sm text-gray-400">HTML/text emails, attachments, SMTP delivery.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Document generation</h4>
+            <p class="text-sm text-gray-400">PDF rendering, including Factur-X/EN16931 e-invoicing.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">i18n</h4>
+            <p class="text-sm text-gray-400">Multi-locale support out of the box.</p>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-10 text-sm">
+        <a href="/docs/security/authentication" class="text-amber-400 hover:text-amber-300">Authentication &rarr;</a>
+        <a href="/docs/security/authorization" class="text-amber-400 hover:text-amber-300">Authorization &rarr;</a>
+        <a href="/docs/security/sessions" class="text-amber-400 hover:text-amber-300">Sessions &rarr;</a>
+        <a href="/docs/builtins/jobs" class="text-amber-400 hover:text-amber-300">Jobs &rarr;</a>
+        <a href="/docs/builtins/mailer" class="text-amber-400 hover:text-amber-300">Mailer &rarr;</a>
+        <a href="/docs/builtins/pdf" class="text-amber-400 hover:text-amber-300">PDF &rarr;</a>
+        <a href="/docs/core-concepts/i18n" class="text-amber-400 hover:text-amber-300">i18n &rarr;</a>
+    </div>
+
+    <!-- Developer Tools -->
+    <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/20 text-rose-400">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+        </span>
+        Developer Tools
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Hot reload</h4>
+            <p class="text-sm text-gray-400">Edit and refresh &mdash; no restart needed.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Beautiful dev error pages</h4>
+            <p class="text-sm text-gray-400">Variable inspection right in the browser.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Scaffold generator</h4>
+            <p class="text-sm text-gray-400"><code class="text-rose-300">soli generate scaffold</code> builds a full resource in seconds.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Built-in package manager</h4>
+            <p class="text-sm text-gray-400"><code class="text-rose-300">soli add</code> / <code class="text-rose-300">install</code> / <code class="text-rose-300">publish</code> against a registry, via <code class="text-rose-300">soli.toml</code>.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">Lint, format, type-check</h4>
+            <p class="text-sm text-gray-400"><code class="text-rose-300">soli lint</code>, <code class="text-rose-300">soli fmt</code>, <code class="text-rose-300">soli check</code>.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">LSP + editor integration</h4>
+            <p class="text-sm text-gray-400">Language server and VS Code extension.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <h4 class="font-semibold text-white mb-1 text-sm">BDD testing framework</h4>
+            <p class="text-sm text-gray-400"><code class="text-rose-300">describe</code>/<code class="text-rose-300">test</code>, HTTP integration tests, coverage reporting.</p>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-3 mb-12 text-sm">
+        <a href="/docs/development-tools/live-reload" class="text-rose-400 hover:text-rose-300">Live Reload &rarr;</a>
+        <a href="/docs/development-tools/scaffold" class="text-rose-400 hover:text-rose-300">Scaffold &rarr;</a>
+        <a href="/docs/development-tools/linting" class="text-rose-400 hover:text-rose-300">Linting &rarr;</a>
+        <a href="/docs/development-tools/formatting" class="text-rose-400 hover:text-rose-300">Formatting &rarr;</a>
+        <a href="/docs/development-tools/editor-integration" class="text-rose-400 hover:text-rose-300">Editor Integration &rarr;</a>
+        <a href="/docs/testing" class="text-rose-400 hover:text-rose-300">Testing &rarr;</a>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">The MVC Pattern</h2>
@@ -75,27 +301,56 @@
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Quick Start</h2>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm"># Install the Soli CLI
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+
+# Scaffold a new app
+soli new my_app
+cd my_app
+
+# Start the dev server (auto-compiles Tailwind CSS, hot reload enabled)
+soli serve . --dev</code></pre>
+
+    <div class="my-8 p-4 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <div class="flex items-start gap-3">
+            <div class="text-green-400 mt-0.5">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h4 class="text-green-400 font-medium">That's it</h4>
+                <p class="text-sm text-green-200/80 mt-1">
+                    Your app is live at <a href="http://localhost:5011" class="text-green-300 underline">http://localhost:5011</a>. No <code class="bg-green-500/20 px-1 rounded">npm install</code> required to get started &mdash; <code class="bg-green-500/20 px-1 rounded">--dev</code> mode compiles your Tailwind CSS for you.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Project Structure</h2>
 
     <pre data-filename="Directory Layout"><code class="language-text text-sm">my_app/
 ├── app/
 │   ├── controllers/      # Request handlers
 │   │   └── home_controller.sl
-│   ├── models/           # Data models
-│   │   └── user.sl
-│   ├── views/            # HTML templates
-│   │   ├── layouts/      # Shared layouts
+│   ├── jobs/              # Background jobs
+│   ├── middleware/        # Request interceptors
+│   ├── views/             # HTML templates
+│   │   ├── layouts/       # Shared layouts
 │   │   │   └── application.html.slv
 │   │   └── home/
 │   │       └── index.html.slv
-│   └── middleware/       # Request interceptors
-│       └── auth.sl
+│   └── assets/
+│       └── css/           # Tailwind source
 ├── config/
-│   └── routes.sl       # Route definitions
-├── public/               # Static assets
-│   ├── css/
-│   └── js/
-└── package.json          # Build configuration</code></pre>
+│   ├── routes.sl        # Route definitions
+│   ├── application.sl   # App configuration
+│   └── locales/          # i18n translation files
+├── public/
+│   └── css/               # Compiled CSS output
+└── package.json           # Tailwind toolchain (only needed if customizing)</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Quick Example</h2>
     <p class="text-gray-400 mb-6">Here's how the pieces fit together in a simple Soli application:</p>
@@ -106,7 +361,8 @@
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400 text-xs font-bold">1</span>
                 Define a Route
             </h3>
-            <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/", "home#index")get("/users/:id", "users#show");</code></pre>
+            <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/", "home#index")
+get("/users/:id", "users#show")</code></pre>
         </div>
 
         <div>
@@ -114,13 +370,15 @@
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-purple-400 text-xs font-bold">2</span>
                 Create a Controller
             </h3>
-            <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req: Any)
-  message = "Welcome to Soli!"
+            <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">class HomeController &lt; Controller
+  def index
+    message = "Welcome to Soli!"
 
-  render("home/index", {
-    "title": "Home",
-    "message": message
-  })
+    render("home/index", {
+      "title": "Home",
+      "message": message
+    })
+  end
 end</code></pre>
         </div>
 
@@ -129,21 +387,54 @@ end</code></pre>
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold">3</span>
                 Build a View
             </h3>
-            <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt
+            <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
 &lt;p&gt;Start building something amazing.&lt;/p&gt;</code></pre>
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">The Package Manager</h2>
+    <p class="text-gray-400 mb-6">Soli ships with a built-in package manager &mdash; no separate tool needed:</p>
+
+    <pre data-filename="Terminal"><code class="language-bash text-sm">soli init                       # create soli.toml in the current directory
+soli add utils --path ../shared/utils
+soli add soli-math --version 1.0.0
+soli install                    # install everything from soli.toml
+soli publish                    # publish your package to a registry</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-12 text-sm">
+        See <a href="/docs/language/modules" class="text-indigo-400 hover:text-indigo-300">Modules &amp; Packages</a> for the full <code class="bg-white/10 px-1 rounded">soli.toml</code> reference.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Design Philosophy</h2>
+    <p class="text-gray-400 mb-12">
+        Soli favors convention over configuration. By following standard naming patterns, you write less glue code and focus on building features.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <a href="/docs/getting-started/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Installation &rarr;</h3>
             <p class="text-sm text-gray-400">Get Soli running on your machine.</p>
         </a>
-        <a href="/docs/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Configuration &rarr;</h3>
+            <p class="text-sm text-gray-400">Environment variables for databases, sessions, jobs, and deployment.</p>
+        </a>
+        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
             <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
             <p class="text-sm text-gray-400">Learn how to define your application's URLs.</p>
+        </a>
+        <a href="/docs/language" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Language Reference &rarr;</h3>
+            <p class="text-sm text-gray-400">The complete Soli syntax, types, and language features.</p>
+        </a>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+            <p class="text-sm text-gray-400">ORM-style data modeling with CRUD operations.</p>
+        </a>
+        <a href="/docs/development-tools/deploy" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Deploy &rarr;</h3>
+            <p class="text-sm text-gray-400">Ship to production with blue-green deployment.</p>
         </a>
     </div>
 </div>

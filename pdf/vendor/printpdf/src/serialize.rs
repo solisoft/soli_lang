@@ -83,6 +83,38 @@ pub fn init_doc_and_resources(
     (doc, global_xobject_dict)
 }
 
+/// Zlib-compress `data` (level 6) through a per-thread reused encoder.
+///
+/// soli-pdf local addition: constructing a fresh `ZlibEncoder` allocates and
+/// zeroes ~300 KB of deflate state, which costs more than the actual deflate
+/// work for the small streams a PDF carries (content streams, ToUnicode
+/// CMaps, QR-sized images). Reusing one encoder per thread amortizes that;
+/// level 6 compresses this data as well as `Compression::best()` (9) at a
+/// fraction of the CPU. Used for both stream compression here and image
+/// XObject encoding (`crate::image`).
+pub(crate) fn zlib_compress_reused(data: &[u8]) -> std::io::Result<Vec<u8>> {
+    use std::cell::RefCell;
+
+    use flate2::{write::ZlibEncoder, Compression};
+
+    thread_local! {
+        static ENCODER: RefCell<Option<ZlibEncoder<Vec<u8>>>> = const { RefCell::new(None) };
+    }
+    ENCODER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let enc = slot.get_or_insert_with(|| ZlibEncoder::new(Vec::new(), Compression::new(6)));
+        // `reset` finishes the current deflate stream into the current writer
+        // and swaps in the fresh Vec, returning the compressed bytes.
+        let result = enc.write_all(data).and_then(|_| enc.reset(Vec::new()));
+        if result.is_err() {
+            // A failed write leaves the deflate state mid-stream; drop the
+            // encoder so the next call starts clean.
+            *slot = None;
+        }
+        result
+    })
+}
+
 pub fn serialize_pdf<W: Write>(
     pdf: &PdfDocument,
     opts: &PdfSaveOptions,
@@ -93,11 +125,29 @@ pub fn serialize_pdf<W: Write>(
     if opts.optimize {
         // soli-pdf local change (upstream left this commented out): Flate-compress
         // every uncompressed stream — page content streams and embedded font
-        // (FontFile2) streams, which printpdf otherwise writes raw. `Stream::compress`
-        // only touches streams that lack a `/Filter`, so the image XObjects already
-        // compressed via `image_optimization` are skipped (never double-encoded), and
-        // it keeps the smaller of the two, so this can only shrink the output.
-        doc.compress();
+        // (FontFile2) streams, which printpdf otherwise writes raw. Only streams
+        // that lack a `/Filter` are touched, so the image XObjects already
+        // compressed via `image_optimization` are skipped (never double-encoded),
+        // and the compressed stream is kept only when smaller, so this can only
+        // shrink the output.
+        //
+        // Inline equivalent of `doc.compress()`, but through the reusable
+        // per-thread encoder (see `zlib_compress_reused`) instead of lopdf's
+        // per-stream `Compression::best()` encoder.
+        for object in doc.objects.values_mut() {
+            if let lopdf::Object::Stream(stream) = object {
+                if stream.allows_compression && stream.dict.get(b"Filter").is_err() {
+                    if let Ok(compressed) = zlib_compress_reused(&stream.content) {
+                        // Same +19 threshold as lopdf's `Stream::compress`
+                        // (accounts for the added /Filter dict entry).
+                        if compressed.len() + 19 < stream.content.len() {
+                            stream.dict.set("Filter", "FlateDecode");
+                            stream.set_content(compressed);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let _ = doc.save_to(&mut writer);

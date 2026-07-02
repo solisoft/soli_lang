@@ -428,15 +428,48 @@ end</code></pre>
                             <td class="py-3 pr-4"><span class="text-fuchsia-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify callbacks</td>
                             <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
-                        <tr>
+                        <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_SECRET</code></td>
                             <td class="py-3 pr-4">Legacy alias for <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>; still accepted</td>
                             <td class="py-3"><span class="text-gray-500">unset</span></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOB_WORKERS</code></td>
+                            <td class="py-3 pr-4">Size of the in-process pool for <code class="text-amber-400">static background: Bool = true</code> jobs; <code class="text-purple-400">0</code> disables (all jobs run inline)</td>
+                            <td class="py-3"><code class="text-purple-400">2</code></td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <p class="text-gray-400 mt-3 text-sm">The callback URL must be reachable from the SolidB server. In production, set it to your Soli app's public URL plus <code class="text-amber-400">/_jobs/run</code>.</p>
+        </div>
+    </section>
+
+    <!-- Long-Running Jobs (Background Pool) -->
+    <section id="section-background" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Long-Running Jobs (<code class="text-amber-400">static background</code>)</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">By default <code class="text-amber-400">perform</code> runs <span class="text-white font-semibold">synchronously inside the callback</span> — SolidB holds the connection open until it returns. A job that runs for minutes trips SolidB's callback timeout, which marks it failed and <span class="text-fuchsia-300 font-semibold">retries it (so it runs twice, concurrently)</span>, and it occupies a web worker the whole time.</p>
+            <p class="text-gray-400 mb-3">Add <code class="text-amber-400">static background: Bool = true</code> to run the job on a dedicated in-process pool instead. The callback acks <code class="text-purple-400">200 queued</code> immediately, so there's no timeout, no duplicate retry, and no worker held:</p>
+            <pre data-filename="app/jobs/monthly_report_job.sl"><code class="language-soli text-sm">class MonthlyReportJob
+  static background: Bool = true          # run on the background pool
+
+  static def perform(args: Hash)
+    # Heavy work — bulk queries, exports, PDF generation — runs with no
+    # timeout and without holding a web worker. Owns its own error handling.
+    generate_report(args["month"])
+  end
+end</code></pre>
+            <p class="text-gray-400 mt-3 mb-3">Delayed (<code class="text-amber-400">perform_in</code>/<code class="text-amber-400">perform_at</code>) and <code class="text-amber-400">static cron</code> jobs honor the flag too — it's read at callback time.</p>
+            <div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4">
+                <p class="text-amber-200 text-sm mb-2"><span class="font-semibold">Fire-and-forget.</span> Because Soli acks <em>before</em> the work runs, SolidB never sees a backgrounded job's failure and <span class="font-semibold">will not retry it</span>. Backgrounded jobs must own their reliability:</p>
+                <ul class="list-disc list-inside text-amber-200/90 text-sm space-y-1">
+                    <li>Make <code class="text-amber-300">perform</code> idempotent and handle/log its own errors (a raised error just prints).</li>
+                    <li>Re-enqueue or checkpoint yourself if you need at-least-once semantics.</li>
+                    <li>Keep the default synchronous mode for short jobs where SolidB's automatic retry is the point.</li>
+                </ul>
+            </div>
+            <p class="text-gray-400 mt-3 text-sm">Sized by <code class="text-amber-400">SOLI_JOB_WORKERS</code> (default <code class="text-purple-400">2</code>); each worker holds its own loaded interpreter. <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> disables backgrounding entirely — every job runs inline as before.</p>
         </div>
     </section>
 

@@ -5,13 +5,13 @@
 //!   banking app to pre-fill a payment. EUR only, error-correction level **M**.
 //! * **Text** — an arbitrary string, encoded verbatim.
 //!
-//! The QR module matrix is rasterised here into an [`ImageData`] (RGB8, black on
-//! white, with a quiet zone), so it flows through the same image XObject path as
-//! any other picture — no network fetch, no PNG round-trip.
+//! The QR module matrix is rasterised here into an [`ImageData`] (Gray8, black
+//! on white, with a quiet zone), so it flows through the same image XObject path
+//! as any other picture — no network fetch, no PNG round-trip.
 
 use qrcode::{EcLevel, QrCode};
 
-use crate::draw::ImageData;
+use crate::draw::{ImageData, PixelFormat};
 use crate::error::{PdfError, Result};
 
 /// Pixels per QR module in the rasterised image.
@@ -108,8 +108,9 @@ pub fn epc_payload(
     Ok(payload)
 }
 
-/// Encode `payload` as a QR code and rasterise it to an RGB8 [`ImageData`]
-/// (black modules on white, with a quiet zone).
+/// Encode `payload` as a QR code and rasterise it to a Gray8 [`ImageData`]
+/// (black modules on white, with a quiet zone). Grayscale keeps the buffer —
+/// and the flate work the backend does on every save — a third of RGB8.
 pub fn encode_qr(payload: &str, ec: EcLevel) -> Result<ImageData> {
     let code = QrCode::with_error_correction_level(payload.as_bytes(), ec)
         .map_err(|e| PdfError::Image(format!("QR encode failed: {e}")))?;
@@ -118,7 +119,7 @@ pub fn encode_qr(payload: &str, ec: EcLevel) -> Result<ImageData> {
 
     let side_modules = modules + 2 * QUIET_MODULES;
     let side_px = side_modules * MODULE_PX;
-    let mut pixels = vec![255u8; side_px * side_px * 3]; // white RGB8
+    let mut pixels = vec![255u8; side_px * side_px]; // white Gray8
 
     for py in 0..side_px {
         let my = py / MODULE_PX;
@@ -133,10 +134,7 @@ pub fn encode_qr(payload: &str, ec: EcLevel) -> Result<ImageData> {
             }
             let col = mx - QUIET_MODULES;
             if colors[row * modules + col] == qrcode::Color::Dark {
-                let off = (py * side_px + px) * 3;
-                pixels[off] = 0;
-                pixels[off + 1] = 0;
-                pixels[off + 2] = 0;
+                pixels[py * side_px + px] = 0;
             }
         }
     }
@@ -144,7 +142,8 @@ pub fn encode_qr(payload: &str, ec: EcLevel) -> Result<ImageData> {
     Ok(ImageData {
         width_px: side_px,
         height_px: side_px,
-        has_alpha: false,
+        format: PixelFormat::Gray8,
+        source_key: None,
         pixels,
     })
 }
@@ -193,11 +192,11 @@ mod tests {
     }
 
     #[test]
-    fn encode_produces_square_rgb_with_quiet_zone() {
+    fn encode_produces_square_gray_with_quiet_zone() {
         let img = encode_qr("hello", EcLevel::M).unwrap();
-        assert!(!img.has_alpha);
+        assert_eq!(img.format, PixelFormat::Gray8);
         assert_eq!(img.width_px, img.height_px);
-        assert_eq!(img.pixels.len(), img.width_px * img.height_px * 3);
+        assert_eq!(img.pixels.len(), img.width_px * img.height_px);
         // Side is a whole number of modules including the 4-module quiet zone.
         assert_eq!(img.width_px % MODULE_PX, 0);
         let side_modules = img.width_px / MODULE_PX;

@@ -143,14 +143,44 @@ pub enum DrawOp {
     },
 }
 
+/// Pixel layout of an [`ImageData`] buffer.
+///
+/// Synthetic black-on-white images (QR, barcode) use `Gray8`: one byte per
+/// pixel instead of three, which cuts both the rasterisation work and the
+/// flate input the PDF backend compresses on every save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PixelFormat {
+    /// 1 byte/px, DeviceGray.
+    Gray8,
+    /// 3 bytes/px RGB.
+    Rgb8,
+    /// 4 bytes/px RGB + straight alpha.
+    Rgba8,
+}
+
+impl PixelFormat {
+    pub fn bytes_per_px(self) -> usize {
+        match self {
+            PixelFormat::Gray8 => 1,
+            PixelFormat::Rgb8 => 3,
+            PixelFormat::Rgba8 => 4,
+        }
+    }
+}
+
 /// Decoded raster image ready to embed.
 #[derive(Debug, Clone)]
 pub struct ImageData {
     pub width_px: usize,
     pub height_px: usize,
-    /// true = RGBA8, false = RGB8.
-    pub has_alpha: bool,
+    pub format: PixelFormat,
     pub pixels: Vec<u8>,
+    /// Identity of the image's *source* (set by the image loader for
+    /// deterministic, cacheable sources; `None` for per-render rasters like
+    /// QR/barcode). The PDF backend forwards it so the encoded XObject —
+    /// plane split + flate, milliseconds for a large logo — is reused across
+    /// renders instead of recomputed per save.
+    pub source_key: Option<u64>,
 }
 
 /// A single laid-out page.
@@ -164,7 +194,9 @@ pub struct RenderedPage {
 pub struct LaidOutDoc {
     pub page: Page,
     pub pages: Vec<RenderedPage>,
-    pub images: Vec<ImageData>,
+    /// `Arc` so a process-wide image-cache hit shares pixels with the document
+    /// instead of cloning multi-MB buffers per render.
+    pub images: Vec<std::sync::Arc<ImageData>>,
     /// Outline entries: `(label, 0-based page index)`.
     pub bookmarks: Vec<(String, usize)>,
     /// Named jump targets: `anchor → (0-based page index, logical y)`.

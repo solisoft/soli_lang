@@ -38,8 +38,12 @@
                 <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-sm font-mono">5</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Flamegraph</span>
             </a>
+            <a href="#dev-bar-requests" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-sm font-mono">6</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Page Requests</span>
+            </a>
             <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">6</span>
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
             </a>
         </div>
@@ -418,6 +422,46 @@ end</code></pre>
             <li>Many narrow purple rectangles at the same depth → likely an N+1; the AQL panel will flag it.</li>
             <li>A very wide cyan <code>action</code> with thin children → time is spent in user code outside the framework hooks; turn on the <code>fn</code> spans (always on under <code>--dev</code>) and zoom in to find the hot function.</li>
         </ul>
+    </section>
+
+    <!-- Section 4c: Page Requests -->
+    <section id="dev-bar-requests" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Page Requests
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            Every response the dev server sends carries an <code class="text-sky-400">X-Soli-Route</code> header naming the route that handled it (e.g. <code class="text-pink-400">users#show</code>). The dev bar header shows the current page's route right after the URL, and <strong>clicking the URL</strong> expands a <em>Requests</em> panel listing every route the page touched — the main page plus each XHR / <code>fetch</code> / HTMx call it fired afterwards.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">How it works</h3>
+        <p class="text-gray-400 mb-4">
+            The main page's row is rendered server-side. For everything after that, the dev bar patches <code class="text-cyan-400">fetch</code> and <code class="text-cyan-400">XMLHttpRequest</code> once, reads <code>X-Soli-Route</code> off each response, and appends a row (method, URL, route, status, duration). Each row's <strong>duration is the server-side app render time</strong> (from the <code>X-Soli-Render-Us</code> header) — the real time spent in your app, not the client round-trip (which folds in queue + network + transfer). Hover the duration to see the round-trip too. The count next to the URL updates as calls come in. HTMx uses XHR/fetch under the hood, so its swaps are captured too — and because a swap doesn't reload the page, the list keeps growing across swaps.</p>
+        <p class="text-gray-400 mb-4">
+            The dev bar isn't re-injected on an HTMx swap (that would stack a second bar), so the header follows HTMx <strong>navigations</strong> instead: when HTMx pushes the URL (<code>hx-push-url</code> / <code>hx-boost</code>), the header's route and render time update to that request. Background or widget HTMx requests that don't change the URL are added to the panel but leave the header alone.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Inspect any request</h3>
+        <p class="text-gray-400 mb-4">
+            <strong>Click a row</strong> to retarget the <code class="text-purple-400">db</code>, <code class="text-pink-400">http</code>, <code class="text-amber-400">kv</code>, and <code class="text-pink-400">flame</code> panels (and their header badges) to that request — so you can open the flamegraph or query list for a specific XHR call, not just the main page. Every dev response also carries an <code class="text-sky-400">X-Soli-Request-Id</code>; the bar stores each request's snapshot server-side (a small ring buffer of the most recent requests) and the row-click fetches <code class="text-cyan-400">/__solidev/request/:id</code> to re-render its panels in place. The selected row is highlighted; row 0 is always the page itself.
+        </p>
+
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p class="text-amber-300 text-sm">
+                <strong>Production-safe.</strong> The route is recorded behind the same <code>--dev</code> thread-local gate as the other panels, and the <code>X-Soli-Route</code> header is only emitted in dev mode. In production no header is sent and no dev bar (or its script) is injected, so there is zero runtime cost.
+            </p>
+        </div>
+
+        <div class="my-6 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20">
+            <p class="text-sky-300 text-sm">
+                <strong>Scope &amp; caveats.</strong> Only <strong>same-origin</strong> requests that hit a Soli route (i.e. carry <code>X-Soli-Route</code>) become rows — static assets, cross-origin fetches, and 404s are ignored. The list <strong>resets on each full page load</strong> (it reflects the current page). Only the most recent requests are kept for inspection, so a long-idle row may report it has aged out. WebSocket, SSE, and <code>sendBeacon</code> traffic is not captured, and a request fired before the dev bar's script runs may be missed.
+            </p>
+        </div>
     </section>
 
     <!-- Section 5: Development Mode -->

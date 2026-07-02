@@ -1248,11 +1248,85 @@ impl RawImage {
     }
 }
 
+/// PATCHED (soli-pdf): the fully encoded parts of an image XObject — the main
+/// dict (without `/SMask`, which must reference a per-document object id), its
+/// already-compressed content, and the optional SMask dict + content.
+#[derive(Clone)]
+pub(crate) struct EncodedImageXObject {
+    dict: lopdf::Dictionary,
+    content: Vec<u8>,
+    smask: Option<(lopdf::Dictionary, Vec<u8>)>,
+}
+
+/// PATCHED (soli-pdf): process-wide cache of encoded image XObjects, keyed by
+/// the caller-supplied `RawImage::tag` (opaque identity bytes; empty = never
+/// cache) plus a fingerprint of the optimization options. Splitting RGB/alpha
+/// planes and flate-encoding them cost milliseconds per multi-MB image and
+/// used to run on every save even though the pixels never changed.
+fn xobject_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<(Vec<u8>, String), EncodedImageXObject>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<(Vec<u8>, String), EncodedImageXObject>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Bound on cached encoded images (each holds the compressed streams only).
+const XOBJECT_CACHE_MAX: usize = 32;
+
+/// Turn encoded parts into the returned stream, registering the SMask (which
+/// needs a fresh object id) in `doc`.
+fn assemble_image_stream(
+    parts: &EncodedImageXObject,
+    doc: &mut lopdf::Document,
+) -> lopdf::Stream {
+    let mut dict = parts.dict.clone();
+    if let Some((smask_dict, smask_content)) = &parts.smask {
+        let stream =
+            lopdf::Stream::new(smask_dict.clone(), smask_content.clone()).with_compression(false);
+        dict.set("SMask", lopdf::Object::Reference(doc.add_object(stream)));
+    }
+    lopdf::Stream::new(dict, parts.content.clone()).with_compression(false)
+}
+
 pub(crate) fn image_to_stream(
-    im: RawImage,
+    im: &RawImage,
     doc: &mut lopdf::Document,
     options: Option<&ImageOptimizationOptions>,
 ) -> lopdf::Stream {
+    // PATCHED (soli-pdf): consult the encoded-XObject cache before paying for
+    // plane splitting + compression. Options are folded into the key via their
+    // JSON form (tiny struct, serialization is trivially cheap).
+    let cache_key = if im.tag.is_empty() {
+        None
+    } else {
+        let opts_fp = options
+            .and_then(|o| serde_json::to_string(o).ok())
+            .unwrap_or_default();
+        Some((im.tag.clone(), opts_fp))
+    };
+    if let Some(key) = &cache_key {
+        if let Some(hit) = xobject_cache().lock().unwrap().get(key) {
+            return assemble_image_stream(hit, doc);
+        }
+    }
+    let parts = encode_image_xobject(im.clone(), options);
+    if let Some(key) = cache_key {
+        let mut cache = xobject_cache().lock().unwrap();
+        if cache.len() >= XOBJECT_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(key, parts.clone());
+    }
+    assemble_image_stream(&parts, doc)
+}
+
+/// The pre-patch body of `image_to_stream`, minus the parts that must touch
+/// the document (SMask registration) — so its output is cacheable.
+fn encode_image_xobject(
+    im: RawImage,
+    options: Option<&ImageOptimizationOptions>,
+) -> EncodedImageXObject {
     use lopdf::Object::*;
 
     // Optimize the image if options are provided
@@ -1324,7 +1398,9 @@ pub(crate) fn image_to_stream(
         }
     }
 
-    // Handle alpha channel (SMask)
+    // Handle alpha channel (SMask). PATCHED (soli-pdf): collected as parts
+    // instead of registered in the document here, so the result is cacheable.
+    let mut smask_parts: Option<(lopdf::Dictionary, Vec<u8>)> = None;
     if let Some(alpha) = alpha {
         let mut smask_dict = lopdf::Dictionary::from_iter(vec![
             ("Type", Name("XObject".into())),
@@ -1399,18 +1475,14 @@ pub(crate) fn image_to_stream(
             }
         }
 
-        // Create stream with compression disabled (we already compressed the data)
-        let mut stream = lopdf::Stream::new(smask_dict, alpha_pixels);
-        stream = stream.with_compression(false);
-
-        dict.set("SMask", Reference(doc.add_object(stream)));
+        smask_parts = Some((smask_dict, alpha_pixels));
     }
 
-    // Create stream with compression disabled (we already compressed the data)
-    let mut s = lopdf::Stream::new(dict, compressed_pixels);
-    s = s.with_compression(false);
-
-    s
+    EncodedImageXObject {
+        dict,
+        content: compressed_pixels,
+        smask: smask_parts,
+    }
 }
 
 // Function to select the appropriate compression filter
@@ -1531,13 +1603,13 @@ fn jpeg_encode(image: &RawImageU8, quality: f32) -> Option<Vec<u8>> {
 
 // FLATE (deflate) encoding
 fn flate_encode(data: &[u8]) -> Option<Vec<u8>> {
-    use std::io::Write;
-
-    use flate2::{write::ZlibEncoder, Compression};
-
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    encoder.write_all(data).ok()?;
-    encoder.finish().ok()
+    // PATCHED (soli-pdf): reused level-6 encoder instead of a fresh
+    // `Compression::best()` (9) one. Level 9 compresses image data no better
+    // than 6 (often marginally worse) but is up to ~50x slower on synthetic
+    // rasters (QR/barcode), and each fresh encoder pays a ~300 KB state
+    // allocation on top — together these made image encoding the dominant
+    // per-render cost of PdfDocument::save.
+    crate::serialize::zlib_compress_reused(data).ok()
 }
 
 // LZW encoding

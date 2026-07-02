@@ -1,23 +1,101 @@
 //! Fetch + decode images referenced by the template.
 
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::draw::ImageData;
+use crate::draw::{ImageData, PixelFormat};
 use crate::error::{PdfError, Result};
+
+/// Process-wide cache of decoded images, keyed by a hash of the source (plus
+/// file mtime+len for filesystem paths, so an edited file re-decodes). PNG
+/// decode — and especially SVG rasterisation (usvg parse + fontdb build +
+/// resvg render) — costs milliseconds per image, yet a server renders the
+/// same template logo on every request. Only deterministic sources are
+/// cached: `data:` URIs (the URI *is* the content) and local files (guarded
+/// by mtime+len); http(s) responses are not.
+struct ImageCache {
+    /// Sum of `pixels.len()` over all entries, bounding memory.
+    bytes: usize,
+    map: HashMap<u64, Arc<ImageData>>,
+}
+
+/// Decoded-pixel budget. A full-size rasterised SVG is ~16 MB RGBA, so this
+/// holds a handful of large logos or dozens of small ones. Wholesale clear on
+/// overflow keeps it simple; live sources re-fill on the next render.
+const IMAGE_CACHE_MAX_BYTES: usize = 128 * 1024 * 1024;
+
+fn image_cache() -> &'static Mutex<ImageCache> {
+    static CACHE: OnceLock<Mutex<ImageCache>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        Mutex::new(ImageCache {
+            bytes: 0,
+            map: HashMap::new(),
+        })
+    })
+}
+
+/// Cache key for `src`, or `None` when the source must not be cached.
+/// `font_bytes` shape the raster for SVG `<text>`, so a fingerprint of them
+/// (count + lengths) is folded in — different font sets must not share hits.
+fn cache_key(src: &str, font_bytes: &[&[u8]]) -> Option<u64> {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    src.hash(&mut h);
+    font_bytes.len().hash(&mut h);
+    for b in font_bytes {
+        b.len().hash(&mut h);
+    }
+    if src.starts_with("data:") {
+        Some(h.finish())
+    } else if src.starts_with("http://") || src.starts_with("https://") {
+        None
+    } else {
+        // Local file: bind the key to what's on disk right now.
+        let path = src.strip_prefix("file://").unwrap_or(src);
+        let meta = std::fs::metadata(path).ok()?;
+        meta.len().hash(&mut h);
+        if let Ok(mtime) = meta.modified() {
+            mtime.hash(&mut h);
+        }
+        Some(h.finish())
+    }
+}
 
 /// Load and decode an image from an http(s) URL, a `file://` URL / filesystem
 /// path, or a `data:` URI. Network fetches are gated by `fetch`. `font_bytes`
 /// supplies fonts for `<text>` in SVG sources (ignored for raster formats) —
 /// pass the already-loaded [`crate::fonts::FontRegistry::all_font_bytes`]
-/// rather than re-reading `font_dirs` from disk per image.
+/// rather than re-reading `font_dirs` from disk per image. Decodes of
+/// deterministic sources are cached process-wide.
 pub fn load_image(
     src: &str,
     fetch: bool,
     timeout: Duration,
     font_bytes: &[&[u8]],
-) -> Result<ImageData> {
+) -> Result<Arc<ImageData>> {
+    let key = cache_key(src, font_bytes);
+    if let Some(k) = key {
+        if let Some(hit) = image_cache().lock().unwrap().map.get(&k) {
+            return Ok(hit.clone());
+        }
+    }
     let bytes = fetch_bytes(src, fetch, timeout)?;
-    decode(&bytes, font_bytes)
+    let mut decoded = decode(&bytes, font_bytes)?;
+    // Give cacheable images their source identity, so the PDF backend can
+    // also reuse the encoded XObject (plane split + flate) across renders.
+    decoded.source_key = key;
+    let img = Arc::new(decoded);
+    if let Some(k) = key {
+        let mut cache = image_cache().lock().unwrap();
+        if cache.bytes + img.pixels.len() > IMAGE_CACHE_MAX_BYTES {
+            cache.map.clear();
+            cache.bytes = 0;
+        }
+        cache.bytes += img.pixels.len();
+        cache.map.insert(k, img.clone());
+    }
+    Ok(img)
 }
 
 fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
@@ -112,7 +190,12 @@ fn decode(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     Ok(ImageData {
         width_px: w,
         height_px: h,
-        has_alpha,
+        format: if has_alpha {
+            PixelFormat::Rgba8
+        } else {
+            PixelFormat::Rgb8
+        },
+        source_key: None,
         pixels,
     })
 }
@@ -202,7 +285,8 @@ fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     Ok(ImageData {
         width_px: pw as usize,
         height_px: ph as usize,
-        has_alpha: true,
+        format: PixelFormat::Rgba8,
+        source_key: None,
         pixels,
     })
 }
@@ -259,7 +343,7 @@ mod tests {
         assert!(looks_like_svg(svg));
         let img = decode(svg, &[]).unwrap();
         // Intrinsic 100x60 is upscaled so the longest edge reaches MIN_EDGE (512).
-        assert!(img.has_alpha);
+        assert_eq!(img.format, PixelFormat::Rgba8);
         assert_eq!(img.width_px, 512);
         assert_eq!(img.height_px, 307); // 60 * (512/100), rounded
         assert_eq!(img.pixels.len(), img.width_px * img.height_px * 4);
@@ -272,7 +356,7 @@ mod tests {
     fn svg_data_uri_is_detected() {
         let uri = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='5'/></svg>";
         let img = load_image(uri, false, Duration::from_secs(1), &[]).unwrap();
-        assert!(img.has_alpha);
+        assert_eq!(img.format, PixelFormat::Rgba8);
         assert!(img.width_px >= 512);
     }
 

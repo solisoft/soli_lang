@@ -9410,6 +9410,23 @@
       ]
     },
     {
+      "title": "static background: Bool = true",
+      "type": "feature",
+      "category": "Jobs",
+      "path": "/docs/builtins/jobs#section-background",
+      "signature": "static background: Bool = true",
+      "description": "Run a long job on the in-process background pool: the callback acks immediately (no SolidB timeout, no duplicate retry) and the job runs fire-and-forget. Sized by SOLI_JOB_WORKERS.",
+      "keywords": [
+        "background",
+        "long running",
+        "timeout",
+        "async job",
+        "fire and forget",
+        "SOLI_JOB_WORKERS",
+        "job pool"
+      ]
+    },
+    {
       "title": "session_get",
       "type": "function",
       "category": "Session",

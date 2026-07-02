@@ -13,7 +13,9 @@
 //! * `PdfDocument::save` writes a PDF 1.3 header; the facturx step rewrites the
 //!   version to 1.7 for PDF/A-3.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use printpdf::{
     Actions, BorderArray, Color as PpColor, Destination, FontId, ImageCompression,
@@ -24,12 +26,81 @@ use printpdf::{
 };
 
 use crate::color::Rgb;
-use crate::draw::{DrawOp, ImageData, LaidOutDoc, PolyPoint, StyledPiece, TextDraw, TextPiece};
+use crate::draw::{
+    DrawOp, ImageData, LaidOutDoc, PixelFormat, PolyPoint, StyledPiece, TextDraw, TextPiece,
+};
 use crate::error::{PdfError, Result};
 use crate::fonts::{FontRegistry, FontSlot};
 
 fn pp_color(c: Rgb) -> PpColor {
     PpColor::Rgb(PpRgb::new(c.r, c.g, c.b, None))
+}
+
+/// Process-wide cache of subset + printpdf-parsed faces.
+///
+/// Subsetting a face and re-parsing it with `ParsedFont::from_bytes` dominated
+/// emit time (~2.6 ms/render with a CJK face — see `benches/render.rs`), yet
+/// for template-driven documents the used character set is identical from one
+/// render to the next. Keyed by the face's content digest plus the *exact*
+/// used-char set (verified on hit), so identical inputs still embed identical
+/// subsets — renders stay deterministic, unlike a grow-only superset cache.
+struct EmbedEntry {
+    chars: BTreeSet<char>,
+    parsed: Arc<ParsedFont>,
+}
+
+/// Entry count bound; at ~10–100 KB per subset face this caps the cache at a
+/// few MB. Wholesale clear on overflow keeps it simple — steady-state servers
+/// re-fill with their handful of live (face, char-set) pairs immediately.
+const EMBED_CACHE_MAX: usize = 64;
+
+/// Keyed by (face content digest, used-char-set hash).
+type EmbedCache = HashMap<([u8; 16], u64), EmbedEntry>;
+
+fn embed_cache() -> &'static Mutex<EmbedCache> {
+    static CACHE: OnceLock<Mutex<EmbedCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Subset `slot`'s face to `chars` and parse it for embedding, via the
+/// process-wide cache.
+fn subset_and_parse(
+    fonts: &FontRegistry,
+    slot: FontSlot,
+    chars: &BTreeSet<char>,
+    font_warnings: &mut Vec<printpdf::PdfFontParseWarning>,
+) -> Result<Arc<ParsedFont>> {
+    let digest = fonts.face_digest(slot);
+    let chars_hash = {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        chars.hash(&mut h);
+        h.finish()
+    };
+    let key = (digest, chars_hash);
+    if let Some(entry) = embed_cache().lock().unwrap().get(&key) {
+        // Guard against a (astronomically unlikely) 64-bit hash collision: the
+        // char set must match exactly, else fall through and rebuild.
+        if entry.chars == *chars {
+            return Ok(entry.parsed.clone());
+        }
+    }
+    let bytes = fonts.subset_bytes(slot, chars);
+    let parsed = Arc::new(
+        ParsedFont::from_bytes(&bytes, 0, font_warnings)
+            .ok_or_else(|| PdfError::Font(format!("printpdf could not parse {slot:?} font")))?,
+    );
+    let mut cache = embed_cache().lock().unwrap();
+    if cache.len() >= EMBED_CACHE_MAX {
+        cache.clear();
+    }
+    cache.insert(
+        key,
+        EmbedEntry {
+            chars: chars.clone(),
+            parsed: parsed.clone(),
+        },
+    );
+    Ok(parsed)
 }
 
 /// Set a dash pattern for subsequent strokes (no-op when `None`).
@@ -102,16 +173,14 @@ pub fn emit(doc: &LaidOutDoc, fonts: &FontRegistry) -> Result<Vec<u8>> {
 
     let mut font_ids: BTreeMap<FontSlot, FontId> = BTreeMap::new();
     for (slot, chars) in &used {
-        let bytes = fonts.subset_bytes(*slot, chars);
-        let parsed = ParsedFont::from_bytes(&bytes, 0, &mut font_warnings)
-            .ok_or_else(|| PdfError::Font(format!("printpdf could not parse {slot:?} font")))?;
+        let parsed = subset_and_parse(fonts, *slot, chars, &mut font_warnings)?;
         font_ids.insert(*slot, pdf.add_font(&parsed));
     }
 
     // Register images once each.
     let mut image_ids: Vec<XObjectId> = Vec::with_capacity(doc.images.len());
     for img in &doc.images {
-        image_ids.push(pdf.add_image(&raw_image(img)));
+        image_ids.push(pdf.add_image_owned(raw_image(img)));
     }
 
     for page in &doc.pages {
@@ -163,12 +232,17 @@ fn raw_image(img: &ImageData) -> RawImage {
         pixels: RawImageData::U8(img.pixels.clone()),
         width: img.width_px,
         height: img.height_px,
-        data_format: if img.has_alpha {
-            RawImageFormat::RGBA8
-        } else {
-            RawImageFormat::RGB8
+        data_format: match img.format {
+            PixelFormat::Gray8 => RawImageFormat::R8,
+            PixelFormat::Rgb8 => RawImageFormat::RGB8,
+            PixelFormat::Rgba8 => RawImageFormat::RGBA8,
         },
-        tag: Vec::new(),
+        // The source identity keys printpdf's encoded-XObject cache (a
+        // vendored patch); empty = re-encode on every save.
+        tag: img
+            .source_key
+            .map(|k| k.to_le_bytes().to_vec())
+            .unwrap_or_default(),
     }
 }
 

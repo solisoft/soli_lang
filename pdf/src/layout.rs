@@ -42,7 +42,7 @@ pub struct Engine<'a> {
     cursor: Cursor,
     pages: Vec<RenderedPage>,
     current: Vec<DrawOp>,
-    images: Vec<ImageData>,
+    images: Vec<std::sync::Arc<ImageData>>,
     image_cache: std::collections::HashMap<String, Option<usize>>,
     warnings: Vec<RenderWarning>,
     bookmarks: Vec<(String, usize)>,
@@ -772,7 +772,7 @@ impl<'a> Engine<'a> {
     /// Push a programmatically generated image (e.g. a QR raster) and return its
     /// index, mirroring [`Self::intern_image`] for in-memory bitmaps.
     fn intern_generated_image(&mut self, img: ImageData) -> usize {
-        self.images.push(img);
+        self.images.push(std::sync::Arc::new(img));
         self.images.len() - 1
     }
 

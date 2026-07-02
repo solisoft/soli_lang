@@ -421,6 +421,8 @@ fn login(req) {
 
 When the server runs with `--dev`, `dev_queries()` returns the AQL queries (with bindvars and duration_ms) executed during the current request. Returns `[]` in production with zero runtime overhead. Useful for building a debug bar. See [Models — Inspecting AQL Queries](www/docs/models.md#inspecting-aql-queries-dev-tool).
 
+In `--dev`, every response also carries `X-Soli-Route: <controller#action>`, `X-Soli-Request-Id`, and `X-Soli-Render-Us` (server-side handler time in µs; the requests panel shows this as each row's duration, not the client round-trip) headers. The dev bar reads them (via a `fetch`/`XHR` patch) to list all routes a page touches — the main page plus its XHR/HTMx calls — under the clickable header URL. Clicking a listed request retargets the db/http/kv/flame panels to that request by fetching the dev-only `/__solidev/request/:id` endpoint, which re-renders the snapshot stashed in `serve::dev_store` (a bounded ring buffer). No headers or endpoint in production.
+
 ## Documentation Policy
 
 **Every user-facing change MUST be documented in BOTH places:**

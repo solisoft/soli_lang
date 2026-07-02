@@ -5073,6 +5073,13 @@
       }
     }
   }
+  .hover\:text-amber-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-amber-300);
+      }
+    }
+  }
   .hover\:text-blue-200 {
     &:hover {
       @media (hover: hover) {
@@ -5098,6 +5105,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--color-cyan-300);
+      }
+    }
+  }
+  .hover\:text-emerald-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-emerald-300);
       }
     }
   }
@@ -5140,6 +5154,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--color-pink-300);
+      }
+    }
+  }
+  .hover\:text-purple-300 {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-purple-300);
       }
     }
   }

@@ -57,7 +57,11 @@ fn svg_image_is_decoded_and_embedded() {
     let images = ops_of(&doc, |o| matches!(o, DrawOp::Image { .. }));
     assert_eq!(images, 1, "the SVG produced one image op");
     assert_eq!(doc.images.len(), 1, "one decoded image");
-    assert!(doc.images[0].has_alpha, "SVG rasterises to RGBA");
+    assert_eq!(
+        doc.images[0].format,
+        soli_pdf::draw::PixelFormat::Rgba8,
+        "SVG rasterises to RGBA"
+    );
     assert!(!doc.images[0].pixels.is_empty(), "non-empty raster");
     assert!(
         warnings.is_empty(),

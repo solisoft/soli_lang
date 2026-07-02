@@ -361,11 +361,18 @@ impl PdfDocument {
 
     /// Adds an image to the internal resources
     pub fn add_image(&mut self, image: &RawImage) -> XObjectId {
+        self.add_image_owned(image.clone())
+    }
+
+    /// Adds an image to the internal resources, taking ownership.
+    /// PATCHED (soli-pdf): avoids cloning multi-MB pixel buffers when the
+    /// caller already holds a throwaway `RawImage`.
+    pub fn add_image_owned(&mut self, image: RawImage) -> XObjectId {
         let id = XObjectId::new();
         self.resources
             .xobjects
             .map
-            .insert(id.clone(), XObject::Image(image.clone()));
+            .insert(id.clone(), XObject::Image(image));
         id
     }
 

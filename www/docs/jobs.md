@@ -183,6 +183,7 @@ Set these env vars (typically in `.env`):
 | `SOLI_JOBS_CALLBACK_URL`  | URL SolidB POSTs to when a Soli `Job` fires                             | `http://127.0.0.1:3000/_jobs/run`  |
 | `SOLI_WEBHOOK_SECRET`     | **Required.** HMAC-SHA256 key used to sign and verify callbacks         | unset                              |
 | `SOLI_JOBS_SECRET`        | Legacy alias for `SOLI_WEBHOOK_SECRET`; still accepted                  | unset                              |
+| `SOLI_JOB_WORKERS`        | Size of the in-process pool for `static background: Bool = true` jobs; `0` disables (all jobs run inline) | `2`            |
 
 The callback URL must be reachable from the SolidB server. In production set it to your Soli app's public URL plus `/_jobs/run`. Either env var alone is enough to enable signed callbacks — the dispatcher checks `SOLI_WEBHOOK_SECRET` first, then falls back to `SOLI_JOBS_SECRET`.
 
@@ -215,10 +216,39 @@ Use a long, random value for the secret (32+ bytes from a CSPRNG). Rotate it the
 
 For cron, the flow is identical except step 3 is triggered by the cron schedule rather than an explicit enqueue. For `Webhook.enqueue(...)`, steps 3–4 collapse: SolidB POSTs directly to the URL you supplied — there is no Soli-side dispatcher to invoke.
 
+## Long-Running Jobs (Background Pool)
+
+By default `cls.perform(args)` runs **synchronously inside the callback** (step 4 above): SolidB holds the HTTP connection open until it returns. That's fine for quick jobs, but a job that runs for minutes will trip SolidB's callback timeout — SolidB then marks it failed and **retries it, so it runs a second time concurrently** — and while it runs it occupies one of your web-server workers.
+
+Opt a job out of the synchronous path with `static background: Bool = true`:
+
+```soli
+# app/jobs/monthly_report_job.sl
+class MonthlyReportJob {
+  static background: Bool = true          # run on the in-process background pool
+
+  static fn perform(args: Hash) {
+    # Heavy work — bulk queries, exports, PDF generation — runs here with no
+    # timeout and without holding a web worker. Owns its own error handling.
+    generate_report(args["month"]);
+  }
+}
+```
+
+When such a job's callback arrives, Soli hands it to a dedicated **background worker pool** and replies `200 queued` immediately. The job then runs on its own thread with no timeout, and the web worker is freed at once. Delayed (`perform_in`/`perform_at`) and `static cron` jobs honor the flag the same way — it's read at callback time, regardless of how the job was scheduled.
+
+**Trade-off — fire-and-forget.** Because Soli acks *before* the work runs, SolidB sees only the immediate `200` and **will not retry a backgrounded job if it fails**. Backgrounded jobs must own their reliability:
+
+- Make `perform` idempotent and handle/log its own errors (a raised error just prints; it does not signal SolidB).
+- Re-enqueue or checkpoint yourself if you need at-least-once semantics.
+- Keep the default synchronous mode for short jobs where SolidB's automatic retry is the point.
+
+The pool is sized by `SOLI_JOB_WORKERS` (default `2`). Each worker holds its own loaded interpreter (models, services, mailers, jobs), so size it for your concurrency and memory budget. `SOLI_JOB_WORKERS=0` disables backgrounding entirely — every job, including those marked `static background: Bool = true`, runs inline as before.
+
 ## Idempotency and Retries
 
 - **Cron upsert.** `Cron.schedule(name, ...)` is keyed by `name`. Same name = update, never duplicate. Worker 0 is the only worker that performs cron auto-registration on boot, to avoid races between workers.
-- **Job retries.** SolidB owns retry semantics. Soli's callback returns 5xx on handler error so SolidB will retry. Treat handlers as idempotent where possible.
+- **Job retries.** SolidB owns retry semantics. Soli's callback returns 5xx on handler error so SolidB will retry. Treat handlers as idempotent where possible. **Exception:** jobs marked `static background: Bool = true` ack `200` before running, so SolidB never sees their failures and does **not** retry them — see [Long-Running Jobs](#long-running-jobs-background-pool).
 - **`job_id` and `attempt`.** When SolidB retries, it includes an `attempt` count and `job_id` in the callback body. Read them from `req["json"]` if you need de-dup logic.
 
 ## Hot Reload

@@ -35,6 +35,11 @@ pub struct Metrics {
     /// Coarse total time spent in DB / SolidB queries (from query_log).
     pub db_query_duration_ns_total: AtomicU64,
     pub db_query_count: AtomicU64,
+    /// Number of handlers demoted from the VM to the tree-walking interpreter
+    /// (per worker, first failing request only — the demotion is then cached).
+    /// A non-zero value means some production handlers run on the slower
+    /// engine; set `SOLI_ENGINE_LOG=1` to log which handler and why.
+    pub vm_handler_demotions_total: AtomicU64,
     start_time: std::sync::OnceLock<Instant>,
 }
 
@@ -54,6 +59,7 @@ impl Metrics {
             middleware_count: AtomicU64::new(0),
             db_query_duration_ns_total: AtomicU64::new(0),
             db_query_count: AtomicU64::new(0),
+            vm_handler_demotions_total: AtomicU64::new(0),
             start_time: std::sync::OnceLock::new(),
         }
     }
@@ -172,6 +178,15 @@ impl Metrics {
         out.push_str(&format!(
             "soli_db_query_duration_seconds_count {}\n",
             self.db_query_count.load(Ordering::Relaxed)
+        ));
+
+        out.push_str(
+            "# HELP soli_vm_handler_demotions_total Handlers demoted from the bytecode VM to the tree-walking interpreter (cached per worker; non-zero means some handlers run on the slower engine).\n",
+        );
+        out.push_str("# TYPE soli_vm_handler_demotions_total counter\n");
+        out.push_str(&format!(
+            "soli_vm_handler_demotions_total {}\n",
+            self.vm_handler_demotions_total.load(Ordering::Relaxed)
         ));
 
         out

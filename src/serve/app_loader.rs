@@ -306,6 +306,10 @@ pub(crate) fn load_jobs_in_worker(
     interpreter: &mut Interpreter,
     jobs_dir: &Path,
     file_tracker: &mut FileTracker,
+    // Whether this loader may upsert `static cron` schedules to SolidB (only the
+    // designated web worker 0 does). Background-pool loaders pass `false` so they
+    // never duplicate the cron registration the web pool already performed.
+    sync_cron: bool,
 ) {
     let job_files = match scan_jobs(jobs_dir) {
         Ok(files) => files,
@@ -359,7 +363,7 @@ pub(crate) fn load_jobs_in_worker(
         );
 
         // Worker 0 only: upsert `static cron` schedules to SolidB.
-        if worker_id == 0 {
+        if worker_id == 0 && sync_cron {
             if let Some(expr) = crate::interpreter::builtins::jobs::read_static_cron(&class_rc) {
                 let cron_name =
                     crate::interpreter::builtins::jobs::class_name_to_snake(&expected_class);

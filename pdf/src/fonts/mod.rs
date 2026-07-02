@@ -69,6 +69,11 @@ impl FontSlot {
 #[derive(Clone)]
 struct LoadedFace {
     bytes: Vec<u8>,
+    /// Content digest identifying this face across registries (md5 of length +
+    /// leading bytes — the sfnt table directory with per-table checksums lives
+    /// there, so distinct fonts can't collide). Keys the process-wide embed
+    /// cache in `pdf_backend`.
+    digest: [u8; 16],
     /// Lowercased file stem, used for family matching (e.g. "titilliumweb-bold").
     key: String,
     is_bold: bool,
@@ -129,8 +134,16 @@ impl LoadedFace {
                 }
             }
         }
+        let digest = {
+            use md5::{Digest, Md5};
+            let mut hasher = Md5::new();
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(&bytes[..bytes.len().min(4096)]);
+            hasher.finalize().into()
+        };
         Ok(LoadedFace {
             bytes,
+            digest,
             key,
             is_bold,
             is_italic,
@@ -329,6 +342,13 @@ impl FontRegistry {
     /// Raw bytes for a slot (used by the backend to embed the face).
     pub fn bytes(&self, slot: FontSlot) -> &[u8] {
         &self.face_of(slot).bytes
+    }
+
+    /// Content digest of the face a slot resolves to. Stable across registries
+    /// loading the same font file — used to key the embed cache in
+    /// `pdf_backend` (two slots degrading to the same face share a digest).
+    pub fn face_digest(&self, slot: FontSlot) -> [u8; 16] {
+        self.face_of(slot).digest
     }
 
     /// Bytes for a slot subset to just the glyphs needed for `used_chars`,

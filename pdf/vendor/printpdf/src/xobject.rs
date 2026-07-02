@@ -60,7 +60,9 @@ pub(crate) fn add_xobject_to_document(
         XObject::Image(_i) => {
             #[cfg(feature = "images")]
             {
-                let stream = crate::image::image_to_stream(_i.clone(), doc, _image_opts);
+                // PATCHED (soli-pdf): pass by reference — image_to_stream only
+                // clones on an encoded-cache miss.
+                let stream = crate::image::image_to_stream(_i, doc, _image_opts);
                 doc.add_object(stream)
             }
             #[cfg(not(feature = "images"))]
