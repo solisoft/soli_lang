@@ -17,6 +17,7 @@ fn opts() -> RenderOptions {
         fetch_images: false,
         http_timeout: Duration::from_secs(1),
         font_dirs: vec!["fonts".into()],
+        ..Default::default()
     }
 }
 

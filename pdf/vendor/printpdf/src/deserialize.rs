@@ -2714,9 +2714,14 @@ mod links_and_bookmarks {
                 0
             };
 
+            // PATCHED (soli-pdf): the extractor still flattens the outline —
+            // nesting is not reconstructed on load (generation-side only).
+            let order = bookmarks.len();
             bookmarks.push(PageAnnotation {
                 name: decode_possible_utf16be(&title),
                 page: page_num,
+                order,
+                parent: None,
             });
 
             // Move on to the next bookmark.

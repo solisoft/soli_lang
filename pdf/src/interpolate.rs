@@ -39,7 +39,7 @@ fn find_close(s: &str, from: usize) -> Option<usize> {
 /// Whether a string still contains page tokens (so footer alignment must be
 /// recomputed in pass 2).
 pub fn has_page_tokens(s: &str) -> bool {
-    s.contains("#PAGE#") || s.contains("#TOTAL_PAGE#")
+    s.contains("#PAGE#") || s.contains("#TOTAL_PAGE#") || s.contains("#PAGE_OF:")
 }
 
 /// Substitute `#PAGE#` and `#TOTAL_PAGE#`. Order matters: replace the longer
@@ -47,6 +47,44 @@ pub fn has_page_tokens(s: &str) -> bool {
 pub fn substitute_page_tokens(s: &str, page: usize, total: usize) -> String {
     s.replace("#TOTAL_PAGE#", &total.to_string())
         .replace("#PAGE#", &page.to_string())
+}
+
+/// Substitute every `#PAGE_OF:anchor#` token with the 1-based page number of
+/// the named `anchor` (the jump targets set by paragraph `options.anchor`) —
+/// what turns a `linkTo` table of contents into a real one with page numbers.
+/// An unknown anchor renders empty and records a warning.
+pub fn substitute_anchor_tokens(
+    s: &str,
+    anchors: &std::collections::HashMap<String, (usize, f32)>,
+    warnings: &mut Vec<RenderWarning>,
+) -> String {
+    const OPEN: &str = "#PAGE_OF:";
+    if !s.contains(OPEN) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + OPEN.len()..];
+        match after.find('#') {
+            Some(end) => {
+                let name = after[..end].trim();
+                match anchors.get(name) {
+                    Some((page_idx, _)) => out.push_str(&(page_idx + 1).to_string()),
+                    None => warnings.push(RenderWarning::MissingPath(format!("PAGE_OF:{name}"))),
+                }
+                rest = &after[end + 1..];
+            }
+            None => {
+                // Unterminated token: keep it literal.
+                out.push_str(&rest[start..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]

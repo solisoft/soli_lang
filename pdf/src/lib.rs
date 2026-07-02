@@ -8,11 +8,13 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub mod attachments;
 pub mod barcode;
 pub mod chart;
 pub mod color;
 pub mod data;
 pub mod draw;
+pub mod encrypt;
 pub mod error;
 pub mod facturx;
 pub mod fonts;
@@ -24,9 +26,12 @@ pub mod layout;
 pub mod pdf_backend;
 pub mod qr;
 pub mod render;
+pub mod stationery;
 pub mod template;
 pub mod text;
 
+pub use attachments::Attachment;
+pub use encrypt::EncryptOptions;
 pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
 pub use invoice::{Amount, Invoice, Line, Party};
@@ -45,6 +50,24 @@ pub struct RenderOptions {
     /// scripts the bundled Latin font can't cover (e.g. CJK). Loaded in order;
     /// missing directories are ignored.
     pub font_dirs: Vec<PathBuf>,
+    /// Document title written to the PDF Info dictionary. Defaults to
+    /// `"invoice"` (the historical hardcoded value) when unset. The Factur-X
+    /// path overrides this later via its own `FacturxMetadata`.
+    pub title: Option<String>,
+    /// Document author for the Info dictionary.
+    pub author: Option<String>,
+    /// Document subject for the Info dictionary.
+    pub subject: Option<String>,
+    /// Letterhead/stationery PDF bytes drawn *beneath* every page's content.
+    /// Page 1 uses the letterhead's first page; later pages use its second
+    /// page when present, else the first (see [`stationery`]).
+    pub stationery: Option<Vec<u8>>,
+    /// Files embedded into the document's attachments panel (see
+    /// [`attachments`]). Composes with the Factur-X step.
+    pub attachments: Vec<Attachment>,
+    /// Password-protect the output (AES-128). Applied last; incompatible with
+    /// Factur-X/PDF-A (callers must not combine them).
+    pub encrypt: Option<EncryptOptions>,
 }
 
 impl Default for RenderOptions {
@@ -53,6 +76,12 @@ impl Default for RenderOptions {
             fetch_images: true,
             http_timeout: Duration::from_secs(15),
             font_dirs: Vec::new(),
+            title: None,
+            author: None,
+            subject: None,
+            stationery: None,
+            attachments: Vec::new(),
+            encrypt: None,
         }
     }
 }

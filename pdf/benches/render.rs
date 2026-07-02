@@ -21,6 +21,7 @@ fn opts() -> RenderOptions {
         fetch_images: false,
         http_timeout: Duration::from_secs(1),
         font_dirs: vec!["fonts".into()],
+        ..Default::default()
     }
 }
 
@@ -30,6 +31,7 @@ fn opts_cjk() -> RenderOptions {
         fetch_images: false,
         http_timeout: Duration::from_secs(1),
         font_dirs: vec!["fonts".into(), "../font".into()],
+        ..Default::default()
     }
 }
 

@@ -16,8 +16,8 @@ use crate::{
     color::IccProfile,
     font::{ParsedFont, FontType},
     Actions, BuiltinFont, Color, ColorArray, Destination, FontId, IccProfileType,
-    ImageOptimizationOptions, Line, LinkAnnotation, Op, PaintMode, PdfDocument,
-    PdfDocumentInfo, PdfPage, PdfResources, PdfWarnMsg, Polygon, TextItem, XObject,
+    ImageOptimizationOptions, Line, LinkAnnotation, Op, PageAnnotId, PageAnnotation, PaintMode,
+    PdfDocument, PdfDocumentInfo, PdfPage, PdfResources, PdfWarnMsg, Polygon, TextItem, XObject,
     XObjectId,
 };
 
@@ -368,40 +368,75 @@ pub fn to_lopdf_doc(
         })
         .collect::<Vec<_>>();
 
-    // Now that the page objs are rendered, resolve which bookmarks reference which page objs
+    // Now that the page objs are rendered, resolve which bookmarks reference which page objs.
+    // PATCHED (soli-pdf): the outline is emitted as a TREE — bookmarks carry an
+    // insertion `order` (document order; the map key is a random id) and an
+    // optional `parent` for nesting. Flat documents (no parents) behave as
+    // before, minus the old (page, name) re-sort, which clobbered authored order.
     if !pdf.bookmarks.map.is_empty() {
         let bookmarks_id = doc.new_object_id();
-        let mut bookmarks_sorted = pdf.bookmarks.map.iter().collect::<Vec<_>>();
-        bookmarks_sorted.sort_by(|(_, v), (_, v2)| (v.page, &v.name).cmp(&(v2.page, &v2.name)));
-        let bookmarks_sorted = bookmarks_sorted
-            .into_iter()
+
+        // Document order, dropping bookmarks whose page doesn't exist.
+        let mut nodes = pdf
+            .bookmarks
+            .map
+            .iter()
             .filter_map(|(k, v)| {
                 let page_obj_id = page_ids.get(v.page.saturating_sub(1)).cloned()?;
-                Some((k, &v.name, page_obj_id))
+                Some((k.clone(), v, page_obj_id))
             })
             .collect::<Vec<_>>();
+        nodes.sort_by_key(|(_, v, _)| v.order);
 
-        let bookmark_ids = bookmarks_sorted
+        // Pre-allocate a lopdf object id per bookmark so parents can be referenced.
+        let obj_ids: std::collections::BTreeMap<PageAnnotId, lopdf::ObjectId> = nodes
             .iter()
-            .map(|(id, name, page_id)| {
-                let newid = doc.new_object_id();
-                (id, name, page_id, newid)
-            })
-            .collect::<Vec<_>>();
+            .map(|(k, _, _)| (k.clone(), doc.new_object_id()))
+            .collect();
 
-        let first = bookmark_ids.first().map(|s| s.3).unwrap();
-        let last = bookmark_ids.last().map(|s| s.3).unwrap();
-        for (i, (_id, name, pageid, self_id)) in bookmark_ids.iter().enumerate() {
-            let prev = if i == 0 {
-                None
-            } else {
-                bookmark_ids.get(i - 1).map(|s| s.3)
-            };
-            let next = bookmark_ids.get(i + 1).map(|s| s.3);
-            let dest = Array(vec![Reference(*(*pageid)), "XYZ".into(), Null, Null, Null]);
+        // Group children per parent (a dangling parent falls back to the root).
+        let mut children: std::collections::BTreeMap<Option<PageAnnotId>, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (i, (_, v, _)) in nodes.iter().enumerate() {
+            let parent = v
+                .parent
+                .clone()
+                .filter(|p| obj_ids.contains_key(p));
+            children.entry(parent).or_default().push(i);
+        }
+
+        // Descendant count per node (all entries open => positive /Count).
+        fn descendants(
+            of: &Option<PageAnnotId>,
+            nodes: &[(PageAnnotId, &PageAnnotation, lopdf::ObjectId)],
+            children: &std::collections::BTreeMap<Option<PageAnnotId>, Vec<usize>>,
+        ) -> i64 {
+            children
+                .get(of)
+                .map(|kids| {
+                    kids.iter()
+                        .map(|&i| 1 + descendants(&Some(nodes[i].0.clone()), nodes, children))
+                        .sum()
+                })
+                .unwrap_or(0)
+        }
+
+        for (i, (key, v, page_obj)) in nodes.iter().enumerate() {
+            let self_id = obj_ids[key];
+            let parent = v.parent.clone().filter(|p| obj_ids.contains_key(p));
+            let parent_obj = parent
+                .as_ref()
+                .map(|p| obj_ids[p])
+                .unwrap_or(bookmarks_id);
+            let siblings = &children[&parent];
+            let pos = siblings.iter().position(|&s| s == i).unwrap_or(0);
+            let prev = pos.checked_sub(1).map(|p| obj_ids[&nodes[siblings[p]].0]);
+            let next = siblings.get(pos + 1).map(|&n| obj_ids[&nodes[n].0]);
+
+            let dest = Array(vec![Reference(*page_obj), "XYZ".into(), Null, Null, Null]);
             let mut dict = LoDictionary::from_iter(vec![
-                ("Parent", Reference(bookmarks_id)),
-                ("Title", encode_text_to_utf16be(name)),
+                ("Parent", Reference(parent_obj)),
+                ("Title", encode_text_to_utf16be(&v.name)),
                 ("Dest", dest),
             ]);
             if let Some(prev) = prev {
@@ -410,15 +445,27 @@ pub fn to_lopdf_doc(
             if let Some(next) = next {
                 dict.set("Next", Reference(next));
             }
-            doc.set_object(*self_id, dict);
+            let own_key = Some(key.clone());
+            if let Some(kids) = children.get(&own_key) {
+                if !kids.is_empty() {
+                    dict.set("First", Reference(obj_ids[&nodes[kids[0]].0]));
+                    dict.set("Last", Reference(obj_ids[&nodes[*kids.last().unwrap()].0]));
+                    dict.set("Count", Integer(descendants(&own_key, &nodes, &children)));
+                }
+            }
+            doc.set_object(self_id, dict);
         }
 
-        let bookmarks_list = LoDictionary::from_iter(vec![
+        let mut bookmarks_list = LoDictionary::from_iter(vec![
             ("Type", "Outlines".into()),
-            ("Count", Integer(pdf.bookmarks.map.len() as i64)),
-            ("First", Reference(first)),
-            ("Last", Reference(last)),
+            ("Count", Integer(nodes.len() as i64)),
         ]);
+        if let Some(roots) = children.get(&None) {
+            if !roots.is_empty() {
+                bookmarks_list.set("First", Reference(obj_ids[&nodes[roots[0]].0]));
+                bookmarks_list.set("Last", Reference(obj_ids[&nodes[*roots.last().unwrap()].0]));
+            }
+        }
 
         doc.set_object(bookmarks_id, bookmarks_list);
         catalog.set("Outlines", Reference(bookmarks_id));

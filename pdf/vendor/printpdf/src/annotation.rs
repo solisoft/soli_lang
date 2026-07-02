@@ -9,6 +9,14 @@ pub struct PageAnnotation {
     pub name: String,
     /// Which page to jump to (i.e "page 10" = 10)
     pub page: usize,
+    /// PATCHED (soli-pdf): insertion (document) order. The map is keyed by a
+    /// random id, so without this the outline would lose its authored order.
+    #[serde(default)]
+    pub order: usize,
+    /// PATCHED (soli-pdf): parent bookmark for a nested outline (None = top
+    /// level). Enables hierarchical outlines; see `add_bookmark_child`.
+    #[serde(default)]
+    pub parent: Option<crate::PageAnnotId>,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

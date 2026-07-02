@@ -11839,6 +11839,257 @@
       ]
     },
     {
+      "title": "PDF password protection (encryption)",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-options",
+      "description": "AES-128 password-protect a PDF with the password / owner_password / permissions render options. Incompatible with Factur-X.",
+      "keywords": [
+        "pdf",
+        "password",
+        "encrypt",
+        "encryption",
+        "protect",
+        "permissions",
+        "AES"
+      ]
+    },
+    {
+      "title": "PDF multi-column flow",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "The columns element flows content across N columns (sequential fill); page_break inside is a column break. Newsletter-style layouts.",
+      "keywords": [
+        "pdf",
+        "columns",
+        "multi-column",
+        "column",
+        "newsletter",
+        "flow"
+      ]
+    },
+    {
+      "title": "PDF background image",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "options.backgroundImage draws a full-page image (cover photo, branded page) behind every page, with a pages filter.",
+      "keywords": [
+        "pdf",
+        "background image",
+        "backgroundImage",
+        "cover",
+        "full page image"
+      ]
+    },
+    {
+      "title": "PDF table footer row & cell valign",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "footer_columns closes a table and repeats above every page break (carried-forward subtotals); valign positions cell content top/middle/bottom.",
+      "keywords": [
+        "pdf",
+        "table footer",
+        "carried forward",
+        "subtotal",
+        "valign",
+        "vertical align"
+      ]
+    },
+    {
+      "title": "PDF file attachments",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-options",
+      "description": "Embed arbitrary files (CSV/XML/JSON sources) into the PDF's attachments panel via the attachments render option; composes with Factur-X.",
+      "keywords": [
+        "pdf",
+        "attachments",
+        "embedded files",
+        "attach",
+        "embed file"
+      ]
+    },
+    {
+      "title": "PDF justified text & keep-together",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "alignment: justify distributes word gaps (last line left); minSpaceBelow keeps headings from being orphaned at a page bottom.",
+      "keywords": [
+        "pdf",
+        "justify",
+        "justified",
+        "keep together",
+        "orphan",
+        "minSpaceBelow",
+        "widow"
+      ]
+    },
+    {
+      "title": "PDF nested bookmarks (outline tree)",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "bookmarkLevel nests outline entries under the last shallower one — hierarchical sidebar navigation like heading levels.",
+      "keywords": [
+        "pdf",
+        "bookmarks",
+        "outline",
+        "nested",
+        "hierarchy",
+        "bookmarkLevel",
+        "sidebar"
+      ]
+    },
+    {
+      "title": "pdf_response",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-response",
+      "signature": "pdf_response(template, data, options?)",
+      "description": "Render a PDF and return a ready application/pdf HTTP response (binary body via body_base64) straight from a controller.",
+      "keywords": [
+        "pdf",
+        "response",
+        "download",
+        "content-disposition",
+        "body_base64",
+        "binary response"
+      ]
+    },
+    {
+      "title": "PDF TOC page numbers (#PAGE_OF:)",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "#PAGE_OF:anchor# resolves to the page number of an anchored paragraph — clickable tables of contents with real page numbers.",
+      "keywords": [
+        "pdf",
+        "table of contents",
+        "toc",
+        "page number",
+        "anchor",
+        "PAGE_OF"
+      ]
+    },
+    {
+      "title": "PDF line height, spacing & image fit",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Paragraph lineHeight multiplier and spacing (gap below the block), plus image height/contain-fit sizing.",
+      "keywords": [
+        "pdf",
+        "line height",
+        "lineHeight",
+        "spacing",
+        "leading",
+        "image height",
+        "contain",
+        "fit"
+      ]
+    },
+    {
+      "title": "PDF table zebra striping, cell fill & colspan",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Zebra-stripe table rows (options.stripe), fill individual cells (fill), and merge cells across columns (colspan) for totals/summary rows.",
+      "keywords": [
+        "pdf",
+        "table",
+        "zebra",
+        "stripe",
+        "striping",
+        "cell fill",
+        "background",
+        "colspan",
+        "merge cells",
+        "totals row"
+      ]
+    },
+    {
+      "title": "PDF letterhead (stationery underlay)",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-options",
+      "description": "Render content on top of an existing letterhead PDF: the stationery option draws it beneath every page (first/following pages can differ).",
+      "keywords": [
+        "pdf",
+        "letterhead",
+        "stationery",
+        "underlay",
+        "background pdf",
+        "template pdf",
+        "brand",
+        "watermark paper"
+      ]
+    },
+    {
+      "title": "PDF page_break element",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Force a new page in the PDF content flow with { \"type\": \"page_break\" } — replaces the move-y overflow trick.",
+      "keywords": [
+        "pdf",
+        "page break",
+        "page_break",
+        "new page",
+        "pagination",
+        "multi-page"
+      ]
+    },
+    {
+      "title": "PDF underline & strikethrough",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Underline or strike text in a PDF: underline/strike on paragraph options or per span (stroke follows the text color).",
+      "keywords": [
+        "pdf",
+        "underline",
+        "strike",
+        "strikethrough",
+        "text decoration",
+        "redline"
+      ]
+    },
+    {
+      "title": "PDF page numbers in header & body",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "#PAGE# / #TOTAL_PAGE# tokens now resolve in header and body paragraphs too (not just the footer); headers also interpolate ${...} data.",
+      "keywords": [
+        "pdf",
+        "page number",
+        "header",
+        "page tokens",
+        "#PAGE#",
+        "total pages",
+        "running header"
+      ]
+    },
+    {
+      "title": "PDF document metadata",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-options",
+      "description": "Set title/author/subject on plain pdf_render output (PDF Info dictionary), not just Factur-X.",
+      "keywords": [
+        "pdf",
+        "metadata",
+        "title",
+        "author",
+        "subject",
+        "info dictionary"
+      ]
+    },
+    {
       "title": "PDF barcode element",
       "type": "feature",
       "category": "PDF",

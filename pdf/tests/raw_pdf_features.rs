@@ -21,6 +21,7 @@ fn opts() -> RenderOptions {
         fetch_images: false,
         http_timeout: Duration::from_secs(1),
         font_dirs: vec!["fonts".into()],
+        ..Default::default()
     }
 }
 
@@ -248,7 +249,7 @@ fn bookmarks_anchors_and_internal_links_collected() {
         .layout(&t, &DataDocument::empty())
         .unwrap();
     assert_eq!(doc.pages.len(), 2, "content spans two pages");
-    let labels: Vec<&str> = doc.bookmarks.iter().map(|(l, _)| l.as_str()).collect();
+    let labels: Vec<&str> = doc.bookmarks.iter().map(|(l, _, _)| l.as_str()).collect();
     assert_eq!(labels, vec!["Summary", "Details"]);
     assert_eq!(doc.bookmarks[0].1, 0, "Summary bookmark on page 0");
     assert_eq!(doc.bookmarks[1].1, 1, "Details bookmark on page 1");

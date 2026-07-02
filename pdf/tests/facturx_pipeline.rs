@@ -15,6 +15,7 @@ fn offline_opts() -> RenderOptions {
         fetch_images: false, // deterministic; the sample logo is a remote URL
         http_timeout: Duration::from_secs(1),
         font_dirs: vec!["fonts".into()], // Titillium only (no CJK here)
+        ..Default::default()
     }
 }
 

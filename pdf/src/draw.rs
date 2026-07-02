@@ -197,8 +197,9 @@ pub struct LaidOutDoc {
     /// `Arc` so a process-wide image-cache hit shares pixels with the document
     /// instead of cloning multi-MB buffers per render.
     pub images: Vec<std::sync::Arc<ImageData>>,
-    /// Outline entries: `(label, 0-based page index)`.
-    pub bookmarks: Vec<(String, usize)>,
+    /// Outline entries: `(label, 0-based page index, level)` — level 1 is top;
+    /// deeper levels nest under the last shallower entry (like headings).
+    pub bookmarks: Vec<(String, usize, u32)>,
     /// Named jump targets: `anchor → (0-based page index, logical y)`.
     pub anchors: HashMap<String, (usize, f32)>,
 }

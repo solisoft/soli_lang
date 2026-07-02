@@ -130,8 +130,20 @@ fn clear_dash(out: &mut Vec<Op>, dash: &Option<Vec<i64>>) {
 }
 
 /// Serialize a laid-out document to PDF bytes.
-pub fn emit(doc: &LaidOutDoc, fonts: &FontRegistry) -> Result<Vec<u8>> {
-    let mut pdf = PdfDocument::new("invoice");
+pub fn emit(
+    doc: &LaidOutDoc,
+    fonts: &FontRegistry,
+    opts: &crate::RenderOptions,
+) -> Result<Vec<u8>> {
+    // `"invoice"` is the historical default title, kept for byte-stable
+    // output when no metadata is supplied.
+    let mut pdf = PdfDocument::new(opts.title.as_deref().unwrap_or("invoice"));
+    if let Some(author) = &opts.author {
+        pdf.metadata.info.author = author.clone();
+    }
+    if let Some(subject) = &opts.subject {
+        pdf.metadata.info.subject = subject.clone();
+    }
     let mut font_warnings = Vec::new();
 
     // Register fonts. Regular is always embedded (it's the fallback target for
@@ -195,9 +207,17 @@ pub fn emit(doc: &LaidOutDoc, fonts: &FontRegistry) -> Result<Vec<u8>> {
         ));
     }
 
-    // Document outline (flat). Bookmark page indices are 0-based.
-    for (label, page_idx) in &doc.bookmarks {
-        pdf.add_bookmark(label, *page_idx);
+    // Document outline. Bookmark page indices are 0-based in the IR; printpdf
+    // wants them 1-based (its serializer does `saturating_sub(1)`) — passing
+    // them raw sent every bookmark past page 1 one page short. `bookmarkLevel`
+    // nests entries under the last shallower one, like heading levels.
+    let mut outline_stack: Vec<printpdf::PageAnnotId> = Vec::new();
+    for (label, page_idx, level) in &doc.bookmarks {
+        let level = (*level).max(1) as usize;
+        outline_stack.truncate(level - 1);
+        let parent = outline_stack.last().cloned();
+        let id = pdf.add_bookmark_child(label, *page_idx + 1, parent);
+        outline_stack.push(id);
     }
 
     let mut warnings = Vec::new();

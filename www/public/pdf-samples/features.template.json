@@ -1,0 +1,350 @@
+{
+  "fonts": ["TitilliumWeb"],
+  "options": {
+    "page": "a4",
+    "margins": { "top": 38, "right": 50, "bottom": 46, "left": 50 },
+    "header_height": 40,
+    "watermark": {
+      "text": "DEMO",
+      "angle": 45,
+      "color": "f8fafc",
+      "fontSize": 120,
+      "front": false,
+      "pages": "all"
+    }
+  },
+
+  "header": [
+    { "type": "image", "width": 18,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'><circle cx='12' cy='12' r='10' fill='%230F766E'/><path d='M7 13l3 3 7-8' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" },
+    { "type": "move", "x": 0, "y": 2 },
+    { "type": "paragraph", "value": "${doc.title} — page #PAGE#/#TOTAL_PAGE#   (this header pulls the title from data and resolves page tokens)",
+      "options": { "alignment": "right", "fontSize": 8.5, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "hr", "color": "e2e8f0", "thickness": 0.6 }
+  ],
+
+  "footer": [
+    { "type": "paragraph", "value": "footer paragraphs repeat on every page — #PAGE# of #TOTAL_PAGE#",
+      "options": { "alignment": "center", "fontSize": 8, "color": "94a3b8" } }
+  ],
+
+  "content": [
+    { "type": "rect", "width": 495, "height": 112, "fill": "0F766E", "radius": 12 },
+    { "type": "rect", "width": 495, "height": 4, "fill": "f59e0b", "radius": 2 },
+    { "type": "move", "x": 22, "y": 22 },
+    { "type": "image", "width": 44,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'><circle cx='12' cy='12' r='10' fill='white'/><path d='M7 13l3 3 7-8' stroke='%230F766E' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" },
+    { "type": "move", "x": 64, "y": 2 },
+    { "type": "paragraph", "value": "The soli-pdf template language",
+      "options": { "fontSize": 21, "fontWeight": "bold", "color": "ffffff", "bookmark": "Cover", "anchor": "sec-top" } },
+    { "type": "paragraph", "value": "demonstrated by this very document — every block names the option that renders it",
+      "options": { "fontSize": 10, "color": "ccfbf1", "italic": true } },
+    { "type": "move", "x": 0, "y": 14 },
+    { "type": "paragraph", "spans": [
+        { "text": "• ", "color": "f59e0b" }, { "text": "5 chapters    ", "color": "ffffff", "fontSize": 9 },
+        { "text": "• ", "color": "f59e0b" }, { "text": "every element & option    ", "color": "ffffff", "fontSize": 9 },
+        { "text": "• ", "color": "f59e0b" }, { "text": "one JSON template, one call", "color": "ffffff", "fontSize": 9 }
+      ],
+      "options": { "fontSize": 9 } },
+    { "type": "move", "x": -86, "y": 40 },
+
+    { "type": "paragraph", "value": "Contents  (bookmark / anchor / linkTo + PAGE_OF tokens — clickable jumps WITH real page numbers)",
+      "options": { "fontSize": 11, "fontWeight": "bold", "color": "0f172a" } },
+    { "type": "move", "x": 0, "y": 2 },
+    { "type": "paragraph", "value": "1  Text & flow ................................................  p. #PAGE_OF:sec-top#", "options": { "fontSize": 10, "color": "2563eb", "linkTo": "sec-top" } },
+    { "type": "paragraph", "value": "2  Graphics & codes ......................................  p. #PAGE_OF:sec-graphics#", "options": { "fontSize": 10, "color": "2563eb", "linkTo": "sec-graphics" } },
+    { "type": "paragraph", "value": "3  Tables ..........................................................  p. #PAGE_OF:sec-tables#", "options": { "fontSize": 10, "color": "2563eb", "linkTo": "sec-tables" } },
+    { "type": "paragraph", "value": "4  Charts .........................................................  p. #PAGE_OF:sec-charts#", "options": { "fontSize": 10, "color": "2563eb", "linkTo": "sec-charts" } },
+    { "type": "paragraph", "value": "5  More charts & render-side options ..........  p. #PAGE_OF:sec-beyond#", "options": { "fontSize": 10, "color": "2563eb", "linkTo": "sec-beyond" } },
+    { "type": "move", "x": 0, "y": 8 },
+    { "type": "hr", "color": "f59e0b", "thickness": 1.2, "width": 60 },
+    { "type": "move", "x": 0, "y": 8 },
+
+    { "type": "paragraph", "value": "paragraph — options", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E", "bookmark": "paragraph options", "bookmarkLevel": 2, "minSpaceBelow": 40 } },
+    { "type": "paragraph", "value": "Each line below prints the option it is rendered with:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 2 },
+    { "type": "paragraph", "value": "\"alignment\": \"left\" — the default", "options": { "fontSize": 9.5, "color": "475569" } },
+    { "type": "paragraph", "value": "\"alignment\": \"center\"", "options": { "alignment": "center", "fontSize": 9.5, "color": "475569" } },
+    { "type": "paragraph", "value": "\"alignment\": \"right\"", "options": { "alignment": "right", "fontSize": 9.5, "color": "475569" } },
+    { "type": "paragraph", "value": "\"italic\": true — the italic face of the family", "options": { "fontSize": 9.5, "italic": true } },
+    { "type": "paragraph", "value": "\"mono\": true — the loaded monospace face", "options": { "fontSize": 9.5, "mono": true } },
+    { "type": "paragraph", "value": "\"color\": \"b45309\" — hex, no #", "options": { "fontSize": 9.5, "color": "b45309" } },
+    { "type": "paragraph", "value": "\"underline\": true — the stroke follows the text color", "options": { "fontSize": 9.5, "underline": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "\"strike\": true — same, through the text", "options": { "fontSize": 9.5, "strike": true } },
+    { "type": "paragraph", "value": "\"lineHeight\": 1.8 — a line-height multiplier (engine default 1.2),\nso multi-line text like this one breathes.", "options": { "fontSize": 9.5, "lineHeight": 1.8, "color": "475569", "spacing": 10 } },
+    { "type": "paragraph", "value": "…and \"spacing\": 10 on the line above added this gap without a move element.", "options": { "fontSize": 8.5, "color": "94a3b8", "italic": true } },
+    { "type": "move", "x": 0, "y": 6 },
+    { "type": "paragraph", "value": "\"alignment\": \"justify\" stretches every full line to both margins by widening the gaps between words, exactly like this wrapped paragraph — headings also take \"minSpaceBelow\" so they are never left orphaned at the bottom of a page, and \"bookmarkLevel\" nests the sidebar outline. The last line stays left.", "options": { "fontSize": 9.5, "alignment": "justify", "color": "475569" } },
+    { "type": "move", "x": 0, "y": 10 },
+
+    { "type": "paragraph", "value": "paragraph — spans (inline rich text)", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E", "bookmark": "spans", "bookmarkLevel": 2, "minSpaceBelow": 40 } },
+    { "type": "paragraph", "value": "\"spans\": [ { \"text\", \"fontWeight\", \"fontSize\", \"color\", \"italic\", \"mono\", \"underline\", \"strike\", \"link\" }, … ]", "options": { "fontSize": 8, "mono": true, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 2 },
+    { "type": "paragraph", "spans": [
+        { "text": "One flow mixing " },
+        { "text": "bold", "fontWeight": "bold" },
+        { "text": ", " },
+        { "text": "italic", "italic": true },
+        { "text": ", " },
+        { "text": "mono", "mono": true },
+        { "text": ", " },
+        { "text": "size", "fontSize": 13 },
+        { "text": ", " },
+        { "text": "color", "color": "b45309" },
+        { "text": ", " },
+        { "text": "a link", "link": "https://solilang.com", "color": "2563eb", "underline": true },
+        { "text": ", and a redline: was " },
+        { "text": "99.00", "strike": true, "color": "b91c1c" },
+        { "text": " now " },
+        { "text": "79.00 EUR", "fontWeight": "bold", "color": "0F766E" }
+      ],
+      "options": { "fontSize": 10 } },
+    { "type": "move", "x": 0, "y": 10 },
+
+    { "type": "paragraph", "value": "list — ordered / nested / custom markers", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E", "bookmark": "lists", "bookmarkLevel": 2, "minSpaceBelow": 40 } },
+    { "type": "list", "ordered": true, "start": 3, "options": { "fontSize": 9.5 }, "spacing": 1, "items": [
+        "\"ordered\": true, \"start\": 3 — numbered me 3.",
+        { "text": "items may nest a \"list\":", "list": { "items": [ "default bullet", "one level deeper" ] } },
+        { "spans": [ { "text": "and carry " }, { "text": "spans", "fontWeight": "bold", "color": "0F766E" } ] }
+    ] },
+    { "type": "move", "x": 0, "y": 3 },
+    { "type": "list", "marker": "»", "indent": 24, "spacing": 2, "options": { "fontSize": 9.5 }, "items": [
+        "\"marker\": \"»\", \"indent\": 24, \"spacing\": 2 — custom marker, wider indent"
+    ] },
+    { "type": "move", "x": 0, "y": 10 },
+
+    { "type": "paragraph", "value": "if / unless — data-driven branches", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "if", "when": "doc.paid", "equals": "true",
+      "content": [ { "type": "paragraph", "value": "if + \"equals\": \"true\" matched (doc.paid = true) — you see the content branch.", "options": { "fontSize": 9.5, "color": "0F766E" } } ],
+      "else":    [ { "type": "paragraph", "value": "the else branch would render here.", "options": { "fontSize": 9.5, "color": "b91c1c" } } ] },
+    { "type": "unless", "when": "doc.discount",
+      "content": [ { "type": "paragraph", "value": "unless renders when the path is falsy — doc.discount is absent, so this line exists.", "options": { "fontSize": 9.5, "color": "475569", "italic": true } } ] },
+    { "type": "move", "x": 0, "y": 10 },
+
+    { "type": "paragraph", "value": "page_break", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "{ \"type\": \"page_break\" } — finishes this page (footer included) and opens the next with its header band:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "page_break" },
+
+    { "type": "rect", "width": 26, "height": 26, "fill": "0F766E", "radius": 7 },
+    { "type": "move", "x": 9, "y": 5 },
+    { "type": "paragraph", "value": "2", "options": { "fontSize": 12, "fontWeight": "bold", "color": "ffffff" } },
+    { "type": "move", "x": 27, "y": -17 },
+    { "type": "paragraph", "value": "Graphics & codes", "options": { "fontSize": 17, "fontWeight": "bold", "color": "0f172a", "bookmark": "Graphics & codes", "anchor": "sec-graphics" } },
+    { "type": "move", "x": -36, "y": 10 },
+
+    { "type": "paragraph", "value": "rect — panels & boxes", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "{ \"type\": \"rect\", \"fill\", \"border\", \"radius\", \"dash\" } — rect never advances the cursor; flow text over it with move:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "rect", "width": 320, "height": 40, "fill": "f0fdfa", "border": "99f6e4", "borderWidth": 0.8, "radius": 8 },
+    { "type": "move", "x": 340, "y": 0 },
+    { "type": "rect", "width": 155, "height": 40, "border": "94a3b8", "borderWidth": 1, "radius": 4, "dash": [4, 3] },
+    { "type": "move", "x": -326, "y": 12 },
+    { "type": "paragraph", "value": "a rounded, tinted panel", "options": { "fontSize": 10, "fontWeight": "bold", "color": "0F766E" } },
+    { "type": "move", "x": 340, "y": -13 },
+    { "type": "paragraph", "value": "\"dash\": [4, 3]", "options": { "fontSize": 9, "mono": true, "color": "64748b" } },
+    { "type": "move", "x": -354, "y": 28 },
+
+    { "type": "paragraph", "value": "ellipse / line / hr — strokes & dots", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "circles (rx == ry), a true ellipse (rx != ry), a dashed line segment, and an hr with an explicit width:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 6 },
+    { "type": "ellipse", "rx": 5, "ry": 5, "fill": "16a34a" },
+    { "type": "move", "x": 16, "y": 0 },
+    { "type": "ellipse", "rx": 5, "ry": 5, "fill": "eab308" },
+    { "type": "move", "x": 16, "y": 0 },
+    { "type": "ellipse", "rx": 5, "ry": 5, "fill": "dc2626" },
+    { "type": "move", "x": 24, "y": -2 },
+    { "type": "ellipse", "rx": 22, "ry": 7, "fill": "e0f2fe", "border": "0284c7", "borderWidth": 0.8 },
+    { "type": "move", "x": 64, "y": 7 },
+    { "type": "line", "dx": 180, "dy": 0, "color": "94a3b8", "width": 1, "dash": [4, 3] },
+    { "type": "move", "x": -120, "y": 12 },
+    { "type": "hr", "color": "f59e0b", "thickness": 1.2, "width": 200 },
+    { "type": "move", "x": 0, "y": 8 },
+
+    { "type": "paragraph", "value": "move — the cursor primitive", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "{ \"type\": \"move\", \"x\": 20, \"y\": -8 } — +y is DOWN, negative y moves back UP; rect/line/ellipse/qr/barcode/image never advance the cursor, so move places them (that is how this page is laid out).", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 10 },
+
+    { "type": "paragraph", "value": "image — raster & SVG", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "PNG/JPEG/WebP/GIF and SVG (auto-rasterised; <text> uses fonts from font_dirs). An inline data: URI at \"width\": 120:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "image", "width": 120,
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40' width='120' height='40'><rect width='120' height='40' rx='8' fill='%230F766E'/><circle cx='22' cy='20' r='11' fill='%2314b8a6'/><path d='M16 21l4 4 8-9' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/><text x='44' y='26' font-family='Titillium Web' font-size='16' fill='white' font-weight='bold'>soli-pdf</text></svg>" },
+    { "type": "move", "x": 0, "y": 50 },
+
+    { "type": "paragraph", "value": "qr — \"kind\": \"epc\" & \"kind\": \"text\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "left: an EPC/GiroCode SEPA scan-to-pay built from the payment data; right: arbitrary text. Both rasterised locally:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 6 },
+    { "type": "qr", "kind": "epc", "name": "${payment.name}", "iban": "${payment.iban}",
+      "amount": "${payment.amount}", "currency": "EUR", "remittance": "${doc.ref}", "width": 84 },
+    { "type": "move", "x": 110, "y": 0 },
+    { "type": "qr", "kind": "text", "value": "https://solilang.com/docs/builtins/pdf", "width": 84 },
+    { "type": "move", "x": -110, "y": 96 },
+
+    { "type": "paragraph", "value": "barcode — code128 & ean13", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "\"humanReadable\": true prints the caption under the bars; ean13 takes 12 digits and computes the check digit:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 6 },
+    { "type": "barcode", "symbology": "code128", "value": "${doc.ref}", "width": 200, "height": 44, "humanReadable": true },
+    { "type": "move", "x": 240, "y": 0 },
+    { "type": "barcode", "symbology": "ean13", "value": "400638133393", "width": 180, "height": 44, "humanReadable": true },
+    { "type": "move", "x": -240, "y": 0 },
+
+    { "type": "page_break" },
+
+    { "type": "rect", "width": 26, "height": 26, "fill": "0F766E", "radius": 7 },
+    { "type": "move", "x": 9, "y": 5 },
+    { "type": "paragraph", "value": "3", "options": { "fontSize": 12, "fontWeight": "bold", "color": "ffffff" } },
+    { "type": "move", "x": 27, "y": -17 },
+    { "type": "paragraph", "value": "Tables", "options": { "fontSize": 17, "fontWeight": "bold", "color": "0f172a", "bookmark": "Tables", "anchor": "sec-tables" } },
+    { "type": "move", "x": -36, "y": 10 },
+
+    { "type": "paragraph", "value": "table — \"data\" binding, header band, \"stripe\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "one template row repeats per array item; the header band repeats on every page the table spans; \"options\": { \"stripe\": \"f1f5f9\" } zebra-fills every second body row:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "table", "data": "items",
+      "header_columns": [
+        { "text": "SERVICE", "width": 255, "fontWeight": "bold", "fontSize": 9.5 },
+        { "text": "QTY", "width": 60, "fontWeight": "bold", "fontSize": 9.5, "alignment": "right" },
+        { "text": "AMOUNT", "width": 180, "fontWeight": "bold", "fontSize": 9.5, "alignment": "right" }
+      ],
+      "footer_columns": [
+        { "text": "footer_columns — repeats above every intra-table page break (carried forward)", "width": 315, "fontSize": 8.5, "colspan": 2 },
+        { "text": "${doc.total}", "width": 180, "fontSize": 9.5, "alignment": "right", "fontWeight": "bold", "fill": "f0fdfa" }
+      ],
+      "rows": [ [
+        { "text": "${name}", "width": 255, "fontSize": 10 },
+        { "text": "${qty}", "width": 60, "fontSize": 10, "alignment": "right" },
+        { "text": "${amount}", "width": 180, "fontSize": 10, "alignment": "right" }
+      ] ],
+      "options": { "header": { "fillColor": "0F766E", "textColor": "FFFFFF", "borderColor": "0F766E" }, "stripe": "f1f5f9", "padding_x": 8, "padding_y": 6 } },
+    { "type": "table",
+      "header_columns": [ { "text": "", "width": 255 }, { "text": "", "width": 60 }, { "text": "", "width": 180 } ],
+      "rows": [ [
+        { "text": "TOTAL — one { \"colspan\": 2 } cell spanning the SERVICE + QTY columns", "colspan": 2, "alignment": "right", "fontWeight": "bold", "fontSize": 10.5,
+          "borderSides": { "top": "true", "bottom": "true", "left": "true", "right": "true" }, "borderColor": "0F766E" },
+        { "text": "${doc.total}", "alignment": "right", "fontWeight": "bold", "fontSize": 10.5, "fill": "fef3c7",
+          "borderSides": { "top": "true", "bottom": "true", "left": "true", "right": "true" }, "borderColor": "0F766E" }
+      ] ],
+      "options": { "padding_x": 8, "padding_y": 6 } },
+    { "type": "paragraph", "value": "…the borders make the merge visible: the left box covers two column slots of the table above; the amount cell adds { \"fill\": \"fef3c7\" } — a per-cell background.", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 12 },
+
+    { "type": "paragraph", "value": "rich cells, \"borderSides\" / \"borderColor\", per-table \"watermark\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "a rich cell stacks text lines and an image; borders are per-side with a custom color; this table carries its own SAMPLE stamp:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "table",
+      "watermark": { "text": "SAMPLE", "fontSize": 40, "color": "fecaca" },
+      "rows": [ [
+        { "width": 250,
+          "borderSides": { "top": "true", "bottom": "true", "left": "true", "right": "true" }, "borderColor": "0F766E",
+          "content": [
+            { "type": "text", "value": "${payment.name}", "fontSize": 11, "fontWeight": "bold" },
+            { "type": "text", "value": "IBAN ${payment.iban}", "fontSize": 9 },
+            { "type": "image", "width": 70,
+              "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40' width='120' height='40'><rect width='120' height='40' rx='8' fill='%230F766E'/><text x='12' y='26' font-family='Titillium Web' font-size='16' fill='white' font-weight='bold'>logo</text></svg>" }
+          ] },
+        { "text": "this neighbour uses \"valign\": \"bottom\"", "fontSize": 10, "alignment": "right", "valign": "bottom" }
+      ] ],
+      "options": { "padding_x": 8, "padding_y": 8 } },
+    { "type": "move", "x": 0, "y": 12 },
+
+    { "type": "paragraph", "value": "repeat — block-level data binding", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "{ \"type\": \"repeat\", \"data\": \"milestones\", \"content\": [ … ] } — arbitrary elements per item, not just table rows:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "repeat", "data": "milestones", "content": [
+        { "type": "paragraph", "spans": [
+            { "text": "${date}  ", "mono": true, "fontSize": 9, "color": "64748b" },
+            { "text": "${title}", "fontWeight": "bold" },
+            { "text": " — ${note}" }
+        ], "options": { "fontSize": 10 } },
+        { "type": "move", "x": 0, "y": 3 }
+    ] },
+
+    { "type": "page_break" },
+
+    { "type": "rect", "width": 26, "height": 26, "fill": "0F766E", "radius": 7 },
+    { "type": "move", "x": 9, "y": 5 },
+    { "type": "paragraph", "value": "4", "options": { "fontSize": 12, "fontWeight": "bold", "color": "ffffff" } },
+    { "type": "move", "x": 27, "y": -17 },
+    { "type": "paragraph", "value": "Charts", "options": { "fontSize": 17, "fontWeight": "bold", "color": "0f172a", "bookmark": "Charts", "anchor": "sec-charts" } },
+    { "type": "move", "x": -36, "y": 10 },
+
+    { "type": "paragraph", "value": "chart — \"kind\": \"bar\", multi-series \"values\", \"gridlines\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "\"values\": [ { \"field\", \"name\", \"color\" }, … ] groups bars per category and draws the legend; \"gridlines\": true adds the value axis:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "chart", "kind": "bar", "title": "Grouped — one bar per series and category",
+      "data": "quarters", "label": "q", "gridlines": true,
+      "values": [
+        { "field": "fy25", "name": "FY 2025", "color": "94a3b8" },
+        { "field": "fy26", "name": "FY 2026", "color": "0F766E" }
+      ],
+      "width": 495, "height": 150 },
+    { "type": "move", "x": 0, "y": 18 },
+
+    { "type": "paragraph", "value": "chart — \"mode\": \"stacked\" & \"colors\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "the same data stacked instead of grouped; a \"colors\" palette is cycled when series don't set their own:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "chart", "kind": "bar", "mode": "stacked", "title": "Stacked — series pile up per category",
+      "data": "quarters", "label": "q", "gridlines": true,
+      "colors": ["0F766E", "f59e0b"],
+      "values": [
+        { "field": "fy25", "name": "FY 2025" },
+        { "field": "fy26", "name": "FY 2026" }
+      ],
+      "width": 495, "height": 150 },
+
+    { "type": "page_break" },
+
+    { "type": "rect", "width": 26, "height": 26, "fill": "0F766E", "radius": 7 },
+    { "type": "move", "x": 9, "y": 5 },
+    { "type": "paragraph", "value": "5", "options": { "fontSize": 12, "fontWeight": "bold", "color": "ffffff" } },
+    { "type": "move", "x": 27, "y": -17 },
+    { "type": "paragraph", "value": "More charts & render-side options", "options": { "fontSize": 17, "fontWeight": "bold", "color": "0f172a", "bookmark": "More charts & render options", "anchor": "sec-beyond" } },
+    { "type": "move", "x": -36, "y": 10 },
+
+    { "type": "paragraph", "value": "chart — \"kind\": \"line\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "chart", "kind": "line", "title": "Line — one line per series",
+      "data": "quarters", "label": "q",
+      "values": [ { "field": "fy26", "name": "FY 2026", "color": "0F766E" } ],
+      "width": 495, "height": 105 },
+    { "type": "move", "x": 0, "y": 12 },
+
+    { "type": "paragraph", "value": "chart — \"kind\": \"pie\" with inline \"points\"", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "points can be inline instead of data-bound; pie always draws its swatch + percentage legend:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "chart", "kind": "pie", "title": "Pie — inline points",
+      "width": 495, "height": 115, "points": [
+        { "label": "Templates", "value": 45 },
+        { "label": "Charts", "value": 25 },
+        { "label": "Codes", "value": 18 },
+        { "label": "Everything else", "value": 12 }
+    ] },
+    { "type": "move", "x": 0, "y": 14 },
+
+    { "type": "paragraph", "value": "columns — { \"type\": \"columns\", \"count\": 2, \"gap\": 22 }", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "children fill column 1 to the bottom, then column 2 (sequential fill); full-width flow resumes below:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "columns", "count": 2, "gap": 22, "content": [
+      { "type": "paragraph", "value": "Column one begins here and fills top to bottom. When it reaches the bottom of the content region the flow hops into the second column automatically — sequential fill. Paragraphs, lists and images flow inside columns; tables and charts do not (v1) and are skipped with a warning. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "options": { "fontSize": 9, "alignment": "justify", "color": "475569", "spacing": 6 } },
+      { "type": "list", "ordered": true, "options": { "fontSize": 9, "color": "475569" }, "spacing": 6, "items": [ "lists flow across columns", "markers stay with their column", "page_break here = column break" ] },
+      { "type": "paragraph", "value": "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam.", "options": { "fontSize": 9, "alignment": "justify", "color": "475569", "spacing": 6 } },
+      { "type": "paragraph", "value": "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.", "options": { "fontSize": 9, "alignment": "justify", "color": "475569", "spacing": 6 } },
+      { "type": "paragraph", "value": "This paragraph has spilled into the SECOND column — which is how you can tell the block is genuinely two columns, filled left to right by sequential fill. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur.", "options": { "fontSize": 9, "alignment": "justify", "color": "0F766E", "fontWeight": "bold" } }
+    ] },
+    { "type": "move", "x": 0, "y": 12 },
+
+    { "type": "paragraph", "value": "beyond the template — render options", "options": { "fontSize": 11.5, "fontWeight": "bold", "mono": true, "color": "0F766E" } },
+    { "type": "paragraph", "value": "Some features live in the render call, not the template JSON — pass them in the options hash of pdf_render / pdf_facturx:", "options": { "fontSize": 9, "color": "64748b" } },
+    { "type": "move", "x": 0, "y": 4 },
+    { "type": "paragraph", "value": "pdf_render(tpl, data, {\n  \"stationery\": \"pdf/letterhead.pdf\",   # draw everything on a letterhead PDF\n  \"attachments\": [{ \"path\": \"data.csv\" }],  # embed source files\n  \"title\": \"Invoice 42\", \"author\": \"ACME\",   # Info-dictionary metadata\n  \"font_dirs\": [\"font\"], \"fetch_images\": false\n})", "options": { "fontSize": 8.5, "mono": true, "color": "475569" } },
+    { "type": "paragraph", "value": "Document options also include a full-page \"backgroundImage\" (a cover photo/branded page), alongside \"watermark\", \"background\", margins and page size.", "options": { "fontSize": 8.5, "color": "94a3b8", "italic": true, "spacing": 8 } },
+    { "type": "move", "x": 0, "y": 8 },
+
+    { "type": "rect", "width": 495, "height": 56, "fill": "0F766E", "radius": 12 },
+    { "type": "rect", "width": 495, "height": 3, "fill": "f59e0b", "radius": 1.5 },
+    { "type": "move", "x": 20, "y": 12 },
+    { "type": "paragraph", "value": "Built with Soli — one JSON template, one pdf_render() call.", "options": { "fontSize": 12.5, "fontWeight": "bold", "color": "ffffff" } },
+    { "type": "paragraph", "value": "solilang.com/docs/builtins/pdf — try this template live in the playground", "options": { "fontSize": 9, "color": "ccfbf1", "link": "https://solilang.com/docs/builtins/pdf" } },
+    { "type": "move", "x": -20, "y": 18 }
+  ]
+}

@@ -36,9 +36,30 @@ struct Args {
     /// Do not fetch http(s) images (skip them instead).
     #[arg(long)]
     no_images: bool,
-    /// Document title for Factur-X metadata.
+    /// Document title (PDF Info dictionary; also used for Factur-X metadata).
     #[arg(long)]
     title: Option<String>,
+    /// Document author (PDF Info dictionary).
+    #[arg(long)]
+    author: Option<String>,
+    /// Document subject (PDF Info dictionary).
+    #[arg(long)]
+    subject: Option<String>,
+    /// Letterhead PDF drawn beneath every page's content. Page 1 uses the
+    /// letterhead's first page; later pages use its second page when present.
+    #[arg(long)]
+    stationery: Option<PathBuf>,
+    /// Embed a file as an attachment (repeatable). Name = the file's basename;
+    /// MIME guessed from the extension.
+    #[arg(long = "attach")]
+    attach: Vec<PathBuf>,
+    /// User password (AES-128): required to open the document. Incompatible
+    /// with Factur-X (--invoice/--xml).
+    #[arg(long)]
+    password: Option<String>,
+    /// Owner password: lifts restrictions (defaults to --password).
+    #[arg(long)]
+    owner_password: Option<String>,
     /// Directory of fonts to load (repeatable). No fonts are bundled, so at
     /// least one font must be available. Defaults to ./fonts and ./font.
     #[arg(long = "font-dir")]
@@ -72,12 +93,51 @@ fn run(args: &Args) -> soli_pdf::Result<Vec<soli_pdf::RenderWarning>> {
     let opts = RenderOptions {
         fetch_images: !args.no_images,
         font_dirs,
+        title: args.title.clone(),
+        author: args.author.clone(),
+        subject: args.subject.clone(),
+        stationery: match &args.stationery {
+            Some(path) => Some(std::fs::read(path)?),
+            None => None,
+        },
+        encrypt: args
+            .password
+            .as_ref()
+            .or(args.owner_password.as_ref())
+            .map(|_| soli_pdf::EncryptOptions {
+                user_password: args.password.clone().unwrap_or_default(),
+                owner_password: args.owner_password.clone().unwrap_or_default(),
+                allow: Vec::new(),
+            }),
+        attachments: args
+            .attach
+            .iter()
+            .map(|path| {
+                let bytes = std::fs::read(path)?;
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "attachment".to_string());
+                let mime = match name.rsplit('.').next() {
+                    Some("xml") => "text/xml",
+                    Some("csv") => "text/csv",
+                    Some("json") => "application/json",
+                    Some("txt") => "text/plain",
+                    Some("pdf") => "application/pdf",
+                    _ => "application/octet-stream",
+                }
+                .to_string();
+                Ok(soli_pdf::Attachment { name, mime, bytes })
+            })
+            .collect::<soli_pdf::Result<Vec<_>>>()?,
         ..Default::default()
     };
 
     let profile = Profile::parse(&args.profile).unwrap_or_default();
     let meta = FacturxMetadata {
         title: args.title.clone().unwrap_or_else(|| "Invoice".to_string()),
+        author: args.author.clone().unwrap_or_default(),
+        subject: args.subject.clone().unwrap_or_default(),
         created: OffsetDateTime::now_utc(),
         ..Default::default()
     };

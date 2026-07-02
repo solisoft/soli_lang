@@ -19,6 +19,16 @@ pub enum Cell {
     Text(TextCell),
 }
 
+/// Vertical alignment of a cell's content within its row.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum VAlign {
+    Top,
+    /// The default: optically centered in the row.
+    #[default]
+    Middle,
+    Bottom,
+}
+
 /// Shared per-cell styling (borders, width, alignment).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,12 +37,22 @@ pub struct CellStyle {
     pub font_size: Option<f32>,
     #[serde(default, deserialize_with = "super::de_opt_alignment")]
     pub alignment: Option<Alignment>,
+    /// Vertical alignment within the row: `top` / `middle` (default) / `bottom`.
+    #[serde(default, deserialize_with = "super::de_opt_valign")]
+    pub valign: Option<VAlign>,
     #[serde(default, deserialize_with = "super::de_opt_font_weight")]
     pub font_weight: Option<FontWeight>,
     pub border_sides: Option<BorderSides>,
     pub border_color: Option<String>,
     /// Optional external URL; when set, the cell's text becomes a clickable link.
     pub link: Option<String>,
+    /// Background fill for this cell (hex, no `#`), painted before borders and
+    /// text. Wins over the table's zebra `stripe` and the header band fill.
+    pub fill: Option<String>,
+    /// Number of column slots this cell spans (default 1). The cell's box runs
+    /// from its first column's left edge across the summed widths; following
+    /// cells in the row shift right accordingly.
+    pub colspan: Option<u32>,
 }
 
 /// A simple text cell.

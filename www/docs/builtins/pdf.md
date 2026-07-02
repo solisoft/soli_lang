@@ -46,6 +46,22 @@ Render a PDF from a JSON layout `template` and a JSON `data` document.
 
 **Returns:** String — base64-encoded PDF bytes.
 
+### pdf_response(template, data, options?)
+
+Render **and** wrap as a ready HTTP response — return it straight from a controller action, no `file_write_base64` + redirect dance:
+
+```soli
+def download
+  let tpl  = slurp("pdf/invoice.json")
+  let data = Invoice.find(params["id"]).to_json()
+  return pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
+end
+```
+
+**Parameters:** as `pdf_render`, plus the optional `filename` option — when set, adds `Content-Disposition: attachment; filename="…"` (otherwise the browser renders the PDF inline).
+
+**Returns:** Hash — `{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }`. The `body_base64` key is decoded to the binary body by the server (available to any handler, not just PDFs).
+
 ### pdf_facturx(template, data, xml, options?)
 
 Render the visual PDF, then embed the caller-provided CII `xml` and apply PDF/A-3b + Factur-X conformance (embedded `factur-x.xml`, `/AF` + name tree, sRGB OutputIntent, PDF/A + Factur-X XMP). **The library embeds the XML; it does not generate it.**
@@ -77,7 +93,11 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 | `font_dirs` | Array<String> | `["font"]` | Directories to load fonts from. No fonts are bundled. |
 | `fetch_images` | Bool | `true` | Fetch `http(s)` images (`false` = offline/deterministic). |
 | `profile` | String | `en16931` | *(Factur-X)* Factur-X profile. |
-| `title` / `author` / `subject` | String | — | *(Factur-X)* Document metadata. |
+| `title` / `author` / `subject` | String | — | Document metadata (PDF Info dictionary). Works for `pdf_render` too; the plain-render title defaults to `"invoice"` when unset. |
+| `stationery` | String | — | Path (app-root relative) to a **letterhead PDF** drawn beneath every page's content. Page 1 uses the letterhead's first page; later pages use its second page when present, else the first. A missing file is an error. The letterhead is scaled to the page size, and a template `background` fill paints over it. |
+| `attachments` | Array | — | Files embedded into the reader's attachments panel: `[{ "path": "exports/data.csv", "name"?, "mime"? }]` (paths app-root relative; missing file = error; MIME guessed from the extension when omitted). Composes with Factur-X — `factur-x.xml` and your attachments coexist in the name tree and `/AF`. |
+| `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `pdf_facturx*`** — PDF/A forbids encryption. |
+| `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
 
 ---
 
@@ -157,7 +177,7 @@ A template has five top-level keys:
 |---|---|---|
 | `fonts` | `string[]` | Families to load; the first is the primary text face, the rest are fallbacks. |
 | `options` | object | Document options — see below. |
-| `header` | element[] | Drawn in the reserved top band on every page. |
+| `header` | element[] | Drawn in the reserved top band on every page. Paragraphs interpolate `${...}` and may use `#PAGE#`/`#TOTAL_PAGE#`. |
 | `footer` | element[] | Drawn in the bottom band on every page (may use `#PAGE#`/`#TOTAL_PAGE#`). |
 | `content` | element[] | The page body, laid out top to bottom. |
 
@@ -177,6 +197,7 @@ A template has five top-level keys:
 | `page` | string \| object | `a4` | Page size: a preset (`a4`/`letter`/`legal`/`a5`/`a3`) or `{ width, height }` in pt. |
 | `orientation` | string | `portrait` | `landscape` swaps width/height. |
 | `background` | string | — | Page background fill (hex, no `#`) painted behind every page, beneath any watermark and content. Omit for white paper. |
+| `backgroundImage` | object | — | A full-page background image `{ "src": …, "pages"?: "all"/"first"/"last"/[…] }` — a cover photo or branded page. Drawn stretched to the page, above the `background` fill and below the watermark/content. `src` is any `image` source (URL/`file://`/`data:`). |
 | `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
 
 **`page`** is a preset name (`a4`, `letter`, `legal`, `a5`, `a3`) or a custom
@@ -224,7 +245,9 @@ and `pages` are ignored here — the stamp follows the table):
 
 Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 
-**paragraph** — wrapped, aligned text; advances the cursor down. `options` accepts `alignment`, `fontSize`, `fontWeight`, `italic`, `mono`, `color` (hex, no `#` — applies to the whole paragraph), `link`/`linkTo`, `bookmark`, and `anchor`. For per-run styling (mixed colors/weights on one line) use `spans` instead of `value`.
+**paragraph** — wrapped, aligned text; advances the cursor down. `options` accepts `alignment` (`left`/`right`/`center`/`justify`), `fontSize`, `fontWeight`, `italic`, `mono`, `color` (hex, no `#` — applies to the whole paragraph), `underline`/`strike` (bool — drawn in the text color), `lineHeight` (multiplier, engine default 1.2), `spacing` (pt gap added below the block — replaces trailing `move` elements), `minSpaceBelow` (keep-together: the paragraph only starts on this page if that many points remain below it — put it on headings so they're never orphaned at a page bottom), `link`/`linkTo`, `bookmark` + `bookmarkLevel`, and `anchor`. For per-run styling (mixed colors/weights on one line) use `spans` instead of `value`.
+
+`justify` distributes the leftover width across word gaps; the paragraph's **last line stays left-aligned**, and `spans` paragraphs fall back to left with a warning.
 
 ```json
 { "type": "paragraph", "value": "Invoice ${invoice.number}",
@@ -237,14 +260,29 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "move", "x": 0, "y": 24 }
 ```
 
-**image** — draw at the cursor, scaled to `width` (aspect preserved). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image. In an inline SVG `data:` URI, write colors as either a literal `#` (`fill='#0f766e'`) or the URL-encoded `%23` (`fill='%230f766e'`) — both work; SVG percentages like `width='50%'` are left intact.
+**columns** — a multi-column flow block. Children fill column 1 to the bottom of the content region, then column 2, and so on (**sequential fill**); full-width flow resumes below. `count` (1–6, default 2) and `gap` (pt, default 12). A `page_break` inside is a **column break**; overflowing the last column starts a new page and restarts the set (the running header repeats). Paragraphs, lists and images flow inside; **tables and charts are skipped** (v1, with a warning), and nested `columns` are flattened.
+
+```json
+{ "type": "columns", "count": 2, "gap": 22, "content": [
+  { "type": "paragraph", "value": "flows down column 1, then into column 2…" },
+  { "type": "list", "items": ["lists flow too"] }
+] }
+```
+
+**page_break** — force a new page at this point in the content flow (finishes the current page — footer included — and starts the next one with its header band). Replaces the old `{ "type": "move", "y": 3000 }` overflow trick. A trailing `page_break` with nothing after it leaves a final blank page.
+
+```json
+{ "type": "page_break" }
+```
+
+**image** — draw at the cursor. Sizing: `width` only → height derives from the aspect ratio; `height` only → width derives; **both** → the image scales to fit inside the `width`×`height` box ("contain", aspect preserved, never stretched). `value` is an `http(s)` URL, `file://` path, or `data:` URI. The cursor is not advanced. Raster formats (PNG, JPEG, WebP, GIF) **and SVG** are accepted — SVG is auto-detected and rasterised, so a vector logo or icon stays crisp at any placed size (`<text>` in the SVG uses the fonts from `font_dirs`). `http(s)` SVGs obey `fetch_images` like any other image. In an inline SVG `data:` URI, write colors as either a literal `#` (`fill='#0f766e'`) or the URL-encoded `%23` (`fill='%230f766e'`) — both work; SVG percentages like `width='50%'` are left intact.
 
 ```json
 { "type": "image", "value": "https://acme.example/logo.png", "width": 100 }
 { "type": "image", "value": "file://brand/logo.svg", "width": 120 }
 ```
 
-**table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans.
+**table** — a grid of cells. Optional `data` binds the single template row to an array, repeating it per item. A non-empty `header_columns` repeats on every page the table spans; a non-empty **`footer_columns`** row closes the table AND repeats just above every intra-table page break (the "carried forward" subtotal band — its cells interpolate against the root data, not row items). `options.stripe` (hex) zebra-stripes every second body row; a cell's own `fill` paints its background (over the stripe — totals, highlights); `colspan` merges a cell across column slots (summary rows); `valign` (`top`/`middle`/`bottom`) positions a cell's content vertically in its row.
 
 ```json
 { "type": "table", "data": "items",
@@ -253,7 +291,16 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
   "rows": [ [ { "text": "${name}", "width": 280 },
               { "text": "${amount}", "width": 80, "alignment": "right" } ] ],
   "options": { "header": { "fillColor": "0F766E", "textColor": "FFFFFF" },
-               "padding_x": 6, "padding_y": 7 } }
+               "stripe": "f1f5f9", "padding_x": 6, "padding_y": 7 } }
+```
+
+A colspan totals row (3 columns, the label spans the first 2):
+
+```json
+{ "type": "table",
+  "header_columns": [ { "text": "A", "width": 200 }, { "text": "B", "width": 100 }, { "text": "C", "width": 100 } ],
+  "rows": [ [ { "text": "TOTAL DUE", "colspan": 2, "alignment": "right", "fontWeight": "bold" },
+              { "text": "2,140.00 EUR", "alignment": "right", "fill": "fef3c7" } ] ] }
 ```
 
 **hr** — a horizontal rule across the content width (or `width` pt). Advances the cursor.
@@ -370,20 +417,26 @@ A cell is a simple **text** cell, or a **rich** cell whose `content` stacks mult
 
 ### Styling & colours
 
-- `alignment` — `left` / `right` / `center` (case-insensitive).
+- `alignment` — `left` / `right` / `center` / `justify` (case-insensitive; `justify` is for plain-`value` paragraphs and leaves the last line left-aligned).
 - `fontSize` (pt), `fontWeight` — `normal` / `bold`.
 - `link` — an external URL (on a paragraph's `options` or a text cell's style). The text becomes a clickable, borderless link annotation; the Factur-X output stays PDF/A-3b conformant (the Print flag is set automatically). Example: `{ "type": "paragraph", "value": "Pay online", "options": { "link": "https://pay.example/42" } }`.
-- `bookmark` / `anchor` / `linkTo` (paragraph `options`) — navigation. `bookmark` adds a PDF outline (sidebar) entry; `anchor` names a jump target; `linkTo` makes the text a clickable internal jump to an `anchor`. Great for multi-page statements / a clickable table of contents. (`linkTo` also accepts `link_to`.)
+- `bookmark` / `anchor` / `linkTo` (paragraph `options`) — navigation. `bookmark` adds a PDF outline (sidebar) entry; **`bookmarkLevel`** nests it (1 = top; a level-2 entry nests under the last level-1, like headings); `anchor` names a jump target; `linkTo` makes the text a clickable internal jump to an `anchor`. Great for multi-page statements / a clickable table of contents. (`linkTo` also accepts `link_to`.)
 - `width` — column width (pt). Width-less columns split the remainder; over-wide rows scale to fit.
 - `borderSides` — `{ "top": "true", "bottom": "false", ... }`; strings or bools. When present, omitted sides default to `true`; when absent entirely, no borders.
 - `borderColor` — hex without `#`, 3 or 6 digits (`"fff"`, `"EEEEEE"`). Default light grey.
-- `header.fillColor` / `textColor` / `borderColor` — the header row's band fill, text colour, and border. Body text is always black; accents come from bands and rules.
+- `fill` (cell) — background fill for one cell (hex). Painted over the zebra stripe and the header band, beneath borders and text.
+- `valign` (cell) — vertical alignment within the row: `top` / `middle` (default, optically centered) / `bottom`.
+- `colspan` (cell) — merge the cell across that many column slots; following cells shift right. Define column widths with `header_columns` (or a spanless row) and use `colspan` in body/summary rows.
+- `options.stripe` (table) — zebra fill (hex) behind every second body row. Header rows are never striped.
+- `header.fillColor` / `textColor` / `borderColor` — the header row's band fill, text colour, and border. Body text is always black; accents come from bands, stripes, and rules.
 
 ### Interpolation
 
 - `${a.b.c}` — dotted path into the data; missing paths render empty (with a warning).
 - Inside a data-bound table, `${field}` resolves against the row item first, then the root.
-- `#PAGE#` / `#TOTAL_PAGE#` — page tokens, substituted after pagination.
+- `#PAGE#` / `#TOTAL_PAGE#` — page tokens, substituted after pagination. They work in **footer, header, and body** paragraphs (`value` form; a `spans` paragraph renders them literally).
+- `#PAGE_OF:anchor#` — the 1-based page number of the paragraph carrying `"anchor": "…"`. Combine with `linkTo` for a **table of contents with real page numbers**: `{ "value": "Charts ..... p. #PAGE_OF:sec-charts#", "options": { "linkTo": "sec-charts" } }`. An unknown anchor renders empty with a warning.
+- Token lines defer to a second pass, so their link annotations cover the full line box and underline/strike are skipped (the substituted width isn't known yet).
 
 ### Inline rich text
 
@@ -399,7 +452,7 @@ A `paragraph` may carry `spans` instead of `value` to mix weight, size, color, a
 ] }
 ```
 
-Span fields: `text` (required), `fontSize`, `fontWeight`, `italic` (bool), `mono` (bool — monospace, e.g. for `code`), `color` (hex), `link` (external URL). `italic` and `mono` need the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); if a face is missing the span degrades to the nearest available one.
+Span fields: `text` (required), `fontSize`, `fontWeight`, `italic` (bool), `mono` (bool — monospace, e.g. for `code`), `color` (hex), `link` (external URL), `underline` / `strike` (bool — the stroke follows the span's color, so a red `strike` span reads as a redlined price). `italic` and `mono` need the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); if a face is missing the span degrades to the nearest available one.
 
 **From markdown.** [`Markdown.to_spans(md)`](markdown) parses inline markdown — `**bold**`, `*italic*`, `` `code` `` (→ mono), `[text](url)` — into exactly this spans array, so you can author rich text as markdown:
 

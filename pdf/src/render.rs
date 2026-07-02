@@ -5,7 +5,7 @@ use crate::data::DataDocument;
 use crate::draw::{DrawOp, LaidOutDoc, TextDraw, TextPiece};
 use crate::error::{RenderWarning, Result};
 use crate::fonts::FontRegistry;
-use crate::interpolate::substitute_page_tokens;
+use crate::interpolate::{substitute_anchor_tokens, substitute_page_tokens};
 use crate::layout::Engine;
 use crate::pdf_backend;
 use crate::template::Template;
@@ -34,7 +34,17 @@ pub fn render_with_warnings(
 
     resolve_page_tokens(&mut doc, &fonts, &mut warnings);
 
-    let pdf = pdf_backend::emit(&doc, &fonts)?;
+    let mut pdf = pdf_backend::emit(&doc, &fonts, opts)?;
+    if let Some(letterhead) = &opts.stationery {
+        pdf = crate::stationery::apply_stationery(&pdf, letterhead)?;
+    }
+    if !opts.attachments.is_empty() {
+        pdf = crate::attachments::apply_attachments(&pdf, &opts.attachments)?;
+    }
+    // Encryption must be the LAST pass — it must see every object added above.
+    if let Some(enc) = &opts.encrypt {
+        pdf = crate::encrypt::apply_encryption(&pdf, enc)?;
+    }
     Ok(RenderOutput { pdf, warnings })
 }
 
@@ -56,11 +66,14 @@ fn resolve_page_tokens(
     warnings: &mut Vec<RenderWarning>,
 ) {
     let total = doc.pages.len();
+    // Anchor targets are read while pages are mutated below — snapshot them.
+    let anchors = doc.anchors.clone();
     for (i, page) in doc.pages.iter_mut().enumerate() {
         let page_no = i + 1;
         for op in &mut page.ops {
             if let DrawOp::PageText(pt) = op {
                 let text = substitute_page_tokens(&pt.raw, page_no, total);
+                let text = substitute_anchor_tokens(&text, &anchors, warnings);
                 let runs = fonts.itemize(&text, pt.weight, warnings);
                 let width: f32 = runs.iter().map(|r| fonts.measure_run(r, pt.size)).sum();
                 let x = align_x(pt.region_left, pt.region_width, width, pt.alignment);

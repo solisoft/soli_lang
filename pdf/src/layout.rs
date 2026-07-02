@@ -10,18 +10,18 @@ use crate::draw::{
     TextPiece,
 };
 use crate::error::{RenderWarning, Result};
-use crate::fonts::FontRegistry;
+use crate::fonts::{FaceKey, FontRegistry};
 use crate::geometry::{
     named_page_size, Cursor, Margins, Page, A4_HEIGHT_PT, A4_WIDTH_PT, DEFAULT_MARGIN_PT,
 };
 use crate::images;
 use crate::interpolate::{has_page_tokens, interpolate};
 use crate::template::{
-    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, Conditional, Element, EllipseEl,
-    FontWeight, HrEl, LineEl, ListEl, ListItem, PageSpec, Paragraph, QrEl, RectEl, RepeatEl,
-    StyledSpan, Table, TableHeaderStyle, Template, Watermark,
+    Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, ColumnsEl, Conditional, Element,
+    EllipseEl, FontWeight, HrEl, LineEl, ListEl, ListItem, PageFilter, PageSpec, Paragraph, QrEl,
+    RectEl, RepeatEl, StyledSpan, Table, TableHeaderStyle, Template, VAlign, Watermark,
 };
-use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg};
+use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg, LINE_HEIGHT_FACTOR};
 use crate::RenderOptions;
 
 const DEFAULT_CELL_FONT_SIZE: f32 = 10.0;
@@ -45,8 +45,43 @@ pub struct Engine<'a> {
     images: Vec<std::sync::Arc<ImageData>>,
     image_cache: std::collections::HashMap<String, Option<usize>>,
     warnings: Vec<RenderWarning>,
-    bookmarks: Vec<(String, usize)>,
+    bookmarks: Vec<(String, usize, u32)>,
     anchors: std::collections::HashMap<String, (usize, f32)>,
+    /// Active multi-column flow (v1: no nesting, so a single Option). While
+    /// set, the layout region is the CURRENT COLUMN instead of the page body,
+    /// and overflow hops to the next column before starting a new page.
+    columns: Option<ColumnFlow>,
+}
+
+/// Multi-column flow state. All coordinates are logical (top-left origin).
+struct ColumnFlow {
+    /// Left edge of the whole set (page content_left at start).
+    left: f32,
+    /// Total width of the set (page content_width at start).
+    width: f32,
+    count: usize,
+    gap: f32,
+    /// Current column, 0-based.
+    index: usize,
+    /// Y where the set starts on the *current* page (reset on page restart).
+    top: f32,
+    /// Deepest y any column reached on the current page (for resume-below).
+    max_y: f32,
+}
+
+impl ColumnFlow {
+    fn col_width(&self) -> f32 {
+        ((self.width - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0)
+    }
+    fn col_left(&self, i: usize) -> f32 {
+        self.left + i as f32 * (self.col_width() + self.gap)
+    }
+    fn current_left(&self) -> f32 {
+        self.col_left(self.index)
+    }
+    fn current_right(&self) -> f32 {
+        self.col_left(self.index) + self.col_width()
+    }
 }
 
 impl<'a> Engine<'a> {
@@ -100,6 +135,50 @@ impl<'a> Engine<'a> {
             warnings: Vec::new(),
             bookmarks: Vec::new(),
             anchors: std::collections::HashMap::new(),
+            columns: None,
+        }
+    }
+
+    // --- layout region (page body, or the current column) ---
+
+    /// Left edge of the active layout region.
+    fn region_left(&self) -> f32 {
+        self.columns
+            .as_ref()
+            .map_or(self.page.content_left(), |c| c.current_left())
+    }
+
+    /// Right edge of the active layout region.
+    fn region_right(&self) -> f32 {
+        self.columns
+            .as_ref()
+            .map_or(self.page.content_right(), |c| c.current_right())
+    }
+
+    /// Bottom of the active layout region (columns share the page bottom).
+    fn region_bottom(&self) -> f32 {
+        self.page.content_bottom()
+    }
+
+    /// Overflow action: hop to the next column, else start a new page — and
+    /// restart an active column set at the top of the fresh page. Also the
+    /// implementation of `page_break` (a column break inside a columns block).
+    fn advance_region(&mut self, template: &Template, root: &Resolver) {
+        if let Some(flow) = &mut self.columns {
+            flow.max_y = flow.max_y.max(self.cursor.y);
+            if flow.index + 1 < flow.count {
+                flow.index += 1;
+                self.cursor = Cursor::new(flow.current_left(), flow.top);
+                return;
+            }
+        }
+        self.finish_page(template, root);
+        self.begin_page(template, root);
+        if let Some(flow) = &mut self.columns {
+            flow.index = 0;
+            flow.top = self.cursor.y;
+            flow.max_y = flow.top;
+            self.cursor.x = flow.current_left();
         }
     }
 
@@ -111,11 +190,24 @@ impl<'a> Engine<'a> {
         data: &DataDocument,
     ) -> Result<(LaidOutDoc, Vec<RenderWarning>)> {
         let root = data.resolver();
+        // Intern a page background image up front so its decoded pixels are in
+        // `self.images` before layout; the op itself is inserted per page in a
+        // post-pass (the `pages` filter needs the final page count).
+        let bg_image = template.options.background_image.as_ref().and_then(|bg| {
+            self.intern_image(&bg.src)
+                .map(|idx| (idx, bg.pages.clone()))
+        });
+
         self.begin_page(template, &root);
         for el in &template.content {
             self.element(el, data, &root, template)?;
         }
         self.finish_page(template, &root);
+
+        // Page background image: behind everything but the background fill.
+        if let Some((idx, pages)) = bg_image {
+            self.apply_background_image(idx, &pages, template.options.background.is_some());
+        }
 
         // Apply the document watermark now that every page exists, so `pages`
         // (incl. "last") and `front` (on-top vs behind) can be honored.
@@ -158,15 +250,19 @@ impl<'a> Engine<'a> {
         // The document watermark is applied in a post-layout pass
         // (`apply_document_watermark`) so it can honor `front`/`pages` once the
         // total page count is known.
-        // Draw the header band (its own local cursor at the top).
+        // Draw the header band (its own local cursor at the top). Suspend any
+        // active column flow so the header isn't squeezed into a column and
+        // its overflow can't hop columns.
         if !template.header.is_empty() {
             let saved = self.cursor;
+            let saved_flow = self.columns.take();
             self.cursor = Cursor::new(self.page.content_left(), self.page.header_top());
             for el in &template.header {
                 // Header elements should not paginate; ignore errors softly.
                 let _ = self.element(el, &DataDocument::empty(), root, template);
             }
             self.cursor = saved;
+            self.columns = saved_flow;
         }
     }
 
@@ -182,11 +278,11 @@ impl<'a> Engine<'a> {
         self.pages.push(RenderedPage { ops: page });
     }
 
-    /// Ensure `needed` pt of vertical space remains; otherwise start a new page.
+    /// Ensure `needed` pt of vertical space remains in the active region;
+    /// otherwise advance (next column, or a new page).
     fn ensure_space(&mut self, needed: f32, template: &Template, root: &Resolver) {
-        if self.cursor.y + needed > self.page.content_bottom() {
-            self.finish_page(template, root);
-            self.begin_page(template, root);
+        if self.cursor.y + needed > self.region_bottom() {
+            self.advance_region(template, root);
         }
     }
 
@@ -203,26 +299,51 @@ impl<'a> Engine<'a> {
             Element::Paragraph(p) => self.paragraph(p, root, template),
             Element::Move(m) => self.cursor.move_by(m.x, m.y),
             Element::Image(img) => {
-                let text = &img.value;
-                if let Some(idx) = self.intern_image(text) {
+                if let Some(idx) = self.intern_image(&img.value) {
                     let src = &self.images[idx];
-                    let target_w = if img.width > 0.0 {
-                        img.width
+                    let (mut w, mut h) = fit_image(
+                        src.width_px,
+                        src.height_px,
+                        img.width,
+                        img.height,
+                        src.width_px as f32,
+                    );
+                    if self.columns.is_some() {
+                        // Inside columns an image is a FLOW element: cap it to the
+                        // remaining column width and advance the cursor below it.
+                        let avail = (self.region_right() - self.cursor.x).max(1.0);
+                        if w > avail {
+                            h *= avail / w;
+                            w = avail;
+                        }
+                        self.ensure_space(h, template, root);
+                        self.current.push(DrawOp::Image {
+                            index: idx,
+                            x: self.cursor.x,
+                            y: self.cursor.y,
+                            w,
+                            h,
+                        });
+                        self.cursor.y += h;
                     } else {
-                        src.width_px as f32
-                    };
-                    let h = target_w * src.height_px as f32 / src.width_px.max(1) as f32;
-                    self.current.push(DrawOp::Image {
-                        index: idx,
-                        x: self.cursor.x,
-                        y: self.cursor.y,
-                        w: target_w,
-                        h,
-                    });
-                    // Image placement is explicit; the cursor is not advanced.
+                        self.current.push(DrawOp::Image {
+                            index: idx,
+                            x: self.cursor.x,
+                            y: self.cursor.y,
+                            w,
+                            h,
+                        });
+                        // Image placement is explicit; the cursor is not advanced.
+                    }
                 }
             }
-            Element::Table(t) => self.table(t, data, root, template)?,
+            Element::Table(t) => {
+                if self.columns.is_some() {
+                    self.skip_in_columns("table");
+                } else {
+                    self.table(t, data, root, template)?;
+                }
+            }
             Element::Hr(h) => self.hr(h, template, root),
             Element::Rect(r) => self.rect(r),
             Element::Line(l) => self.line(l),
@@ -230,11 +351,82 @@ impl<'a> Engine<'a> {
             Element::Barcode(b) => self.barcode(b, root),
             Element::Ellipse(e) => self.ellipse(e),
             Element::List(l) => self.list(l, root, template),
-            Element::Chart(c) => self.chart(c, data, root, template),
+            Element::Chart(c) => {
+                if self.columns.is_some() {
+                    self.skip_in_columns("chart");
+                } else {
+                    self.chart(c, data, root, template);
+                }
+            }
             Element::Repeat(r) => self.repeat(r, data, root, template)?,
             Element::If(c) => self.conditional(c, false, data, root, template)?,
             Element::Unless(c) => self.conditional(c, true, data, root, template)?,
+            Element::PageBreak => self.advance_region(template, root),
+            Element::Columns(c) => self.columns_el(c, data, root, template)?,
         }
+        Ok(())
+    }
+
+    fn skip_in_columns(&mut self, kind: &str) {
+        self.warnings.push(RenderWarning::ElementSkipped {
+            kind: kind.to_string(),
+            reason: "not supported inside columns (v1)".to_string(),
+        });
+    }
+
+    /// Lay out a `columns` block: install a column flow, run `content` (which
+    /// fills column 1 to the bottom, then column 2, …), then resume full-width
+    /// flow below the deepest column.
+    fn columns_el(
+        &mut self,
+        c: &ColumnsEl,
+        data: &DataDocument,
+        root: &Resolver,
+        template: &Template,
+    ) -> Result<()> {
+        if c.content.is_empty() {
+            return Ok(());
+        }
+        let count = c.count.clamp(1, 6) as usize;
+        if count as u32 != c.count {
+            self.warnings.push(RenderWarning::ElementSkipped {
+                kind: "columns".to_string(),
+                reason: format!("count {} clamped to {count}", c.count),
+            });
+        }
+        // Nested columns or a single column: flatten into the enclosing flow
+        // (never drop content).
+        if self.columns.is_some() || count == 1 {
+            if self.columns.is_some() {
+                self.warnings.push(RenderWarning::ElementSkipped {
+                    kind: "columns".to_string(),
+                    reason: "nested columns are not supported; content flattened".to_string(),
+                });
+            }
+            for el in &c.content {
+                self.element(el, data, root, template)?;
+            }
+            return Ok(());
+        }
+        // Don't start a set in a sliver at the page bottom.
+        self.ensure_space(line_height(12.0), template, root);
+        let top = self.cursor.y;
+        self.columns = Some(ColumnFlow {
+            left: self.page.content_left(),
+            width: self.page.content_width(),
+            count,
+            gap: c.gap.max(0.0),
+            index: 0,
+            top,
+            max_y: top,
+        });
+        self.cursor = Cursor::new(self.region_left(), top);
+        for el in &c.content {
+            self.element(el, data, root, template)?;
+        }
+        let flow = self.columns.take().expect("column flow active");
+        let resume_y = flow.max_y.max(self.cursor.y);
+        self.cursor = Cursor::new(self.page.content_left(), resume_y);
         Ok(())
     }
 
@@ -296,7 +488,7 @@ impl<'a> Engine<'a> {
         let x1 = self.cursor.x;
         let x2 = match h.width {
             Some(w) if w > 0.0 => self.cursor.x + w,
-            _ => self.page.content_right(),
+            _ => self.region_right(),
         };
         let y = self.cursor.y + thickness / 2.0;
         let color = color::parse_hex_or(h.color.as_deref(), Rgb::LIGHT_GREY);
@@ -538,9 +730,14 @@ impl<'a> Engine<'a> {
     /// cursor below the last item.
     fn list(&mut self, list: &ListEl, root: &Resolver, template: &Template) {
         let left_base = self.cursor.x;
+        // Region-relative indent, so restoring the left edge after a column hop
+        // lands in the correct column rather than the original one.
+        let left_off = left_base - self.region_left();
         self.render_list(list, root, template, left_base);
         // Each item body advanced cursor.y; restore the left edge for siblings.
-        self.cursor.x = left_base;
+        self.cursor.x = self.region_left() + left_off;
+        // Block spacing below the whole list (items use `ListEl::spacing`).
+        self.cursor.y += list.options.spacing.unwrap_or(0.0);
     }
 
     /// Render one list level, indented from `left_base`. Each item draws a marker
@@ -553,11 +750,13 @@ impl<'a> Engine<'a> {
         }
         let size = list.options.font_size;
         let weight = list.options.font_weight;
-        let lh = line_height(size);
+        let lh = size * list.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
         let indent = if list.indent > 0.0 { list.indent } else { 18.0 };
-        let marker_x = left_base + indent;
         let gutter = self.list_marker_gutter(list, size, weight);
-        let text_x = marker_x + gutter;
+        // Marker/body x are region-relative so a column hop mid-list keeps the
+        // markers with their column (`base_off` = how far this level is indented
+        // from the region left).
+        let base_off = left_base - self.region_left();
         // Markers follow the list's text color (default black), matching body.
         let color = color::parse_hex_or(list.options.color.as_deref(), Rgb::BLACK);
         let mut counter = list.start;
@@ -572,6 +771,8 @@ impl<'a> Engine<'a> {
                 // Reserve a line so the marker and the first body line never split
                 // across a page break.
                 self.ensure_space(lh, template, root);
+                let marker_x = self.region_left() + base_off + indent;
+                let text_x = marker_x + gutter;
                 let marker_top = self.cursor.y;
                 let marker = if list.ordered {
                     format!("{counter}.")
@@ -589,12 +790,22 @@ impl<'a> Engine<'a> {
                     color,
                     None,
                     None,
+                    list.options.italic,
+                    list.options.mono,
+                    false,
+                    false,
+                    false,
                 );
 
+                // Item bodies reuse the list's text options, but block `spacing`
+                // belongs to the whole list (applied once in `list()`), not to
+                // every item — items are spaced by `ListEl::spacing`.
+                let mut item_options = list.options.clone();
+                item_options.spacing = None;
                 let para = Paragraph {
                     value: text.unwrap_or_default(),
                     spans,
-                    options: list.options.clone(),
+                    options: item_options,
                 };
                 let saved_x = self.cursor.x;
                 self.cursor.x = text_x;
@@ -606,7 +817,10 @@ impl<'a> Engine<'a> {
                 counter += 1;
             }
             if let Some(nested) = nested {
-                self.render_list(nested, root, template, text_x);
+                // Nested list indents from this level's body column, region-
+                // relative so it survives a column hop just like the markers.
+                let nested_left = self.region_left() + base_off + indent + gutter;
+                self.render_list(nested, root, template, nested_left);
             }
             if list.spacing > 0.0 {
                 self.cursor.y += list.spacing;
@@ -629,13 +843,17 @@ impl<'a> Engine<'a> {
         let width = if c.width > 0.0 {
             c.width
         } else {
-            (self.page.content_right() - self.cursor.x).max(1.0)
+            (self.region_right() - self.cursor.x).max(1.0)
         };
         let plot_h = c.height.max(1.0);
         let has_title = c.title.as_deref().is_some_and(|s| !s.trim().is_empty());
         let title_size = 12.0_f32;
+        // Breathing room between the title's baseline band and the plot (the
+        // legend row starts right at the chart area's top, so without this the
+        // title's descender nearly touches the swatches).
+        const CHART_TITLE_GAP: f32 = 6.0;
         let title_h = if has_title {
-            line_height(title_size)
+            line_height(title_size) + CHART_TITLE_GAP
         } else {
             0.0
         };
@@ -658,6 +876,11 @@ impl<'a> Engine<'a> {
                 Rgb::BLACK,
                 None,
                 None,
+                false,
+                false,
+                false,
+                false,
+                false,
             );
             y += title_h;
         }
@@ -834,6 +1057,32 @@ impl<'a> Engine<'a> {
 
     /// Stamp the document watermark onto every page selected by `wm.pages`,
     /// behind the content (default) or on top of it when `wm.front` is set.
+    /// Stamp a full-page background image onto every page selected by `pages`,
+    /// stretched to the page and sitting just above the background fill (so a
+    /// `background` color shows only where the image has transparency) and
+    /// below all content.
+    fn apply_background_image(&mut self, index: usize, pages: &PageFilter, bg_present: bool) {
+        let w = self.page.width;
+        let h = self.page.height;
+        let insert_at = if bg_present { 1 } else { 0 };
+        let total = self.pages.len();
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            if !pages.matches(i + 1, total) {
+                continue;
+            }
+            page.ops.insert(
+                insert_at.min(page.ops.len()),
+                DrawOp::Image {
+                    index,
+                    x: 0.0,
+                    y: 0.0,
+                    w,
+                    h,
+                },
+            );
+        }
+    }
+
     fn apply_document_watermark(&mut self, wm: &Watermark, bg_present: bool) {
         let center = self.watermark_center(wm);
         let op = match self.watermark_op(wm, center) {
@@ -864,27 +1113,45 @@ impl<'a> Engine<'a> {
         let text = interpolate(&p.value, root, &mut self.warnings);
         let size = p.options.font_size;
         let weight = p.options.font_weight;
-        let lh = line_height(size);
-        let region_left = self.cursor.x;
-        let region_width = (self.page.content_right() - self.cursor.x).max(1.0);
-        let lines = wrap(self.fonts, &text, weight, size, region_width);
+        let lh = size * p.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
+        // Indent-relative left, so wrapping and drawing follow the cursor
+        // across a mid-paragraph column hop (all columns share a width).
+        let indent = self.cursor.x - self.region_left();
+        let region_width = (self.region_right() - self.cursor.x).max(1.0);
+        // Wrap with the full face key so italic/mono metrics match the draw.
+        let face = FaceKey {
+            mono: p.options.mono,
+            bold: matches!(weight, FontWeight::Bold),
+            italic: p.options.italic,
+        };
+        let lines = wrap(self.fonts, &text, face, size, region_width);
+        // Keep-together: the first line also reserves `minSpaceBelow`, so a
+        // heading never strands at the page bottom away from its content.
+        let keep = p.options.min_space_below.unwrap_or(0.0);
+        let justify = matches!(p.options.alignment, Alignment::Justify);
+        let line_count = lines.len();
         let mut first = true;
-        for line in lines {
-            self.ensure_space(lh, template, root);
+        for (i, line) in lines.iter().enumerate() {
+            self.ensure_space(if first { lh + keep } else { lh }, template, root);
             // Record outline/jump targets at the paragraph's first drawn line, so
             // the page index reflects any page break the line just triggered.
             if first {
                 let page_idx = self.pages.len();
                 if let Some(label) = &p.options.bookmark {
-                    self.bookmarks.push((label.clone(), page_idx));
+                    self.bookmarks.push((
+                        label.clone(),
+                        page_idx,
+                        p.options.bookmark_level.unwrap_or(1).max(1),
+                    ));
                 }
                 if let Some(id) = &p.options.anchor {
                     self.anchors.insert(id.clone(), (page_idx, self.cursor.y));
                 }
                 first = false;
             }
+            let region_left = self.region_left() + indent;
             self.draw_text_line(
-                &line,
+                line,
                 region_left,
                 region_width,
                 self.cursor.y,
@@ -894,9 +1161,17 @@ impl<'a> Engine<'a> {
                 color::parse_hex_or(p.options.color.as_deref(), Rgb::BLACK),
                 p.options.link.as_deref(),
                 p.options.link_to.as_deref(),
+                p.options.italic,
+                p.options.mono,
+                // The paragraph's LAST line stays left-aligned, as usual.
+                justify && i + 1 < line_count,
+                p.options.underline,
+                p.options.strike,
             );
             self.cursor.y += lh;
         }
+        // Block spacing: the declarative alternative to a trailing `move`.
+        self.cursor.y += p.options.spacing.unwrap_or(0.0);
     }
 
     /// Inline rich text: a paragraph defined as styled `spans`. Wraps the spans
@@ -909,6 +1184,13 @@ impl<'a> Engine<'a> {
         root: &Resolver,
         template: &Template,
     ) {
+        // Justify is a plain-`value` feature (v1): spans fall back to left.
+        if matches!(p.options.alignment, Alignment::Justify) {
+            self.warnings.push(RenderWarning::ElementSkipped {
+                kind: "justify".to_string(),
+                reason: "spans paragraphs fall back to left alignment".to_string(),
+            });
+        }
         let base_size = p.options.font_size;
         let base_weight = p.options.font_weight;
         let base_italic = p.options.italic;
@@ -935,23 +1217,31 @@ impl<'a> Engine<'a> {
                     .and_then(color::parse_hex)
                     .unwrap_or(Rgb::BLACK),
                 link,
+                underline: span.underline.unwrap_or(p.options.underline),
+                strike: span.strike.unwrap_or(p.options.strike),
             });
         }
 
-        let region_left = self.cursor.x;
-        let region_width = (self.page.content_right() - self.cursor.x).max(1.0);
+        let indent = self.cursor.x - self.region_left();
+        let region_width = (self.region_right() - self.cursor.x).max(1.0);
         let lines = layout_styled_lines(self.fonts, &segs, region_width, &mut self.warnings);
         let ascent_ratio = self.fonts.ascent(FontWeight::Normal);
 
+        let lh_factor = p.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
+        let keep = p.options.min_space_below.unwrap_or(0.0);
         let mut first = true;
         for line in lines {
             let max_size = line.iter().map(|c| c.size).fold(base_size, f32::max);
-            let lh = line_height(max_size);
-            self.ensure_space(lh, template, root);
+            let lh = max_size * lh_factor;
+            self.ensure_space(if first { lh + keep } else { lh }, template, root);
             if first {
                 let page_idx = self.pages.len();
                 if let Some(label) = &p.options.bookmark {
-                    self.bookmarks.push((label.clone(), page_idx));
+                    self.bookmarks.push((
+                        label.clone(),
+                        page_idx,
+                        p.options.bookmark_level.unwrap_or(1).max(1),
+                    ));
                 }
                 if let Some(id) = &p.options.anchor {
                     self.anchors.insert(id.clone(), (page_idx, self.cursor.y));
@@ -963,14 +1253,21 @@ impl<'a> Engine<'a> {
                 .iter()
                 .map(|c| self.fonts.char_advance(c.slot, c.ch, c.size))
                 .sum();
+            let region_left = self.region_left() + indent;
             let x0 = align_x(region_left, region_width, width, p.options.alignment);
             let baseline = self.cursor.y + max_size * ascent_ratio;
 
             // Merge consecutive same-style chars into pieces; track x-ranges of
-            // each linked span for the link annotations.
+            // each linked span for the link annotations, and of each decorated
+            // (underline/strike) stretch for the decoration strokes. A
+            // decoration run breaks when the flag toggles or the color changes;
+            // its stroke uses the largest char size seen in the run.
             let mut pieces: Vec<StyledPiece> = Vec::new();
             let mut link_runs: Vec<(f32, f32, usize)> = Vec::new();
             let mut cur_link: Option<(usize, f32)> = None;
+            // (start_x, color, max_size) of the open run, per decoration kind.
+            let mut deco_runs: [Vec<(f32, f32, Rgb, f32)>; 2] = [Vec::new(), Vec::new()];
+            let mut cur_deco: [Option<(f32, Rgb, f32)>; 2] = [None, None];
             let mut cx = x0;
             for c in &line {
                 let cw = self.fonts.char_advance(c.slot, c.ch, c.size);
@@ -994,10 +1291,28 @@ impl<'a> Engine<'a> {
                     }
                     (None, None) => {}
                 }
+                for (kind, on) in [(0, c.underline), (1, c.strike)] {
+                    match (cur_deco[kind], on) {
+                        (None, true) => cur_deco[kind] = Some((cx, c.color, c.size)),
+                        (Some((start, col, ms)), true) if col == c.color => {
+                            cur_deco[kind] = Some((start, col, ms.max(c.size)))
+                        }
+                        (Some((start, col, ms)), _) => {
+                            deco_runs[kind].push((start, cx, col, ms));
+                            cur_deco[kind] = on.then_some((cx, c.color, c.size));
+                        }
+                        (None, false) => {}
+                    }
+                }
                 cx += cw;
             }
             if let Some((li, start)) = cur_link {
                 link_runs.push((start, cx, li));
+            }
+            for kind in 0..2 {
+                if let Some((start, col, ms)) = cur_deco[kind] {
+                    deco_runs[kind].push((start, cx, col, ms));
+                }
             }
 
             if !pieces.is_empty() {
@@ -1019,12 +1334,25 @@ impl<'a> Engine<'a> {
                     });
                 }
             }
+            for (kind, runs) in deco_runs.into_iter().enumerate() {
+                for (sx, ex, col, ms) in runs {
+                    self.decoration_lines(sx, ex, baseline, ms, col, kind == 0, kind == 1);
+                }
+            }
             self.cursor.y += lh;
         }
+        self.cursor.y += p.options.spacing.unwrap_or(0.0);
     }
 
     /// Draw a single (already-wrapped) line of body text. `link` emits an external
     /// link annotation over the line's box; `link_to` an internal jump to an anchor.
+    ///
+    /// A line still holding `#PAGE#` / `#TOTAL_PAGE#` / `#PAGE_OF:` tokens is
+    /// deferred to pass 2 as a `PageText` op (the totals aren't known yet),
+    /// which makes page tokens work in header and body paragraphs, not just
+    /// the footer. Deferred lines emit link annotations over the full region
+    /// box (their text width is only known in pass 2), skip underline/strike,
+    /// and re-itemize by weight only, so italic/mono don't survive on them.
     #[allow(clippy::too_many_arguments)]
     fn draw_text_line(
         &mut self,
@@ -1038,11 +1366,115 @@ impl<'a> Engine<'a> {
         color: Rgb,
         link: Option<&str>,
         link_to: Option<&str>,
+        italic: bool,
+        mono: bool,
+        justify: bool,
+        underline: bool,
+        strike: bool,
     ) {
-        let runs = self.fonts.itemize(line, weight, &mut self.warnings);
+        let ascent = self.fonts.ascent(weight) * size;
+        if has_page_tokens(line) {
+            self.current.push(DrawOp::PageText(PageTextDraw {
+                region_left,
+                region_width,
+                baseline: top + ascent,
+                size,
+                color,
+                alignment,
+                weight,
+                raw: line.to_string(),
+            }));
+            // The substituted text width is only known in pass 2, so link
+            // annotations cover the whole region box instead — a TOC line can
+            // carry both `linkTo` and `#PAGE_OF:` and stay clickable.
+            if let Some(uri) = link.filter(|u| !u.is_empty()) {
+                self.current.push(DrawOp::Link {
+                    x: region_left,
+                    y: top,
+                    w: region_width,
+                    h: line_height(size),
+                    uri: uri.to_string(),
+                });
+            }
+            if let Some(anchor) = link_to.filter(|a| !a.is_empty()) {
+                self.current.push(DrawOp::InternalLink {
+                    x: region_left,
+                    y: top,
+                    w: region_width,
+                    h: line_height(size),
+                    anchor: anchor.to_string(),
+                });
+            }
+            return;
+        }
+        let face = FaceKey {
+            mono,
+            bold: matches!(weight, FontWeight::Bold),
+            italic,
+        };
+        // Justified line: distribute the leftover width across word gaps and
+        // emit one Text op per word. Single-word lines fall through to the
+        // normal path (nothing to distribute).
+        if justify {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            if words.len() > 1 {
+                let mut word_pieces: Vec<(Vec<TextPiece>, f32)> = Vec::with_capacity(words.len());
+                let mut words_w = 0.0f32;
+                for w in &words {
+                    let runs = self.fonts.itemize(w, face, &mut self.warnings);
+                    let ww: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
+                    let pieces: Vec<TextPiece> = runs
+                        .into_iter()
+                        .map(|r| TextPiece {
+                            slot: r.slot,
+                            text: r.text,
+                        })
+                        .collect();
+                    words_w += ww;
+                    word_pieces.push((pieces, ww));
+                }
+                let extra = ((region_width - words_w) / (words.len() - 1) as f32).max(0.0);
+                let baseline = top + ascent;
+                let mut x = region_left;
+                let mut end_x = region_left;
+                for (pieces, ww) in word_pieces {
+                    if !pieces.is_empty() {
+                        self.current.push(DrawOp::Text(TextDraw {
+                            x,
+                            baseline,
+                            size,
+                            color,
+                            pieces,
+                        }));
+                    }
+                    end_x = x + ww;
+                    x += ww + extra;
+                }
+                if let Some(uri) = link.filter(|u| !u.is_empty()) {
+                    self.current.push(DrawOp::Link {
+                        x: region_left,
+                        y: top,
+                        w: (end_x - region_left).max(0.0),
+                        h: line_height(size),
+                        uri: uri.to_string(),
+                    });
+                }
+                if let Some(anchor) = link_to.filter(|a| !a.is_empty()) {
+                    self.current.push(DrawOp::InternalLink {
+                        x: region_left,
+                        y: top,
+                        w: (end_x - region_left).max(0.0),
+                        h: line_height(size),
+                        anchor: anchor.to_string(),
+                    });
+                }
+                self.decoration_lines(region_left, end_x, baseline, size, color, underline, strike);
+                return;
+            }
+        }
+        let runs = self.fonts.itemize(line, face, &mut self.warnings);
         let width: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
         let x = align_x(region_left, region_width, width, alignment);
-        let ascent = self.fonts.ascent(weight) * size;
         let pieces = runs
             .into_iter()
             .map(|r| TextPiece {
@@ -1053,13 +1485,15 @@ impl<'a> Engine<'a> {
         if pieces.is_empty() {
             return;
         }
+        let baseline = top + ascent;
         self.current.push(DrawOp::Text(TextDraw {
             x,
-            baseline: top + ascent,
+            baseline,
             size,
             color,
             pieces,
         }));
+        self.decoration_lines(x, x + width, baseline, size, color, underline, strike);
         if let Some(uri) = link.filter(|u| !u.is_empty()) {
             self.current.push(DrawOp::Link {
                 x,
@@ -1080,11 +1514,56 @@ impl<'a> Engine<'a> {
         }
     }
 
+    /// Emit underline and/or strikethrough strokes for a text run from `x1` to
+    /// `x2`. Offsets follow common convention: the underline sits ~0.10 em
+    /// below the baseline, the strike ~0.27 em above it (mid x-height); both
+    /// are ~0.06 em thick and drawn in the text color.
+    #[allow(clippy::too_many_arguments)]
+    fn decoration_lines(
+        &mut self,
+        x1: f32,
+        x2: f32,
+        baseline: f32,
+        size: f32,
+        color: Rgb,
+        underline: bool,
+        strike: bool,
+    ) {
+        if x2 <= x1 {
+            return;
+        }
+        let thickness = (size * 0.06).max(0.4);
+        if underline {
+            let y = baseline + size * 0.10;
+            self.current.push(DrawOp::Line {
+                x1,
+                y1: y,
+                x2,
+                y2: y,
+                width: thickness,
+                color,
+                dash: None,
+            });
+        }
+        if strike {
+            let y = baseline - size * 0.27;
+            self.current.push(DrawOp::Line {
+                x1,
+                y1: y,
+                x2,
+                y2: y,
+                width: thickness,
+                color,
+                dash: None,
+            });
+        }
+    }
+
     fn footer_paragraph(&mut self, p: &Paragraph, root: &Resolver, top: f32) -> f32 {
         let interpolated = interpolate(&p.value, root, &mut self.warnings);
         let size = p.options.font_size;
         let weight = p.options.font_weight;
-        let lh = line_height(size);
+        let lh = size * p.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
         let region_left = self.page.content_left();
         let region_width = self.page.content_width();
         let ascent = self.fonts.ascent(weight) * size;
@@ -1102,9 +1581,12 @@ impl<'a> Engine<'a> {
                 raw: interpolated,
             }));
         } else {
-            let runs = self
-                .fonts
-                .itemize(&interpolated, weight, &mut self.warnings);
+            let face = FaceKey {
+                mono: p.options.mono,
+                bold: matches!(weight, FontWeight::Bold),
+                italic: p.options.italic,
+            };
+            let runs = self.fonts.itemize(&interpolated, face, &mut self.warnings);
             let width: f32 = runs.iter().map(|r| self.fonts.measure_run(r, size)).sum();
             let x = align_x(region_left, region_width, width, p.options.alignment);
             let pieces = runs
@@ -1166,7 +1648,7 @@ impl<'a> Engine<'a> {
         template: &Template,
     ) -> Result<()> {
         let table_left = self.cursor.x;
-        let available = (self.page.content_right() - table_left).max(1.0);
+        let available = (self.region_right() - table_left).max(1.0);
         let columns = compute_columns(t, available, table_left);
         let pad_x = t.options.padding_x;
         let pad_y = t.options.padding_y;
@@ -1184,6 +1666,14 @@ impl<'a> Engine<'a> {
             None => Vec::new(),
         };
 
+        // Footer height, reserved by every row's fit check so the "carried
+        // forward" band always fits above an intra-table page break.
+        let footer_h = if t.footer_columns.is_empty() {
+            0.0
+        } else {
+            self.row_height(&t.footer_columns, &columns, pad_x, pad_y, root)
+        };
+
         // Draw the header row (if any) now, and remember to repeat it per page.
         self.draw_header_row(t, &columns, pad_x, pad_y, template, root);
 
@@ -1191,7 +1681,7 @@ impl<'a> Engine<'a> {
             // One template row repeated per item.
             let template_row = t.rows.first();
             if let Some(template_row) = template_row {
-                for item in &bound_items {
+                for (row_index, item) in bound_items.iter().enumerate() {
                     let scoped = root.with_scope(item);
                     self.draw_body_row(
                         template_row,
@@ -1202,14 +1692,21 @@ impl<'a> Engine<'a> {
                         t,
                         template,
                         root,
+                        row_index,
+                        footer_h,
                     )?;
                 }
             }
         } else {
-            for row in &t.rows {
-                self.draw_body_row(row, &columns, pad_x, pad_y, root, t, template, root)?;
+            for (row_index, row) in t.rows.iter().enumerate() {
+                self.draw_body_row(
+                    row, &columns, pad_x, pad_y, root, t, template, root, row_index, footer_h,
+                )?;
             }
         }
+
+        // Closing footer row at the table's end.
+        self.draw_footer_row(t, &columns, pad_x, pad_y, footer_h, template, root);
 
         // Per-table watermark: stamp it centered over the table's box, on top.
         if let Some(wm) = &t.watermark {
@@ -1260,6 +1757,38 @@ impl<'a> Engine<'a> {
         self.cursor.y += height;
     }
 
+    /// Draw the table's footer row (no-op when the table has none). Fits by
+    /// construction on the intra-break path — every body row reserves
+    /// `footer_h` in its own space check.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_footer_row(
+        &mut self,
+        t: &Table,
+        columns: &[Column],
+        pad_x: f32,
+        pad_y: f32,
+        footer_h: f32,
+        template: &Template,
+        root: &Resolver,
+    ) {
+        if t.footer_columns.is_empty() {
+            return;
+        }
+        self.ensure_space(footer_h, template, root);
+        self.draw_row_cells(
+            &t.footer_columns,
+            columns,
+            pad_x,
+            pad_y,
+            self.cursor.y,
+            footer_h,
+            false,
+            &t.options.header,
+            root,
+        );
+        self.cursor.y += footer_h;
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn draw_body_row(
         &mut self,
@@ -1271,14 +1800,34 @@ impl<'a> Engine<'a> {
         t: &Table,
         template: &Template,
         root: &Resolver,
+        row_index: usize,
+        footer_h: f32,
     ) -> Result<()> {
         let height = self.row_height(row, columns, pad_x, pad_y, scoped);
-        // Page break: if the row doesn't fit, move to a new page and repeat the
-        // table header there.
-        if self.cursor.y + height > self.page.content_bottom() {
+        // Page break: if the row (plus a pending footer band) doesn't fit,
+        // stamp the footer as "carried forward", move to a new page, and
+        // repeat the table header there.
+        if self.cursor.y + height + footer_h > self.region_bottom() {
+            self.draw_footer_row(t, columns, pad_x, pad_y, footer_h, template, root);
             self.finish_page(template, root);
             self.begin_page(template, root);
             self.draw_header_row(t, columns, pad_x, pad_y, template, root);
+        }
+        // Zebra stripe: fill every second body row (2nd, 4th, …) across the
+        // table's full width, beneath any per-cell fill, borders, and text.
+        if row_index % 2 == 1 {
+            if let Some(stripe) = t.options.stripe.as_deref().and_then(color::parse_hex) {
+                if let Some(first) = columns.first() {
+                    let table_width: f32 = columns.iter().map(|c| c.width).sum();
+                    self.current.push(DrawOp::FillRect {
+                        x: first.x,
+                        y: self.cursor.y,
+                        w: table_width,
+                        h: height,
+                        color: stripe,
+                    });
+                }
+            }
         }
         self.draw_row_cells(
             row,
@@ -1305,7 +1854,7 @@ impl<'a> Engine<'a> {
         resolver: &Resolver,
     ) -> f32 {
         let mut max_h = 0.0_f32;
-        for (cell, col) in row.iter().zip(columns.iter()) {
+        for (cell, col) in zip_columns(row, columns) {
             let inner_w = (col.width - 2.0 * pad_x).max(1.0);
             let h = self.cell_content_height(cell, inner_w, resolver);
             max_h = max_h.max(h);
@@ -1336,8 +1885,14 @@ impl<'a> Engine<'a> {
                         CellContent::Image(img) => {
                             if let Some(idx) = self.intern_image(&img.value) {
                                 let src = &self.images[idx];
-                                let w = if img.width > 0.0 { img.width } else { inner_w };
-                                h += w * src.height_px as f32 / src.width_px.max(1) as f32;
+                                let (_, ih) = fit_image(
+                                    src.width_px,
+                                    src.height_px,
+                                    img.width,
+                                    img.height,
+                                    inner_w,
+                                );
+                                h += ih;
                             }
                         }
                     }
@@ -1360,10 +1915,10 @@ impl<'a> Engine<'a> {
         header_style: &TableHeaderStyle,
         resolver: &Resolver,
     ) {
-        for (cell, col) in row.iter().zip(columns.iter()) {
+        for (cell, col) in zip_columns(row, columns) {
             self.draw_one_cell(
                 cell,
-                *col,
+                col,
                 pad_x,
                 pad_y,
                 row_top,
@@ -1407,6 +1962,18 @@ impl<'a> Engine<'a> {
             }
         }
 
+        // Per-cell fill — painted after the header band / zebra stripe so an
+        // explicit cell background always wins.
+        if let Some(fill) = style.fill.as_deref().and_then(color::parse_hex) {
+            self.current.push(DrawOp::FillRect {
+                x: col.x,
+                y: row_top,
+                w: col.width,
+                h: row_height,
+                color: fill,
+            });
+        }
+
         // Borders.
         self.draw_cell_borders(style, header_style, is_header, col, row_top, row_height);
 
@@ -1439,7 +2006,14 @@ impl<'a> Engine<'a> {
                 let ascent = self.fonts.ascent(weight) * size;
                 let cap = self.fonts.cap_height(weight) * size;
                 let block = (lines.len() as f32 - 1.0) * lh + cap;
-                let mut y = row_top + (row_height - block) / 2.0 - ascent + cap;
+                // `valign` picks where the cap-height block sits in the row;
+                // middle (the default) keeps the optical centering above.
+                let offset = match tc.style.valign.unwrap_or_default() {
+                    VAlign::Top => pad_y,
+                    VAlign::Middle => (row_height - block) / 2.0,
+                    VAlign::Bottom => (row_height - block - pad_y).max(pad_y),
+                };
+                let mut y = row_top + offset - ascent + cap;
                 for line in lines {
                     self.draw_text_line(
                         &line,
@@ -1452,6 +2026,11 @@ impl<'a> Engine<'a> {
                         text_color,
                         tc.style.link.as_deref(),
                         None,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
                     );
                     y += lh;
                 }
@@ -1467,7 +2046,11 @@ impl<'a> Engine<'a> {
                     self.warnings = saved;
                     h
                 };
-                let mut y = row_top + ((row_height - block_h) / 2.0).max(pad_y);
+                let mut y = match rc.style.valign.unwrap_or_default() {
+                    VAlign::Top => row_top + pad_y,
+                    VAlign::Middle => row_top + ((row_height - block_h) / 2.0).max(pad_y),
+                    VAlign::Bottom => row_top + (row_height - block_h - pad_y).max(pad_y),
+                };
                 for item in &rc.content {
                     match item {
                         CellContent::Text(rt) => {
@@ -1478,7 +2061,7 @@ impl<'a> Engine<'a> {
                             for line in lines {
                                 self.draw_text_line(
                                     &line, inner_left, inner_w, y, size, weight, align, text_color,
-                                    None, None,
+                                    None, None, false, false, false, false, false,
                                 );
                                 y += line_height(size);
                             }
@@ -1486,8 +2069,13 @@ impl<'a> Engine<'a> {
                         CellContent::Image(img) => {
                             if let Some(idx) = self.intern_image(&img.value) {
                                 let src = &self.images[idx];
-                                let w = if img.width > 0.0 { img.width } else { inner_w };
-                                let h = w * src.height_px as f32 / src.width_px.max(1) as f32;
+                                let (w, h) = fit_image(
+                                    src.width_px,
+                                    src.height_px,
+                                    img.width,
+                                    img.height,
+                                    inner_w,
+                                );
                                 self.current.push(DrawOp::Image {
                                     index: idx,
                                     x: inner_left,
@@ -1664,6 +2252,57 @@ fn footer_band_height(template: &Template, _fonts: &FontRegistry) -> f32 {
 
 /// Resolve column widths from the header row or the first body row, scaling to
 /// fit `available` and distributing leftover space to width-less columns.
+/// Resolve an image's drawn size (pt) from its pixel dimensions and the
+/// optional target box: only `width` → height derives from the aspect ratio;
+/// only `height` → width derives; both → scale to fit inside the box
+/// ("contain", aspect preserved, never stretched); neither → `default_w` wide.
+fn fit_image(
+    src_w_px: usize,
+    src_h_px: usize,
+    width: f32,
+    height: f32,
+    default_w: f32,
+) -> (f32, f32) {
+    let sw = src_w_px.max(1) as f32;
+    let sh = src_h_px.max(1) as f32;
+    let aspect = sh / sw;
+    match (width > 0.0, height > 0.0) {
+        (true, true) => {
+            let scale = (width / sw).min(height / sh);
+            (sw * scale, sh * scale)
+        }
+        (true, false) => (width, width * aspect),
+        (false, true) => (height / aspect, height),
+        (false, false) => (default_w, default_w * aspect),
+    }
+}
+
+/// Pair each cell of a row with its (possibly merged) column box. A cell with
+/// `colspan: n` consumes `n` column slots: its box starts at the first
+/// consumed column's left edge and spans the summed widths; following cells
+/// continue from the next free slot. Cells beyond the column count are
+/// dropped, matching the plain-zip semantics colspan generalizes.
+fn zip_columns<'r>(row: &'r [Cell], columns: &[Column]) -> Vec<(&'r Cell, Column)> {
+    let mut out = Vec::with_capacity(row.len());
+    let mut idx = 0usize;
+    for cell in row {
+        if idx >= columns.len() {
+            break;
+        }
+        let span = (cell.style().colspan.unwrap_or(1).max(1) as usize).min(columns.len() - idx);
+        let width: f32 = columns[idx..idx + span].iter().map(|c| c.width).sum();
+        out.push((
+            cell,
+            Column {
+                x: columns[idx].x,
+                width,
+            },
+        ));
+        idx += span;
+    }
+    out
+}
+
 fn compute_columns(t: &Table, available: f32, left: f32) -> Vec<Column> {
     let source: &[Cell] = if !t.header_columns.is_empty() {
         &t.header_columns

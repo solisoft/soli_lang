@@ -45,18 +45,43 @@ pub fn embed(
             .catalog_mut()
             .map_err(|e| PdfError::Facturx(format!("no catalog: {e}")))?;
 
-        // /AF [ filespec ]
-        catalog.set("AF", Object::Array(vec![Object::Reference(filespec)]));
+        // /AF [ … filespec ] — the Factur-X spec entry comes FIRST, appended
+        // ahead of any generic attachments already associated (the render's
+        // `attachments` post-pass runs before this step and must survive it).
+        let mut af: Vec<Object> = vec![Object::Reference(filespec)];
+        if let Some(existing) = catalog.get(b"AF").ok().and_then(|o| o.as_array().ok()) {
+            af.extend(existing.iter().cloned());
+        }
+        catalog.set("AF", Object::Array(af));
 
-        // /Names << /EmbeddedFiles << /Names [ (factur-x.xml) filespec ] >> >>
+        // /Names << /EmbeddedFiles << /Names [ … (factur-x.xml) filespec … ] >> >>
+        // Merged (and re-sorted — name trees are ordered) with any entries the
+        // generic-attachments pass wrote, instead of clobbering them.
+        let mut pairs: Vec<(Vec<u8>, Object)> = Vec::new();
+        if let Some(arr) = catalog
+            .get(b"Names")
+            .ok()
+            .and_then(|o| o.as_dict().ok())
+            .and_then(|d| d.get(b"EmbeddedFiles").ok())
+            .and_then(|o| o.as_dict().ok())
+            .and_then(|d| d.get(b"Names").ok())
+            .and_then(|o| o.as_array().ok())
+        {
+            for pair in arr.chunks_exact(2) {
+                if let Object::String(name, _) = &pair[0] {
+                    pairs.push((name.clone(), pair[1].clone()));
+                }
+            }
+        }
+        pairs.push((FILENAME.as_bytes().to_vec(), Object::Reference(filespec)));
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut names_array: Vec<Object> = Vec::with_capacity(pairs.len() * 2);
+        for (name, spec) in pairs {
+            names_array.push(Object::String(name, StringFormat::Literal));
+            names_array.push(spec);
+        }
         let mut embedded_files = Dictionary::new();
-        embedded_files.set(
-            "Names",
-            Object::Array(vec![
-                Object::String(FILENAME.as_bytes().to_vec(), StringFormat::Literal),
-                Object::Reference(filespec),
-            ]),
-        );
+        embedded_files.set("Names", Object::Array(names_array));
         let names = match catalog.get(b"Names").ok().and_then(|o| o.as_dict().ok()) {
             Some(existing) => {
                 let mut d = existing.clone();

@@ -1162,6 +1162,10 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
     let mut status = 200u16;
     let mut headers = Vec::new();
     let mut body: Vec<u8> = Vec::new();
+    // A `body_base64` key carries a BINARY body (PDFs, images…) as base64 —
+    // Soli has no bytes type. Decoded after the loop so it deterministically
+    // wins over a plain `body` regardless of hash iteration order.
+    let mut body_b64: Option<String> = None;
 
     if let Value::Hash(hash) = response {
         // Try to take sole ownership of the inner map to avoid cloning
@@ -1190,9 +1194,17 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                             "body" => {
                                 body = body_value_to_bytes(v.clone());
                             }
+                            "body_base64" => {
+                                if let Value::String(s) = v {
+                                    body_b64 = Some(s.to_string());
+                                }
+                            }
                             _ => {}
                         }
                     }
+                }
+                if let Some(b64) = body_b64 {
+                    body = decode_body_base64(&b64);
                 }
                 return (status, headers, body);
             }
@@ -1229,6 +1241,11 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                     "body" => {
                         body = body_value_to_bytes(v);
                     }
+                    "body_base64" => {
+                        if let Value::String(s) = v {
+                            body_b64 = Some(s.to_string());
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1237,7 +1254,24 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
         body = body_value_to_bytes(response);
     }
 
+    if let Some(b64) = body_b64 {
+        body = decode_body_base64(&b64);
+    }
     (status, headers, body)
+}
+
+/// Decode a `body_base64` response body. Invalid base64 is a handler bug —
+/// there is no error channel here, so log it and send an empty body rather
+/// than serving the undecoded text as if it were the binary payload.
+fn decode_body_base64(b64: &str) -> Vec<u8> {
+    use base64::Engine as _;
+    match base64::engine::general_purpose::STANDARD.decode(b64.trim()) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("body_base64: invalid base64 in response body: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// Register URL utility functions (url_encode, url_decode) in the given environment.
@@ -1692,4 +1726,53 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             }
         })),
     );
+}
+
+#[cfg(test)]
+mod body_base64_tests {
+    use super::*;
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut map = crate::interpreter::value::HashPairs::default();
+        for (k, v) in pairs {
+            map.insert(HashKey::String(k.into()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    #[test]
+    fn body_base64_decodes_to_binary() {
+        use base64::Engine as _;
+        let payload = b"%PDF-1.7 \x00\x01\x02 binary";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(payload);
+        let response = hash(vec![
+            ("status", Value::Int(200)),
+            ("body_base64", Value::String(b64.into())),
+        ]);
+        let (status, _, body) = extract_response(response);
+        assert_eq!(status, 200);
+        assert_eq!(body, payload);
+    }
+
+    #[test]
+    fn body_base64_wins_over_plain_body() {
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"BIN");
+        let response = hash(vec![
+            ("body", Value::String("text".into())),
+            ("body_base64", Value::String(b64.into())),
+        ]);
+        let (_, _, body) = extract_response(response);
+        assert_eq!(body, b"BIN", "body_base64 deterministically wins");
+    }
+
+    #[test]
+    fn invalid_base64_yields_empty_body() {
+        let response = hash(vec![(
+            "body_base64",
+            Value::String("not!!valid@@base64".into()),
+        )]);
+        let (_, _, body) = extract_response(response);
+        assert!(body.is_empty());
+    }
 }

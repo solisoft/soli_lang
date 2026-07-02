@@ -15,16 +15,32 @@
 //!   * `font_dirs`  — array of directories to load fonts from (default `["font"]`).
 //!   * `fetch_images` — bool, whether to fetch remote `http(s)` images (default true).
 //!   * `profile` (pdf_facturx) — `"minimum" | "basicwl" | "basic" | "en16931" | "extended"` (default `en16931`).
-//!   * `title` / `author` / `subject` (pdf_facturx) — document metadata.
+//!   * `title` / `author` / `subject` — document metadata (Info dictionary).
+//!     For `pdf_render` the title defaults to `"invoice"` when unset.
+//!   * `stationery` — path to a letterhead PDF (app-root relative) drawn
+//!     beneath every page's content. Page 1 uses the letterhead's first page;
+//!     later pages use its second page when present, else the first.
+//!   * `attachments` — `[{ "path", "name"?, "mime"? }]` files embedded into the
+//!     document (paths app-root relative; missing file is an error).
+//!   * `password` / `owner_password` / `permissions` — AES-128 protection.
+//!     `permissions` is a subset of `["print","copy","modify","annotate"]`
+//!     (empty = allow all). Incompatible with `pdf_facturx*` (PDF/A).
+//!   * `filename` (pdf_response) — sets `Content-Disposition: attachment`.
+//!
+//! `pdf_response(template, data, options?)` renders and returns a ready
+//! response hash (`application/pdf`, binary body via `body_base64`) — return
+//! it straight from a controller action, no `file_write_base64` dance.
 
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use base64::Engine as _;
 use soli_pdf::{FacturxMetadata, Profile, RenderOptions};
 use time::OffsetDateTime;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 /// Register the PDF builtins.
 pub fn register_pdf_builtins(env: &mut Environment) {
@@ -39,10 +55,53 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             }
             let template = arg_string(&args[0], "pdf_render", "template")?;
             let data = arg_string(&args[1], "pdf_render", "data")?;
-            let opts = render_options(args.get(2));
+            let opts = render_options(args.get(2))?;
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_render() failed: {e}"))?;
             Ok(b64(pdf))
+        })),
+    );
+
+    // Render + wrap as a ready HTTP response: return it straight from a
+    // controller action. The binary body travels via the `body_base64`
+    // response key (decoded server-side in `extract_response`).
+    env.define(
+        "pdf_response".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_response", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_response() expects 2 or 3 arguments (template, data, options?), got {}",
+                    args.len()
+                ));
+            }
+            let template = arg_string(&args[0], "pdf_response", "template")?;
+            let data = arg_string(&args[1], "pdf_response", "data")?;
+            let opts = render_options(args.get(2))?;
+            let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
+                .map_err(|e| format!("pdf_response() failed: {e}"))?;
+
+            let mut headers = HashPairs::default();
+            headers.insert(
+                HashKey::String("Content-Type".into()),
+                Value::String("application/pdf".into()),
+            );
+            if let Some(filename) = opt_str(args.get(2), "filename") {
+                // Quote-escape so a weird filename can't break the header.
+                let safe = filename.replace(['"', '\r', '\n'], "_");
+                headers.insert(
+                    HashKey::String("Content-Disposition".into()),
+                    Value::String(format!("attachment; filename=\"{safe}\"").into()),
+                );
+            }
+
+            let mut response = HashPairs::default();
+            response.insert(HashKey::String("status".into()), Value::Int(200));
+            response.insert(
+                HashKey::String("headers".into()),
+                Value::Hash(Rc::new(RefCell::new(headers))),
+            );
+            response.insert(HashKey::String("body_base64".into()), b64(pdf));
+            Ok(Value::Hash(Rc::new(RefCell::new(response))))
         })),
     );
 
@@ -58,7 +117,10 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             let template = arg_string(&args[0], "pdf_facturx", "template")?;
             let data = arg_string(&args[1], "pdf_facturx", "data")?;
             let xml = arg_string(&args[2], "pdf_facturx", "xml")?;
-            let opts = render_options(args.get(3));
+            let opts = render_options(args.get(3))?;
+            if opts.encrypt.is_some() {
+                return Err("pdf_facturx(): encryption is incompatible with PDF/A-3b (Factur-X); drop `password`".to_string());
+            }
             let profile = opt_str(args.get(3), "profile")
                 .and_then(|s| Profile::parse(&s))
                 .unwrap_or_default();
@@ -92,7 +154,10 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 let invoice_json = arg_string(&args[1], "pdf_facturx_from_invoice", "invoice")?;
                 let invoice = soli_pdf::Invoice::parse(invoice_json.as_bytes())
                     .map_err(|e| format!("pdf_facturx_from_invoice() invalid invoice: {e}"))?;
-                let opts = render_options(args.get(2));
+                let opts = render_options(args.get(2))?;
+                if opts.encrypt.is_some() {
+                    return Err("pdf_facturx_from_invoice(): encryption is incompatible with PDF/A-3b (Factur-X); drop `password`".to_string());
+                }
                 let profile = opt_str(args.get(2), "profile")
                     .and_then(|s| Profile::parse(&s))
                     .unwrap_or_default();
@@ -144,7 +209,7 @@ fn resolve_font_dir(dir: PathBuf) -> PathBuf {
 
 /// Build `RenderOptions` from an optional options hash. Defaults the font search
 /// path to a `font/` folder at the app root.
-fn render_options(opts: Option<&Value>) -> RenderOptions {
+fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
     let mut dirs = vec![PathBuf::from("font")];
     let mut fetch_images = true;
     if let Some(Value::Hash(h)) = opts {
@@ -166,11 +231,119 @@ fn render_options(opts: Option<&Value>) -> RenderOptions {
             }
         }
     }
-    RenderOptions {
+    // Letterhead underlay: a path (resolved against the app root, like font
+    // dirs) read into bytes here so the render stays IO-free. A missing or
+    // unreadable file is a hard error — silently rendering WITHOUT the
+    // letterhead would ship a broken document.
+    let stationery = match opt_str(opts, "stationery") {
+        Some(p) => {
+            let resolved = resolve_font_dir(PathBuf::from(&p));
+            Some(std::fs::read(&resolved).map_err(|e| {
+                format!(
+                    "stationery: could not read '{p}' ({}): {e}",
+                    resolved.display()
+                )
+            })?)
+        }
+        None => None,
+    };
+
+    // Attachments: `[{ "path": "...", "name"?: "...", "mime"?: "..." }]`.
+    // Paths resolve against the app root; a missing file is a hard error.
+    let mut attachments = Vec::new();
+    if let Some(Value::Hash(h)) = opts {
+        if let Some(Value::Array(arr)) = h.borrow().get(&HashKey::String("attachments".into())) {
+            for entry in arr.borrow().iter() {
+                let Value::Hash(att) = entry else {
+                    return Err("attachments: each entry must be a hash".to_string());
+                };
+                let att = att.borrow();
+                let Some(Value::String(path)) = att.get(&HashKey::String("path".into())) else {
+                    return Err("attachments: entry is missing \"path\"".to_string());
+                };
+                let path = path.to_string();
+                let resolved = resolve_font_dir(PathBuf::from(&path));
+                let bytes = std::fs::read(&resolved).map_err(|e| {
+                    format!(
+                        "attachments: could not read '{path}' ({}): {e}",
+                        resolved.display()
+                    )
+                })?;
+                let name = match att.get(&HashKey::String("name".into())) {
+                    Some(Value::String(n)) => n.to_string(),
+                    _ => PathBuf::from(&path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "attachment".to_string()),
+                };
+                let mime = match att.get(&HashKey::String("mime".into())) {
+                    Some(Value::String(m)) => m.to_string(),
+                    _ => guess_mime(&name),
+                };
+                attachments.push(soli_pdf::Attachment { name, mime, bytes });
+            }
+        }
+    }
+
+    // Password protection: `password` (open) / `owner_password` (unlock) /
+    // `permissions` (["print","copy","modify","annotate"]).
+    let encrypt = build_encrypt_options(opts);
+
+    Ok(RenderOptions {
         font_dirs: dirs.into_iter().map(resolve_font_dir).collect(),
         fetch_images,
+        title: opt_str(opts, "title"),
+        author: opt_str(opts, "author"),
+        subject: opt_str(opts, "subject"),
+        stationery,
+        attachments,
+        encrypt,
         ..Default::default()
+    })
+}
+
+/// Build `EncryptOptions` from `password` / `owner_password` / `permissions`.
+/// Returns `None` when neither password is set (no encryption).
+fn build_encrypt_options(opts: Option<&Value>) -> Option<soli_pdf::EncryptOptions> {
+    let user = opt_str(opts, "password").unwrap_or_default();
+    let owner = opt_str(opts, "owner_password").unwrap_or_default();
+    if user.is_empty() && owner.is_empty() {
+        return None;
     }
+    let mut allow = Vec::new();
+    if let Some(Value::Hash(h)) = opts {
+        if let Some(Value::Array(arr)) = h.borrow().get(&HashKey::String("permissions".into())) {
+            for v in arr.borrow().iter() {
+                if let Value::String(s) = v {
+                    allow.push(s.to_string());
+                }
+            }
+        }
+    }
+    Some(soli_pdf::EncryptOptions {
+        user_password: user,
+        owner_password: owner,
+        allow,
+    })
+}
+
+/// A minimal extension→MIME map for attachments without an explicit `mime`.
+fn guess_mime(name: &str) -> String {
+    match name.rsplit('.').next().map(|e| e.to_ascii_lowercase()) {
+        Some(ext) => match ext.as_str() {
+            "xml" => "text/xml",
+            "csv" => "text/csv",
+            "json" => "application/json",
+            "txt" => "text/plain",
+            "pdf" => "application/pdf",
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "zip" => "application/zip",
+            _ => "application/octet-stream",
+        },
+        None => "application/octet-stream",
+    }
+    .to_string()
 }
 
 fn opt_str(opts: Option<&Value>, key: &str) -> Option<String> {

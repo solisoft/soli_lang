@@ -1,0 +1,34 @@
+{
+  "data": {
+    "doc": {
+      "title": "soli-pdf template reference",
+      "version": "1.0",
+      "org": "Soli",
+      "ref": "TOUR-2026-001",
+      "paid": "true",
+      "total": "1,940.00 EUR"
+    },
+    "payment": {
+      "name": "Soli Demo SARL",
+      "iban": "FR7630006000011234567890189",
+      "amount": "79.00"
+    },
+    "items": [
+      { "name": "Template engine", "qty": "1", "amount": "890.00 EUR" },
+      { "name": "Chart pack (bar, line, pie)", "qty": "3", "amount": "450.00 EUR" },
+      { "name": "QR & barcode primitives", "qty": "2", "amount": "300.00 EUR" },
+      { "name": "Factur-X / PDF-A-3b embedding", "qty": "1", "amount": "300.00 EUR" }
+    ],
+    "milestones": [
+      { "date": "2026-03", "title": "Charts & lists", "note": "bar, line, pie, nested lists" },
+      { "date": "2026-06", "title": "SVG & barcodes", "note": "crisp vector logos, Code 128 / EAN" },
+      { "date": "2026-07", "title": "Flow & decoration", "note": "page_break, underline/strike, header page numbers" }
+    ],
+    "quarters": [
+      { "q": "Q1", "fy25": 120, "fy26": 180 },
+      { "q": "Q2", "fy25": 150, "fy26": 210 },
+      { "q": "Q3", "fy25": 170, "fy26": 260 },
+      { "q": "Q4", "fy25": 160, "fy26": 300 }
+    ]
+  }
+}

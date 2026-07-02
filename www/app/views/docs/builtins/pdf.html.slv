@@ -111,6 +111,14 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
                 <h3 class="text-lg font-semibold text-white mb-1">Dynamic <span class="text-xs font-normal text-teal-300 align-middle">· data-driven</span></h3>
                 <p class="text-sm text-gray-400">One template, shaped entirely by data. <code>repeat</code> lays out the line items from an array; <code>if</code>/<code>else</code> swaps the <strong>PAID</strong> banner for <strong>BALANCE DUE</strong>; <code>unless in_stock</code> adds a backorder note only where needed. No per-row code &mdash; the document follows the data. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
             </div>
+            <!-- Feature tour (every element) -->
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
+                    <img src="/images/docs/pdf/features.png" alt="Four-page feature tour: rich text with underline and strikethrough, a clickable table of contents, graphics and codes, a data-bound table with a repeat block, and three charts" class="w-full h-auto" loading="lazy" />
+                </div>
+                <h3 class="text-lg font-semibold text-white mb-1">Template reference <span class="text-xs font-normal text-teal-300 align-middle">· 5 pages · self-documenting</span></h3>
+                <p class="text-sm text-gray-400">A PDF that documents itself: every block names the element or option that renders it, shows the JSON, and <em>is</em> the result. A branded <strong>hero cover</strong>, numbered section bands, self-labeling paragraph options (<strong>underline</strong>/<strong>strike</strong>/color/italic/mono), a clickable <strong>TOC</strong> (<code>anchor</code>/<code>linkTo</code> + <code>bookmark</code>s), <code>page_break</code>s, a running header with <code>${...}</code> data and <code>Page X/Y</code> tokens, dashed/rounded <code>rect</code>s, both <strong>QR kinds</strong> + two <strong>barcode symbologies</strong>, a <strong>zebra-striped</strong> table with <code>colspan</code>/<code>fill</code>, rich cells + per-table <strong>watermark</strong>, <code>repeat</code>, <code>if</code>/<code>unless</code>, and grouped/<strong>stacked</strong>/line/pie <strong>charts</strong>. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
+            </div>
             <!-- Code -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">…from one call</h3>
@@ -149,6 +157,24 @@ end</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF bytes.</div>
+            </div>
+        </section>
+
+        <section id="def-pdf-response" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-indigo-400">pdf_response(template, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render <strong>and</strong> wrap as a ready HTTP response &mdash; return it straight from a controller action, no <code>file_write_base64</code> + redirect dance. The binary body travels via the <code>body_base64</code> response key, decoded by the server (usable by any handler, not just PDFs).</p>
+                <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def download
+  let tpl  = slurp("pdf/invoice.json")
+  let data = Invoice.find(params["id"]).to_json()
+  return pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
+end</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div>As <code>pdf_render</code>, plus <code class="text-amber-400">filename</code> : <code class="text-purple-400">String?</code> &mdash; adds <code>Content-Disposition: attachment</code>; omit to render inline in the browser.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-purple-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }</code>.</div>
             </div>
         </section>
 
@@ -193,7 +219,11 @@ end</code></pre>
                         <tr><td class="px-4 py-2"><code>font_dirs</code></td><td class="px-4 py-2">Array&lt;String&gt;</td><td class="px-4 py-2"><code>["font"]</code></td><td class="px-4 py-2">Directories to load fonts from. No fonts are bundled.</td></tr>
                         <tr><td class="px-4 py-2"><code>fetch_images</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>true</code></td><td class="px-4 py-2">Fetch <code>http(s)</code> images. Set <code>false</code> for offline/deterministic output.</td></tr>
                         <tr><td class="px-4 py-2"><code>profile</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>en16931</code></td><td class="px-4 py-2"><span class="text-gray-500">(Factur-X)</span> Factur-X profile &mdash; see the profile table.</td></tr>
-                        <tr><td class="px-4 py-2"><code>title</code> / <code>author</code> / <code>subject</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2"><span class="text-gray-500">(Factur-X)</span> Document metadata (XMP + Info dict).</td></tr>
+                        <tr><td class="px-4 py-2"><code>title</code> / <code>author</code> / <code>subject</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Document metadata (Info dict; XMP too on Factur-X). Works for <code>pdf_render</code> as well &mdash; the plain-render title defaults to <code>"invoice"</code> when unset.</td></tr>
+                        <tr><td class="px-4 py-2"><code>stationery</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Path (app-root relative) to a <strong>letterhead PDF</strong> drawn beneath every page's content. Page 1 uses the letterhead's first page; later pages use its second page when present, else the first. Missing file = error; scaled to the page size; a template <code>background</code> fill paints over it.</td></tr>
+                        <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Files embedded into the reader's attachments panel: <code>[{ "path", "name"?, "mime"? }]</code> (app-root relative; missing file = error; MIME guessed from the extension). Composes with Factur-X &mdash; <code>factur-x.xml</code> and your attachments coexist.</td></tr>
+                        <tr><td class="px-4 py-2"><code>password</code> / <code>owner_password</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Password-protect the PDF (<strong>AES-128</strong>). <code>password</code> opens the document; <code>owner_password</code> lifts restrictions (defaults to <code>password</code>). Incompatible with <code>pdf_facturx*</code> (PDF/A forbids encryption).</td></tr>
+                        <tr><td class="px-4 py-2"><code>permissions</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">all</td><td class="px-4 py-2">With a password, the actions the user may take: any of <code>["print","copy","modify","annotate"]</code>. Empty = allow all (open-password only).</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -287,7 +317,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
                 <tbody class="text-gray-400 divide-y divide-white/5">
                     <tr><td class="px-4 py-2"><code class="text-amber-400">fonts</code></td><td class="px-4 py-2">string[]</td><td class="px-4 py-2">Families to load. The <strong>first</strong> is the primary text face; the rest are <strong>fallbacks</strong> for characters it can't cover (e.g. a CJK font). Resolved from files in <code>font_dirs</code> &mdash; see <strong>Fonts</strong> below.</td></tr>
                     <tr><td class="px-4 py-2"><code class="text-amber-400">options</code></td><td class="px-4 py-2">object</td><td class="px-4 py-2">Document options: <code>header_height</code> (pt), <code>margins</code>, <code>watermark</code> &mdash; detailed below.</td></tr>
-                    <tr><td class="px-4 py-2"><code class="text-amber-400">header</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Elements drawn in the reserved top band on <strong>every</strong> page, from their own cursor at the top margin. Sized by <code>options.header_height</code>; they do not paginate.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">header</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Elements drawn in the reserved top band on <strong>every</strong> page, from their own cursor at the top margin. Sized by <code>options.header_height</code>; they do not paginate. Paragraphs interpolate <code>${...}</code> and may use <code>#PAGE#</code> / <code>#TOTAL_PAGE#</code>.</td></tr>
                     <tr><td class="px-4 py-2"><code class="text-amber-400">footer</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Paragraphs drawn in the bottom band on <strong>every</strong> page. May contain <code>#PAGE#</code> / <code>#TOTAL_PAGE#</code>, substituted after pagination. The band auto-sizes above the bottom margin.</td></tr>
                     <tr><td class="px-4 py-2"><code class="text-amber-400">content</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">The page body, laid out top-to-bottom; paginates automatically when it overflows.</td></tr>
                 </tbody>
@@ -296,6 +326,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
         <p class="text-gray-400 mb-3">All five keys are optional. Lengths are in points (A4 = 595&times;842&nbsp;pt; 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt).</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.page</code> &mdash; a preset (<code>a4</code>, <code>letter</code>, <code>legal</code>, <code>a5</code>, <code>a3</code>) or a custom <code>{ "width": …, "height": … }</code> in points; <code class="text-amber-400">options.orientation</code>: <code>"landscape"</code> swaps width/height. Defaults to A4 portrait.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.background</code> &mdash; a page background fill (hex, no <code>#</code>) painted behind every page, beneath any watermark and content. Omit for white paper.</p>
+        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.backgroundImage</code> &mdash; a full-page background image <code>{ "src", "pages"? }</code> (a cover photo / branded page). Drawn stretched to the page, above the <code>background</code> fill and below the watermark/content; <code>pages</code> filters like the watermark.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.margins</code> &mdash; page margins in points: a single number for all four sides, or an object overriding individual sides (unset sides keep the 20&nbsp;mm default). The <strong>top</strong> margin is the gap above the header, the <strong>bottom</strong> margin the gap below the footer; <code>header_height</code> reserves the header band below the top margin. 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.watermark</code> draws a diagonal stamp (e.g. <code>PAID</code>, <code>DRAFT</code>) &mdash; centered behind the content of every page by default, with layering, position and page-scope all configurable. Fields: <code>text</code> (required), <code>angle</code> (deg, default&nbsp;45), <code>color</code> (hex, default light grey), <code>fontSize</code> (pt, default&nbsp;96), <code>fontWeight</code> (default&nbsp;bold), <code>front</code> (draw <strong>on top</strong> so panels/images can't hide it; default&nbsp;false), <code>x</code>/<code>y</code> (explicit center, pt; default page center), <code>anchor</code> (vertical hint when <code>y</code> is unset: <code>top</code>/<code>center</code>/<code>bottom</code>), and <code>pages</code> (<code>"all"</code>/<code>"first"</code>/<code>"last"</code> or a list like <code>[1, 3]</code>).</p>
         <pre data-filename="Overlay on the first page only" class="mt-2"><code class="language-json text-sm">"options": { "watermark": { "text": "PAID", "front": true, "anchor": "top", "pages": "first" } }</code></pre>
@@ -309,7 +340,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
         <div class="space-y-4">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">paragraph</code>
-                <p class="text-sm text-gray-400 mt-2 mb-2">Wrapped, aligned text. Advances the cursor down by the consumed height. <code>options</code> also takes <code>color</code> (hex, no <code>#</code> &mdash; applies to the whole paragraph), <code>italic</code>, <code>mono</code>, and <code>link</code>/<code>bookmark</code>/<code>anchor</code>. For mixed colours/weights within one line, use <code>spans</code> instead of <code>value</code>.</p>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Wrapped, aligned text. Advances the cursor down by the consumed height. <code>options</code> also takes <code>alignment</code> (<code>left</code>/<code>right</code>/<code>center</code>/<code>justify</code> &mdash; justify distributes word gaps, last line stays left), <code>color</code> (hex, no <code>#</code> &mdash; applies to the whole paragraph), <code>italic</code>, <code>mono</code>, <code>underline</code>/<code>strike</code> (drawn in the text colour), <code>lineHeight</code> (multiplier, engine default 1.2), <code>spacing</code> (pt gap below the block &mdash; replaces trailing <code>move</code> elements), <code>minSpaceBelow</code> (keep-together for headings &mdash; the paragraph moves to the next page unless that much room remains), and <code>link</code>/<code>bookmark</code> + <code>bookmarkLevel</code> (nested outline)/<code>anchor</code>. For mixed colours/weights within one line, use <code>spans</code> instead of <code>value</code>.</p>
                 <pre data-filename="paragraph"><code class="language-json text-sm">{ "type": "paragraph", "value": "Invoice ${invoice.number}",
   "options": { "alignment": "left|right|center", "fontSize": 24, "fontWeight": "normal|bold", "color": "0f766e" } }</code></pre>
             </div>
@@ -321,21 +352,40 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">columns</code> <span class="text-xs font-normal text-teal-300 align-middle">&middot; multi-column flow</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A multi-column block. Children fill column 1 to the bottom, then column 2, and so on (<strong>sequential fill</strong>); full-width flow resumes below. <code>count</code> (1&ndash;6, default 2), <code>gap</code> (pt). A <code>page_break</code> inside is a <strong>column break</strong>; overflowing the last column starts a new page and restarts the set. Paragraphs/lists/images flow inside; tables and charts are skipped (v1), nested <code>columns</code> flattened.</p>
+                <pre data-filename="columns"><code class="language-json text-sm">{ "type": "columns", "count": 2, "gap": 22, "content": [
+  { "type": "paragraph", "value": "flows down column 1, then into column 2\u2026" },
+  { "type": "list", "items": ["lists flow too"] }
+] }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-teal-300 font-mono">page_break</code>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Force a new page at this point in the flow &mdash; finishes the current page (footer included) and starts the next one with its header band. Replaces the old <code>{ "type": "move", "y": 3000 }</code> overflow trick. A trailing <code>page_break</code> with nothing after it leaves a final blank page.</p>
+                <pre data-filename="page_break"><code class="language-json text-sm">{ "type": "page_break" }</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">image</code>
-                <p class="text-sm text-gray-400 mt-2 mb-2">Draw an image at the cursor, scaled to <code>width</code> (height keeps aspect). Source may be an <code>http(s)</code> URL, a <code>file://</code> path, or a <code>data:</code> URI. Raster formats (PNG, JPEG, WebP, GIF) <strong>and SVG</strong> are accepted &mdash; SVG is auto-detected and rasterised so a vector logo stays crisp at any size (<code>&lt;text&gt;</code> uses the fonts from <code>font_dirs</code>). In an inline SVG <code>data:</code> URI, colours may be written as a literal <code>#</code> (<code>fill='#0f766e'</code>) or URL-encoded <code>%23</code> (<code>fill='%230f766e'</code>) &mdash; both work, and SVG percentages like <code>width='50%'</code> are preserved. The cursor is not advanced &mdash; position with <code>move</code>.</p>
+                <p class="text-sm text-gray-400 mt-2 mb-2">Draw an image at the cursor. Sizing: <code>width</code> only &rarr; height derives from the aspect; <code>height</code> only &rarr; width derives; <strong>both</strong> &rarr; scaled to fit inside the box (&ldquo;contain&rdquo;, aspect preserved, never stretched). Source may be an <code>http(s)</code> URL, a <code>file://</code> path, or a <code>data:</code> URI. Raster formats (PNG, JPEG, WebP, GIF) <strong>and SVG</strong> are accepted &mdash; SVG is auto-detected and rasterised so a vector logo stays crisp at any size (<code>&lt;text&gt;</code> uses the fonts from <code>font_dirs</code>). In an inline SVG <code>data:</code> URI, colours may be written as a literal <code>#</code> (<code>fill='#0f766e'</code>) or URL-encoded <code>%23</code> (<code>fill='%230f766e'</code>) &mdash; both work, and SVG percentages like <code>width='50%'</code> are preserved. The cursor is not advanced &mdash; position with <code>move</code>.</p>
                 <pre data-filename="image"><code class="language-json text-sm">{ "type": "image", "value": "https://acme.example/logo.png", "width": 100 }
 { "type": "image", "value": "file://brand/logo.svg", "width": 120 }</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">table</code>
-                <p class="text-sm text-gray-400 mt-2 mb-2">A grid of cells. Optional <code>data</code> binds the single template row to an array, repeating it once per item (<code>${field}</code> resolves against each item). A non-empty <code>header_columns</code> row repeats on every page the table spans.</p>
-                <pre data-filename="table (data-bound)"><code class="language-json text-sm">{ "type": "table", "data": "items",
+                <p class="text-sm text-gray-400 mt-2 mb-2">A grid of cells. Optional <code>data</code> binds the single template row to an array, repeating it once per item (<code>${field}</code> resolves against each item). A non-empty <code>header_columns</code> row repeats on every page the table spans; a non-empty <code>footer_columns</code> row closes the table AND repeats just above every intra-table page break (the &ldquo;carried forward&rdquo; band &mdash; it interpolates against the root data). <code>options.stripe</code> (hex) <strong>zebra-stripes</strong> every second body row; a cell's own <code>fill</code> paints its background (over the stripe &mdash; totals, highlights); <code>colspan</code> <strong>merges a cell across column slots</strong>; <code>valign</code> (<code>top</code>/<code>middle</code>/<code>bottom</code>) positions its content vertically.</p>
+                <pre data-filename="table (data-bound, striped)"><code class="language-json text-sm">{ "type": "table", "data": "items",
   "header_columns": [ { "text": "DESCRIPTION", "width": 280, "fontWeight": "bold",
                         "borderSides": { "bottom": "true" } }, ... ],
   "rows": [ [ { "text": "${name}", "width": 280 }, { "text": "${amount}", "alignment": "right" } ] ],
   "options": { "header": { "fillColor": "0F766E", "textColor": "FFFFFF", "borderColor": "0F766E" },
-               "padding_x": 6, "padding_y": 7 } }</code></pre>
+               "stripe": "f1f5f9", "padding_x": 6, "padding_y": 7 } }</code></pre>
+                <pre data-filename="colspan totals row"><code class="language-json text-sm">{ "type": "table",
+  "header_columns": [ { "text": "A", "width": 200 }, { "text": "B", "width": 100 }, { "text": "C", "width": 100 } ],
+  "rows": [ [ { "text": "TOTAL DUE", "colspan": 2, "alignment": "right", "fontWeight": "bold" },
+              { "text": "2,140.00 EUR", "alignment": "right", "fill": "fef3c7" } ] ] }</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -426,7 +476,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
   { "text": "pay now", "link": "https://pay.example/42", "color": "2563eb" },
   { "text": " see ", "italic": true }, { "text": "README", "mono": true }
 ] }</code></pre>
-        <p class="text-sm text-gray-400 mt-2">Span fields: <code>text</code> (required), <code>fontSize</code>, <code>fontWeight</code>, <code>italic</code> (bool), <code>mono</code> (bool &mdash; monospace, e.g. for <code>code</code>), <code>color</code> (hex), <code>link</code> (external URL). <code>italic</code>/<code>mono</code> use the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); a missing face degrades to the nearest available one.</p>
+        <p class="text-sm text-gray-400 mt-2">Span fields: <code>text</code> (required), <code>fontSize</code>, <code>fontWeight</code>, <code>italic</code> (bool), <code>mono</code> (bool &mdash; monospace, e.g. for <code>code</code>), <code>color</code> (hex), <code>link</code> (external URL), <code>underline</code> / <code>strike</code> (bool &mdash; the stroke follows the span's colour, so a red <code>strike</code> span reads as a redlined price). <code>italic</code>/<code>mono</code> use the matching faces in the font dir (Titillium italics + JetBrains Mono ship by default); a missing face degrades to the nearest available one.</p>
         <div class="rounded-xl bg-teal-500/5 border border-teal-400/20 p-4 mt-3">
             <p class="text-sm text-gray-300 leading-6"><strong>Author it as markdown.</strong> <code class="text-teal-300">Markdown.to_spans(md)</code> turns inline markdown &mdash; <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code> (&rarr; mono), <code>[text](url)</code> &mdash; into exactly this <code>spans</code> array.</p>
             <pre class="!mt-2 !mb-0"><code class="language-soli text-sm">let spans = Markdown.to_spans("Pay **now**, read the `README`, see [docs](https://x).")
@@ -447,21 +497,27 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Styling &amp; colours</h3>
         <div class="text-sm text-gray-400 space-y-1 mb-4">
-            <div><code class="text-amber-400">alignment</code> &mdash; <code>left</code> / <code>right</code> / <code>center</code> (case-insensitive).</div>
+            <div><code class="text-amber-400">alignment</code> &mdash; <code>left</code> / <code>right</code> / <code>center</code> / <code>justify</code> (case-insensitive; justify is for plain-<code>value</code> paragraphs, last line stays left).</div>
             <div><code class="text-amber-400">fontSize</code> &mdash; points. <code class="text-amber-400">fontWeight</code> &mdash; <code>normal</code> / <code>bold</code>.</div>
             <div><code class="text-amber-400">link</code> &mdash; an external URL on a paragraph's <code>options</code> or a text cell's style; the text becomes a clickable, borderless link annotation. The Factur-X output stays PDF/A-3b conformant (the Print flag is set for you).</div>
-            <div><code class="text-amber-400">bookmark</code> / <code class="text-amber-400">anchor</code> / <code class="text-amber-400">linkTo</code> (paragraph <code>options</code>) &mdash; navigation: <code>bookmark</code> adds a PDF outline entry, <code>anchor</code> names a jump target, and <code>linkTo</code> makes the text a clickable internal jump to an <code>anchor</code> (a clickable table of contents).</div>
+            <div><code class="text-amber-400">bookmark</code> / <code class="text-amber-400">bookmarkLevel</code> / <code class="text-amber-400">anchor</code> / <code class="text-amber-400">linkTo</code> (paragraph <code>options</code>) &mdash; navigation: <code>bookmark</code> adds a PDF outline entry (<code>bookmarkLevel</code> nests it &mdash; 1 = top, a level-2 nests under the last level-1, like headings), <code>anchor</code> names a jump target, and <code>linkTo</code> makes the text a clickable internal jump to an <code>anchor</code> (a clickable table of contents).</div>
             <div><code class="text-amber-400">width</code> &mdash; column width (pt). Width-less columns split the remaining space; over-wide rows scale to fit.</div>
             <div><code class="text-amber-400">borderSides</code> &mdash; <code>{ "top": "true", "bottom": "false", "left": "...", "right": "..." }</code>. Values are strings or bools. When the key is present, omitted sides default to <code>true</code>; when the whole key is absent, the cell has no borders.</div>
             <div><code class="text-amber-400">borderColor</code> &mdash; hex without <code>#</code>, 3 or 6 digits (<code>"fff"</code>, <code>"EEEEEE"</code>). Default border is light grey.</div>
-            <div><code class="text-amber-400">header.fillColor / textColor / borderColor</code> &mdash; the header row's band fill, text colour, and border colour. Body text is always black; accents come from bands and rules.</div>
+            <div><code class="text-amber-400">fill</code> (cell) &mdash; background fill for one cell (hex). Painted over the zebra stripe and the header band, beneath borders and text.</div>
+            <div><code class="text-amber-400">valign</code> (cell) &mdash; vertical alignment within the row: <code>top</code> / <code>middle</code> (default, optically centered) / <code>bottom</code>.</div>
+            <div><code class="text-amber-400">colspan</code> (cell) &mdash; merge the cell across that many column slots; following cells shift right. Define widths with <code>header_columns</code> and span in body/summary rows.</div>
+            <div><code class="text-amber-400">options.stripe</code> (table) &mdash; zebra fill (hex) behind every second body row. Header rows are never striped.</div>
+            <div><code class="text-amber-400">header.fillColor / textColor / borderColor</code> &mdash; the header row's band fill, text colour, and border colour. Body text is always black; accents come from bands, stripes, and rules.</div>
         </div>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Interpolation</h3>
         <div class="text-sm text-gray-400 space-y-1 mb-2">
             <div><code class="text-amber-400">${a.b.c}</code> &mdash; dotted path into the data document. Missing paths render empty (with a warning).</div>
             <div>Inside a data-bound table, <code class="text-amber-400">${field}</code> resolves against the current row item first, then the root.</div>
-            <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#TOTAL_PAGE#</code> &mdash; page tokens, substituted after pagination (footer alignment is recomputed).</div>
+            <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#TOTAL_PAGE#</code> &mdash; page tokens, substituted after pagination (alignment is recomputed). They work in <strong>footer, header, and body</strong> paragraphs (<code>value</code> form; a <code>spans</code> paragraph renders them literally).</div>
+            <div><code class="text-amber-400">#PAGE_OF:anchor#</code> &mdash; the 1-based page number of the paragraph carrying that <code>anchor</code>. Combine with <code>linkTo</code> for a <strong>table of contents with real page numbers</strong>. Unknown anchors render empty with a warning.</div>
+            <div>Token lines defer to a second pass: their link annotations cover the full line box, and underline/strike are skipped (the substituted width isn't known yet).</div>
         </div>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Fonts</h3>

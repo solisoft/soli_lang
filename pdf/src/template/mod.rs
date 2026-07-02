@@ -4,6 +4,10 @@
 //! (`fontSize`, `fontWeight`, `borderSides`); a few top-level keys are
 //! snake_case (`header_columns`, `header_height`, `padding_x`) and are renamed
 //! per field.
+//!
+//! When you add or change a template field here, mirror it in the playground's
+//! JSON Schema (`www/public/pdf-samples/template.schema.json`) — it drives the
+//! editor autocomplete/validation and doubles as machine-readable docs.
 
 mod cell;
 pub use cell::*;
@@ -19,6 +23,9 @@ pub enum Alignment {
     Left,
     Right,
     Center,
+    /// Distribute extra width across word gaps; the last line of a paragraph
+    /// stays left-aligned. `value` paragraphs only (spans fall back to left).
+    Justify,
 }
 
 /// Font weight. Parsed case-insensitively.
@@ -76,6 +83,24 @@ pub struct TemplateOptions {
     /// beneath any watermark and content. Defaults to none (white paper).
     #[serde(default)]
     pub background: Option<String>,
+    /// A full-page background image (photo cover, branded stationery). Drawn
+    /// stretched to the page after the `background` fill and before the
+    /// watermark/content.
+    #[serde(default, rename = "backgroundImage", alias = "background_image")]
+    pub background_image: Option<BackgroundImage>,
+}
+
+/// A page background image.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundImage {
+    /// Image source: http(s) URL, `file://` path, or `data:` URI (same as the
+    /// `image` element).
+    pub src: String,
+    /// Which pages to paint: `"all"` (default) / `"first"` / `"last"`, or an
+    /// explicit list of 1-based page numbers — like the watermark filter.
+    #[serde(default = "default_page_filter")]
+    pub pages: PageFilter,
 }
 
 /// Page size: a preset name or explicit dimensions in points.
@@ -225,6 +250,43 @@ pub enum Element {
     If(Conditional),
     /// The negation of `if`: render `content` only when the condition is false.
     Unless(Conditional),
+    /// Force a new page at this point in the content flow. Replaces the old
+    /// `{"type": "move", "y": 3000}` overflow hack. A trailing `page_break`
+    /// (with nothing after it) still yields a final blank page. Inside a
+    /// `columns` block it acts as a COLUMN break.
+    #[serde(rename = "page_break")]
+    PageBreak,
+    /// A multi-column flow block; resumes full-width flow below it.
+    Columns(ColumnsEl),
+}
+
+/// A multi-column flow container. Children fill column 1 to the bottom of the
+/// content region, then column 2, and so on (sequential fill). Overflowing the
+/// last column starts a new page and restarts the set at the top. A
+/// `page_break` inside acts as a column break. Tables and charts are not
+/// supported inside columns (v1) and are skipped with a warning; nested
+/// `columns` are flattened into the enclosing flow with a warning. Images
+/// inside columns become flow elements: scaled to the column width and
+/// advancing the cursor.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ColumnsEl {
+    /// Number of columns, clamped to 1..=6 (default 2).
+    #[serde(default = "default_column_count")]
+    pub count: u32,
+    /// Horizontal gutter between columns in pt (default 12, clamped >= 0).
+    #[serde(default = "default_column_gap")]
+    pub gap: f32,
+    /// The elements laid out inside the columns.
+    #[serde(default)]
+    pub content: Vec<Element>,
+}
+
+fn default_column_count() -> u32 {
+    2
+}
+
+fn default_column_gap() -> f32 {
+    12.0
 }
 
 /// A `repeat` block: `content` is laid out once per item of the `data` array,
@@ -424,6 +486,12 @@ pub struct StyledSpan {
     /// External URL; makes this span a clickable link.
     #[serde(default)]
     pub link: Option<String>,
+    /// Underline this span. Inherits the paragraph setting if unset.
+    #[serde(default)]
+    pub underline: Option<bool>,
+    /// Strike this span through. Inherits the paragraph setting if unset.
+    #[serde(default)]
+    pub strike: Option<bool>,
 }
 
 /// Text styling for paragraphs.
@@ -459,6 +527,30 @@ pub struct TextOptions {
     /// footer lines). Defaults to black. Use `spans` for per-run colors.
     #[serde(default)]
     pub color: Option<String>,
+    /// Underline the text (drawn in the text color).
+    #[serde(default)]
+    pub underline: bool,
+    /// Strike the text through (drawn in the text color).
+    #[serde(default)]
+    pub strike: bool,
+    /// Line-height multiplier applied to the font size (engine default 1.2).
+    /// `1.0` is tight, `1.5`/`2.0` give airier text.
+    #[serde(default)]
+    pub line_height: Option<f32>,
+    /// Vertical gap (pt) added below the block — after the whole paragraph or
+    /// list, replacing boilerplate `{"type": "move", "y": …}` elements.
+    #[serde(default)]
+    pub spacing: Option<f32>,
+    /// Keep-together: the paragraph only starts on this page if at least this
+    /// many points remain below it — otherwise it moves to the next page. Set
+    /// it on headings (≈ two body lines, e.g. 30) so a section title is never
+    /// orphaned at the bottom of a page.
+    #[serde(default)]
+    pub min_space_below: Option<f32>,
+    /// A `bookmark`'s outline depth (1 = top level, 2 nests under the last
+    /// level-1 entry, and so on — like heading levels).
+    #[serde(default)]
+    pub bookmark_level: Option<u32>,
 }
 
 impl Default for TextOptions {
@@ -474,6 +566,12 @@ impl Default for TextOptions {
             anchor: None,
             link_to: None,
             color: None,
+            underline: false,
+            strike: false,
+            line_height: None,
+            spacing: None,
+            min_space_below: None,
+            bookmark_level: None,
         }
     }
 }
@@ -493,9 +591,15 @@ pub struct MoveOp {
 pub struct ImageEl {
     /// http(s) URL, `file://` path, or `data:` URI.
     pub value: String,
-    /// Target width in pt; height is derived to preserve aspect ratio.
+    /// Target width in pt; when only `width` is set, height derives from the
+    /// aspect ratio.
     #[serde(default)]
     pub width: f32,
+    /// Target height in pt. Only `height` → width derives from the aspect
+    /// ratio; both `width` and `height` → the image is scaled to fit inside
+    /// the box ("contain"), aspect preserved, never stretched.
+    #[serde(default)]
+    pub height: f32,
 }
 
 /// A horizontal rule. Spans the content width unless `width` is given.
@@ -632,6 +736,12 @@ pub struct Table {
     pub data: Option<String>,
     #[serde(default)]
     pub header_columns: Vec<Cell>,
+    /// A footer row drawn at the bottom of the table AND repeated just above
+    /// every intra-table page break — the classic "carried forward" subtotal
+    /// band. Cells interpolate against the root data (not row items) and may
+    /// use `fill`/`colspan`/borders like any other cell.
+    #[serde(default)]
+    pub footer_columns: Vec<Cell>,
     #[serde(default)]
     pub rows: Vec<Vec<Cell>>,
     #[serde(default)]
@@ -653,6 +763,11 @@ pub struct TableOptions {
     pub padding_x: f32,
     #[serde(default)]
     pub padding_y: f32,
+    /// Zebra striping: a fill color (hex, no `#`) painted behind every second
+    /// body row (the 2nd, 4th, …). Header rows are never striped; a per-cell
+    /// `fill` paints over the stripe.
+    #[serde(default)]
+    pub stripe: Option<String>,
 }
 
 /// Styling applied to the header row.
@@ -762,10 +877,24 @@ where
     Ok(s.map(|s| parse_font_weight(&s)))
 }
 
+pub(crate) fn de_opt_valign<'de, D>(d: D) -> std::result::Result<Option<VAlign>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    let s = Option::<String>::deserialize(d)?;
+    Ok(s.map(|s| match s.trim().to_ascii_lowercase().as_str() {
+        "top" => VAlign::Top,
+        "bottom" => VAlign::Bottom,
+        _ => VAlign::Middle,
+    }))
+}
+
 fn parse_alignment(s: &str) -> Alignment {
     match s.trim().to_ascii_lowercase().as_str() {
         "right" => Alignment::Right,
         "center" | "centre" => Alignment::Center,
+        "justify" | "justified" => Alignment::Justify,
         _ => Alignment::Left,
     }
 }

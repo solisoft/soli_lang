@@ -1912,8 +1912,20 @@ fn parse_string(b: &[u8], pos: &mut usize) -> Result<SoliStr, String> {
                 *pos += 1;
             }
             _ => {
-                result.push(b[*pos] as char);
-                *pos += 1;
+                // Consume the whole run of raw bytes up to the next quote or
+                // escape and append it as UTF-8. The previous per-byte
+                // `result.push(b[*pos] as char)` promoted each byte to the
+                // same-valued code point — i.e. Latin-1-decoded multi-byte
+                // UTF-8 into mojibake ("café" → "cafÃ©") for any string that
+                // reached this slow path (one containing an escape). Same
+                // `from_utf8_unchecked` safety assumption as the fast path
+                // above: the buffer came from a &str (parse_json) or trusted
+                // UTF-8 bytes (parse_json_bytes callers).
+                let run_start = *pos;
+                while *pos < b.len() && b[*pos] != b'"' && b[*pos] != b'\\' {
+                    *pos += 1;
+                }
+                result.push_str(unsafe { std::str::from_utf8_unchecked(&b[run_start..*pos]) });
             }
         }
     }
@@ -2601,6 +2613,27 @@ mod value_misc_tests {
         assert_eq!(
             parse_json(r#""hello""#).unwrap(),
             Value::String("hello".into())
+        );
+    }
+
+    #[test]
+    fn parse_json_string_escape_then_utf8_stays_utf8() {
+        // Regression: the escape slow path pushed raw bytes as Latin-1
+        // (`b[i] as char`), mojibake-ing any multi-byte UTF-8 that followed
+        // an escape ("café" → "cafÃ©"). Fast path (no escape) was fine.
+        assert_eq!(
+            parse_json(r#""ligne\ncafé déjà — cœur""#).unwrap(),
+            Value::String("ligne\ncafé déjà — cœur".into())
+        );
+        // UTF-8 before the first escape (correct segment) + after (was broken).
+        assert_eq!(
+            parse_json(r#""été \"chaud\" à Lyon""#).unwrap(),
+            Value::String("été \"chaud\" à Lyon".into())
+        );
+        // Emoji (4-byte sequences) after an escape.
+        assert_eq!(
+            parse_json(r#""ok\t👍""#).unwrap(),
+            Value::String("ok\t👍".into())
         );
     }
 

@@ -389,12 +389,25 @@ impl PdfDocument {
 
     /// Adds a new page-level bookmark on page `$page`, returning the bookmarks internal ID
     pub fn add_bookmark(&mut self, name: &str, page: usize) -> PageAnnotId {
+        self.add_bookmark_child(name, page, None)
+    }
+
+    /// PATCHED (soli-pdf): adds a bookmark nested under `parent` (None = top
+    /// level), preserving insertion order for the outline tree.
+    pub fn add_bookmark_child(
+        &mut self,
+        name: &str,
+        page: usize,
+        parent: Option<PageAnnotId>,
+    ) -> PageAnnotId {
         let id = PageAnnotId::new();
         self.bookmarks.map.insert(
             id.clone(),
             PageAnnotation {
                 name: name.to_string(),
                 page,
+                order: self.bookmarks.map.len(),
+                parent,
             },
         );
         id

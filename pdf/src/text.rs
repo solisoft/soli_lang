@@ -15,16 +15,19 @@ pub fn line_height(size: f32) -> f32 {
 
 /// Wrap `text` to fit `max_width` pt. Explicit `\n` always break. Words wider
 /// than `max_width` are hard-broken by character. Returns at least one line.
+/// `key` selects the face measured with (a plain `FontWeight` converts; pass a
+/// full `FaceKey` when the text renders italic/mono so widths match).
 pub fn wrap(
     reg: &FontRegistry,
     text: &str,
-    weight: FontWeight,
+    key: impl Into<FaceKey>,
     size: f32,
     max_width: f32,
 ) -> Vec<String> {
+    let key = key.into();
     let mut lines = Vec::new();
     for para in text.split('\n') {
-        wrap_paragraph(reg, para, weight, size, max_width, &mut lines);
+        wrap_paragraph(reg, para, key, size, max_width, &mut lines);
     }
     if lines.is_empty() {
         lines.push(String::new());
@@ -35,7 +38,7 @@ pub fn wrap(
 fn wrap_paragraph(
     reg: &FontRegistry,
     para: &str,
-    weight: FontWeight,
+    key: FaceKey,
     size: f32,
     max_width: f32,
     out: &mut Vec<String>,
@@ -51,18 +54,18 @@ fn wrap_paragraph(
         } else {
             format!("{current} {word}")
         };
-        if reg.measure(&candidate, weight, size) <= max_width || current.is_empty() {
-            if reg.measure(word, weight, size) > max_width && current.is_empty() {
+        if reg.measure(&candidate, key, size) <= max_width || current.is_empty() {
+            if reg.measure(word, key, size) > max_width && current.is_empty() {
                 // The word alone is too wide: hard-break it.
-                hard_break(reg, word, weight, size, max_width, out, &mut current);
+                hard_break(reg, word, key, size, max_width, out, &mut current);
             } else {
                 current = candidate;
             }
         } else {
             out.push(std::mem::take(&mut current));
             // Re-process this word on a fresh line.
-            if reg.measure(word, weight, size) > max_width {
-                hard_break(reg, word, weight, size, max_width, out, &mut current);
+            if reg.measure(word, key, size) > max_width {
+                hard_break(reg, word, key, size, max_width, out, &mut current);
             } else {
                 current = word.to_string();
             }
@@ -75,7 +78,7 @@ fn wrap_paragraph(
 fn hard_break(
     reg: &FontRegistry,
     word: &str,
-    weight: FontWeight,
+    key: FaceKey,
     size: f32,
     max_width: f32,
     out: &mut Vec<String>,
@@ -83,7 +86,7 @@ fn hard_break(
 ) {
     for ch in word.chars() {
         let candidate = format!("{current}{ch}");
-        if !current.is_empty() && reg.measure(&candidate, weight, size) > max_width {
+        if !current.is_empty() && reg.measure(&candidate, key, size) > max_width {
             out.push(std::mem::take(current));
             current.push(ch);
         } else {
@@ -102,6 +105,10 @@ pub struct StyledSeg {
     pub color: Rgb,
     /// Index into the caller's link table, if this segment is a clickable link.
     pub link: Option<usize>,
+    /// Underline this segment (drawn in the segment color).
+    pub underline: bool,
+    /// Strike this segment through (drawn in the segment color).
+    pub strike: bool,
 }
 
 /// One positioned character with its resolved style (output of itemization).
@@ -112,6 +119,8 @@ pub struct StyledChar {
     pub size: f32,
     pub color: Rgb,
     pub link: Option<usize>,
+    pub underline: bool,
+    pub strike: bool,
 }
 
 enum Tok {
@@ -142,6 +151,8 @@ pub fn layout_styled_lines(
                     size: seg.size,
                     color: seg.color,
                     link: seg.link,
+                    underline: seg.underline,
+                    strike: seg.strike,
                 });
             }
             first = false;
@@ -158,6 +169,8 @@ pub fn layout_styled_lines(
                         size: seg.size,
                         color: seg.color,
                         link: seg.link,
+                        underline: seg.underline,
+                        strike: seg.strike,
                     });
                 }
             }
@@ -298,7 +311,7 @@ fn hard_break_styled(
 /// Left x of a line of width `line_width` aligned within `[region_left, +region_width]`.
 pub fn align_x(region_left: f32, region_width: f32, line_width: f32, alignment: Alignment) -> f32 {
     match alignment {
-        Alignment::Left => region_left,
+        Alignment::Left | Alignment::Justify => region_left,
         Alignment::Right => region_left + (region_width - line_width).max(0.0),
         Alignment::Center => region_left + ((region_width - line_width).max(0.0)) / 2.0,
     }
