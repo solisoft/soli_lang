@@ -9,7 +9,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap" rel="stylesheet">
 
     <!-- Fuse.js for search -->
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
@@ -19,31 +19,23 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         code, pre { font-family: 'JetBrains Mono', monospace; }
+        .font-display { font-family: 'Bricolage Grotesque', 'Inter', sans-serif; }
 
-        /* Premium glass navigation */
+        /* Glass navigation on warm near-black */
         .glass-nav {
-            background: rgba(3, 7, 18, 0.8);
+            background: rgba(12, 10, 9, 0.82);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(250, 250, 249, 0.06);
         }
 
-        /* Hero gradient with animated orbs */
+        /* Solar backdrop: warm stone base, one low sunrise glow */
         .hero-gradient {
-            background-color: #030712;
+            background-color: #0C0A09;
             background-image:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-                radial-gradient(ellipse 60% 40% at 100% 100%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
-                radial-gradient(ellipse 50% 30% at 0% 100%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+                radial-gradient(ellipse 75% 45% at 50% -15%, rgba(245, 158, 11, 0.13) 0%, transparent 60%),
+                radial-gradient(ellipse 55% 35% at 85% 110%, rgba(251, 146, 60, 0.05) 0%, transparent 55%);
             background-attachment: fixed;
-        }
-
-        /* Animated gradient text */
-        .gradient-text {
-            background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
 
         /* Premium button hover effects */
@@ -67,24 +59,11 @@
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
-            background: rgba(99, 102, 241, 0.3);
+            background: rgba(245, 158, 11, 0.3);
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(99, 102, 241, 0.5);
-        }
-
-        /* Noise Texture */
-        .bg-noise {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1;
-            opacity: 0.05;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            background: rgba(245, 158, 11, 0.5);
         }
 
         /* Scroll Reveal Animation */
@@ -98,6 +77,19 @@
             transform: translateY(0);
         }
 
+        @media (prefers-reduced-motion: reduce) {
+            .reveal-on-scroll {
+                opacity: 1;
+                transform: none;
+                transition: none;
+            }
+            *, ::before, ::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         /* Mobile menu animation */
         .mobile-nav {
             display: none;
@@ -105,29 +97,9 @@
         .mobile-nav.open {
             display: block;
         }
-        /* Blob animation */
-        @keyframes blob {
-            0% { transform: translate(0px, 0px) scale(1); }
-            33% { transform: translate(30px, -50px) scale(1.1); }
-            66% { transform: translate(-20px, 20px) scale(0.9); }
-            100% { transform: translate(0px, 0px) scale(1); }
-        }
-        .animate-blob {
-            animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-            animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-            animation-delay: 4s;
-        }
-        .animation-delay-6000 {
-            animation-delay: 6s;
-        }
     </style>
 </head>
-<body class="bg-gray-950 text-white flex flex-col min-h-full hero-gradient antialiased selection:bg-indigo-500/50 selection:text-white">
-    <div class="bg-noise"></div>
+<body class="bg-[#0C0A09] text-stone-100 flex flex-col min-h-full hero-gradient antialiased selection:bg-amber-500/40 selection:text-white">
     <!-- Navigation -->
     <nav class="glass-nav sticky top-0 z-50">
         <div class="px-4 sm:px-6 lg:px-8">
@@ -136,14 +108,14 @@
                 <div class="flex items-center">
                     <a href="/" class="flex items-center gap-3 group">
                         <div class="relative">
-                            <div class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl blur-lg opacity-50 group-hover:opacity-75 transition-opacity"></div>
-                            <div class="relative w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
+                            <div class="absolute inset-0 bg-amber-500 rounded-full blur-lg opacity-40 group-hover:opacity-70 transition-opacity"></div>
+                            <div class="relative w-9 h-9 rounded-full bg-[radial-gradient(circle_at_32%_28%,#FDE68A_0%,#F59E0B_55%,#C2620C_100%)] flex items-center justify-center font-bold text-stone-950 shadow-lg">
                                 S
                             </div>
                         </div>
                         <span class="text-xl font-bold tracking-tight">
                             <span class="text-white">Soli</span>
-                            <span class="text-gray-400 font-normal">MVC</span>
+                            <span class="text-stone-400 font-normal">MVC</span>
                         </span>
                     </a>
                 </div>
@@ -169,7 +141,7 @@
                         GitHub
                     </a>
                     <div class="w-px h-6 bg-white/10 mx-2"></div>
-                    <a href="/docs/introduction" class="btn-glow ml-2 inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40">
+                    <a href="/docs/introduction" class="btn-glow ml-2 inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-stone-950 bg-amber-500 hover:bg-amber-400 rounded-lg transition-all shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40">
                         Get Started
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -189,7 +161,7 @@
         </div>
 
         <!-- Mobile Navigation -->
-        <div id="mobileNav" class="mobile-nav lg:hidden absolute top-full left-0 right-0 bg-gray-950/95 backdrop-blur-xl border-b border-white/5">
+        <div id="mobileNav" class="mobile-nav lg:hidden absolute top-full left-0 right-0 bg-[#0C0A09]/95 backdrop-blur-xl border-b border-white/5">
             <div class="px-4 py-4 space-y-1">
                 <a href="/" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Home</a>
                 <a href="/docs" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">Documentation</a>
@@ -202,7 +174,7 @@
                 </button>
                 <a href="https://github.com/solisoft/soli_lang" target="_blank" class="block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all">GitHub</a>
                 <div class="pt-2">
-                    <a href="/docs/introduction" class="block px-4 py-3 text-center text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-all font-semibold">
+                    <a href="/docs/introduction" class="block px-4 py-3 text-center text-stone-950 bg-amber-500 hover:bg-amber-400 rounded-lg transition-all font-semibold">
                         Get Started
                     </a>
                 </div>
@@ -216,17 +188,17 @@
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-white/5 bg-gray-950/80 backdrop-blur-xl mt-auto">
+    <footer class="border-t border-white/5 bg-[#0C0A09]/80 backdrop-blur-xl mt-auto">
         <div class="py-12 px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
                 <!-- Brand -->
                 <div class="md:col-span-2">
                     <div class="flex items-center gap-3 mb-4">
-                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm">S</div>
+                        <div class="w-8 h-8 rounded-full bg-[radial-gradient(circle_at_32%_28%,#FDE68A_0%,#F59E0B_55%,#C2620C_100%)] flex items-center justify-center font-bold text-stone-950 text-sm">S</div>
                         <span class="font-bold text-lg text-white">Soli MVC</span>
                     </div>
-                    <p class="text-gray-400 text-sm">
-                        A modern, high-performance web framework that combines elegant syntax with blazing fast execution.
+                    <p class="text-stone-400 text-sm">
+                        The whole framework in one binary &mdash; Ruby's expressiveness, Rust's speed, zero dependencies.
                     </p>
                 </div>
 
@@ -299,14 +271,10 @@
         }
     }
 
-    // Scroll Reveal Observer
-    document.addEventListener('DOMContentLoaded', () => {
-        const observerOptions = {
-            root: null,
-            rootMargin: '0px',
-            threshold: 0.1
-        };
-
+    // Page init. This inline script re-executes on every instant-nav <body>
+    // swap (nav.js), while DOMContentLoaded only fires once per document — so
+    // run directly instead of waiting on an event that may never come again.
+    function initAppPage() {
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -314,15 +282,25 @@
                     observer.unobserve(entry.target); // Only animate once
                 }
             });
-        }, observerOptions);
+        }, { root: null, rootMargin: '0px', threshold: 0.1 });
 
         document.querySelectorAll('.reveal-on-scroll').forEach(el => {
             observer.observe(el);
         });
 
-        // Update version badge
         updateVersionBadge();
-    });
+    }
+
+    initAppPage();
+
+    // Bind document-level listeners once; the re-run would otherwise stack one
+    // per visit. `soli:load` covers swap paths that don't re-run scripts,
+    // `livereload:update` covers dev hot reloads.
+    if (!window.__soliAppListenersBound) {
+        window.__soliAppListenersBound = true;
+        document.addEventListener('soli:load', initAppPage);
+        document.addEventListener('livereload:update', initAppPage);
+    }
     </script>
 
     <!-- HTMx + Alpine.js (Soli's default client stack — see /docs/core-concepts/client-interactivity) -->

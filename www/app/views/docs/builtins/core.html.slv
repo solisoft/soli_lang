@@ -31,7 +31,7 @@
             <section id="def-print" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-print" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">print(value)</code>
+                        <code class="text-lg font-mono text-amber-400">print(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -45,7 +45,7 @@ print(" World")  # Output: Hello World</code></pre>
             <section id="def-println" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-println" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">println(value)</code>
+                        <code class="text-lg font-mono text-amber-400">println(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -59,12 +59,12 @@ println(42)</code></pre>
             <section id="def-puts" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-puts" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">puts(value)</code>
+                        <code class="text-lg font-mono text-amber-400">puts(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Alias for <code class="text-indigo-400">println</code> - prints a value to standard output with a newline. Ruby-style alternative.</p>
+                    <p class="text-gray-400 mb-3">Alias for <code class="text-amber-400">println</code> - prints a value to standard output with a newline. Ruby-style alternative.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">puts("Hello World")
 puts 42</code></pre>
                 </div>
@@ -73,7 +73,7 @@ puts 42</code></pre>
             <section id="def-input" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-input" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">input(prompt?)</code>
+                        <code class="text-lg font-mono text-amber-400">input(prompt?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -94,7 +94,7 @@ puts "Hello, " + name</code></pre>
             <section id="def-type" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-type" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">type(value)</code>
+                        <code class="text-lg font-mono text-amber-400">type(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -110,7 +110,7 @@ type(null)      # "null"</code></pre>
             <section id="def-is-a" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-is-a" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">value.is_a?(class_name)</code>
+                        <code class="text-lg font-mono text-amber-400">value.is_a?(class_name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -130,7 +130,7 @@ user.is_a?("String")    # false</code></pre>
             <section id="def-defined" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-defined" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">defined(name)</code>
+                        <code class="text-lg font-mono text-amber-400">defined(name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -148,7 +148,7 @@ defined("y");        # false</code></pre>
             <section id="def-const-get" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-const-get" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">const_get(name)</code>
+                        <code class="text-lg font-mono text-amber-400">const_get(name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -167,7 +167,7 @@ assert_null(not_found);</code></pre>
             <section id="def-str" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-str" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str(value)</code>
+                        <code class="text-lg font-mono text-amber-400">str(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -182,7 +182,7 @@ str(true)     # "true"</code></pre>
             <section id="def-int" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-int" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">int(value)</code>
+                        <code class="text-lg font-mono text-amber-400">int(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -196,7 +196,7 @@ int(3.7)      # 3</code></pre>
             <section id="def-float" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-float" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">float(value)</code>
+                        <code class="text-lg font-mono text-amber-400">float(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -210,7 +210,7 @@ float(42)     # 42.0</code></pre>
             <section id="def-len" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-len" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">len(value)</code>
+                        <code class="text-lg font-mono text-amber-400">len(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -244,7 +244,7 @@ len({"a": 1})     # 1
             <section id="def-push" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-push" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">push(array, value)</code> / <code class="text-lg font-mono text-indigo-400">array.push(value)</code>
+                        <code class="text-lg font-mono text-amber-400">push(array, value)</code> / <code class="text-lg font-mono text-amber-400">array.push(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -262,7 +262,7 @@ arr2.push(3)     # arr2 is now [1, 2, 3]</code></pre>
             <section id="def-pop" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-pop" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">pop(array)</code> / <code class="text-lg font-mono text-indigo-400">array.pop</code>
+                        <code class="text-lg font-mono text-amber-400">pop(array)</code> / <code class="text-lg font-mono text-amber-400">array.pop</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -280,7 +280,7 @@ last2 = arr2.pop  # last2 is 3, arr2 is [1, 2]</code></pre>
             <section id="def-range" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-range" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">range(start, end, step?)</code>
+                        <code class="text-lg font-mono text-amber-400">range(start, end, step?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -295,7 +295,7 @@ range(5, 0, -1)  # [5, 4, 3, 2, 1]</code></pre>
             <section id="def-clear" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-clear" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">clear(array | hash)</code> / <code class="text-lg font-mono text-indigo-400">array.clear</code> / <code class="text-lg font-mono text-indigo-400">hash.clear</code>
+                        <code class="text-lg font-mono text-amber-400">clear(array | hash)</code> / <code class="text-lg font-mono text-amber-400">array.clear</code> / <code class="text-lg font-mono text-amber-400">hash.clear</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -326,7 +326,7 @@ h.clear   # h is now {}</code></pre>
             <section id="def-keys" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-keys" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">keys(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.keys</code>
+                        <code class="text-lg font-mono text-amber-400">keys(hash)</code> / <code class="text-lg font-mono text-amber-400">hash.keys</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -341,7 +341,7 @@ h.keys      # ["name", "age"]</code></pre>
             <section id="def-values" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-values" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">values(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.values</code>
+                        <code class="text-lg font-mono text-amber-400">values(hash)</code> / <code class="text-lg font-mono text-amber-400">hash.values</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -356,7 +356,7 @@ h.values    # ["Alice", 30]</code></pre>
             <section id="def-entries" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-entries" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">entries(hash)</code> / <code class="text-lg font-mono text-indigo-400">hash.entries</code>
+                        <code class="text-lg font-mono text-amber-400">entries(hash)</code> / <code class="text-lg font-mono text-amber-400">hash.entries</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -371,7 +371,7 @@ h.entries   # [["name", "Alice"], ["age", 30]]</code></pre>
             <section id="def-has-key" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-has-key" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">has_key(hash, key)</code> / <code class="text-lg font-mono text-indigo-400">hash.has_key(key)</code>
+                        <code class="text-lg font-mono text-amber-400">has_key(hash, key)</code> / <code class="text-lg font-mono text-amber-400">hash.has_key(key)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -386,7 +386,7 @@ h = {"a": 1}; h.has_key("a")  # true</code></pre>
             <section id="def-merge" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-merge" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">hash.merge(other)</code>
+                        <code class="text-lg font-mono text-amber-400">hash.merge(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -400,7 +400,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-from-entries" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-from-entries" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">from_entries(array)</code>
+                        <code class="text-lg font-mono text-amber-400">from_entries(array)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -427,12 +427,12 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-split" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-split" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.split([sep])</code>
+                        <code class="text-lg font-mono text-amber-400">str.split([sep])</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Split a string by a separator. Returns an array of string parts. <code class="text-indigo-300">sep</code> is optional and defaults to <code class="text-indigo-300">" "</code> (a single space).</p>
+                    <p class="text-gray-400 mb-3">Split a string by a separator. Returns an array of string parts. <code class="text-amber-300">sep</code> is optional and defaults to <code class="text-amber-300">" "</code> (a single space).</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")        # ["a", "b", "c"]
 "hello world".split(" ")  # ["hello", "world"]
 "hello world".split       # ["hello", "world"]  (sep defaults to " ")
@@ -443,7 +443,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-join" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-join" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.join(sep)</code>
+                        <code class="text-lg font-mono text-amber-400">str.join(sep)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -456,7 +456,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-contains" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-contains" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.contains(sub)</code>
+                        <code class="text-lg font-mono text-amber-400">str.contains(sub)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -470,7 +470,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-starts-with" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-starts-with" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.starts_with(prefix)</code> / <code class="text-lg font-mono text-indigo-400">str.ends_with(suffix)</code>
+                        <code class="text-lg font-mono text-amber-400">str.starts_with(prefix)</code> / <code class="text-lg font-mono text-amber-400">str.ends_with(suffix)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -484,7 +484,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-index-of" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-index-of" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.index_of(substr)</code>
+                        <code class="text-lg font-mono text-amber-400">str.index_of(substr)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -498,7 +498,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-substring" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-substring" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.substring(start, end)</code>
+                        <code class="text-lg font-mono text-amber-400">str.substring(start, end)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -512,7 +512,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-case" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-case" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.upcase</code> / <code class="text-lg font-mono text-indigo-400">str.downcase</code> / <code class="text-lg font-mono text-indigo-400">str.trim()</code>
+                        <code class="text-lg font-mono text-amber-400">str.upcase</code> / <code class="text-lg font-mono text-amber-400">str.downcase</code> / <code class="text-lg font-mono text-amber-400">str.trim()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -527,7 +527,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-replace" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-replace" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.replace(from, to)</code>
+                        <code class="text-lg font-mono text-amber-400">str.replace(from, to)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -540,7 +540,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-pad" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-pad" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">str.lpad(width, pad_char?)</code> / <code class="text-lg font-mono text-indigo-400">str.rpad(width, pad_char?)</code>
+                        <code class="text-lg font-mono text-amber-400">str.lpad(width, pad_char?)</code> / <code class="text-lg font-mono text-amber-400">str.rpad(width, pad_char?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -555,7 +555,7 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
             <section id="def-string-new" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-string-new" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">String.new(value)</code>
+                        <code class="text-lg font-mono text-amber-400">String.new(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -577,7 +577,7 @@ String.new(true)     # "true"</code></pre>
             <section id="def-abs" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-abs" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">abs(n)</code> / <code class="text-lg font-mono text-indigo-400">min(a, b)</code> / <code class="text-lg font-mono text-indigo-400">max(a, b)</code>
+                        <code class="text-lg font-mono text-amber-400">abs(n)</code> / <code class="text-lg font-mono text-amber-400">min(a, b)</code> / <code class="text-lg font-mono text-amber-400">max(a, b)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -592,7 +592,7 @@ max(3, 7)     # 7</code></pre>
             <section id="def-sqrt" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-sqrt" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">sqrt(n)</code> / <code class="text-lg font-mono text-indigo-400">pow(base, exp)</code>
+                        <code class="text-lg font-mono text-amber-400">sqrt(n)</code> / <code class="text-lg font-mono text-amber-400">pow(base, exp)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -606,7 +606,7 @@ pow(2, 3)     # 8.0</code></pre>
             <section id="def-clock" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-clock" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">clock()</code>
+                        <code class="text-lg font-mono text-amber-400">clock()</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -628,12 +628,12 @@ elapsed = clock() - start</code></pre>
             <section id="def-slurp" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-slurp" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">slurp(path, mode?)</code>
+                        <code class="text-lg font-mono text-amber-400">slurp(path, mode?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Read an entire file. Pass <code class="text-amber-400">"binary"</code> for a byte array, or a charset label (<code class="text-amber-400">"latin1"</code>, …) to decode a non-UTF-8 file. See <a href="/docs/utility/encoding" class="text-indigo-400 hover:underline">Encoding</a>.</p>
+                    <p class="text-gray-400 mb-3">Read an entire file. Pass <code class="text-amber-400">"binary"</code> for a byte array, or a charset label (<code class="text-amber-400">"latin1"</code>, …) to decode a non-UTF-8 file. See <a href="/docs/utility/encoding" class="text-amber-400 hover:underline">Encoding</a>.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">content = slurp("config.json")           # UTF-8 string
 bytes   = slurp("logo.png", "binary")    # Array&lt;Int&gt;
 legacy  = slurp("clients.csv", "latin1") # Latin-1 -> UTF-8</code></pre>
@@ -643,7 +643,7 @@ legacy  = slurp("clients.csv", "latin1") # Latin-1 -> UTF-8</code></pre>
             <section id="def-barf" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-barf" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">barf(path, content)</code>
+                        <code class="text-lg font-mono text-amber-400">barf(path, content)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -662,80 +662,80 @@ barf("clients.csv", Encoding.encode(text, "latin1"))</code></pre>
                     
                     <div class="space-y-4">
                         <div>
-                            <code class="text-indigo-400">File.read(path)</code>
+                            <code class="text-amber-400">File.read(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Read file contents as string.</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">content = File.read("config.json")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.write(path, content)</code>
+                            <code class="text-amber-400">File.write(path, content)</code>
                             <p class="text-gray-500 text-sm mt-1">Write content to file.</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">File.write("output.txt", "Hello!")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.exists(path)</code>
+                            <code class="text-amber-400">File.exists(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Check if file exists.</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">if File.exists("config.json")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.delete(path)</code>
+                            <code class="text-amber-400">File.delete(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Delete a file.</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">File.delete("old.txt")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.glob(pattern)</code>
+                            <code class="text-amber-400">File.glob(pattern)</code>
                             <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (non-recursive).</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob("docs/*.md")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.glob_recursive(pattern)</code>
+                            <code class="text-amber-400">File.glob_recursive(pattern)</code>
                             <p class="text-gray-500 text-sm mt-1">Match files using glob pattern (recursive).</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">files = File.glob_recursive("docs/**/*.md")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.lines(path)</code>
+                            <code class="text-amber-400">File.lines(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Read file as array of lines.</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">lines = File.lines("data.txt")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.is_dir(path)</code>
+                            <code class="text-amber-400">File.is_dir(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Check if path is a directory.</p>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.is_file(path)</code>
+                            <code class="text-amber-400">File.is_file(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Check if path is a file.</p>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.size(path)</code>
+                            <code class="text-amber-400">File.size(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Get file size in bytes.</p>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.modified(path)</code>
+                            <code class="text-amber-400">File.modified(path)</code>
                             <p class="text-gray-500 text-sm mt-1">Get file modification timestamp (Unix epoch in seconds).</p>
                             <pre data-filename="Example"><code class="language-soli text-sm">time = File.modified("config.json")</code></pre>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.copy(src, dest)</code>
+                            <code class="text-amber-400">File.copy(src, dest)</code>
                             <p class="text-gray-500 text-sm mt-1">Copy file from source to destination.</p>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.rename(old, new)</code>
+                            <code class="text-amber-400">File.rename(old, new)</code>
                             <p class="text-gray-500 text-sm mt-1">Rename/move a file.</p>
                         </div>
                         
                         <div>
-                            <code class="text-indigo-400">File.append(path, content)</code>
+                            <code class="text-amber-400">File.append(path, content)</code>
                             <p class="text-gray-500 text-sm mt-1">Append content to file.</p>
                         </div>
                     </div>
@@ -752,7 +752,7 @@ barf("clients.csv", Encoding.encode(text, "latin1"))</code></pre>
             </svg>
             Built-ins Overview
         </a>
-        <a href="/docs/builtins/http" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/http" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             HTTP
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

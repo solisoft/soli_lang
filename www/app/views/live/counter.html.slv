@@ -10,7 +10,7 @@
         <button
             soli-click="increment"
             soli-value-count="<%= count %>"
-            class="px-6 py-3 rounded-xl bg-indigo-500 text-white font-semibold hover:bg-indigo-400 transition-all active:scale-95 shadow-lg shadow-indigo-500/25">
+            class="px-6 py-3 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-400 transition-all active:scale-95 shadow-lg shadow-amber-500/25">
             <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
         </button>
     </div>

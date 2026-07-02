@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Views & Templates</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Views & Templates</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Views handle the presentation layer of your application. Soli uses a familiar, expressive template syntax that combines HTML with dynamic logic.
@@ -38,27 +38,27 @@
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%= expr %&gt;</td>
+                    <td class="px-4 py-3 font-mono text-amber-300">&lt;%= expr %&gt;</td>
                     <td class="px-4 py-3">HTML-escaped output</td>
                     <td class="px-4 py-3">Default choice — anything from user input, params, the database.</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%- expr %&gt;</td>
+                    <td class="px-4 py-3 font-mono text-amber-300">&lt;%- expr %&gt;</td>
                     <td class="px-4 py-3">Raw, unescaped output</td>
                     <td class="px-4 py-3">Trusted HTML you've already produced — partials, <code>Markdown.to_safe_html(...)</code> output.</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;% stmt %&gt;</td>
+                    <td class="px-4 py-3 font-mono text-amber-300">&lt;% stmt %&gt;</td>
                     <td class="px-4 py-3">Executes code, emits nothing</td>
                     <td class="px-4 py-3"><code>let</code> bindings, <code>if</code>, <code>for</code>, other statements.</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%= yield %&gt;</td>
+                    <td class="px-4 py-3 font-mono text-amber-300">&lt;%= yield %&gt;</td>
                     <td class="px-4 py-3">Layout insertion point</td>
                     <td class="px-4 py-3">Only inside a layout — marks where the rendered view is spliced in.</td>
                 </tr>
                 <tr>
-                    <td class="px-4 py-3 font-mono text-indigo-300">&lt;%# comment %&gt;</td>
+                    <td class="px-4 py-3 font-mono text-amber-300">&lt;%# comment %&gt;</td>
                     <td class="px-4 py-3">Nothing — stripped at parse time</td>
                     <td class="px-4 py-3">Developer comments. Never sent to the browser. Single-line and multi-line both work.</td>
                 </tr>
@@ -68,7 +68,7 @@
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Output Variables</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Basic variable output (HTML-escaped) --&gt
@@ -88,7 +88,7 @@
     </div>
 
     <p class="text-gray-400 mb-4">Controller instance fields are exposed to the view as bare locals, but you can also reference them with the <strong>same <code>@</code> prefix you used in the controller</strong> &mdash; in a view, <code>&lt;%= @title %&gt;</code> falls back to the <code>title</code> local, so both forms render the same value. An <code>@</code>-name with no matching local renders as empty (<code>nil</code>), like any other absent template local.</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- @title mirrors the controller; identical to the bare local below --&gt
@@ -102,7 +102,7 @@
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Control Flow</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">template.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Conditionals --&gt
@@ -125,7 +125,7 @@
     <p class="text-gray-400 mb-6">These helper functions are automatically available in all templates.</p>
 
     <h3 class="text-xl font-semibold text-white mb-4">DateTime Functions</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">DateTime helpers</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Get current timestamp --&gt
@@ -171,35 +171,35 @@
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_now()</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_now()</td>
                     <td class="py-3 px-4">Returns current Unix timestamp (UTC)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_format(ts, fmt)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_format(ts, fmt)</td>
                     <td class="py-3 px-4">Format timestamp with strftime (e.g., "%Y-%m-%d", "%B %d, %Y")</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_parse(str)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_parse(str)</td>
                     <td class="py-3 px-4">Parse date string to timestamp (ISO 8601, RFC 3339)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_add_days(ts, n)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_add_days(ts, n)</td>
                     <td class="py-3 px-4">Add n days to timestamp (negative to subtract)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_add_hours(ts, n)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_add_hours(ts, n)</td>
                     <td class="py-3 px-4">Add n hours to timestamp</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">datetime_diff(t1, t2)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">datetime_diff(t1, t2)</td>
                     <td class="py-3 px-4">Difference between timestamps in seconds (t1 - t2)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">time_ago(ts)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">time_ago(ts)</td>
                     <td class="py-3 px-4">Human-readable relative time ("2 hours ago", "3 days ago")</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">l(ts, format?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">l(ts, format?)</td>
                     <td class="py-3 px-4">Localized date format using current locale ("short", "long", "full", "time", "datetime", or strftime)</td>
                 </tr>
             </tbody>
@@ -219,92 +219,92 @@
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%Y</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%Y</td>
                     <td class="py-2 px-4">4-digit year</td>
                     <td class="py-2 px-4 font-mono">2024</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%y</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%y</td>
                     <td class="py-2 px-4">2-digit year</td>
                     <td class="py-2 px-4 font-mono">24</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%m</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%m</td>
                     <td class="py-2 px-4">Month (01-12)</td>
                     <td class="py-2 px-4 font-mono">01</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%B</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%B</td>
                     <td class="py-2 px-4">Full month name</td>
                     <td class="py-2 px-4 font-mono">January</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%b</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%b</td>
                     <td class="py-2 px-4">Abbreviated month</td>
                     <td class="py-2 px-4 font-mono">Jan</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%d</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%d</td>
                     <td class="py-2 px-4">Day of month (01-31)</td>
                     <td class="py-2 px-4 font-mono">15</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%e</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%e</td>
                     <td class="py-2 px-4">Day of month (space-padded)</td>
                     <td class="py-2 px-4 font-mono">&nbsp;5</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%A</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%A</td>
                     <td class="py-2 px-4">Full weekday name</td>
                     <td class="py-2 px-4 font-mono">Monday</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%a</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%a</td>
                     <td class="py-2 px-4">Abbreviated weekday</td>
                     <td class="py-2 px-4 font-mono">Mon</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%H</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%H</td>
                     <td class="py-2 px-4">Hour 24h (00-23)</td>
                     <td class="py-2 px-4 font-mono">14</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%I</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%I</td>
                     <td class="py-2 px-4">Hour 12h (01-12)</td>
                     <td class="py-2 px-4 font-mono">02</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%M</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%M</td>
                     <td class="py-2 px-4">Minute (00-59)</td>
                     <td class="py-2 px-4 font-mono">30</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%S</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%S</td>
                     <td class="py-2 px-4">Second (00-59)</td>
                     <td class="py-2 px-4 font-mono">45</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%p</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%p</td>
                     <td class="py-2 px-4">AM/PM</td>
                     <td class="py-2 px-4 font-mono">PM</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%Z</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%Z</td>
                     <td class="py-2 px-4">Timezone name</td>
                     <td class="py-2 px-4 font-mono">UTC</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%j</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%j</td>
                     <td class="py-2 px-4">Day of year (001-366)</td>
                     <td class="py-2 px-4 font-mono">015</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%W</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%W</td>
                     <td class="py-2 px-4">Week number (00-53)</td>
                     <td class="py-2 px-4 font-mono">03</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-2 px-4 font-mono text-indigo-400">%%</td>
+                    <td class="py-2 px-4 font-mono text-amber-400">%%</td>
                     <td class="py-2 px-4">Literal %</td>
                     <td class="py-2 px-4 font-mono">%</td>
                 </tr>
@@ -312,7 +312,7 @@
         </table>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Common format examples</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- ISO format --&gt
@@ -333,7 +333,7 @@
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">I18n Functions</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">I18n helpers</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Get current locale --&gt
@@ -360,15 +360,15 @@
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">locale()</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">locale()</td>
                     <td class="py-3 px-4">Get current locale code (e.g., "en", "fr")</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">set_locale(code)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">set_locale(code)</td>
                     <td class="py-3 px-4">Set the current locale</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">t(key, fallback?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">t(key, fallback?)</td>
                     <td class="py-3 px-4">Translate a key with optional fallback</td>
                 </tr>
             </tbody>
@@ -376,7 +376,7 @@
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">HTML Functions</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML helpers</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- HTML escaping for element bodies (prevent XSS) --&gt
@@ -411,7 +411,7 @@
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Utility Functions</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Utility helpers</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Generate a range for loops --&gt
@@ -448,20 +448,20 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_path()</code>
+            <code class="text-amber-300 font-bold">current_path()</code>
             <p class="text-sm text-gray-400 mt-1">Request pathname, e.g. <code>"/users"</code>. <code>null</code> outside a request.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_method()</code>
+            <code class="text-amber-300 font-bold">current_method()</code>
             <p class="text-sm text-gray-400 mt-1">HTTP method, e.g. <code>"GET"</code>. <code>null</code> outside a request.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_path?(p)</code>
+            <code class="text-amber-300 font-bold">current_path?(p)</code>
             <p class="text-sm text-gray-400 mt-1"><code>true</code> if the current path equals <code>p</code> exactly. Use for active-link checks.</p>
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Active-link pattern</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;nav&gt;
@@ -531,7 +531,7 @@
     </div>
 
     <p class="text-gray-400 mb-2"><strong class="text-white">Override per response</strong> when the defaults don't fit. Set your own <code>Cache-Control</code> (and optionally <code>ETag</code>) in the response headers hash and the framework defaults step aside:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Controller</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn downloads
@@ -623,7 +623,7 @@ SOLI_NAV=off soli serve .</code></pre>
             <strong><code>DOMContentLoaded</code> keeps working.</strong> The event itself fires once per document and never again after a swap &mdash; but inline scripts re-executed by a visit routinely register <code>DOMContentLoaded</code>/<code>load</code> listeners, so the framework <em>replays</em> them: once the event has already fired, registering a listener for it invokes the listener immediately (the same semantics as jQuery's <code>.ready()</code>). Your existing init code &mdash; sliders, lightboxes, anything wrapped in <code>DOMContentLoaded</code> &mdash; works after swaps without changes. The same replay covers <code>alpine:init</code>/<code>alpine:initialized</code>: a page-specific bundle first executed by a swap that registers components with <code>document.addEventListener("alpine:init", () =&gt; Alpine.data(...))</code> works unchanged. For code in <strong>external</strong> scripts (which execute once per tab, not per visit), hook <code>soli:load</code> to re-initialize per navigation.
         </p>
     </div>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Re-initializing from an external script</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-html text-sm">&lt;script&gt;
@@ -661,7 +661,7 @@ SOLI_NAV=off soli serve .</code></pre>
     <p class="text-gray-400 mb-6">When you create a new app with <code>soli new</code>, a starter helper file is generated at <code>app/helpers/application_helper.sl</code>. These helpers are automatically available in all templates.</p>
 
     <h3 class="text-xl font-semibold text-white mb-4">Text Helpers</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Text helpers</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt
@@ -691,7 +691,7 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Number & Currency Helpers (I18n)</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Number helpers (locale-aware)</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Format numbers with thousands separator (auto-detects from locale) --&gt
@@ -733,7 +733,7 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Link Helper</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Link helper</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Generate safe HTML links (XSS protected) --&gt
@@ -749,7 +749,7 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">URL Slug Helper</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Slugify helper</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Convert text to URL-friendly slug --&gt
@@ -779,31 +779,31 @@ SOLI_NAV=off soli serve .</code></pre>
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">truncate(text, length, suffix?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">truncate(text, length, suffix?)</td>
                     <td class="py-3 px-4">Truncate text to length with suffix (default: "...")</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">capitalize(text)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">capitalize(text)</td>
                     <td class="py-3 px-4">Capitalize first letter of string</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">pluralize(count, singular, plural?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">pluralize(count, singular, plural?)</td>
                     <td class="py-3 px-4">Pluralize word based on count (default plural: singular + "s")</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">number_with_delimiter(num, delim?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">number_with_delimiter(num, delim?)</td>
                     <td class="py-3 px-4">Format number with thousands separator (locale-aware)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">currency(amount, symbol?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">currency(amount, symbol?)</td>
                     <td class="py-3 px-4">Format as currency (locale-aware: symbol, delimiter, position)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">link_to(text, url, class?)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">link_to(text, url, class?)</td>
                     <td class="py-3 px-4">Generate HTML link with XSS protection</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">slugify(text)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">slugify(text)</td>
                     <td class="py-3 px-4">Convert text to URL-friendly slug</td>
                 </tr>
             </tbody>
@@ -811,7 +811,7 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Complete Example</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/posts/show.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;article class="post"&gt
@@ -851,7 +851,7 @@ SOLI_NAV=off soli serve .</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Layouts</h2>
     <p class="text-gray-400 mb-6">Layouts define the outer shell of your pages. Use <code>&lt;%= yield %&gt;</code> to inject the view content.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/layouts/application.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!DOCTYPE html&gt
@@ -873,7 +873,7 @@ SOLI_NAV=off soli serve .</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Partials</h2>
     <p class="text-gray-400 mb-6">Reuse components across views. Partials are named with a leading underscore.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Usage</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- Render _user_card.html.slv (partial() is the short alias for render_partial()) --&gt
@@ -889,13 +889,13 @@ SOLI_NAV=off soli serve .</code></pre>
         Every partial receives its context hash as a variable named <code>locals</code>, mirroring Rails' <code>local_assigns</code>. Bare identifiers keep working for normal keys (<code>&lt;%= user %&gt;</code>); reach for <code>locals["..."]</code> when a key collides with a Soli reserved word (e.g. <code>class</code>) or a global builtin (e.g. <code>type</code>) — bare access would either fail to parse or resolve to the builtin function.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Caller</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;%= partial("shared/icon", { "name": "bell", "class": "h-6 w-6" }) %&gt;</code></pre>
         </div>
     </div>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/shared/_icon.html.slv</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;svg class=&quot;&lt;%= locals[&quot;class&quot;] %&gt;&quot; data-icon=&quot;&lt;%= name %&gt;&quot;&gt;…&lt;/svg&gt;</code></pre>
@@ -903,7 +903,7 @@ SOLI_NAV=off soli serve .</code></pre>
     </div>
     <p class="text-gray-400 mb-12">
         Missing keys return <code>null</code>, so the usual <code>.nil?</code> pattern applies with no extra guards:
-        <code class="block mt-2 px-3 py-2 rounded bg-gray-900 text-indigo-300 font-mono text-xs">&lt;% let css = locals["class"].nil? ? "h-5 w-5" : locals["class"] %&gt;</code>
+        <code class="block mt-2 px-3 py-2 rounded bg-[#171412] text-amber-300 font-mono text-xs">&lt;% let css = locals["class"].nil? ? "h-5 w-5" : locals["class"] %&gt;</code>
         <code>locals</code> is always defined — even when a partial is rendered without a data hash it's an empty hash, so <code>locals[anything]</code> is safe.
     </p>
 
@@ -941,11 +941,11 @@ SOLI_NAV=off soli serve .</code></pre>
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">.html.md</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">.html.md</td>
                     <td class="py-3 px-4">Markdown view (preferred, explicit about HTML output)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">.md</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">.md</td>
                     <td class="py-3 px-4">Markdown view (shorter form)</td>
                 </tr>
             </tbody>
@@ -955,7 +955,7 @@ SOLI_NAV=off soli serve .</code></pre>
     <p class="text-gray-400 mb-6">Resolution priority: <code>.html.slv</code> &gt; <code>.slv</code> &gt; <code>.html.md</code> &gt; <code>.md</code> &gt; <code>.html.erb</code> &gt; <code>.erb</code></p>
 
     <h3 class="text-xl font-semibold text-white mb-4">Example</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/docs/getting-started.html.md</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-markdown text-sm"># Getting Started with &lt;%= app_name %&gt
@@ -1032,7 +1032,7 @@ soli serve
     <h3 class="text-xl font-semibold text-white mb-4">Markdown Partials</h3>
     <p class="text-gray-400 mb-6">Partials can also be Markdown files. Name them with a leading underscore like any partial.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rendering a markdown partial</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;!-- In an .slv template, include a markdown partial --&gt
@@ -1045,7 +1045,7 @@ soli serve
     <h2 class="text-2xl font-bold text-white mb-6">Passing Data</h2>
     <p class="text-gray-400 mb-6">Pass a hash of data from your controller to the view.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/posts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show
@@ -1095,12 +1095,12 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Controllers &rarr;</h3>
             <p class="text-sm text-gray-400">Pass the data that fuels your templates.</p>
         </a>
-        <a href="/docs/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+        <a href="/docs/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Routing &rarr;</h3>
             <p class="text-sm text-gray-400">Define the URLs that display your views.</p>
         </a>
     </div>

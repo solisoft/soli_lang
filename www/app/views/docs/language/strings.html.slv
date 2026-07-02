@@ -31,7 +31,7 @@
             <section id="string-literals" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#string-literals" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">String Literals</code>
+                        <code class="text-lg font-mono text-amber-400">String Literals</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -57,7 +57,7 @@ unicode = "\u{00E9}";       # e with accent</code></pre>
             <section id="raw-strings" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#raw-strings" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Raw Strings</code>
+                        <code class="text-lg font-mono text-amber-400">Raw Strings</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -76,7 +76,7 @@ raw = r"C:\Users\name";       # Single backslashes work</code></pre>
             <section id="multiline-strings" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#multiline-strings" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Multiline Strings</code>
+                        <code class="text-lg font-mono text-amber-400">Multiline Strings</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -113,7 +113,7 @@ ORDER BY created_at DESC""";</code></pre>
             <section id="string-concatenation" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#string-concatenation" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Concatenation</code>
+                        <code class="text-lg font-mono text-amber-400">Concatenation</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -137,12 +137,12 @@ intro = "My name is " + name + " and I am " + age.to_s + " years old."</code></p
             <section id="string-interpolation" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#string-interpolation" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">String Interpolation</code>
+                        <code class="text-lg font-mono text-amber-400">String Interpolation</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-indigo-400">#{expression}</code> syntax.</p>
+                    <p class="text-gray-400 mb-3">Embed expressions directly in strings using <code class="text-amber-400">#{expression}</code> syntax.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic variable interpolation
 name = "World"
 greeting = "Hello #{name}!";           # "Hello World!"
@@ -174,7 +174,7 @@ person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>
             <section id="type-annotation" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#type-annotation" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Type Annotations</code>
+                        <code class="text-lg font-mono text-amber-400">Type Annotations</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -212,7 +212,7 @@ end</code></pre>
             <section id="index-access" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#index-access" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Index Access</code>
+                        <code class="text-lg font-mono text-amber-400">Index Access</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -236,7 +236,7 @@ print(str[100]);  # null</code></pre>
             <section id="immutability" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#immutability" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">String Immutability</code>
+                        <code class="text-lg font-mono text-amber-400">String Immutability</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -274,7 +274,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-length" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-length" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.length</code> / <code class="text-lg font-mono text-indigo-400">.len</code> / <code class="text-lg font-mono text-indigo-400">.size</code>
+                        <code class="text-lg font-mono text-amber-400">.length</code> / <code class="text-lg font-mono text-amber-400">.len</code> / <code class="text-lg font-mono text-amber-400">.size</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -289,12 +289,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-bytesize" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-bytesize" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.bytesize</code> / <code class="text-lg font-mono text-indigo-400">.bytes</code>
+                        <code class="text-lg font-mono text-amber-400">.bytesize</code> / <code class="text-lg font-mono text-amber-400">.bytes</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">bytesize</code> returns the number of bytes (UTF-8). <code class="text-indigo-300">bytes</code> returns the byte values as an array.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">bytesize</code> returns the number of bytes (UTF-8). <code class="text-amber-300">bytes</code> returns the byte values as an array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".bytesize  # 5
 "hello".bytes     # [104, 101, 108, 108, 111]</code></pre>
                 </div>
@@ -303,7 +303,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-empty-blank" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-empty-blank" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.empty?</code> / <code class="text-lg font-mono text-indigo-400">.blank?</code> / <code class="text-lg font-mono text-indigo-400">.present?</code>
+                        <code class="text-lg font-mono text-amber-400">.empty?</code> / <code class="text-lg font-mono text-amber-400">.blank?</code> / <code class="text-lg font-mono text-amber-400">.present?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -326,7 +326,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-inspect" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.inspect</code> / <code class="text-lg font-mono text-indigo-400">.class</code> / <code class="text-lg font-mono text-indigo-400">.is_a?(type)</code> / <code class="text-lg font-mono text-indigo-400">.nil?</code>
+                        <code class="text-lg font-mono text-amber-400">.inspect</code> / <code class="text-lg font-mono text-amber-400">.class</code> / <code class="text-lg font-mono text-amber-400">.is_a?(type)</code> / <code class="text-lg font-mono text-amber-400">.nil?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -343,12 +343,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-case" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-case" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.upcase</code> / <code class="text-lg font-mono text-indigo-400">.downcase</code> / <code class="text-lg font-mono text-indigo-400">.capitalize</code> / <code class="text-lg font-mono text-indigo-400">.swapcase</code>
+                        <code class="text-lg font-mono text-amber-400">.upcase</code> / <code class="text-lg font-mono text-amber-400">.downcase</code> / <code class="text-lg font-mono text-amber-400">.capitalize</code> / <code class="text-lg font-mono text-amber-400">.swapcase</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Case conversion methods. <code class="text-indigo-300">uppercase</code> and <code class="text-indigo-300">lowercase</code> are aliases for <code class="text-indigo-300">upcase</code> and <code class="text-indigo-300">downcase</code>.</p>
+                    <p class="text-gray-400 mb-3">Case conversion methods. <code class="text-amber-300">uppercase</code> and <code class="text-amber-300">lowercase</code> are aliases for <code class="text-amber-300">upcase</code> and <code class="text-amber-300">downcase</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".upcase       # "HELLO"
 "HELLO".downcase     # "hello"
 "hello".capitalize   # "Hello"
@@ -364,12 +364,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-slugify" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-slugify" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.slugify</code>
+                        <code class="text-lg font-mono text-amber-400">.slugify</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Converts the string to a URL-friendly slug: lowercases, ASCII-folds common Latin/Slavic accents (<code class="text-indigo-300">à→a</code>, <code class="text-indigo-300">é→e</code>, <code class="text-indigo-300">ç→c</code>, <code class="text-indigo-300">œ→oe</code>, <code class="text-indigo-300">æ→ae</code>, <code class="text-indigo-300">ß→ss</code>, …), replaces any remaining non-<code class="text-indigo-300">[a-z0-9]</code> with <code class="text-indigo-300">-</code>, collapses runs, and trims leading/trailing hyphens.</p>
+                    <p class="text-gray-400 mb-3">Converts the string to a URL-friendly slug: lowercases, ASCII-folds common Latin/Slavic accents (<code class="text-amber-300">à→a</code>, <code class="text-amber-300">é→e</code>, <code class="text-amber-300">ç→c</code>, <code class="text-amber-300">œ→oe</code>, <code class="text-amber-300">æ→ae</code>, <code class="text-amber-300">ß→ss</code>, …), replaces any remaining non-<code class="text-amber-300">[a-z0-9]</code> with <code class="text-amber-300">-</code>, collapses runs, and trims leading/trailing hyphens.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"Hello World!".slugify         # "hello-world"
 "Café & Restaurant".slugify    # "cafe-restaurant"
 "Crème brûlée".slugify         # "creme-brulee"
@@ -381,12 +381,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-html-entities" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-html-entities" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.html_entities</code>
+                        <code class="text-lg font-mono text-amber-400">.html_entities</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Encodes every non-ASCII character as an HTML <strong>numeric</strong> entity (<code class="text-indigo-300">é→&amp;#233;</code>), leaving ASCII — tags, attributes, and existing <code class="text-indigo-300">&amp;#…;</code> entities — untouched. The result is pure ASCII, so it renders identically under any charset, and the method is idempotent. Use it for accented text in <strong>HTML email bodies</strong>: many providers/clients re-emit the body as Latin-1 regardless of the request charset or an in-document <code class="text-indigo-300">&lt;meta charset&gt;</code>, double-encoding raw UTF-8 (<code class="text-indigo-300">é→Ã©</code>); numeric entities sidestep that.</p>
+                    <p class="text-gray-400 mb-3">Encodes every non-ASCII character as an HTML <strong>numeric</strong> entity (<code class="text-amber-300">é→&amp;#233;</code>), leaving ASCII — tags, attributes, and existing <code class="text-amber-300">&amp;#…;</code> entities — untouched. The result is pure ASCII, so it renders identically under any charset, and the method is idempotent. Use it for accented text in <strong>HTML email bodies</strong>: many providers/clients re-emit the body as Latin-1 regardless of the request charset or an in-document <code class="text-amber-300">&lt;meta charset&gt;</code>, double-encoding raw UTF-8 (<code class="text-amber-300">é→Ã©</code>); numeric entities sidestep that.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"Vous avez été inscrit·e".html_entities()
 # "Vous avez &amp;#233;t&amp;#233; inscrit&amp;#183;e"
 
@@ -398,12 +398,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-camelize" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-camelize" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.camelize</code> / <code class="text-lg font-mono text-indigo-400">.camelize(true)</code>
+                        <code class="text-lg font-mono text-amber-400">.camelize</code> / <code class="text-lg font-mono text-amber-400">.camelize(true)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Converts <code class="text-indigo-300">snake_case</code> or <code class="text-indigo-300">kebab-case</code> input to camel case. Default is lower-camel (<code class="text-indigo-300">fooBar</code>); pass <code class="text-indigo-300">true</code> for upper-camel / Pascal case (<code class="text-indigo-300">FooBar</code>). Leading and consecutive separators are collapsed, and internal capitals are preserved so already-camelized input is idempotent.</p>
+                    <p class="text-gray-400 mb-3">Converts <code class="text-amber-300">snake_case</code> or <code class="text-amber-300">kebab-case</code> input to camel case. Default is lower-camel (<code class="text-amber-300">fooBar</code>); pass <code class="text-amber-300">true</code> for upper-camel / Pascal case (<code class="text-amber-300">FooBar</code>). Leading and consecutive separators are collapsed, and internal capitals are preserved so already-camelized input is idempotent.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"foo_bar".camelize          # "fooBar"
 "foo-bar-baz".camelize      # "fooBarBaz"
 "foo_bar".camelize(true)    # "FooBar"   (PascalCase)
@@ -417,12 +417,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-contains" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-contains" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.contains(substr)</code> / <code class="text-lg font-mono text-indigo-400">.includes?(substr)</code>
+                        <code class="text-lg font-mono text-amber-400">.contains(substr)</code> / <code class="text-lg font-mono text-amber-400">.includes?(substr)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Checks if the string contains a substring. <code class="text-indigo-300">includes?</code> is an alias.</p>
+                    <p class="text-gray-400 mb-3">Checks if the string contains a substring. <code class="text-amber-300">includes?</code> is an alias.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello world".contains("world")  # true
 "hello world".contains("foo")    # false
 "hello".includes?("ell")         # true</code></pre>
@@ -432,12 +432,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-starts-ends" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-starts-ends" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.starts_with(prefix)</code> / <code class="text-lg font-mono text-indigo-400">.ends_with(suffix)</code>
+                        <code class="text-lg font-mono text-amber-400">.starts_with(prefix)</code> / <code class="text-lg font-mono text-amber-400">.ends_with(suffix)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring. Also available as <code class="text-indigo-300">starts_with?</code> and <code class="text-indigo-300">ends_with?</code>.</p>
+                    <p class="text-gray-400 mb-3">Check if a string starts or ends with a given substring. Also available as <code class="text-amber-300">starts_with?</code> and <code class="text-amber-300">ends_with?</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"https://example.com".starts_with("https://")  # true
 "report.pdf".ends_with(".pdf")                  # true
 
@@ -450,7 +450,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-index-of" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-index-of" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.index_of(substr)</code>
+                        <code class="text-lg font-mono text-amber-400">.index_of(substr)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -465,7 +465,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-count" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-count" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.count(substr)</code>
+                        <code class="text-lg font-mono text-amber-400">.count(substr)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -480,12 +480,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-match-scan" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-match-scan" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.match(pattern)</code> / <code class="text-lg font-mono text-indigo-400">.scan(pattern)</code>
+                        <code class="text-lg font-mono text-amber-400">.match(pattern)</code> / <code class="text-lg font-mono text-amber-400">.scan(pattern)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">match</code> returns the first regex match. <code class="text-indigo-300">scan</code> returns all matches as an array.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">match</code> returns the first regex match. <code class="text-amber-300">scan</code> returns all matches as an array.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello 42 world 7".match(r"\d+")   # "42"
 "hello 42 world 7".scan(r"\d+")    # ["42", "7"]</code></pre>
                 </div>
@@ -495,12 +495,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-trim" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-trim" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.trim</code> / <code class="text-lg font-mono text-indigo-400">.strip</code> / <code class="text-lg font-mono text-indigo-400">.lstrip</code> / <code class="text-lg font-mono text-indigo-400">.rstrip</code> / <code class="text-lg font-mono text-indigo-400">.chomp</code>
+                        <code class="text-lg font-mono text-amber-400">.trim</code> / <code class="text-lg font-mono text-amber-400">.strip</code> / <code class="text-lg font-mono text-amber-400">.lstrip</code> / <code class="text-lg font-mono text-amber-400">.rstrip</code> / <code class="text-lg font-mono text-amber-400">.chomp</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Whitespace removal. <code class="text-indigo-300">trim</code> (alias <code class="text-indigo-300">strip</code>) removes both sides, <code class="text-indigo-300">lstrip</code>/<code class="text-indigo-300">rstrip</code> remove left/right only, <code class="text-indigo-300">chomp</code> removes trailing newlines.</p>
+                    <p class="text-gray-400 mb-3">Whitespace removal. <code class="text-amber-300">trim</code> (alias <code class="text-amber-300">strip</code>) removes both sides, <code class="text-amber-300">lstrip</code>/<code class="text-amber-300">rstrip</code> remove left/right only, <code class="text-amber-300">chomp</code> removes trailing newlines.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"  hello  ".trim     # "hello"
 "  hello  ".strip    # "hello"  (alias)
 "  hello  ".lstrip   # "hello  "
@@ -512,7 +512,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-squeeze" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-squeeze" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.squeeze</code>
+                        <code class="text-lg font-mono text-amber-400">.squeeze</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -526,7 +526,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-reverse" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-reverse" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.reverse</code>
+                        <code class="text-lg font-mono text-amber-400">.reverse</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -540,7 +540,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-succ" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-succ" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.succ</code> / <code class="text-lg font-mono text-indigo-400">.next</code>
+                        <code class="text-lg font-mono text-amber-400">.succ</code> / <code class="text-lg font-mono text-amber-400">.next</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -563,12 +563,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-replace" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-replace" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.replace(search, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.gsub(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.replace_all(pattern, replacement)</code> / <code class="text-lg font-mono text-indigo-400">.sub(pattern, replacement)</code>
+                        <code class="text-lg font-mono text-amber-400">.replace(search, replacement)</code> / <code class="text-lg font-mono text-amber-400">.gsub(pattern, replacement)</code> / <code class="text-lg font-mono text-amber-400">.replace_all(pattern, replacement)</code> / <code class="text-lg font-mono text-amber-400">.sub(pattern, replacement)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">replace</code> replaces all occurrences. <code class="text-indigo-300">gsub</code> (alias: <code class="text-indigo-300">replace_all</code>) replaces all regex matches. <code class="text-indigo-300">sub</code> replaces first regex match only.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">replace</code> replaces all occurrences. <code class="text-amber-300">gsub</code> (alias: <code class="text-amber-300">replace_all</code>) replaces all regex matches. <code class="text-amber-300">sub</code> replaces first regex match only.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello world".replace("world", "Soli")  # "hello Soli"
 "aaa".replace("a", "b")                 # "bbb"
 
@@ -581,12 +581,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-tr" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-tr" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.tr(from, to)</code>
+                        <code class="text-lg font-mono text-amber-400">.tr(from, to)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Translates characters: replaces each character in <code class="text-indigo-300">from</code> with the corresponding character in <code class="text-indigo-300">to</code>.</p>
+                    <p class="text-gray-400 mb-3">Translates characters: replaces each character in <code class="text-amber-300">from</code> with the corresponding character in <code class="text-amber-300">to</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".tr("aeiou", "*")      # "h*ll*"
 "hello".tr("el", "ip")        # "hippo"</code></pre>
                 </div>
@@ -595,12 +595,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-delete" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-delete" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.delete(chars)</code> / <code class="text-lg font-mono text-indigo-400">.delete_prefix(prefix)</code> / <code class="text-lg font-mono text-indigo-400">.delete_suffix(suffix)</code>
+                        <code class="text-lg font-mono text-amber-400">.delete(chars)</code> / <code class="text-lg font-mono text-amber-400">.delete_prefix(prefix)</code> / <code class="text-lg font-mono text-amber-400">.delete_suffix(suffix)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">delete</code> removes all occurrences of specified characters. <code class="text-indigo-300">delete_prefix</code>/<code class="text-indigo-300">delete_suffix</code> remove a specific prefix or suffix.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">delete</code> removes all occurrences of specified characters. <code class="text-amber-300">delete_prefix</code>/<code class="text-amber-300">delete_suffix</code> remove a specific prefix or suffix.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".delete("lo")                    # "he"
 "Hello, World!".delete_prefix("Hello, ")  # "World!"
 "report.pdf".delete_suffix(".pdf")       # "report"</code></pre>
@@ -610,7 +610,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-insert" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-insert" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.insert(index, string)</code>
+                        <code class="text-lg font-mono text-amber-400">.insert(index, string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -624,7 +624,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-truncate" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-truncate" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.truncate(length)</code>
+                        <code class="text-lg font-mono text-amber-400">.truncate(length)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -638,7 +638,7 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-substring" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-substring" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.substring(start, end?)</code>
+                        <code class="text-lg font-mono text-amber-400">.substring(start, end?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -654,12 +654,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-split" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-split" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.split([separator])</code> / <code class="text-lg font-mono text-indigo-400">.join(separator)</code>
+                        <code class="text-lg font-mono text-amber-400">.split([separator])</code> / <code class="text-lg font-mono text-amber-400">.join(separator)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">split</code> splits a string into an array. The <code class="text-indigo-300">separator</code> is optional and defaults to <code class="text-indigo-300">" "</code> (a single space). <code class="text-indigo-300">join</code> joins characters back with a separator.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">split</code> splits a string into an array. The <code class="text-amber-300">separator</code> is optional and defaults to <code class="text-amber-300">" "</code> (a single space). <code class="text-amber-300">join</code> joins characters back with a separator.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"a,b,c".split(",")        # ["a", "b", "c"]
 "hello world".split(" ")  # ["hello", "world"]
 "hello world".split       # ["hello", "world"]  (no parens — sep defaults to " ")
@@ -671,12 +671,12 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-chars" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-chars" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.chars</code> / <code class="text-lg font-mono text-indigo-400">.lines</code>
+                        <code class="text-lg font-mono text-amber-400">.chars</code> / <code class="text-lg font-mono text-amber-400">.lines</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3"><code class="text-indigo-300">chars</code> splits into individual characters. <code class="text-indigo-300">lines</code> splits by newlines.</p>
+                    <p class="text-gray-400 mb-3"><code class="text-amber-300">chars</code> splits into individual characters. <code class="text-amber-300">lines</code> splits by newlines.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".chars                    # ["h", "e", "l", "l", "o"]
 "line1\nline2\nline3".lines      # ["line1", "line2", "line3"]
 
@@ -689,12 +689,12 @@ end</code></pre>
             <section id="method-partition" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-partition" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.partition(separator)</code> / <code class="text-lg font-mono text-indigo-400">.rpartition(separator)</code>
+                        <code class="text-lg font-mono text-amber-400">.partition(separator)</code> / <code class="text-lg font-mono text-amber-400">.rpartition(separator)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Splits into 3 parts: [before, separator, after]. <code class="text-indigo-300">rpartition</code> searches from the right.</p>
+                    <p class="text-gray-400 mb-3">Splits into 3 parts: [before, separator, after]. <code class="text-amber-300">rpartition</code> searches from the right.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello-world-test".partition("-")   # ["hello", "-", "world-test"]
 "hello-world-test".rpartition("-")  # ["hello-world", "-", "test"]</code></pre>
                 </div>
@@ -704,12 +704,12 @@ end</code></pre>
             <section id="method-pad" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-pad" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.lpad(width, char?)</code> / <code class="text-lg font-mono text-indigo-400">.rpad(width, char?)</code> / <code class="text-lg font-mono text-indigo-400">.center(width, char?)</code>
+                        <code class="text-lg font-mono text-amber-400">.lpad(width, char?)</code> / <code class="text-lg font-mono text-amber-400">.rpad(width, char?)</code> / <code class="text-lg font-mono text-amber-400">.center(width, char?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Pad a string to a specified width. <code class="text-indigo-300">ljust</code>/<code class="text-indigo-300">rjust</code> are aliases for <code class="text-indigo-300">rpad</code>/<code class="text-indigo-300">lpad</code>.</p>
+                    <p class="text-gray-400 mb-3">Pad a string to a specified width. <code class="text-amber-300">ljust</code>/<code class="text-amber-300">rjust</code> are aliases for <code class="text-amber-300">rpad</code>/<code class="text-amber-300">lpad</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"42".lpad(5, "0")      # "00042"
 "hi".rpad(5, ".")      # "hi..."
 "hi".center(7, "-")    # "--hi---"
@@ -724,12 +724,12 @@ end</code></pre>
             <section id="method-ord-chr" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-ord-chr" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.ord</code> / <code class="text-lg font-mono text-indigo-400">.chr</code> / <code class="text-lg font-mono text-indigo-400">.hex</code> / <code class="text-lg font-mono text-indigo-400">.oct</code>
+                        <code class="text-lg font-mono text-amber-400">.ord</code> / <code class="text-lg font-mono text-amber-400">.chr</code> / <code class="text-lg font-mono text-amber-400">.hex</code> / <code class="text-lg font-mono text-amber-400">.oct</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Character encoding conversions. <code class="text-indigo-300">ord</code> returns the Unicode code point, <code class="text-indigo-300">chr</code> returns the character, <code class="text-indigo-300">hex</code>/<code class="text-indigo-300">oct</code> convert to hexadecimal/octal representation.</p>
+                    <p class="text-gray-400 mb-3">Character encoding conversions. <code class="text-amber-300">ord</code> returns the Unicode code point, <code class="text-amber-300">chr</code> returns the character, <code class="text-amber-300">hex</code>/<code class="text-amber-300">oct</code> convert to hexadecimal/octal representation.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"A".ord    # 65
 "A".hex    # "41"
 "A".oct    # "101"</code></pre>
@@ -740,12 +740,12 @@ end</code></pre>
             <section id="method-conversion" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-conversion" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_i</code> / <code class="text-lg font-mono text-indigo-400">.to_f</code> / <code class="text-lg font-mono text-indigo-400">.to_s</code> / <code class="text-lg font-mono text-indigo-400">.to_string</code> / <code class="text-lg font-mono text-indigo-400">.to_sym</code> / <code class="text-lg font-mono text-indigo-400">.parse_json</code>
+                        <code class="text-lg font-mono text-amber-400">.to_i</code> / <code class="text-lg font-mono text-amber-400">.to_f</code> / <code class="text-lg font-mono text-amber-400">.to_s</code> / <code class="text-lg font-mono text-amber-400">.to_string</code> / <code class="text-lg font-mono text-amber-400">.to_sym</code> / <code class="text-lg font-mono text-amber-400">.parse_json</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Type conversion methods. <code class="text-indigo-300">to_int</code>/<code class="text-indigo-300">to_float</code> are aliases for <code class="text-indigo-300">to_i</code>/<code class="text-indigo-300">to_f</code>.</p>
+                    <p class="text-gray-400 mb-3">Type conversion methods. <code class="text-amber-300">to_int</code>/<code class="text-amber-300">to_float</code> are aliases for <code class="text-amber-300">to_i</code>/<code class="text-amber-300">to_f</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"42".to_i        # 42
 "3.14".to_f      # 3.14
 42.to_s          # "42"
@@ -766,12 +766,12 @@ end</code></pre>
             <section id="method-casecmp" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-casecmp" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.casecmp(other)</code> / <code class="text-lg font-mono text-indigo-400">.casecmp?(other)</code>
+                        <code class="text-lg font-mono text-amber-400">.casecmp(other)</code> / <code class="text-lg font-mono text-amber-400">.casecmp?(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Case-insensitive comparison. <code class="text-indigo-300">casecmp</code> returns -1, 0, or 1 (like <code class="text-indigo-300"><=></code>). <code class="text-indigo-300">casecmp?</code> returns <code class="text-purple-400">true</code> if equal ignoring case.</p>
+                    <p class="text-gray-400 mb-3">Case-insensitive comparison. <code class="text-amber-300">casecmp</code> returns -1, 0, or 1 (like <code class="text-amber-300"><=></code>). <code class="text-amber-300">casecmp?</code> returns <code class="text-orange-400">true</code> if equal ignoring case.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".casecmp("HELLO")   # 0
 "apple".casecmp("banana")  # -1
 "banana".casecmp("apple")  # 1
@@ -785,12 +785,12 @@ end</code></pre>
             <section id="method-prepend" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-prepend" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.prepend(other)</code>
+                        <code class="text-lg font-mono text-amber-400">.prepend(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns a new string with <code class="text-indigo-300">other</code> prepended to the front. Strings are immutable so the original is unchanged.</p>
+                    <p class="text-gray-400 mb-3">Returns a new string with <code class="text-amber-300">other</code> prepended to the front. Strings are immutable so the original is unchanged.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"world".prepend("hello ")   # "hello world"
 "bar".prepend("foo")         # "foobar"
 
@@ -804,12 +804,12 @@ end</code></pre>
             <section id="method-chop" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-chop" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.chop</code>
+                        <code class="text-lg font-mono text-amber-400">.chop</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Removes the last character from the string. Unlike <code class="text-indigo-300">chomp</code> which only removes trailing newlines, <code class="text-indigo-300">chop</code> removes any last character.</p>
+                    <p class="text-gray-400 mb-3">Removes the last character from the string. Unlike <code class="text-amber-300">chomp</code> which only removes trailing newlines, <code class="text-amber-300">chop</code> removes any last character.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".chop     # "hell"
 "world!".chop     # "world"
 "a".chop          # ""
@@ -823,12 +823,12 @@ end</code></pre>
             <section id="method-ascii-only" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-ascii-only" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.ascii_only?</code>
+                        <code class="text-lg font-mono text-amber-400">.ascii_only?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns <code class="text-purple-400">true</code> if the string contains only ASCII characters (bytes 0-127).</p>
+                    <p class="text-gray-400 mb-3">Returns <code class="text-orange-400">true</code> if the string contains only ASCII characters (bytes 0-127).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">"hello".ascii_only?     # true
 "café".ascii_only?      # false
 "".ascii_only?           # true</code></pre>
@@ -852,7 +852,7 @@ end</code></pre>
             <section id="def-html-escape" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-html-escape" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">html_escape(string)</code>
+                        <code class="text-lg font-mono text-amber-400">html_escape(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -872,7 +872,7 @@ html_escape("5 &gt; 3 &amp;&amp; 3 &lt; 5")
             <section id="def-html-unescape" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-html-unescape" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">html_unescape(string)</code>
+                        <code class="text-lg font-mono text-amber-400">html_unescape(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -889,7 +889,7 @@ html_unescape("Tom &amp;amp; Jerry")
             <section id="def-sanitize-html" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-sanitize-html" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">sanitize_html(string)</code>
+                        <code class="text-lg font-mono text-amber-400">sanitize_html(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -920,7 +920,7 @@ sanitize_html("&lt;p&gt;Hello&lt;/p&gt;&lt;object data='file.swf'&gt;&lt;/object
             <section id="def-url-encode" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-url-encode" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">url_encode(value)</code>
+                        <code class="text-lg font-mono text-amber-400">url_encode(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -938,7 +938,7 @@ url = "/results?q=" + url_encode("search " + str(page))</code></pre>
             <section id="def-url-decode" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#def-url-decode" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">url_decode(string)</code>
+                        <code class="text-lg font-mono text-amber-400">url_decode(string)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -974,7 +974,7 @@ safe = url_decode(raw) rescue raw</code></pre>
             <section id="pattern-parsing" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#pattern-parsing" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Parsing and Formatting</code>
+                        <code class="text-lg font-mono text-amber-400">Parsing and Formatting</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -1006,7 +1006,7 @@ params = parse_query("name=Alice&age=30")
             <section id="pattern-validation" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#pattern-validation" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Validation Helpers</code>
+                        <code class="text-lg font-mono text-amber-400">Validation Helpers</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -1045,7 +1045,7 @@ end</code></pre>
             <section id="pattern-template" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#pattern-template" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Template Strings</code>
+                        <code class="text-lg font-mono text-amber-400">Template Strings</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -1082,7 +1082,7 @@ end</code></pre>
             </svg>
             Hashes
         </a>
-        <a href="/docs/language/control-flow" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/control-flow" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Control Flow
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

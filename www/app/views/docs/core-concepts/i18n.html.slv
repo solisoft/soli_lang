@@ -1,21 +1,21 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Internationalization</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Internationalization</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Build multilingual applications with ease. Soli provides built-in i18n support for translations, number formatting, currency, dates, and pluralization.
         </p>
     </div>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
             </svg>
             Global by Design
         </h4>
-        <p class="text-indigo-200/80 text-sm">
+        <p class="text-amber-200/80 text-sm">
             The <code>I18n</code> class provides everything you need to localize your application: string translations with interpolation, pluralization rules, locale-aware number and currency formatting, and date localization.
         </p>
     </div>
@@ -23,7 +23,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">Setting the Locale</h2>
     <p class="text-gray-400 mb-6">Use <code>I18n.locale()</code> to get the current locale and <code>I18n.set_locale()</code> to change it.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Locale Management</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Get the current locale (defaults to "en")
@@ -42,7 +42,7 @@ I18n.set_locale("de");</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Basic Translation</h2>
     <p class="text-gray-400 mb-6">Translate strings using <code>I18n.translate(key, locale?, translations?)</code>. The function looks up the key in your translations hash.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">String Translation</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Define translations
@@ -73,7 +73,7 @@ print(missing);  # "unknown_key"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Pluralization</h2>
     <p class="text-gray-400 mb-6">Handle singular and plural forms with <code>I18n.plural(key, n, locale?, translations?)</code>. Use <code>_zero</code> suffix for zero, <code>_one</code> for singular, and <code>_other</code> for plural.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Pluralization</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">translations = {
@@ -107,7 +107,7 @@ print(fr_plural);  # "{count} articles"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Number Formatting</h2>
     <p class="text-gray-400 mb-6">Format numbers according to locale conventions using <code>I18n.format_number(n, locale?)</code>.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Number Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">value = 1234.56
@@ -129,7 +129,7 @@ print(de_num);  # "1234,56"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Currency Formatting</h2>
     <p class="text-gray-400 mb-6">Format monetary amounts with <code>I18n.format_currency(amount, currency, locale?)</code>. Supports common currency codes.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Currency Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">price = 1999.99
@@ -155,7 +155,7 @@ print(jpy);  # "¥2,500"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Date Formatting</h2>
     <p class="text-gray-400 mb-6">Format dates using <code>I18n.format_date(timestamp, locale?)</code>. Different locales use different date formats.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Date Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Unix timestamp for January 15, 2026
@@ -182,7 +182,7 @@ print(iso_date);  # "2026-01-15"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">DateTime.format() with Locale</h2>
     <p class="text-gray-400 mb-6">The <code>DateTime.format()</code> method accepts an optional locale parameter to produce localized month and day names. This is useful when you need full control over the format pattern while still getting translated names.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">DateTime Locale Formatting</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">dt = DateTime.parse("2024-03-06T14:30:00Z")
@@ -205,7 +205,7 @@ dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
     <h2 class="text-2xl font-bold text-white mb-6">Translation Files</h2>
     <p class="text-gray-400 mb-6">Organize translations in JSON files and load them at startup.</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/en.json</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
@@ -222,7 +222,7 @@ dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Loading Translations</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Load translations from JSON file
@@ -289,32 +289,32 @@ print(greeting);  # "Home"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Method Reference</h2>
     <div class="grid grid-cols-1 gap-4 mb-12">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.locale()</code>
+            <code class="text-orange-300 font-bold">I18n.locale()</code>
             <p class="text-sm text-gray-400 mt-2">Returns the current locale string. Defaults to <code>"en"</code> if not set.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.set_locale(locale)</code>
+            <code class="text-orange-300 font-bold">I18n.set_locale(locale)</code>
             <p class="text-sm text-gray-400 mt-2">Sets the current locale. Returns the locale string.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.translate(key, locale?, translations?)</code>
+            <code class="text-orange-300 font-bold">I18n.translate(key, locale?, translations?)</code>
             <p class="text-sm text-gray-400 mt-2">Translates a key. Uses current locale if not specified. Falls back to the key itself if no translation found.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.plural(key, n, locale?, translations?)</code>
+            <code class="text-orange-300 font-bold">I18n.plural(key, n, locale?, translations?)</code>
             <p class="text-sm text-gray-400 mt-2">Returns zero (<code>_zero</code>), singular (<code>_one</code>), or plural (<code>_other</code>)
 form based on count.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.format_number(n, locale?)</code>
+            <code class="text-orange-300 font-bold">I18n.format_number(n, locale?)</code>
             <p class="text-sm text-gray-400 mt-2">Formats a number according to locale conventions (decimal separator).</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.format_currency(amount, currency, locale?)</code>
+            <code class="text-orange-300 font-bold">I18n.format_currency(amount, currency, locale?)</code>
             <p class="text-sm text-gray-400 mt-2">Formats a monetary amount with currency symbol. Supports USD, EUR, GBP, JPY.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-purple-300 font-bold">I18n.format_date(timestamp, locale?)</code>
+            <code class="text-orange-300 font-bold">I18n.format_date(timestamp, locale?)</code>
             <p class="text-sm text-gray-400 mt-2">Formats a Unix timestamp as a date string according to locale conventions.</p>
         </div>
     </div>

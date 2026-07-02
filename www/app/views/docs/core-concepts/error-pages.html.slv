@@ -58,7 +58,7 @@
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                        View locals from <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render()</code> on template errors
+                        View locals from <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">render()</code> on template errors
                     </li>
                     <li class="flex items-center gap-2">
                         <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
@@ -70,7 +70,7 @@
                     </li>
                 </ul>
                 <div class="mt-4 pt-4 border-t border-white/5">
-                    <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve</code>
+                    <code class="text-xs text-gray-500 block bg-[#171412] p-2 rounded">soli serve</code>
                 </div>
                 <p class="text-gray-500 text-xs mt-3">
                     The interactive REPL is token-protected and loopback-only by default. For a trusted local server accessed from another machine, opt in with <code class="text-amber-400">SOLI_DEV_REPL_ALLOW_REMOTE=1</code> and a pinned <code class="text-amber-400">SOLI_DEV_REPL_SECRET</code> — the server refuses to start otherwise (SEC-051), and the secret is never embedded in the HTML error page.
@@ -109,7 +109,7 @@
                     </li>
                 </ul>
                 <div class="mt-4 pt-4 border-t border-white/5">
-                    <code class="text-xs text-gray-500 block bg-gray-900 p-2 rounded">soli serve --no-dev</code>
+                    <code class="text-xs text-gray-500 block bg-[#171412] p-2 rounded">soli serve --no-dev</code>
                 </div>
             </div>
         </div>
@@ -118,9 +118,9 @@
         <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
             <h3 class="font-semibold text-white mb-3">Inspecting variables in the REPL</h3>
             <p class="text-gray-400 text-sm mb-4">
-                The REPL evaluates expressions against a snapshot of the environment captured the moment the request failed. The controller and request state is always present — <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">this</code> (including any <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">@ivars</code> you set), <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">params</code>, <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">req</code>, and <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">cookies</code>. When the error happened <em>while a template was rendering</em>, the data you passed to <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> is captured too: each key as a top-level name, and the whole hash as <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data</code>.
+                The REPL evaluates expressions against a snapshot of the environment captured the moment the request failed. The controller and request state is always present — <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">this</code> (including any <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">@ivars</code> you set), <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">params</code>, <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">req</code>, and <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">cookies</code>. When the error happened <em>while a template was rendering</em>, the data you passed to <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">render(...)</code> is captured too: each key as a top-level name, and the whole hash as <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">_view_data</code>.
             </p>
-            <pre class="text-xs text-gray-300 bg-gray-900 p-4 rounded overflow-x-auto"><code>def show
+            <pre class="text-xs text-gray-300 bg-[#171412] p-4 rounded overflow-x-auto"><code>def show
   @page_owner = "Olivier"
   render("posts/show", {
     "title": "Hello",
@@ -134,10 +134,10 @@ posts.map(fn(p) p.title)  # locals are real values — run expressions, not just
 _view_data.title          # same data, under the _view_data object
 this.page_owner           # controller instance vars</code></pre>
             <p class="text-gray-500 text-xs mt-3">
-                When a view errored, the page also shows a <strong class="text-white">View Locals</strong> panel with a one-click button per <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> local (plus an <em>All locals</em> button for <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data</code>), so you don't have to remember the names.
+                When a view errored, the page also shows a <strong class="text-white">View Locals</strong> panel with a one-click button per <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">render(...)</code> local (plus an <em>All locals</em> button for <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">_view_data</code>), so you don't have to remember the names.
             </p>
             <p class="text-gray-500 text-xs mt-2">
-                A name passed to <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> that collides with a controller-scope variable is shadowed by the controller value at the top level — reach the view's copy under <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">_view_data.&lt;key&gt;</code> (the View Locals buttons do this for you). Variables created <em>inside</em> the template (a <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">&lt;% total = ... %&gt;</code> assignment, a loop variable) are not part of the snapshot; only the locals you passed into <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">render(...)</code> are.
+                A name passed to <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">render(...)</code> that collides with a controller-scope variable is shadowed by the controller value at the top level — reach the view's copy under <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">_view_data.&lt;key&gt;</code> (the View Locals buttons do this for you). Variables created <em>inside</em> the template (a <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">&lt;% total = ... %&gt;</code> assignment, a loop variable) are not part of the snapshot; only the locals you passed into <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">render(...)</code> are.
             </p>
         </div>
 
@@ -145,9 +145,9 @@ this.page_owner           # controller instance vars</code></pre>
         <div class="mt-8 bg-white/5 rounded-xl p-6 border border-white/5">
             <h3 class="font-semibold text-white mb-3">Error logging to stderr</h3>
             <p class="text-gray-400 text-sm mb-4">
-                For every 500 the server writes a multi-line block to stderr — useful when you only have access to container / journald logs. This fires in <strong>both <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">--dev</code> and <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">--no-dev</code></strong> so failures show up in your terminal during development the same way they do in production. The first <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
+                For every 500 the server writes a multi-line block to stderr — useful when you only have access to container / journald logs. This fires in <strong>both <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">--dev</code> and <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">--no-dev</code></strong> so failures show up in your terminal during development the same way they do in production. The first <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[ERROR] request_id=… METHOD PATH - msg</code> line is preserved from earlier versions so existing log parsers keep working.
             </p>
-            <pre class="text-xs text-gray-300 bg-gray-900 p-4 rounded overflow-x-auto"><code>[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
+            <pre class="text-xs text-gray-300 bg-[#171412] p-4 rounded overflow-x-auto"><code>[ERROR] request_id=05dedb29-… GET /users/42 - Type error: cannot index null with string at 7:13
   stack:
     show at app/controllers/users.sl:92
     find at app/models/user.sl:14
@@ -163,10 +163,10 @@ this.page_owner           # controller instance vars</code></pre>
     }
   env: {"current_user": null, "user_id": null, ...}</code></pre>
             <p class="text-gray-500 text-xs mt-3">
-                Secrets are redacted in the stderr snapshot: <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted. Failure context is written only to stderr — never to the production HTML page.
+                Secrets are redacted in the stderr snapshot: <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">Authorization</code> and cookie / token / password params show <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">[REDACTED]</code>; the request body is always redacted. Failure context is written only to stderr — never to the production HTML page.
             </p>
             <p class="text-gray-500 text-xs mt-2">
-                Correlate a customer's <em>Error ID</em> to a stderr block by searching the logs for <code class="text-xs bg-gray-900 px-1 py-0.5 rounded">request_id=&lt;that id&gt;</code>.
+                Correlate a customer's <em>Error ID</em> to a stderr block by searching the logs for <code class="text-xs bg-[#171412] px-1 py-0.5 rounded">request_id=&lt;that id&gt;</code>.
             </p>
         </div>
     </section>
@@ -227,7 +227,7 @@ this.page_owner           # controller instance vars</code></pre>
     <!-- Custom Error Pages -->
     <section>
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 text-sm border border-purple-500/30">3</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 text-sm border border-orange-500/30">3</span>
             Custom Error Pages
         </h2>
 

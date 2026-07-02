@@ -40,7 +40,7 @@
         <section id="soap-call-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-call-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.call(url, action, envelope, headers?)</code>
+                    <code class="text-lg font-mono text-amber-400">SOAP.call(url, action, envelope, headers?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -48,14 +48,14 @@
                 <p class="text-gray-400 mb-3">Makes a SOAP request by performing an HTTP POST with the SOAP envelope. Returns the response Hash directly (auto-resolved).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">url</code> : <code class="text-purple-400">String</code> - The SOAP service endpoint URL</div>
-                    <div><code class="text-amber-400">action</code> : <code class="text-purple-400">String</code> - The SOAP action/method name</div>
-                    <div><code class="text-amber-400">envelope</code> : <code class="text-purple-400">String</code> - The complete SOAP envelope XML</div>
-                    <div><code class="text-amber-400">headers</code> : <code class="text-purple-400">Hash</code> (optional) - Additional HTTP headers</div>
+                    <div><code class="text-amber-400">url</code> : <code class="text-orange-400">String</code> - The SOAP service endpoint URL</div>
+                    <div><code class="text-amber-400">action</code> : <code class="text-orange-400">String</code> - The SOAP action/method name</div>
+                    <div><code class="text-amber-400">envelope</code> : <code class="text-orange-400">String</code> - The complete SOAP envelope XML</div>
+                    <div><code class="text-amber-400">headers</code> : <code class="text-orange-400">Hash</code> (optional) - Additional HTTP headers</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - Response with <code class="text-cyan-400">status</code>, <code class="text-cyan-400">body</code> (raw XML), and <code class="text-cyan-400">parsed</code> (nested Hash)
+                    <code class="text-orange-400">Hash</code> - Response with <code class="text-cyan-400">status</code>, <code class="text-cyan-400">body</code> (raw XML), and <code class="text-cyan-400">parsed</code> (nested Hash)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text the SOAP request body-sm"># Build
 body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
@@ -94,7 +94,7 @@ end</code></pre>
         <section id="soap-wrap-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-wrap-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.wrap(body, namespace?, options?)</code>
+                    <code class="text-lg font-mono text-amber-400">SOAP.wrap(body, namespace?, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -102,17 +102,17 @@ end</code></pre>
                 <p class="text-gray-400 mb-3">Wraps an XML body in a complete SOAP envelope. Defaults to the SOAP 1.1 namespace and passes the body through verbatim &mdash; pass <code>{ "escape": true }</code> when the body is untrusted text.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">body</code> : <code class="text-purple-400">String</code> &mdash; The XML body content</div>
-                    <div><code class="text-amber-400">namespace</code> : <code class="text-purple-400">String?</code> &mdash; SOAP envelope namespace (default: SOAP 1.1)</div>
-                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; Wrapping options</div>
+                    <div><code class="text-amber-400">body</code> : <code class="text-orange-400">String</code> &mdash; The XML body content</div>
+                    <div><code class="text-amber-400">namespace</code> : <code class="text-orange-400">String?</code> &mdash; SOAP envelope namespace (default: SOAP 1.1)</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; Wrapping options</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">escape</code> : <code class="text-purple-400">Bool</code> &mdash; When <code>true</code>, XML-escapes the body before wrapping. Use this whenever <code>body</code> contains user input or other untrusted text. Defaults to <code>false</code> so already-built XML fragments pass through.
+                    <code class="text-amber-400">escape</code> : <code class="text-orange-400">Bool</code> &mdash; When <code>true</code>, XML-escapes the body before wrapping. Use this whenever <code>body</code> contains user input or other untrusted text. Defaults to <code>false</code> so already-built XML fragments pass through.
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; Complete SOAP envelope XML
+                    <code class="text-orange-400">String</code> &mdash; Complete SOAP envelope XML
                 </div>
                 <pre data-filename="Trusted XML fragment"><code class="language-soli text-sm">body = "&lt;GetWeather xmlns=\"http://example.com/weather\"&gt;&lt;City&gt;London&lt;/City&gt;&lt;/GetWeather&gt;"
 envelope = SOAP.wrap(body)</code></pre>
@@ -139,7 +139,7 @@ envelope = SOAP.wrap(body)</code></pre>
         <section id="soap-parse-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-parse-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.parse(xml)</code>
+                    <code class="text-lg font-mono text-amber-400">SOAP.parse(xml)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -147,11 +147,11 @@ envelope = SOAP.wrap(body)</code></pre>
                 <p class="text-gray-400 mb-3">Parses an XML string into a nested Hash structure for easy access.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">xml</code> : <code class="text-purple-400">String</code> - XML string to parse
+                    <code class="text-amber-400">xml</code> : <code class="text-orange-400">String</code> - XML string to parse
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - Nested Hash with element names as keys
+                    <code class="text-orange-400">Hash</code> - Nested Hash with element names as keys
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;/root&gt;"
 parsed = SOAP.parse(xml)
@@ -174,7 +174,7 @@ parsed = SOAP.parse(xml)
         <section id="soap-xml-escape-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-xml-escape-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.xml_escape(text)</code>
+                    <code class="text-lg font-mono text-amber-400">SOAP.xml_escape(text)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -182,11 +182,11 @@ parsed = SOAP.parse(xml)
                 <p class="text-gray-400 mb-3">Escapes special XML characters for safe inclusion in XML documents.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">text</code> : <code class="text-purple-400">String</code> - The text to escape
+                    <code class="text-amber-400">text</code> : <code class="text-orange-400">String</code> - The text to escape
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - XML-escaped text (&lt;, &gt;, &amp;, &quot;, &apos;)
+                    <code class="text-orange-400">String</code> - XML-escaped text (&lt;, &gt;, &amp;, &quot;, &apos;)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">escaped = SOAP.xml_escape("&lt;script&gt;alert('xss')&lt;/script&gt;")
 # Returns: "&amp;lt;script&amp;gt;alert(&amp;apos;xss&amp;ript)"</code></pre>
@@ -208,7 +208,7 @@ parsed = SOAP.parse(xml)
         <section id="soap-to-xml-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#soap-to-xml-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">SOAP.to_xml(hash, root_element?)</code>
+                    <code class="text-lg font-mono text-amber-400">SOAP.to_xml(hash, root_element?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -217,12 +217,12 @@ parsed = SOAP.parse(xml)
 to XML string. Supports attributes with @ prefix and text content with _text key.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">hash</code> : <code class="text-purple-400">Hash</code> - The hash to convert to XML</div>
-                    <div><code class="text-amber-400">root_element</code> : <code class="text-purple-400">String</code> (optional) - Root element name (default: "root")</div>
+                    <div><code class="text-amber-400">hash</code> : <code class="text-orange-400">Hash</code> - The hash to convert to XML</div>
+                    <div><code class="text-amber-400">root_element</code> : <code class="text-orange-400">String</code> (optional) - Root element name (default: "root")</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - XML string
+                    <code class="text-orange-400">String</code> - XML string
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Special Keys</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -343,7 +343,7 @@ end</code></pre>
             </svg>
             S3 Functions
         </a>
-        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/crypto" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Crypto Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

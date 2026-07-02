@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Database Configuration</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Database Configuration</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             SoliLang uses SoliDB as its database backend. Configure your database connection using environment variables.
@@ -23,12 +23,12 @@
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_HOST</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_HOST</code></td>
                     <td class="py-3 px-4 text-gray-400">SoliDB server URL</td>
                     <td class="py-3 px-4"><code class="text-green-300">http://localhost:6745</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_DATABASE</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_DATABASE</code></td>
                     <td class="py-3 px-4 text-gray-400">Database name</td>
                     <td class="py-3 px-4"><code class="text-green-300">default</code></td>
                 </tr>
@@ -48,17 +48,17 @@
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_USERNAME</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_USERNAME</code></td>
                     <td class="py-3 px-4 text-gray-400">Authentication username</td>
                     <td class="py-3 px-4 text-gray-500">None</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_PASSWORD</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_PASSWORD</code></td>
                     <td class="py-3 px-4 text-gray-400">Authentication password</td>
                     <td class="py-3 px-4 text-gray-500">None</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">SOLIDB_API_KEY</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">SOLIDB_API_KEY</code></td>
                     <td class="py-3 px-4 text-gray-400">API key for SoliDB authentication</td>
                     <td class="py-3 px-4 text-gray-500">None</td>
                 </tr>
@@ -69,7 +69,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">.env File</h2>
     <p class="text-gray-400 mb-6">When you create a new project with <code>soli new myapp</code>, a <code>.env</code> file is automatically generated. <code>SOLIDB_DATABASE</code> is seeded with your project name, slugified (lower-cased, with non-alphanumeric runs collapsed to <code>_</code>), so each project gets its own database instead of sharing <code>default</code> &mdash; e.g. <code>soli new "My Cool Shop"</code> writes <code>SOLIDB_DATABASE=my_cool_shop</code>. The database is created automatically on the first model call, so it doesn't need to exist yet:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">.env</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Database Configuration
@@ -106,7 +106,7 @@ SOLIDB_API_KEY=your-api-key-here
     <div class="space-y-6 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Development</h3>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 SOLIDB_HOST=http://localhost:6745
@@ -117,7 +117,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Test</h3>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.test
 SOLIDB_HOST=http://localhost:6745
@@ -128,7 +128,7 @@ SOLIDB_DATABASE=myapp_test</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3">Production</h3>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.production
 SOLIDB_HOST=https://db.example.com
@@ -154,7 +154,7 @@ SOLIDB_API_KEY=your-production-api-key</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Option 1: Shell Environment (Recommended for CI/Production)</h3>
     <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> when running commands:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Run migrations in production
 APP_ENV=production soli db:migrate
@@ -170,7 +170,7 @@ soli serve</code></pre>
     <h3 class="text-lg font-semibold text-white mb-4">Option 2: In .env File (For Local Development)</h3>
     <p class="text-gray-400 mb-4">Set <code>APP_ENV</code> in your base <code>.env</code> file:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 APP_ENV=development
@@ -179,8 +179,8 @@ SOLIDB_DATABASE=myapp_development</code></pre>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">File Loading Order</h3>
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-8">
-        <ol class="text-indigo-200/80 text-sm space-y-2 list-decimal list-inside">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-8">
+        <ol class="text-amber-200/80 text-sm space-y-2 list-decimal list-inside">
             <li><code>.env</code> &mdash; base configuration</li>
             <li><code>.env.{APP_ENV}</code> &mdash; environment overrides</li>
         </ol>
@@ -188,7 +188,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
 
     <p class="text-gray-400 mb-4">Environment-specific values override base values. For example:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env
 SOLIDB_DATABASE=myapp_development
@@ -203,7 +203,7 @@ SOLIDB_DATABASE=myapp_production</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Starting SoliDB</h2>
     <p class="text-gray-400 mb-6">Before running your application, start the SoliDB server:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Start SoliDB (default port 6745)
 solidb
@@ -219,7 +219,7 @@ solidb --data ./data</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Verifying Connection</h2>
     <p class="text-gray-400 mb-6">Test your database connection by running migrations:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">cd myapp
 soli db:migrate</code></pre>
@@ -228,7 +228,7 @@ soli db:migrate</code></pre>
 
     <p class="text-gray-400 mb-12">If successful, you'll see:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="text-sm text-green-400">Running migrations for database: myapp_development
 All migrations are up to date.</code></pre>
@@ -238,7 +238,7 @@ All migrations are up to date.</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Using Models</h2>
     <p class="text-gray-400 mb-6">Once configured, Models automatically connect to the database:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User < Model end
 
@@ -250,11 +250,11 @@ found = User.find(user["id"])</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
-    <p class="text-gray-400 mb-6">For everyday CRUD inside a server, use the <a href="/docs/database/models" class="text-indigo-300 hover:underline">Model ORM</a> &mdash; it reuses the worker's connection and adds validations, callbacks, and relations. Drop down to a raw query for SDBQL features the ORM doesn't cover, or in scripts and one-offs. Both forms below parameterize bind values &mdash; nothing is concatenated, so queries stay safe against injection.</p>
+    <p class="text-gray-400 mb-6">For everyday CRUD inside a server, use the <a href="/docs/database/models" class="text-amber-300 hover:underline">Model ORM</a> &mdash; it reuses the worker's connection and adds validations, callbacks, and relations. Drop down to a raw query for SDBQL features the ORM doesn't cover, or in scripts and one-offs. Both forms below parameterize bind values &mdash; nothing is concatenated, so queries stay safe against injection.</p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Using a Solidb instance</h3>
     <p class="text-gray-400 mb-4">Construct a client with <code>Solidb(host, database)</code>, optionally <code>auth</code> it, then call <code>query</code> with <code>@param</code> placeholders and a hash of bind values:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
@@ -280,14 +280,14 @@ db.query("UPDATE @key WITH { name: @name } IN users", {
 db.query("REMOVE @key IN users", { "key": user_id })</code></pre>
         </div>
     </div>
-    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-8">
-        <p class="text-indigo-200/80 text-sm">Inside <a href="/docs/database/migrations" class="text-indigo-300 hover:underline">migrations</a>, a pre-wired <code>db</code> helper is injected for you &mdash; you don't construct a <code>Solidb</code> instance manually.</p>
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-200/80 text-sm">Inside <a href="/docs/database/migrations" class="text-amber-300 hover:underline">migrations</a>, a pre-wired <code>db</code> helper is injected for you &mdash; you don't construct a <code>Solidb</code> instance manually.</p>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Using @sdbql{} Query Block</h3>
     <p class="text-gray-400 mb-4">The <code>@sdbql{}</code> syntax provides a more readable way to write database queries with interpolation:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Simple query with interpolation
 users = @sdbql{
@@ -329,9 +329,9 @@ results = @sdbql{
         </div>
     </div>
 
-    <div class="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-4">
-        <p class="text-indigo-200/80 text-sm"><strong>Note:</strong> The <code>@sdbql{}</code> block supports:</p>
-        <ul class="text-indigo-200/80 text-sm mt-2 space-y-1 list-disc list-inside">
+    <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-4">
+        <p class="text-amber-200/80 text-sm"><strong>Note:</strong> The <code>@sdbql{}</code> block supports:</p>
+        <ul class="text-amber-200/80 text-sm mt-2 space-y-1 list-disc list-inside">
             <li><strong>String interpolation</strong> using <code>#{expression}</code> - expressions are evaluated at runtime</li>
             <li><strong>Multi-line queries</strong> for better readability</li>
             <li><strong>All SDBQL operations</strong>: FOR, FILTER, SORT, LIMIT, RETURN, INSERT, UPDATE, REMOVE</li>
@@ -353,15 +353,15 @@ results = @sdbql{
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><a href="/docs/database/models" class="text-indigo-300 hover:underline"><code>Model.where(...)</code></a></td>
+                    <td class="py-3 px-4"><a href="/docs/database/models" class="text-amber-300 hover:underline"><code>Model.where(...)</code></a></td>
                     <td class="py-3 px-4 text-gray-400">Standard CRUD inside a server &mdash; your first choice</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Solidb(...).query()</code> with <code class="text-indigo-300">@param</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Solidb(...).query()</code> with <code class="text-amber-300">@param</code></td>
                     <td class="py-3 px-4 text-gray-400">Scripts, migrations, or when bind values are already a hash</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">@sdbql{}</code> with <code class="text-indigo-300">#{expr}</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">@sdbql{}</code> with <code class="text-amber-300">#{expr}</code></td>
                     <td class="py-3 px-4 text-gray-400">Inline interpolation, readable multi-line queries</td>
                 </tr>
             </tbody>
@@ -387,7 +387,7 @@ results = @sdbql{
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-4">Example .gitignore</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-gitignore text-sm"># Environment files (contain secrets)
 .env
@@ -398,7 +398,7 @@ results = @sdbql{
 
     <h3 class="text-lg font-semibold text-white mb-4">Example .env.example</h3>
     <p class="text-gray-400 mb-4">Create a template for other developers (safe to commit):</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># .env.example (commit this file)
 SOLIDB_HOST=http://localhost:6745
@@ -414,7 +414,7 @@ SOLIDB_API_KEY=</code></pre>
     <div class="space-y-6 mb-12">
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">Connection Refused</h3>
-            <div class="rounded bg-gray-900 p-3 mb-3">
+            <div class="rounded bg-[#171412] p-3 mb-3">
                 <code class="text-red-400 text-sm">Error: Failed to connect: Connection refused</code>
             </div>
             <p class="text-gray-400 text-sm mb-2"><strong>Solution:</strong> Make sure SoliDB is running:</p>
@@ -423,7 +423,7 @@ SOLIDB_API_KEY=</code></pre>
 
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">Authentication Failed</h3>
-            <div class="rounded bg-gray-900 p-3 mb-3">
+            <div class="rounded bg-[#171412] p-3 mb-3">
                 <code class="text-red-400 text-sm">Error: Authentication failed</code>
             </div>
             <p class="text-gray-400 text-sm"><strong>Solution:</strong> Check your <code>SOLIDB_USERNAME</code> and <code>SOLIDB_PASSWORD</code> in <code>.env</code>.</p>
@@ -431,7 +431,7 @@ SOLIDB_API_KEY=</code></pre>
 
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">Database Not Found</h3>
-            <div class="rounded bg-gray-900 p-3 mb-3">
+            <div class="rounded bg-[#171412] p-3 mb-3">
                 <code class="text-red-400 text-sm">Error: Database 'mydb' not found</code>
             </div>
             <p class="text-gray-400 text-sm"><strong>Solution:</strong> The database is created automatically on first use. Check your <code>SOLIDB_DATABASE</code> value.</p>
@@ -445,16 +445,16 @@ SOLIDB_API_KEY=</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <a href="/docs/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+        <a href="/docs/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Models &rarr;</h3>
             <p class="text-sm text-gray-400">Learn how to work with data using the ORM.</p>
         </a>
-        <a href="/docs/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Migrations &rarr;</h3>
+        <a href="/docs/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Migrations &rarr;</h3>
             <p class="text-sm text-gray-400">Manage your database schema.</p>
         </a>
-        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Testing &rarr;</h3>
             <p class="text-sm text-gray-400">Test with database isolation.</p>
         </a>
     </div>

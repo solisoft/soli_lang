@@ -9,7 +9,7 @@
             <span class="text-white">Jobs &amp; Cron</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-400 bg-clip-text text-transparent">Background Jobs &amp; Cron</span>
+            <span class="bg-gradient-to-r from-orange-400 to-orange-400 bg-clip-text text-transparent">Background Jobs &amp; Cron</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             SolidB-backed queues and scheduled jobs. Define a handler in <code class="text-amber-400">app/jobs/</code>, call <code class="text-amber-400">.perform_later</code>, and SolidB takes care of scheduling and retries.
@@ -19,8 +19,8 @@
     <!-- How it works -->
     <section id="section-how-it-works" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
             </span>
@@ -73,7 +73,7 @@ end</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_in(duration, args, queue_or_opts?)</code></td>
-                            <td class="py-3">Enqueues with a relative delay (<code class="text-purple-400">"5 minutes"</code>, <code class="text-purple-400">"2 hours"</code>, seconds as a number).</td>
+                            <td class="py-3">Enqueues with a relative delay (<code class="text-orange-400">"5 minutes"</code>, <code class="text-orange-400">"2 hours"</code>, seconds as a number).</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">XJob.perform_at(datetime, args, queue_or_opts?)</code></td>
@@ -102,7 +102,7 @@ WelcomeEmailJob.perform_later({ "user_id": 42 }, { "queue": "mailers", "priority
         <section id="def-job-enqueue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue(handler, args, queue_or_opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Job.enqueue(handler, args, queue_or_opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue a job by handler name. Returns the SolidB-issued job id. The trailing argument is a queue-name string or an options hash <code class="text-amber-400">{ queue, priority, max_retries }</code> (higher <code class="text-amber-400">priority</code> runs first).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">job_id = Job.enqueue("WelcomeEmailJob", { "user_id": 42 })
@@ -113,9 +113,9 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-job-enqueue-in" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue-in" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_in(handler, duration, args, queue_or_opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Job.enqueue_in(handler, duration, args, queue_or_opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-purple-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
+                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-orange-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })</code></pre>
             </div>
         </section>
@@ -123,7 +123,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-job-enqueue-at" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-enqueue-at" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.enqueue_at(handler, datetime, args, queue_or_opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Job.enqueue_at(handler, datetime, args, queue_or_opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue to run at a specific ISO-8601 timestamp.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Job.enqueue_at("WelcomeEmailJob", "2026-05-01T08:00:00Z", { "user_id": 42 })</code></pre>
@@ -133,7 +133,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-job-cancel" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-cancel" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.cancel(job_id)</code>
+                    <code class="text-lg font-mono text-amber-400">Job.cancel(job_id)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Cancel an enqueued (not yet started) job.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Job.cancel(job_id)</code></pre>
@@ -143,7 +143,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-job-list" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-list" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.list(queue?)</code>
+                    <code class="text-lg font-mono text-amber-400">Job.list(queue?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">List jobs in a queue. Defaults to the configured default queue.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">jobs = Job.list("mailers")</code></pre>
@@ -153,7 +153,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-job-queues" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-job-queues" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Job.queues()</code>
+                    <code class="text-lg font-mono text-amber-400">Job.queues()</code>
                 </a>
                 <p class="text-gray-400 mb-3">Return all queues defined in the SolidB database.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">names = Job.queues()</code></pre>
@@ -180,9 +180,9 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-webhook-enqueue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-webhook-enqueue" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue(url, payload, opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Webhook.enqueue(url, payload, opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue an HTTP POST to <code class="text-purple-400">url</code> with <code class="text-purple-400">payload</code> as the JSON body. Returns the SolidB-issued job id.</p>
+                <p class="text-gray-400 mb-3">Enqueue an HTTP POST to <code class="text-orange-400">url</code> with <code class="text-orange-400">payload</code> as the JSON body. Returns the SolidB-issued job id.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue(
   "https://hooks.slack.com/services/T00/B00/abc",
   { "text": "Order #1234 shipped" }
@@ -193,9 +193,9 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-webhook-enqueue-in" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-webhook-enqueue-in" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue_in(url, duration, payload, opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Webhook.enqueue_in(url, duration, payload, opts?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-purple-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
+                <p class="text-gray-400 mb-3">Enqueue with a relative delay. <code class="text-orange-400">duration</code> accepts <code class="text-amber-400">"5 minutes"</code>, <code class="text-amber-400">"1 hour"</code>, <code class="text-amber-400">"2 days"</code>, etc., or a number of seconds.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue_in(
   "https://api.example.com/order-completed",
   "5 minutes",
@@ -207,7 +207,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-webhook-enqueue-at" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-webhook-enqueue-at" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Webhook.enqueue_at(url, datetime, payload, opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Webhook.enqueue_at(url, datetime, payload, opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Enqueue to fire at a specific ISO-8601 timestamp.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Webhook.enqueue_at(
@@ -234,27 +234,27 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
                         <tbody class="text-gray-300">
                             <tr class="border-b border-white/5">
                                 <td class="py-3 pr-4"><code class="text-amber-400">queue</code></td>
-                                <td class="py-3 pr-4 text-purple-400">String</td>
+                                <td class="py-3 pr-4 text-orange-400">String</td>
                                 <td class="py-3">Queue name (defaults to <code class="text-amber-400">SOLI_JOBS_DEFAULT_QUEUE</code>).</td>
                             </tr>
                             <tr class="border-b border-white/5">
                                 <td class="py-3 pr-4"><code class="text-amber-400">priority</code></td>
-                                <td class="py-3 pr-4 text-purple-400">Int</td>
+                                <td class="py-3 pr-4 text-orange-400">Int</td>
                                 <td class="py-3">Higher executes first.</td>
                             </tr>
                             <tr class="border-b border-white/5">
                                 <td class="py-3 pr-4"><code class="text-amber-400">max_retries</code></td>
-                                <td class="py-3 pr-4 text-purple-400">Int</td>
+                                <td class="py-3 pr-4 text-orange-400">Int</td>
                                 <td class="py-3">Retry budget.</td>
                             </tr>
                             <tr class="border-b border-white/5">
                                 <td class="py-3 pr-4"><code class="text-amber-400">secret</code></td>
-                                <td class="py-3 pr-4 text-purple-400">String</td>
+                                <td class="py-3 pr-4 text-orange-400">String</td>
                                 <td class="py-3">Per-job HMAC key (overrides <code class="text-amber-400">SOLI_WEBHOOK_SECRET</code>).</td>
                             </tr>
                             <tr>
                                 <td class="py-3 pr-4"><code class="text-amber-400">headers</code></td>
-                                <td class="py-3 pr-4 text-purple-400">Hash</td>
+                                <td class="py-3 pr-4 text-orange-400">Hash</td>
                                 <td class="py-3">Extra HTTP headers attached to the outgoing request.</td>
                             </tr>
                         </tbody>
@@ -275,7 +275,7 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
 
         <section id="def-webhook-cancel-list" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <p class="text-gray-400 mb-3"><code class="text-lg font-mono text-indigo-400">Webhook.cancel(job_id)</code> and <code class="text-lg font-mono text-indigo-400">Webhook.list(queue?)</code> operate on the same underlying <code class="text-amber-400">_jobs</code> collection as <code class="text-amber-400">Job</code> — webhook and class jobs share a queue.</p>
+                <p class="text-gray-400 mb-3"><code class="text-lg font-mono text-amber-400">Webhook.cancel(job_id)</code> and <code class="text-lg font-mono text-amber-400">Webhook.list(queue?)</code> operate on the same underlying <code class="text-amber-400">_jobs</code> collection as <code class="text-amber-400">Job</code> — webhook and class jobs share a queue.</p>
             </div>
         </section>
     </section>
@@ -287,9 +287,9 @@ Job.enqueue("WelcomeEmailJob", { "user_id": 42 }, { "queue": "mailers", "priorit
         <section id="def-cron-schedule" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-schedule" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cron.schedule(name, expr, handler, args?)</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.schedule(name, expr, handler, args?)</code>
                 </a>
-                <p class="text-gray-400 mb-3"><span class="text-fuchsia-400 font-semibold">Idempotent upsert by name.</span> Calling twice with the same name updates the existing entry rather than creating a duplicate.</p>
+                <p class="text-gray-400 mb-3"><span class="text-orange-400 font-semibold">Idempotent upsert by name.</span> Calling twice with the same name updates the existing entry rather than creating a duplicate.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cron.schedule("nightly_report", Cron.daily_at("03:00"), "ReportJob", {})
 Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</code></pre>
             </div>
@@ -298,7 +298,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <section id="def-cron-list" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-list" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cron.list()</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.list()</code>
                 </a>
                 <p class="text-gray-400 mb-3">List all cron entries.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">entries = Cron.list()</code></pre>
@@ -308,7 +308,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <section id="def-cron-update" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-update" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cron.update(id, fields)</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.update(id, fields)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Update an existing cron entry. Pass a hash of fields to change.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cron.update(cron_id, { "schedule": "0 4 * * *" })</code></pre>
@@ -318,7 +318,7 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <section id="def-cron-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-delete" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cron.delete(id)</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.delete(id)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Delete a cron entry by id.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cron.delete(cron_id)</code></pre>
@@ -343,31 +343,31 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("5 minutes")</code></td>
-                            <td class="py-3"><code class="text-purple-400">*/5 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">*/5 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 hour")</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("2 hours")</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 */2 * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 */2 * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("1 day")</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 0 */1 * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 0 */1 * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.hourly()</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 * * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 * * * *</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.daily_at("03:00")</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 3 * * *</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 3 * * *</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.weekly_at("monday", "09:00")</code></td>
-                            <td class="py-3"><code class="text-purple-400">0 9 * * 1</code></td>
+                            <td class="py-3"><code class="text-orange-400">0 9 * * 1</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -411,21 +411,21 @@ end</code></pre>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DATABASE</code></td>
                             <td class="py-3 pr-4">SolidB database hosting queues + cron entries</td>
-                            <td class="py-3"><code class="text-purple-400">SOLIDB_DATABASE</code> then <code class="text-purple-400">default</code></td>
+                            <td class="py-3"><code class="text-orange-400">SOLIDB_DATABASE</code> then <code class="text-orange-400">default</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_DEFAULT_QUEUE</code></td>
                             <td class="py-3 pr-4">Queue name when none is supplied</td>
-                            <td class="py-3"><code class="text-purple-400">default</code></td>
+                            <td class="py-3"><code class="text-orange-400">default</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOBS_CALLBACK_URL</code></td>
                             <td class="py-3 pr-4">URL SolidB POSTs to when a Soli <code class="text-amber-400">Job</code> fires</td>
-                            <td class="py-3"><code class="text-purple-400">http://127.0.0.1:3000/_jobs/run</code></td>
+                            <td class="py-3"><code class="text-orange-400">http://127.0.0.1:3000/_jobs/run</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_WEBHOOK_SECRET</code></td>
-                            <td class="py-3 pr-4"><span class="text-fuchsia-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify callbacks</td>
+                            <td class="py-3 pr-4"><span class="text-orange-300 font-semibold">Required.</span> HMAC-SHA256 key used to sign and verify callbacks</td>
                             <td class="py-3"><span class="text-gray-500">unset</span></td>
                         </tr>
                         <tr class="border-b border-white/5">
@@ -435,8 +435,8 @@ end</code></pre>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_JOB_WORKERS</code></td>
-                            <td class="py-3 pr-4">Size of the in-process pool for <code class="text-amber-400">static background: Bool = true</code> jobs; <code class="text-purple-400">0</code> disables (all jobs run inline)</td>
-                            <td class="py-3"><code class="text-purple-400">2</code></td>
+                            <td class="py-3 pr-4">Size of the in-process pool for <code class="text-amber-400">static background: Bool = true</code> jobs; <code class="text-orange-400">0</code> disables (all jobs run inline)</td>
+                            <td class="py-3"><code class="text-orange-400">2</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -449,8 +449,8 @@ end</code></pre>
     <section id="section-background" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Long-Running Jobs (<code class="text-amber-400">static background</code>)</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">By default <code class="text-amber-400">perform</code> runs <span class="text-white font-semibold">synchronously inside the callback</span> — SolidB holds the connection open until it returns. A job that runs for minutes trips SolidB's callback timeout, which marks it failed and <span class="text-fuchsia-300 font-semibold">retries it (so it runs twice, concurrently)</span>, and it occupies a web worker the whole time.</p>
-            <p class="text-gray-400 mb-3">Add <code class="text-amber-400">static background: Bool = true</code> to run the job on a dedicated in-process pool instead. The callback acks <code class="text-purple-400">200 queued</code> immediately, so there's no timeout, no duplicate retry, and no worker held:</p>
+            <p class="text-gray-400 mb-3">By default <code class="text-amber-400">perform</code> runs <span class="text-white font-semibold">synchronously inside the callback</span> — SolidB holds the connection open until it returns. A job that runs for minutes trips SolidB's callback timeout, which marks it failed and <span class="text-orange-300 font-semibold">retries it (so it runs twice, concurrently)</span>, and it occupies a web worker the whole time.</p>
+            <p class="text-gray-400 mb-3">Add <code class="text-amber-400">static background: Bool = true</code> to run the job on a dedicated in-process pool instead. The callback acks <code class="text-orange-400">200 queued</code> immediately, so there's no timeout, no duplicate retry, and no worker held:</p>
             <pre data-filename="app/jobs/monthly_report_job.sl"><code class="language-soli text-sm">class MonthlyReportJob
   static background: Bool = true          # run on the background pool
 
@@ -469,7 +469,7 @@ end</code></pre>
                     <li>Keep the default synchronous mode for short jobs where SolidB's automatic retry is the point.</li>
                 </ul>
             </div>
-            <p class="text-gray-400 mt-3 text-sm">Sized by <code class="text-amber-400">SOLI_JOB_WORKERS</code> (default <code class="text-purple-400">2</code>); each worker holds its own loaded interpreter. <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> disables backgrounding entirely — every job runs inline as before.</p>
+            <p class="text-gray-400 mt-3 text-sm">Sized by <code class="text-amber-400">SOLI_JOB_WORKERS</code> (default <code class="text-orange-400">2</code>); each worker holds its own loaded interpreter. <code class="text-amber-400">SOLI_JOB_WORKERS=0</code> disables backgrounding entirely — every job runs inline as before.</p>
         </div>
     </section>
 
@@ -571,7 +571,7 @@ end</code></pre>
                 <li><strong class="text-white">Filename and class name must match.</strong> <code class="text-amber-400">email_job.sl</code> ↔ <code class="text-amber-400">EmailJob</code>. A mismatch is a startup error.</li>
                 <li><code class="text-amber-400">perform</code> must be <code class="text-amber-400">static</code> — it's invoked on the class, never on an instance.</li>
                 <li>Job arguments round-trip through JSON via SolidB; pass plain hashes / arrays / strings / numbers, not class instances.</li>
-                <li>If a callback arrives before <code class="text-amber-400">app/jobs/</code> finishes loading, the dispatcher returns <code class="text-purple-400">503</code> so SolidB retries instead of failing.</li>
+                <li>If a callback arrives before <code class="text-amber-400">app/jobs/</code> finishes loading, the dispatcher returns <code class="text-orange-400">503</code> so SolidB retries instead of failing.</li>
                 <li>In <code class="text-amber-400">--dev</code> mode, edits under <code class="text-amber-400">app/jobs/</code> hot-reload the class without restarting the server.</li>
                 <li>Only worker 0 performs <code class="text-amber-400">static cron</code> auto-registration on boot, to avoid duplicate writes from multiple workers.</li>
             </ul>
@@ -586,7 +586,7 @@ end</code></pre>
             </svg>
             Session Functions
         </a>
-        <a href="/docs/builtins/testing" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/testing" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Testing Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

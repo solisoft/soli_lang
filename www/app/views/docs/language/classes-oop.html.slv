@@ -14,7 +14,7 @@
         <p class="text-xl text-gray-300 leading-8">
             Object-oriented programming in Soli: classes, inheritance, interfaces, and static members.
         </p>
-        <p class="text-gray-400 mt-2"><strong class="text-yellow-400">Tip:</strong> Use <code class="text-pink-400">&lt;</code> as an alias for <code class="text-pink-400">extends</code> (e.g., <code class="text-pink-400">class Dog &lt; Animal</code>).
+        <p class="text-gray-400 mt-2"><strong class="text-yellow-400">Tip:</strong> Use <code class="text-orange-400">&lt;</code> as an alias for <code class="text-orange-400">extends</code> (e.g., <code class="text-orange-400">class Dog &lt; Animal</code>).
         </p>
     </div>
 
@@ -32,7 +32,7 @@
         <section id="kw-class" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-class" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">class</code>
+                    <code class="text-lg font-mono text-amber-400">class</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -82,15 +82,15 @@ end</code></pre>
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     <tr id="kw-public" class="scroll-mt-20">
-                        <td class="py-2 px-4"><a href="#kw-public" class="text-indigo-400 font-mono hover:text-indigo-300">public</a></td>
+                        <td class="py-2 px-4"><a href="#kw-public" class="text-amber-400 font-mono hover:text-amber-300">public</a></td>
                         <td class="py-2 px-4 text-gray-400">Accessible from anywhere (default)</td>
                     </tr>
                     <tr id="kw-private" class="scroll-mt-20">
-                        <td class="py-2 px-4"><a href="#kw-private" class="text-indigo-400 font-mono hover:text-indigo-300">private</a></td>
+                        <td class="py-2 px-4"><a href="#kw-private" class="text-amber-400 font-mono hover:text-amber-300">private</a></td>
                         <td class="py-2 px-4 text-gray-400">Intended for use only within the class</td>
                     </tr>
                     <tr id="kw-protected" class="scroll-mt-20">
-                        <td class="py-2 px-4"><a href="#kw-protected" class="text-indigo-400 font-mono hover:text-indigo-300">protected</a></td>
+                        <td class="py-2 px-4"><a href="#kw-protected" class="text-amber-400 font-mono hover:text-amber-300">protected</a></td>
                         <td class="py-2 px-4 text-gray-400">Intended for use within class and subclasses</td>
                     </tr>
                 </tbody>
@@ -124,7 +124,7 @@ for internal helper methods. The underscore convention is used throughout the co
             </div>
         </section>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class BankAccount
   public account_number: String
@@ -158,7 +158,7 @@ print(account.get_balance())     # 1500.0</code></pre>
         <section id="kw-static" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-static" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">static</code>
+                    <code class="text-lg font-mono text-amber-400">static</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -199,13 +199,13 @@ print(MathUtils.clamp(150, 0, 100))  # 100</code></pre>
         <section id="kw-def-self" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-def-self" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">def self.method_name</code>
+                    <code class="text-lg font-mono text-amber-400">def self.method_name</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">
-                    Ruby-idiomatic shorthand: prefix the method name with <code class="text-pink-400">self.</code> instead of using the <code class="text-pink-400">static</code> modifier. Reads naturally and skips the surrounding <code class="text-pink-400">class &lt;&lt; self</code> block when you only have a method or two.
+                    Ruby-idiomatic shorthand: prefix the method name with <code class="text-orange-400">self.</code> instead of using the <code class="text-orange-400">static</code> modifier. Reads naturally and skips the surrounding <code class="text-orange-400">class &lt;&lt; self</code> block when you only have a method or two.
                 </p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class MathUtils
   def self.square(x: Float) -&gt; Float
@@ -220,7 +220,7 @@ end
 print(MathUtils.square(4.0))  # 16.0
 print(MathUtils.cube(3.0))    # 27.0</code></pre>
                 <p class="text-gray-400 mt-3">
-                    <code class="text-pink-400">fn self.foo</code> works the same way (<code class="text-pink-400">def</code> and <code class="text-pink-400">fn</code> are interchangeable). Combining both — <code class="text-pink-400">static def self.foo</code> — is allowed and stays static.
+                    <code class="text-orange-400">fn self.foo</code> works the same way (<code class="text-orange-400">def</code> and <code class="text-orange-400">fn</code> are interchangeable). Combining both — <code class="text-orange-400">static def self.foo</code> — is allowed and stays static.
                 </p>
             </div>
         </section>
@@ -228,13 +228,13 @@ print(MathUtils.cube(3.0))    # 27.0</code></pre>
         <section id="kw-singleton-class" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-singleton-class" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">class &lt;&lt; self</code>
+                    <code class="text-lg font-mono text-amber-400">class &lt;&lt; self</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">
-                    Ruby-style singleton-class block: every method declared inside is treated as static, so you don't have to repeat the <code class="text-pink-400">static</code> modifier on each one. <code class="text-pink-400">def</code> and <code class="text-pink-400">fn</code> are interchangeable.
+                    Ruby-style singleton-class block: every method declared inside is treated as static, so you don't have to repeat the <code class="text-orange-400">static</code> modifier on each one. <code class="text-orange-400">def</code> and <code class="text-orange-400">fn</code> are interchangeable.
                 </p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class MathUtils
   class &lt;&lt; self
@@ -256,7 +256,7 @@ print(MathUtils.square(4.0))   # 16.0
 print(MathUtils.cube(3.0))     # 27.0
 print(MathUtils.max(2.0, 7.0)) # 7.0</code></pre>
                 <p class="text-gray-400 mt-3">
-                    The block can sit anywhere in the class body and coexists with regular instance methods, top-level <code class="text-pink-400">static fn</code> declarations, and <code class="text-pink-400">static</code> fields. Only method declarations are allowed inside it — fields and constants stay at the class top level (<code class="text-pink-400">static foo: Type = ...</code>). For just a single class method, the lighter <code class="text-pink-400">def self.foo</code> form (above) is usually clearer than wrapping a one-method block.
+                    The block can sit anywhere in the class body and coexists with regular instance methods, top-level <code class="text-orange-400">static fn</code> declarations, and <code class="text-orange-400">static</code> fields. Only method declarations are allowed inside it — fields and constants stay at the class top level (<code class="text-orange-400">static foo: Type = ...</code>). For just a single class method, the lighter <code class="text-orange-400">def self.foo</code> form (above) is usually clearer than wrapping a one-method block.
                 </p>
             </div>
         </section>
@@ -278,7 +278,7 @@ print(MathUtils.max(2.0, 7.0)) # 7.0</code></pre>
 end</code></pre>
 
         <p class="text-gray-400 mb-3">
-            <code class="text-pink-400">self</code> is an alias for <code class="text-pink-400">this</code> — they refer to the same instance and are interchangeable everywhere (instance methods, constructors, <code class="text-pink-400">instance_eval</code> blocks). Pick whichever reads better; Ruby refugees can keep typing <code class="text-pink-400">self</code>.
+            <code class="text-orange-400">self</code> is an alias for <code class="text-orange-400">this</code> — they refer to the same instance and are interchangeable everywhere (instance methods, constructors, <code class="text-orange-400">instance_eval</code> blocks). Pick whichever reads better; Ruby refugees can keep typing <code class="text-orange-400">self</code>.
         </p>
         <pre data-filename="self_alias.sl"><code class="language-soli text-sm">class User
   new(name)
@@ -290,7 +290,7 @@ end</code></pre>
   end
 end</code></pre>
 
-        <p class="text-gray-400 mb-3">Inheritance with <code class="text-pink-400">super</code>.</p>
+        <p class="text-gray-400 mb-3">Inheritance with <code class="text-orange-400">super</code>.</p>
         <pre data-filename="inheritance.sl"><code class="language-soli text-sm">class Admin < User
   def say_hello
     super.say_hello()
@@ -308,10 +308,10 @@ end</code></pre>
 
     <!-- @ sigil -->
     <section id="section-at-sigil" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-indigo-400">@</code> Sigil</h2>
+        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-amber-400">@</code> Sigil</h2>
 
         <p class="text-gray-400 mb-3">
-            Inside any instance method, <code class="text-indigo-400">@name</code> is shorthand for <code class="text-indigo-400">this.name</code>. Reads, writes, compound assignment, method calls, and chained access all work.
+            Inside any instance method, <code class="text-amber-400">@name</code> is shorthand for <code class="text-amber-400">this.name</code>. Reads, writes, compound assignment, method calls, and chained access all work.
         </p>
 
         <pre data-filename="counter.sl"><code class="language-soli text-sm">class Counter
@@ -332,12 +332,12 @@ end</code></pre>
 
         <p class="text-gray-400 mb-3">Supported forms:</p>
         <ul class="space-y-1 text-gray-400 text-sm mb-6 list-disc list-inside">
-            <li><code class="text-indigo-300">@foo</code> — read</li>
-            <li><code class="text-indigo-300">@foo = x</code> — write</li>
-            <li><code class="text-indigo-300">@foo += 1</code> — compound assignment (also <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code>)</li>
-            <li><code class="text-indigo-300">@foo()</code> — calls <code>this.foo()</code></li>
-            <li><code class="text-indigo-300">@foo.bar</code>, <code class="text-indigo-300">@items[0]</code> — chained access and indexing</li>
-            <li><code class="text-indigo-300">@foo++</code>, <code class="text-indigo-300">@foo--</code> — postfix increment/decrement</li>
+            <li><code class="text-amber-300">@foo</code> — read</li>
+            <li><code class="text-amber-300">@foo = x</code> — write</li>
+            <li><code class="text-amber-300">@foo += 1</code> — compound assignment (also <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code>)</li>
+            <li><code class="text-amber-300">@foo()</code> — calls <code>this.foo()</code></li>
+            <li><code class="text-amber-300">@foo.bar</code>, <code class="text-amber-300">@items[0]</code> — chained access and indexing</li>
+            <li><code class="text-amber-300">@foo++</code>, <code class="text-amber-300">@foo--</code> — postfix increment/decrement</li>
         </ul>
 
         <div class="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
@@ -347,7 +347,7 @@ end</code></pre>
         </div>
 
         <p class="text-gray-400 mb-3">
-            <strong class="text-white">In controllers:</strong> fields set on the controller instance during an action (via <code class="text-indigo-400">@foo = ...</code> or <code class="text-indigo-400">this.foo = ...</code>) are automatically exposed as view locals in the template that action renders — no data hash needed.
+            <strong class="text-white">In controllers:</strong> fields set on the controller instance during an action (via <code class="text-amber-400">@foo = ...</code> or <code class="text-amber-400">this.foo = ...</code>) are automatically exposed as view locals in the template that action renders — no data hash needed.
         </p>
 
         <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController < Controller
@@ -359,7 +359,7 @@ end</code></pre>
 end</code></pre>
 
         <p class="text-gray-400 mb-3">
-            Explicit <code class="text-indigo-400">render("view", {...})</code> data always wins over auto-exposed fields. Framework fields (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never re-exposed this way. Auto-exposure is scoped to the action currently running.
+            Explicit <code class="text-amber-400">render("view", {...})</code> data always wins over auto-exposed fields. Framework fields (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never re-exposed this way. Auto-exposure is scoped to the action currently running.
         </p>
     </section>
 
@@ -418,7 +418,7 @@ print(dog.name)        # "Rex" (inherited from Animal)</code></pre>
         <section id="super-chaining" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Super Chaining</h3>
-                <p class="text-gray-400 mb-3">Each class's <code class="text-pink-400">super</code> refers to its direct parent, allowing calls to chain up through the hierarchy.</p>
+                <p class="text-gray-400 mb-3">Each class's <code class="text-orange-400">super</code> refers to its direct parent, allowing calls to chain up through the hierarchy.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">class A
   def identify -> String
     "A"
@@ -694,13 +694,13 @@ end</code></pre>
         <section id="interface-tilde-shorthand" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#interface-tilde-shorthand" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">~</code>
+                    <code class="text-lg font-mono text-amber-400">~</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">
-                    <code class="text-pink-400">~</code> is an alias for <code class="text-pink-400">implements</code> in class headers, in the same spirit as <code class="text-pink-400">&lt;</code> aliases <code class="text-pink-400">extends</code>. Composes with both forms — use whichever reads best.
+                    <code class="text-orange-400">~</code> is an alias for <code class="text-orange-400">implements</code> in class headers, in the same spirit as <code class="text-orange-400">&lt;</code> aliases <code class="text-orange-400">extends</code>. Composes with both forms — use whichever reads best.
                 </p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Shorthand on its own
 class Circle ~ Drawable, Resizable
@@ -716,7 +716,7 @@ class Cat &lt; Animal ~ Greetable
   def greet "meow" end
 end</code></pre>
                 <p class="text-gray-400 mt-3">
-                    The full <code class="text-pink-400">implements</code> keyword still works; pick whichever matches the style of the surrounding code.
+                    The full <code class="text-orange-400">implements</code> keyword still works; pick whichever matches the style of the surrounding code.
                 </p>
             </div>
         </section>
@@ -730,7 +730,7 @@ end</code></pre>
             </svg>
             Collections
         </a>
-        <a href="/docs/language/pattern-matching" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/pattern-matching" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Pattern Matching
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

@@ -24,7 +24,7 @@
             <section id="fn-spreadsheet-csv" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-csv" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv(content)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.csv(content)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -39,7 +39,7 @@ print(data[0]["name"])  # "Alice"</code></pre>
             <section id="fn-spreadsheet-csv-file" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-csv-file" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv_file(path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.csv_file(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -62,7 +62,7 @@ end</code></pre>
             <section id="fn-spreadsheet-excel" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-excel" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.excel(path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -85,7 +85,7 @@ end</code></pre>
             <section id="fn-spreadsheet-to-csv" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-to-csv" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.to_csv(data)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.to_csv(data)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -99,7 +99,7 @@ csv = Spreadsheet.to_csv(data)</code></pre>
             <section id="fn-spreadsheet-csv-write" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-csv-write" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.csv_write(data, path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.csv_write(data, path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -113,7 +113,7 @@ Spreadsheet.csv_write(data, "output.csv")</code></pre>
             <section id="fn-spreadsheet-excel-write" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-excel-write" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">Spreadsheet.excel_write(data, path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel_write(data, path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>

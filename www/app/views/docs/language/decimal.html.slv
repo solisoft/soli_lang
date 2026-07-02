@@ -27,7 +27,7 @@
             Why Decimal?
         </h2>
         <p class="text-gray-400 mb-4">Floating-point numbers have precision issues:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Float - imprecise (binary floating point)
 a = 0.1 + 0.2
@@ -50,7 +50,7 @@ print(a);  # 0.30 ✓</code></pre>
             </span>
             Syntax
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let price: Decimal(2) = 19.99D;      # Currency (2 decimals)
 let rate: Decimal(4) = 0.0675D;      # Rates (4 decimals)
@@ -105,27 +105,27 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
                 <tbody class="divide-y divide-white/5">
                     <tr>
                         <td class="py-3 px-4 text-white">Addition</td>
-                        <td class="py-3 px-4 text-indigo-300">10.00D + 5.00D</td>
+                        <td class="py-3 px-4 text-amber-300">10.00D + 5.00D</td>
                         <td class="py-3 px-4 text-amber-300">15.00D</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white">Subtraction</td>
-                        <td class="py-3 px-4 text-indigo-300">10.00D - 5.00D</td>
+                        <td class="py-3 px-4 text-amber-300">10.00D - 5.00D</td>
                         <td class="py-3 px-4 text-amber-300">5.00D</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white">Multiplication</td>
-                        <td class="py-3 px-4 text-indigo-300">10.00D * 2</td>
+                        <td class="py-3 px-4 text-amber-300">10.00D * 2</td>
                         <td class="py-3 px-4 text-amber-300">20.00D</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white">Division</td>
-                        <td class="py-3 px-4 text-indigo-300">10.00D / 3</td>
+                        <td class="py-3 px-4 text-amber-300">10.00D / 3</td>
                         <td class="py-3 px-4 text-amber-300">3.33D (rounded)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white">Modulo</td>
-                        <td class="py-3 px-4 text-indigo-300">10.00D % 3</td>
+                        <td class="py-3 px-4 text-amber-300">10.00D % 3</td>
                         <td class="py-3 px-4 text-amber-300">1.00D</td>
                     </tr>
                 </tbody>
@@ -148,7 +148,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-round" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-round" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.round / .round(digits)</code>
+                        <code class="text-lg font-mono text-amber-400">.round / .round(digits)</code>
                     </a>
                     <p class="text-gray-400 mb-3">Round to the nearest integer (0 args) or to a specific number of decimal places.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">19.999D.round       # 20 (returns int)
@@ -159,7 +159,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-ceil-floor" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-ceil-floor" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.ceil / .floor / .truncate</code>
+                        <code class="text-lg font-mono text-amber-400">.ceil / .floor / .truncate</code>
                     </a>
                     <p class="text-gray-400 mb-3">Round up, down, or toward zero.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">19.01D.ceil      # 20
@@ -171,7 +171,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-abs" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-abs" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.abs</code>
+                        <code class="text-lg font-mono text-amber-400">.abs</code>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the absolute value.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">(-19.99D).abs    # 19.99D</code></pre>
@@ -181,7 +181,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-sqrt" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sqrt" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sqrt</code>
+                        <code class="text-lg font-mono text-amber-400">.sqrt</code>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the square root as a float.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">4.00D.sqrt       # 2.0</code></pre>
@@ -191,7 +191,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-predicates" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-predicates" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.zero? / .positive? / .negative?</code>
+                        <code class="text-lg font-mono text-amber-400">.zero? / .positive? / .negative?</code>
                     </a>
                     <p class="text-gray-400 mb-3">Check the sign of a decimal value.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">0.00D.zero?       # true
@@ -203,7 +203,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-between" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-between" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.between?(min, max) / .clamp(min, max)</code>
+                        <code class="text-lg font-mono text-amber-400">.between?(min, max) / .clamp(min, max)</code>
                     </a>
                     <p class="text-gray-400 mb-3">Range checking and clamping.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">5.00D.between?(1, 10)   # true
@@ -214,7 +214,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-conversion" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-conversion" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_i / .to_f</code>
+                        <code class="text-lg font-mono text-amber-400">.to_s / .to_i / .to_f</code>
                     </a>
                     <p class="text-gray-400 mb-3">Convert to string, integer, or float.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">19.99D.to_s      # "19.99"
@@ -226,7 +226,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             <section id="method-introspection" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-introspection" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.class / .inspect / .nil? / .blank? / .present? / .is_a?</code>
+                        <code class="text-lg font-mono text-amber-400">.class / .inspect / .nil? / .blank? / .present? / .is_a?</code>
                     </a>
                     <p class="text-gray-400 mb-3">Type introspection methods available on all types.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">19.99D.class         # "decimal"
@@ -244,7 +244,7 @@ let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
     <!-- Standard Library -->
     <section id="section-stdlib" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Standard Library Functions</h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Conversions
 decimal("19.99", 2)         # → 19.99D (from string)
@@ -271,7 +271,7 @@ format(19.99D, "$#,##0.00")  # → "$19.99"
             </span>
             Financial Example
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">let price: Decimal(2) = 99.99D
 let tax_rate: Decimal(4) = 0.0800D
@@ -298,7 +298,7 @@ print("Total: $" + str(total));        # $323.97</code></pre>
             </span>
             Model Fields
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class Product < Model
   price: Decimal(2),
@@ -333,7 +333,7 @@ end</code></pre>
             </span>
             Migrations
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">create_collection("products", [
   {"name": "price", "type": "decimal(2)"},
@@ -384,7 +384,7 @@ end</code></pre>
             </svg>
             Variables & Types
         </a>
-        <a href="/docs/language/operators" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/operators" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Operators
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

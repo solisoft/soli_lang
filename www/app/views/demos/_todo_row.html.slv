@@ -15,7 +15,7 @@
           @keydown.escape="editing = false; value = original"
           class="flex-1 flex gap-2">
         <input x-ref="input" x-model="value" name="value"
-               class="flex-1 px-2 py-1 rounded bg-gray-900 border border-cyan-500/40 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+               class="flex-1 px-2 py-1 rounded bg-[#171412] border border-cyan-500/40 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
         <button type="submit" class="px-3 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-medium">save</button>
     </form>
 </div>

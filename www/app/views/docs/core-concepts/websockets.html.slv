@@ -2,7 +2,7 @@
     <!-- Hero -->
     <div class="mb-12">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">WebSockets</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">WebSockets</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Build real-time, interactive experiences. Soli ships with native WebSocket support and Phoenix-inspired
@@ -11,8 +11,8 @@
     </div>
 
     <!-- Live demo callout -->
-    <div class="mb-16 p-1 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500">
-        <div class="bg-gray-950 rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+    <div class="mb-16 p-1 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-500">
+        <div class="bg-[#0C0A09] rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div>
                 <h3 class="text-lg font-semibold text-white mb-2">Want to see it in action?</h3>
                 <p class="text-gray-400 text-sm">Check out the interactive WebSocket chat demo bundled with this app.</p>
@@ -31,14 +31,14 @@
     <nav class="mb-16 p-6 rounded-xl bg-white/5 border border-white/10">
         <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">On this page</h3>
         <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <li><a href="#quick-start" class="text-indigo-300 hover:text-white">1 · Quick start</a></li>
-            <li><a href="#how-it-works" class="text-indigo-300 hover:text-white">2 · How handlers work</a></li>
-            <li><a href="#response-actions" class="text-indigo-300 hover:text-white">3 · Response actions</a></li>
-            <li><a href="#tutorial-chat" class="text-indigo-300 hover:text-white">4 · Tutorial: chat room</a></li>
-            <li><a href="#presence" class="text-indigo-300 hover:text-white">5 · Presence tracking</a></li>
-            <li><a href="#client-side" class="text-indigo-300 hover:text-white">6 · Client-side JavaScript</a></li>
-            <li><a href="#server-functions" class="text-indigo-300 hover:text-white">7 · Server-side helper functions</a></li>
-            <li><a href="#performance" class="text-indigo-300 hover:text-white">8 · Performance &amp; tips</a></li>
+            <li><a href="#quick-start" class="text-amber-300 hover:text-white">1 · Quick start</a></li>
+            <li><a href="#how-it-works" class="text-amber-300 hover:text-white">2 · How handlers work</a></li>
+            <li><a href="#response-actions" class="text-amber-300 hover:text-white">3 · Response actions</a></li>
+            <li><a href="#tutorial-chat" class="text-amber-300 hover:text-white">4 · Tutorial: chat room</a></li>
+            <li><a href="#presence" class="text-amber-300 hover:text-white">5 · Presence tracking</a></li>
+            <li><a href="#client-side" class="text-amber-300 hover:text-white">6 · Client-side JavaScript</a></li>
+            <li><a href="#server-functions" class="text-amber-300 hover:text-white">7 · Server-side helper functions</a></li>
+            <li><a href="#performance" class="text-amber-300 hover:text-white">8 · Performance &amp; tips</a></li>
         </ul>
     </nav>
 
@@ -48,31 +48,31 @@
         <p class="text-gray-400 mb-8">A minimal echo server in three files. Copy, paste, run.</p>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-            <div class="p-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-                <div class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2">Step 1</div>
+            <div class="p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Step 1</div>
                 <h3 class="text-lg font-semibold text-white mb-1">Declare the route</h3>
                 <p class="text-sm text-gray-400">Map a path to a controller action.</p>
             </div>
-            <div class="p-5 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                <div class="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">Step 2</div>
+            <div class="p-5 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                <div class="text-xs font-bold text-orange-400 uppercase tracking-wider mb-2">Step 2</div>
                 <h3 class="text-lg font-semibold text-white mb-1">Write the handler</h3>
                 <p class="text-sm text-gray-400">Return a hash describing what to send back.</p>
             </div>
-            <div class="p-5 rounded-xl bg-pink-500/10 border border-pink-500/20">
-                <div class="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2">Step 3</div>
+            <div class="p-5 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                <div class="text-xs font-bold text-orange-400 uppercase tracking-wider mb-2">Step 3</div>
                 <h3 class="text-lg font-semibold text-white mb-1">Connect from the browser</h3>
                 <p class="text-sm text-gray-400">Standard <code>WebSocket</code> API — no client library required.</p>
             </div>
         </div>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">router_websocket("/ws/echo", "echo#handle")</code></pre>
             </div>
         </div>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/echo_controller.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handle(event)
@@ -82,7 +82,7 @@ end</code></pre>
             </div>
         </div>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-2">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-2">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">browser console</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-javascript text-sm">const ws = new WebSocket(`ws://${location.host}/ws/echo`)
@@ -102,7 +102,7 @@ ws.onopen = () =&gt; ws.send("hello")
             <strong>actions</strong>. The runtime dispatches the actions and sends them down the right sockets.
         </p>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/chat_controller.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handle(event)
@@ -120,27 +120,27 @@ end</code></pre>
         <h3 class="text-xl font-bold text-white mb-4">The event object</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">type</code>
+                <code class="text-orange-300 font-bold">type</code>
                 <p class="text-sm text-gray-400 mt-2">Event kind: <code>"connect"</code>, <code>"message"</code>, or <code>"disconnect"</code>.</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">connection_id</code>
+                <code class="text-orange-300 font-bold">connection_id</code>
                 <p class="text-sm text-gray-400 mt-2">Unique UUID identifying this client connection.</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">message</code>
+                <code class="text-orange-300 font-bold">message</code>
                 <p class="text-sm text-gray-400 mt-2">Text payload sent by the client (only set when <code>type == "message"</code>).</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">params</code>
+                <code class="text-orange-300 font-bold">params</code>
                 <p class="text-sm text-gray-400 mt-2">Hash of dynamic route segments (e.g. <code>:room_id</code>).</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">query</code>
+                <code class="text-orange-300 font-bold">query</code>
                 <p class="text-sm text-gray-400 mt-2">Parsed query string of the upgrade request.</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-purple-300 font-bold">headers</code>
+                <code class="text-orange-300 font-bold">headers</code>
                 <p class="text-sm text-gray-400 mt-2">HTTP headers from the original upgrade.</p>
             </div>
         </div>
@@ -163,44 +163,44 @@ end</code></pre>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-indigo-300 font-bold">send</code>
+                <code class="text-amber-300 font-bold">send</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Reply only to the client that triggered the event.</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-indigo-300 font-mono">{ "send": "Hello you" }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-amber-300 font-mono">{ "send": "Hello you" }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-indigo-300 font-bold">broadcast</code>
+                <code class="text-amber-300 font-bold">broadcast</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Send to <em>every</em> connected client (including the sender).</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-indigo-300 font-mono">{ "broadcast": "Hello all" }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-amber-300 font-mono">{ "broadcast": "Hello all" }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-green-300 font-bold">join</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Subscribe this connection to a channel/room.</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-green-300 font-mono">{ "join": "room:lobby" }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-green-300 font-mono">{ "join": "room:lobby" }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-red-300 font-bold">leave</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Unsubscribe from a channel. <em>Automatic on disconnect.</em></p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-red-300 font-mono">{ "leave": "room:lobby" }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-red-300 font-mono">{ "leave": "room:lobby" }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-blue-300 font-bold">broadcast_room</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Send to everyone in the connection's most recently joined room.</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-blue-300 font-mono">{ "broadcast_room": payload }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-blue-300 font-mono">{ "broadcast_room": payload }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-yellow-300 font-bold">track</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Start presence tracking with metadata.</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-yellow-300 font-mono">{ "track": { "channel": "...", "user_id": "..." } }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-yellow-300 font-mono">{ "track": { "channel": "...", "user_id": "..." } }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-yellow-300 font-bold">set_presence</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Update presence state (typing, away, online).</p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-yellow-300 font-mono">{ "set_presence": { "channel": "...", "state": "typing" } }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-yellow-300 font-mono">{ "set_presence": { "channel": "...", "state": "typing" } }</code>
             </div>
             <div class="p-5 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-red-300 font-bold">untrack</code>
                 <p class="text-sm text-gray-400 mt-2 mb-2">Manually stop tracking. <em>Automatic on disconnect.</em></p>
-                <code class="block bg-gray-950 p-2 rounded text-xs text-red-300 font-mono">{ "untrack": "room:lobby" }</code>
+                <code class="block bg-[#0C0A09] p-2 rounded text-xs text-red-300 font-mono">{ "untrack": "room:lobby" }</code>
             </div>
         </div>
     </section>
@@ -215,12 +215,12 @@ end</code></pre>
         <!-- Step 4.1 -->
         <div class="mb-10">
             <h3 class="text-xl font-bold text-white mb-3">
-                <span class="text-indigo-400 mr-2">4.1</span>Broadcast to everyone
+                <span class="text-amber-400 mr-2">4.1</span>Broadcast to everyone
             </h3>
             <p class="text-gray-400 mb-4">
                 The simplest useful handler: every incoming message goes out to every connected client.
             </p>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/chat_controller.sl</label>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handle(event)
@@ -234,19 +234,19 @@ end</code></pre>
         <!-- Step 4.2 -->
         <div class="mb-10">
             <h3 class="text-xl font-bold text-white mb-3">
-                <span class="text-indigo-400 mr-2">4.2</span>Scope to a room
+                <span class="text-amber-400 mr-2">4.2</span>Scope to a room
             </h3>
             <p class="text-gray-400 mb-4">
                 Broadcasting globally doesn't scale past a single chatroom. Use a dynamic route segment plus
                 <code>join</code> + <code>broadcast_room</code> to isolate traffic per room.
             </p>
-            <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+            <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
                 <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">router_websocket("/ws/room/:room_id", "chat#handle")</code></pre>
                 </div>
             </div>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/chat_controller.sl</label>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handle(event)
@@ -265,13 +265,13 @@ end</code></pre>
         <!-- Step 4.3 -->
         <div class="mb-2">
             <h3 class="text-xl font-bold text-white mb-3">
-                <span class="text-indigo-400 mr-2">4.3</span>Add presence and typing indicators
+                <span class="text-amber-400 mr-2">4.3</span>Add presence and typing indicators
             </h3>
             <p class="text-gray-400 mb-4">
                 One more action — <code>track</code> on connect — and clients automatically receive
                 <code>presence_state</code> / <code>presence_diff</code> events whenever the user list changes.
             </p>
-            <div class="rounded-lg bg-gray-900 overflow-hidden">
+            <div class="rounded-lg bg-[#171412] overflow-hidden">
                 <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/chat_controller.sl</label>
                 <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def handle(event)
@@ -317,9 +317,9 @@ end</code></pre>
             multi-device sessions, custom metadata, and state transitions out of the box.
         </p>
 
-        <div class="my-4 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-8">
-            <h4 class="text-lg font-semibold text-indigo-400 mb-2">Multi-device by default</h4>
-            <p class="text-indigo-200/80 text-sm">
+        <div class="my-4 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-8">
+            <h4 class="text-lg font-semibold text-amber-400 mb-2">Multi-device by default</h4>
+            <p class="text-amber-200/80 text-sm">
                 Presence is grouped by <code>user_id</code>, not by connection. A user with multiple tabs or devices
                 appears once in the list. <strong>Join</strong> events fire only when their <em>first</em> connection
                 arrives; <strong>leave</strong> events fire only when their <em>last</em> connection exits.
@@ -329,7 +329,7 @@ end</code></pre>
         <h3 class="text-xl font-bold text-white mb-4">Wire events sent to clients</h3>
         <p class="text-gray-400 mb-4">Clients receive two presence message shapes:</p>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_state — sent once when the client joins a tracked room</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
@@ -349,7 +349,7 @@ end</code></pre>
             </div>
         </div>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-2">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-2">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_diff — sent on every change</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
@@ -368,7 +368,7 @@ end</code></pre>
         <h2 id="client-side" class="text-3xl font-bold text-white mb-3">6 · Client-side JavaScript</h2>
         <p class="text-gray-400 mb-6">No SDK — just the browser's built-in <code>WebSocket</code> object.</p>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Connect &amp; send</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-javascript text-sm">const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -388,7 +388,7 @@ ws.send(JSON.stringify({ event: 'stop_typing' }))</code></pre>
             </div>
         </div>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden">
+        <div class="rounded-lg bg-[#171412] overflow-hidden">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Apply presence_state / presence_diff to a local map</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-javascript text-sm">let presences = {}
@@ -516,15 +516,15 @@ print("Connected: " + str(len(all)))</code></pre>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
             <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
                 <div class="text-3xl font-bold text-white mb-1">10k+</div>
-                <div class="text-sm text-indigo-400 font-medium">Messages / sec</div>
+                <div class="text-sm text-amber-400 font-medium">Messages / sec</div>
             </div>
             <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
                 <div class="text-3xl font-bold text-white mb-1">&lt;1ms</div>
-                <div class="text-sm text-purple-400 font-medium">Median latency</div>
+                <div class="text-sm text-orange-400 font-medium">Median latency</div>
             </div>
             <div class="p-6 rounded-xl bg-white/5 border border-white/10 text-center">
                 <div class="text-3xl font-bold text-white mb-1">Async</div>
-                <div class="text-sm text-pink-400 font-medium">Non-blocking I/O</div>
+                <div class="text-sm text-orange-400 font-medium">Non-blocking I/O</div>
             </div>
         </div>
 

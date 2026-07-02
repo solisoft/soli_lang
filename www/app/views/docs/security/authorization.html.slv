@@ -2,7 +2,7 @@
     <!-- Header -->
     <div class="border-b border-white/10 pb-8">
         <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-400 animate-gradient-x">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
                 Authorization
             </span>
             <span class="text-white">&amp; Policies</span>
@@ -14,9 +14,9 @@
 
     <!-- Overview -->
     <section>
-        <div class="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
+        <div class="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-2xl p-8 border border-white/10 shadow-xl backdrop-blur-sm">
             <div class="flex items-start gap-4">
-                <div class="p-3 bg-indigo-500/20 rounded-lg text-indigo-400">
+                <div class="p-3 bg-amber-500/20 rounded-lg text-amber-400">
                     <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
@@ -24,7 +24,7 @@
                 <div>
                     <h2 class="text-2xl font-semibold text-white mb-3 mt-0 border-none">Deny by default</h2>
                     <p class="text-gray-300 leading-relaxed mb-0">
-                        Policies start out forbidding everything — you opt in to what you want to allow. A record class with no matching policy is denied, so a forgotten rule fails closed rather than open. Scaffold the whole thing, including a <code class="text-indigo-300">User</code> model and login flow, with one command.
+                        Policies start out forbidding everything — you opt in to what you want to allow. A record class with no matching policy is denied, so a forgotten rule fails closed rather than open. Scaffold the whole thing, including a <code class="text-amber-300">User</code> model and login flow, with one command.
                     </p>
                 </div>
             </div>
@@ -34,11 +34,11 @@
     <!-- 1. Generate -->
     <section>
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 text-sm border border-indigo-500/30">1</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
             Generate it
         </h2>
         <p class="text-gray-400 mb-6">
-            <code class="text-indigo-300">soli generate auth</code> scaffolds session-based authentication and the policy layer together.
+            <code class="text-amber-300">soli generate auth</code> scaffolds session-based authentication and the policy layer together.
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
@@ -54,18 +54,18 @@ soli serve . --dev        # then visit /signup, /login</code></pre>
             </div>
         </div>
         <p class="text-gray-400 mt-6">
-            Files in <code class="text-indigo-300">app/policies/</code> are auto-loaded into the global scope at boot, like models. Restart the server after adding a new policy.
+            Files in <code class="text-amber-300">app/policies/</code> are auto-loaded into the global scope at boot, like models. Restart the server after adding a new policy.
         </p>
     </section>
 
     <!-- 2. Write a policy -->
     <section>
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 text-sm border border-indigo-500/30">2</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
             Write a policy
         </h2>
         <p class="text-gray-400 mb-6">
-            A policy is a class named <code class="text-indigo-300">&lt;Model&gt;Policy</code> with one predicate per action: <code class="text-indigo-300">index?</code>, <code class="text-indigo-300">show?</code>, <code class="text-indigo-300">create?</code>, <code class="text-indigo-300">new?</code>, <code class="text-indigo-300">update?</code>, <code class="text-indigo-300">edit?</code>, <code class="text-indigo-300">destroy?</code>. Inside it, <code class="text-indigo-300">this.user</code> is the current user and <code class="text-indigo-300">this.record</code> is the record being checked.
+            A policy is a class named <code class="text-amber-300">&lt;Model&gt;Policy</code> with one predicate per action: <code class="text-amber-300">index?</code>, <code class="text-amber-300">show?</code>, <code class="text-amber-300">create?</code>, <code class="text-amber-300">new?</code>, <code class="text-amber-300">update?</code>, <code class="text-amber-300">edit?</code>, <code class="text-amber-300">destroy?</code>. Inside it, <code class="text-amber-300">this.user</code> is the current user and <code class="text-amber-300">this.record</code> is the record being checked.
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
@@ -93,18 +93,18 @@ end</code></pre>
             </div>
         </div>
         <p class="text-gray-400 mt-6">
-            <code class="text-indigo-300">ApplicationPolicy</code> returns <code class="text-indigo-300">false</code> for every predicate, so you only override what you allow. <code class="text-indigo-300">new?</code> falls back to <code class="text-indigo-300">create?</code> and <code class="text-indigo-300">edit?</code> to <code class="text-indigo-300">update?</code> unless overridden.
+            <code class="text-amber-300">ApplicationPolicy</code> returns <code class="text-amber-300">false</code> for every predicate, so you only override what you allow. <code class="text-amber-300">new?</code> falls back to <code class="text-amber-300">create?</code> and <code class="text-amber-300">edit?</code> to <code class="text-amber-300">update?</code> unless overridden.
         </p>
     </section>
 
     <!-- 3. Authorize -->
     <section>
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 text-sm border border-indigo-500/30">3</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
             Authorize in a controller
         </h2>
         <p class="text-gray-400 mb-6">
-            Call <code class="text-indigo-300">authorize(record)</code> at the top of an action. It builds the matching policy and calls the predicate for the current action — a falsey result raises <code class="text-indigo-300">403 Forbidden</code>; otherwise it returns the record.
+            Call <code class="text-amber-300">authorize(record)</code> at the top of an action. It builds the matching policy and calls the predicate for the current action — a falsey result raises <code class="text-amber-300">403 Forbidden</code>; otherwise it returns the record.
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
@@ -140,25 +140,25 @@ authorize(post, "show")</code></pre>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-white/5 text-gray-400">
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">authorize(record, action?)</code></td><td class="px-4 py-3">controllers / policies</td><td class="px-4 py-3">the record, or raises 403</td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">policy_for(record)</code></td><td class="px-4 py-3">controllers / policies</td><td class="px-4 py-3">the policy instance</td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">current_user()</code></td><td class="px-4 py-3">controllers / policies / views</td><td class="px-4 py-3">the signed-in User, or nil</td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">signed_in?()</code></td><td class="px-4 py-3">controllers / policies / views</td><td class="px-4 py-3">true when signed in</td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">current_action()</code></td><td class="px-4 py-3">anywhere</td><td class="px-4 py-3">the in-flight action name</td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-indigo-300">forbidden(message?)</code></td><td class="px-4 py-3">anywhere</td><td class="px-4 py-3">raises 403 immediately</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">authorize(record, action?)</code></td><td class="px-4 py-3">controllers / policies</td><td class="px-4 py-3">the record, or raises 403</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">policy_for(record)</code></td><td class="px-4 py-3">controllers / policies</td><td class="px-4 py-3">the policy instance</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">current_user()</code></td><td class="px-4 py-3">controllers / policies / views</td><td class="px-4 py-3">the signed-in User, or nil</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">signed_in?()</code></td><td class="px-4 py-3">controllers / policies / views</td><td class="px-4 py-3">true when signed in</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">current_action()</code></td><td class="px-4 py-3">anywhere</td><td class="px-4 py-3">the in-flight action name</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">forbidden(message?)</code></td><td class="px-4 py-3">anywhere</td><td class="px-4 py-3">raises 403 immediately</td></tr>
                 </tbody>
             </table>
         </div>
         <p class="text-gray-400 mt-6">
-            <code class="text-indigo-300">current_user</code> is populated per request by the generated <code class="text-indigo-300">load_current_user</code> middleware, which reads the user id from the session and loads the <code class="text-indigo-300">User</code>. A denied request renders through the standard error pipeline, so a custom <code class="text-indigo-300">app/views/errors/403.html.slv</code> is used automatically.
+            <code class="text-amber-300">current_user</code> is populated per request by the generated <code class="text-amber-300">load_current_user</code> middleware, which reads the user id from the session and loads the <code class="text-amber-300">User</code>. A denied request renders through the standard error pipeline, so a custom <code class="text-amber-300">app/views/errors/403.html.slv</code> is used automatically.
         </p>
     </section>
 
     <!-- Next -->
     <section>
         <div class="flex flex-wrap gap-4">
-            <a href="/docs/security/authentication" class="text-indigo-400 hover:text-indigo-300">← Authentication with JWT</a>
-            <a href="/docs/security/sessions" class="text-indigo-400 hover:text-indigo-300">Sessions →</a>
+            <a href="/docs/security/authentication" class="text-amber-400 hover:text-amber-300">← Authentication with JWT</a>
+            <a href="/docs/security/sessions" class="text-amber-400 hover:text-amber-300">Sessions →</a>
         </div>
     </section>
 </div>

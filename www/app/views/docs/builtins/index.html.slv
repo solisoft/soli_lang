@@ -2,7 +2,7 @@
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Built-in Functions Reference</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Built-in Functions Reference</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Complete reference for all 170+ built-in functions in Soli. From I/O and string manipulation to HTTP requests, cryptography, testing utilities, caching, rate limiting, and security headers.
@@ -12,106 +12,106 @@
     <!-- Quick Navigation -->
     <nav class="not-prose mb-16">
         <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
             Function Categories
         </h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            <a href="/docs/builtins/core" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/core" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 text-xs font-bold">C</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Core</span>
             </a>
-            <a href="/docs/builtins/system" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/system" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">Sy</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">System</span>
             </a>
-            <a href="/docs/builtins/http" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/http" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-green-500/20 flex items-center justify-center text-green-400 text-xs font-bold">H</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">HTTP</span>
             </a>
-            <a href="/docs/builtins/s3" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/s3" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">S3</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">S3</span>
             </a>
-            <a href="/docs/builtins/soap" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/soap" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-bold">SO</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">SOAP</span>
             </a>
-            <a href="/docs/builtins/json" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/json" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">JSON</span>
             </a>
-            <a href="/docs/builtins/markdown" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/markdown" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-xs font-bold">Md</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Markdown</span>
             </a>
-            <a href="/docs/builtins/crypto" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/crypto" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-xs font-bold">Cr</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Crypto</span>
             </a>
-            <a href="/docs/builtins/jwt" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs font-bold">Jw</span>
+            <a href="/docs/builtins/jwt" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">Jw</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">JWT</span>
             </a>
-            <a href="/docs/builtins/regex" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-xs font-bold">Rx</span>
+            <a href="/docs/builtins/regex" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">Rx</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Regex</span>
             </a>
-            <a href="/docs/builtins/env" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/env" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-bold">E</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Env</span>
             </a>
-            <a href="/docs/builtins/datetime" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/datetime" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-xs font-bold">Dt</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">DateTime</span>
             </a>
-            <a href="/docs/builtins/validation" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/validation" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs font-bold">V</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Validation</span>
             </a>
-            <a href="/docs/builtins/session" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/session" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">S</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Session</span>
             </a>
-            <a href="/docs/builtins/jobs" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 text-xs font-bold">J</span>
+            <a href="/docs/builtins/jobs" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Jobs &amp; Cron</span>
             </a>
-            <a href="/docs/builtins/testing" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/testing" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-xs font-bold">T</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Testing</span>
             </a>
-            <a href="/docs/builtins/i18n" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-violet-500/20 flex items-center justify-center text-violet-400 text-xs font-bold">I</span>
+            <a href="/docs/builtins/i18n" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">I</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">I18n</span>
             </a>
-            <a href="/docs/builtins/cache" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/cache" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-yellow-500/20 flex items-center justify-center text-yellow-400 text-xs font-bold">Ca</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Cache</span>
             </a>
-            <a href="/docs/builtins/kv" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/kv" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs font-bold">KV</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">KV Store</span>
             </a>
-            <a href="/docs/builtins/rate-limit" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/rate-limit" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-bold">RL</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Rate Limit</span>
             </a>
-            <a href="/docs/builtins/hardening" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/hardening" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-zinc-500/20 flex items-center justify-center text-zinc-400 text-xs font-bold">HD</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Hardening</span>
             </a>
-            <a href="/docs/builtins/security-headers" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/builtins/security-headers" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-slate-500/20 flex items-center justify-center text-slate-400 text-xs font-bold">SH</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Security</span>
             </a>
-            <a href="/docs/builtins/upload" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-xs font-bold">UP</span>
+            <a href="/docs/builtins/upload" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">UP</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Upload</span>
             </a>
-            <a href="/docs/core-concepts/websockets" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 text-xs font-bold">WS</span>
+            <a href="/docs/core-concepts/websockets" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">WS</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">WebSocket</span>
             </a>
         </div>
@@ -123,146 +123,146 @@
         <div class="space-y-4">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/core" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Core Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Core Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">I/O operations, type conversion, array/hash manipulation, string functions, math utilities, and file operations.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/system" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">System Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">System Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Execute shell commands with System.run()
 and backtick syntax. Returns async results with stdout, stderr, and exit_code.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/http" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">HTTP Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">HTTP Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">HTTP client for GET, POST, PUT, PATCH, DELETE requests with JSON support and parallel requests.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/s3" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">S3 Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">S3 Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Amazon S3 and S3-compatible storage for buckets, objects, and file operations.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/soap" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">SOAP Class</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">SOAP Class</h3>
                 </a>
                 <p class="text-gray-400 mt-2">SOAP web service calls, XML envelope wrapping, parsing, and XML escaping.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/json" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">JSON Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">JSON Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Parse and stringify JSON data.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/markdown" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Markdown Class</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Markdown Class</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Convert Markdown text to HTML with tables, strikethrough, and task list support.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/crypto" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Cryptography Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Cryptography Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Password hashing with Argon2, X25519 key exchange, Ed25519 signatures.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/jwt" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">JWT Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">JWT Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Create, verify, and decode JSON Web Tokens for authentication.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/regex" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Regex Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Regex Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Regular expression matching, finding, replacing, splitting, and capturing.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/env" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Environment Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Environment Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Read, set, and manage environment variables with .env file support.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/datetime" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">DateTime Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">DateTime Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Date/time parsing, formatting, arithmetic, and comparison using Unix timestamps.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/validation" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Validation Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Validation Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Schema-based validation with the V class and chainable validators.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/session" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Session Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Session Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Server-side session management for user state.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/jobs" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Jobs &amp; Cron</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Jobs &amp; Cron</h3>
                 </a>
                 <p class="text-gray-400 mt-2">SolidB-backed background jobs and recurring schedules. <code class="text-amber-400">XJob.perform_later</code>, <code class="text-amber-400">Cron.schedule</code>, plus <code class="text-amber-400">static cron</code> declarations.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/testing" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Testing Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Testing Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Test DSL with describe/it blocks, assertions, and factory functions.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/i18n" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">I18n Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">I18n Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Internationalization with translations, pluralization, and locale-aware formatting.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/cache" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Cache Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Cache Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Persistent caching backed by SoliKV with automatic TTL expiration.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/kv" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">KV Store</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">KV Store</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Full-featured key-value store with strings, counters, lists, sets, and hashes via SoliKV.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/rate-limit" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Rate Limiting Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Rate Limiting Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Sliding window rate limiter for API protection and abuse prevention.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/hardening" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Server Hardening</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Server Hardening</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Trust-proxy gating for X-Forwarded-* headers and a per-request body-size cap to prevent DoS.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/security-headers" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">Security Headers Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Security Headers Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Automatic security header injection including CSP, HSTS, X-Frame-Options, and more.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/upload" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">File Upload Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">File Upload Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Multipart form parsing and file uploads to SolidB blob storage.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/core-concepts/websockets#server-functions" class="group">
-                    <h3 class="text-lg font-semibold text-white group-hover:text-indigo-400 transition-colors">WebSocket Functions</h3>
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">WebSocket Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Messaging, presence tracking, and room management for real-time apps — documented inline with the WebSockets guide.</p>
             </div>
@@ -270,13 +270,13 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
     </section>
 
     <!-- Call to Action -->
-    <div class="rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 p-8 text-center">
+    <div class="rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-orange-500/10 border border-amber-500/20 p-8 text-center">
         <h3 class="text-2xl font-bold text-white mb-3">Start Exploring</h3>
         <p class="text-gray-400 mb-6">
             Begin with Core Functions for the most commonly used utilities.
         </p>
         <div class="flex flex-wrap justify-center gap-4">
-            <a href="/docs/builtins/core" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors">
+            <a href="/docs/builtins/core" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>

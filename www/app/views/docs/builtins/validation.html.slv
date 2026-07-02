@@ -12,7 +12,7 @@
             <span class="bg-gradient-to-r from-emerald-400 to-green-400 bg-clip-text text-transparent">Validation Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Schema-based input validation with the <code class="text-indigo-400">V</code> class and chainable validators. Type coercion, nested schemas, password rules, and HTML <code class="text-indigo-400">passwordrules</code> attribute generation.
+            Schema-based input validation with the <code class="text-amber-400">V</code> class and chainable validators. Type coercion, nested schemas, password rules, and HTML <code class="text-amber-400">passwordrules</code> attribute generation.
         </p>
     </div>
 
@@ -26,12 +26,12 @@
             </span>
             Type Validators
         </h2>
-        <p class="text-gray-400 mb-4">Use the <code class="text-indigo-400">V</code> class to create validators for each data type. Each validator can chain additional constraints.</p>
+        <p class="text-gray-400 mb-4">Use the <code class="text-amber-400">V</code> class to create validators for each data type. Each validator can chain additional constraints.</p>
 
         <section id="def-v-string" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-string" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.string()</code>
+                    <code class="text-lg font-mono text-amber-400">V.string()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -39,7 +39,7 @@
                 <p class="text-gray-400 mb-3">Validate string values. Supports length, pattern, email, URL, and character-class constraints.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable string validator
+                    <code class="text-orange-400">Object</code> - A chainable string validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">V.string().required().min_length(3).max_length(50)
 V.string().optional().email()
@@ -50,7 +50,7 @@ V.string().nullable().url()</code></pre>
         <section id="def-v-int" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-int" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.int()</code>
+                    <code class="text-lg font-mono text-amber-400">V.int()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -58,7 +58,7 @@ V.string().nullable().url()</code></pre>
                 <p class="text-gray-400 mb-3">Validate integer values. String inputs (e.g. <code class="text-amber-400">"25"</code>) are automatically coerced to integers.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable integer validator
+                    <code class="text-orange-400">Object</code> - A chainable integer validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">V.int().required().min(0).max(100)
 V.int().optional().min(18)
@@ -69,7 +69,7 @@ V.int().one_of([1, 2, 3])</code></pre>
         <section id="def-v-float" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-float" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.float()</code>
+                    <code class="text-lg font-mono text-amber-400">V.float()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -77,7 +77,7 @@ V.int().one_of([1, 2, 3])</code></pre>
                 <p class="text-gray-400 mb-3">Validate float values. String inputs (e.g. <code class="text-amber-400">"95.5"</code>) are automatically coerced to floats.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable float validator
+                    <code class="text-orange-400">Object</code> - A chainable float validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">V.float().required().min(0.0).max(1.0)
 V.float().optional().min(-100.0)</code></pre>
@@ -87,7 +87,7 @@ V.float().optional().min(-100.0)</code></pre>
         <section id="def-v-bool" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-bool" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.bool()</code>
+                    <code class="text-lg font-mono text-amber-400">V.bool()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -95,7 +95,7 @@ V.float().optional().min(-100.0)</code></pre>
                 <p class="text-gray-400 mb-3">Validate boolean values. <code class="text-amber-400">"true"</code>, <code class="text-amber-400">"1"</code>, <code class="text-amber-400">true</code> are accepted as truthy; <code class="text-amber-400">"false"</code>, <code class="text-amber-400">"0"</code>, <code class="text-amber-400">false</code> as falsy.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable boolean validator
+                    <code class="text-orange-400">Object</code> - A chainable boolean validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">V.bool().required()
 V.bool().default(false)</code></pre>
@@ -105,19 +105,19 @@ V.bool().default(false)</code></pre>
         <section id="def-v-array" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-array" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.array(schema?)</code>
+                    <code class="text-lg font-mono text-amber-400">V.array(schema?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Validate array values. Optionally pass an item schema to validate each element. Supports <code class="text-indigo-400">.min(n)</code> to require at least n items.</p>
+                <p class="text-gray-400 mb-3">Validate array values. Optionally pass an item schema to validate each element. Supports <code class="text-amber-400">.min(n)</code> to require at least n items.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">schema</code> : <code class="text-purple-400">Object?</code> - Optional validator for each element
+                    <code class="text-amber-400">schema</code> : <code class="text-orange-400">Object?</code> - Optional validator for each element
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable array validator
+                    <code class="text-orange-400">Object</code> - A chainable array validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Array of strings
 V.array(V.string().required()).required()
@@ -133,7 +133,7 @@ V.array(V.hash({
         <section id="def-v-hash" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-v-hash" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">V.hash(schema?)</code>
+                    <code class="text-lg font-mono text-amber-400">V.hash(schema?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -141,11 +141,11 @@ V.array(V.hash({
                 <p class="text-gray-400 mb-3">Validate hash/object values. Optionally pass a nested schema to validate each field.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">schema</code> : <code class="text-purple-400">Hash?</code> - Optional nested field validators
+                    <code class="text-amber-400">schema</code> : <code class="text-orange-400">Hash?</code> - Optional nested field validators
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Object</code> - A chainable hash validator
+                    <code class="text-orange-400">Object</code> - A chainable hash validator
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">address_schema = V.hash({
   "street": V.string().required(),
@@ -166,32 +166,32 @@ V.array(V.hash({
             </span>
             Chainable Methods
         </h2>
-        <p class="text-gray-400 mb-4">All validators support these methods. Call them on any <code class="text-indigo-400">V.string()</code>, <code class="text-indigo-400">V.int()</code>, etc.</p>
+        <p class="text-gray-400 mb-4">All validators support these methods. Call them on any <code class="text-amber-400">V.string()</code>, <code class="text-amber-400">V.int()</code>, etc.</p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Presence &amp; Nullability</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="method-required" class="scroll-mt-20">
                     <a href="#method-required" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.required()</code>
+                        <code class="font-mono text-amber-400">.required()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Field must be present in the input data</p>
                 </section>
                 <section id="method-optional" class="scroll-mt-20">
                     <a href="#method-optional" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.optional()</code>
+                        <code class="font-mono text-amber-400">.optional()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Field may be absent (the default behaviour)</p>
                 </section>
                 <section id="method-nullable" class="scroll-mt-20">
                     <a href="#method-nullable" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.nullable()</code>
+                        <code class="font-mono text-amber-400">.nullable()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1"><code class="text-amber-400">null</code> is an acceptable value</p>
                 </section>
                 <section id="method-default" class="scroll-mt-20">
                     <a href="#method-default" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.default(value)</code>
+                        <code class="font-mono text-amber-400">.default(value)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Default value when field is missing</p>
                 </section>
@@ -203,55 +203,55 @@ V.array(V.hash({
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="method-min_length" class="scroll-mt-20">
                     <a href="#method-min_length" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.min_length(n)</code>
+                        <code class="font-mono text-amber-400">.min_length(n)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Minimum string length</p>
                 </section>
                 <section id="method-max_length" class="scroll-mt-20">
                     <a href="#method-max_length" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.max_length(n)</code>
+                        <code class="font-mono text-amber-400">.max_length(n)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Maximum string length</p>
                 </section>
                 <section id="method-pattern" class="scroll-mt-20">
                     <a href="#method-pattern" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.pattern(regex)</code>
+                        <code class="font-mono text-amber-400">.pattern(regex)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must match regex pattern (e.g. <code class="text-amber-400">"^\\d+$"</code>)</p>
                 </section>
                 <section id="method-email" class="scroll-mt-20">
                     <a href="#method-email" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.email()</code>
+                        <code class="font-mono text-amber-400">.email()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Valid email format</p>
                 </section>
                 <section id="method-url" class="scroll-mt-20">
                     <a href="#method-url" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.url()</code>
+                        <code class="font-mono text-amber-400">.url()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Valid URL format</p>
                 </section>
                 <section id="method-letters" class="scroll-mt-20">
                     <a href="#method-letters" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.letters()</code>
+                        <code class="font-mono text-amber-400">.letters()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must contain at least one letter</p>
                 </section>
                 <section id="method-mixed_case" class="scroll-mt-20">
                     <a href="#method-mixed_case" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.mixed_case()</code>
+                        <code class="font-mono text-amber-400">.mixed_case()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must contain uppercase and lowercase</p>
                 </section>
                 <section id="method-numbers" class="scroll-mt-20">
                     <a href="#method-numbers" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.numbers()</code>
+                        <code class="font-mono text-amber-400">.numbers()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must contain at least one digit</p>
                 </section>
                 <section id="method-symbols" class="scroll-mt-20">
                     <a href="#method-symbols" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.symbols()</code>
+                        <code class="font-mono text-amber-400">.symbols()</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Must contain at least one symbol character</p>
                 </section>
@@ -263,13 +263,13 @@ V.array(V.hash({
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="method-min" class="scroll-mt-20">
                     <a href="#method-min" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.min(n)</code>
+                        <code class="font-mono text-amber-400">.min(n)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Minimum value for ints/floats. Minimum length for arrays.</p>
                 </section>
                 <section id="method-max" class="scroll-mt-20">
                     <a href="#method-max" class="group flex items-center gap-2">
-                        <code class="font-mono text-indigo-400">.max(n)</code>
+                        <code class="font-mono text-amber-400">.max(n)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Maximum value for ints/floats</p>
                 </section>
@@ -280,7 +280,7 @@ V.array(V.hash({
             <h3 class="text-lg font-semibold text-white mb-3">Enumeration</h3>
             <section id="method-one_of" class="scroll-mt-20">
                 <a href="#method-one_of" class="group flex items-center gap-2 mb-2">
-                    <code class="font-mono text-indigo-400">.one_of([values])</code>
+                    <code class="font-mono text-amber-400">.one_of([values])</code>
                 </a>
                 <p class="text-gray-400 text-sm">Field value must be one of the allowed values. Works with strings, ints, and any type.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">V.string().required().one_of(["admin", "user", "guest"])
@@ -292,7 +292,7 @@ V.int().required().one_of([1, 2, 3])</code></pre>
             <h3 class="text-lg font-semibold text-white mb-3">Cross-Field Validation</h3>
             <section id="method-confirmation" class="scroll-mt-20">
                 <a href="#method-confirmation" class="group flex items-center gap-2 mb-2">
-                    <code class="font-mono text-indigo-400">.confirmation(field)</code>
+                    <code class="font-mono text-amber-400">.confirmation(field)</code>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Field value must match the value of another field in the same data hash. Available on all validator types. The validation engine handles the comparison automatically during the field validation pass.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">schema = {
@@ -320,12 +320,12 @@ result = validate(data, schema)
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <p class="text-gray-400 mb-4">
-                Password character-class constraints (<code class="text-indigo-400">.letters()</code>, <code class="text-indigo-400">.mixed_case()</code>, <code class="text-indigo-400">.numbers()</code>, <code class="text-indigo-400">.symbols()</code>) serve double duty: they validate on the server side <strong class="text-white">and</strong> generate the HTML <code class="text-indigo-400">passwordrules</code> attribute that password managers (Safari, 1Password, Bitwarden) use to auto-generate compliant passwords.
+                Password character-class constraints (<code class="text-amber-400">.letters()</code>, <code class="text-amber-400">.mixed_case()</code>, <code class="text-amber-400">.numbers()</code>, <code class="text-amber-400">.symbols()</code>) serve double duty: they validate on the server side <strong class="text-white">and</strong> generate the HTML <code class="text-amber-400">passwordrules</code> attribute that password managers (Safari, 1Password, Bitwarden) use to auto-generate compliant passwords.
             </p>
 
             <section id="method-to_password_rules_string" class="scroll-mt-20">
                 <a href="#method-to_password_rules_string" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-indigo-400">.to_password_rules_string()</code>
+                    <code class="font-mono text-amber-400">.to_password_rules_string()</code>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Serializes password-relevant constraints into the <code class="text-amber-400">passwordrules</code> HTML attribute format. Returns a semicolon-separated string of rules, or an empty string when no password-relevant rules are present.</p>
             </section>
@@ -348,8 +348,8 @@ result = validate(data, schema)
     <!-- validate() Function -->
     <section id="section-validate" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                 </svg>
             </span>
@@ -359,7 +359,7 @@ result = validate(data, schema)
         <section id="def-validate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-validate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">validate(data, schema)</code>
+                    <code class="text-lg font-mono text-amber-400">validate(data, schema)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -367,12 +367,12 @@ result = validate(data, schema)
                 <p class="text-gray-400 mb-3">Run validation rules against a data hash. Coerces types, applies constraints, and returns a result with either the sanitized data or error details.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">data</code> : <code class="text-purple-400">Hash</code> - The input data to validate (or <code class="text-amber-400">null</code>)</div>
-                    <div><code class="text-amber-400">schema</code> : <code class="text-purple-400">Hash</code> - Schema definition with field validators</div>
+                    <div><code class="text-amber-400">data</code> : <code class="text-orange-400">Hash</code> - The input data to validate (or <code class="text-amber-400">null</code>)</div>
+                    <div><code class="text-amber-400">schema</code> : <code class="text-orange-400">Hash</code> - Schema definition with field validators</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - <code class="text-amber-400">{ "valid": Bool, "data": Hash, "errors": Array }</code>
+                    <code class="text-orange-400">Hash</code> - <code class="text-amber-400">{ "valid": Bool, "data": Hash, "errors": Array }</code>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">schema = {
   "name": V.string().required().min_length(2).max_length(100),
@@ -400,7 +400,7 @@ end</code></pre>
 
         <h3 class="text-lg font-semibold text-white mb-4">Error Format</h3>
         <p class="text-gray-400 mb-4">
-            When validation fails, <code class="text-indigo-400">result["errors"]</code> contains an array of error objects:
+            When validation fails, <code class="text-amber-400">result["errors"]</code> contains an array of error objects:
         </p>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <pre data-filename="Error Format"><code class="language-soli text-sm">{
@@ -469,7 +469,7 @@ end</code></pre>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">Nested Validation</h3>
-            <p class="text-gray-400 mb-3">Use <code class="text-indigo-400">V.hash()</code> and <code class="text-indigo-400">V.array()</code> to validate complex nested structures.</p>
+            <p class="text-gray-400 mb-3">Use <code class="text-amber-400">V.hash()</code> and <code class="text-amber-400">V.array()</code> to validate complex nested structures.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">order_schema = {
   "customer": V.hash({
     "name": V.string().required(),
@@ -499,10 +499,10 @@ end</code></pre>
         <ul class="text-emerald-200/80 text-sm space-y-2">
             <li><strong>Validate at the boundary</strong> - Validate incoming request data in controllers before it reaches your domain logic.</li>
             <li><strong>Use type coercion</strong> - Let the validator convert strings to their target types; your business logic gets properly-typed data.</li>
-            <li><strong>Always check result["valid"]</strong> - Never assume validation passed. Branch on <code class="text-indigo-400">result["valid"]</code> before using <code class="text-indigo-400">result["data"]</code>.</li>
+            <li><strong>Always check result["valid"]</strong> - Never assume validation passed. Branch on <code class="text-amber-400">result["valid"]</code> before using <code class="text-amber-400">result["data"]</code>.</li>
             <li><strong>Keep schemas DRY</strong> - Extract reusable schema fragments for fields that appear in multiple endpoints.</li>
             <li><strong>Use .default() for optional fields</strong> - Provide sensible defaults so your code always has a value to work with.</li>
-            <li><strong>Generate password rules</strong> - When a schema has password constraints, call <code class="text-indigo-400">.to_password_rules_string()</code> and pass it to your template for password manager integration.</li>
+            <li><strong>Generate password rules</strong> - When a schema has password constraints, call <code class="text-amber-400">.to_password_rules_string()</code> and pass it to your template for password manager integration.</li>
         </ul>
     </div>
 
@@ -514,7 +514,7 @@ end</code></pre>
             </svg>
             Duration
         </a>
-        <a href="/docs/builtins/session" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/session" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Session Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

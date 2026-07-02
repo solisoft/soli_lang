@@ -9,17 +9,17 @@
             <span class="text-white">Image</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-fuchsia-400 to-pink-400 bg-clip-text text-transparent">Image Class</span>
+            <span class="bg-gradient-to-r from-orange-400 to-orange-400 bg-clip-text text-transparent">Image Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Pure-Rust image manipulation for resizing, cropping, transforms, filters, and format conversion. No system dependencies required.
         </p>
     </div>
 
-    <div class="my-6 p-4 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/20 mb-12">
-        <p class="text-fuchsia-200/80 text-sm">
+    <div class="my-6 p-4 rounded-lg bg-orange-500/10 border border-orange-500/20 mb-12">
+        <p class="text-orange-200/80 text-sm">
             <strong>Tip.</strong> If your image lives on a model declared with <code>uploader(...)</code>, you don't have to write a transform pipeline by hand &mdash; the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint accepts query params (<code>w</code>, <code>h</code>, <code>thumb</code>, <code>square</code>, <code>crop</code>, <code>fit=cover|contain</code>, <code>flipx</code>, <code>flipy</code>, <code>rot=90/180/270</code>, <code>blur</code>, <code>bright</code>, <code>contrast</code>, <code>hue</code>, <code>gray</code>, <code>invert</code>, <code>fmt</code>, <code>q</code>) and runs them through the Image class for you.
-            See <a href="/docs/database/models#image-transforms-via-url" class="text-fuchsia-300 hover:underline font-semibold">Image transforms via URL</a>.
+            See <a href="/docs/database/models#image-transforms-via-url" class="text-orange-300 hover:underline font-semibold">Image transforms via URL</a>.
         </p>
     </div>
 
@@ -28,13 +28,13 @@
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Supported Formats</h3>
             <div class="flex flex-wrap gap-2">
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">JPEG</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">PNG</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">GIF</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">WebP</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">BMP</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">TIFF</span>
-                <span class="px-2 py-1 rounded bg-fuchsia-500/20 text-fuchsia-300 text-xs font-mono">ICO</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">JPEG</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">PNG</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">GIF</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">WebP</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">BMP</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">TIFF</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-300 text-xs font-mono">ICO</span>
             </div>
             <p class="text-gray-400 text-sm mt-3">All methods return a <strong class="text-white">new Image</strong> instance, enabling fluent chaining.</p>
         </div>
@@ -43,8 +43,8 @@
     <!-- Loading Images -->
     <section id="section-loading" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
             </span>
@@ -54,7 +54,7 @@
         <section id="def-image-new" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-new" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Image.new(path)</code>
+                    <code class="text-lg font-mono text-amber-400">Image.new(path)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -62,7 +62,7 @@
                 <p class="text-gray-400 mb-3">Loads an image from a file path. The format is detected automatically.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Path to the image file</div>
+                    <div><code class="text-amber-400">path</code> : <code class="text-orange-400">String</code> - Path to the image file</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Image instance</p>
@@ -75,7 +75,7 @@ println(img.height)  # 1080</code></pre>
         <section id="def-image-from-buffer" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-from-buffer" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Image.from_buffer(base64_string)</code>
+                    <code class="text-lg font-mono text-amber-400">Image.from_buffer(base64_string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -83,7 +83,7 @@ println(img.height)  # 1080</code></pre>
                 <p class="text-gray-400 mb-3">Loads an image from a base64-encoded string. Useful for processing images from HTTP requests, S3, or databases.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">base64_string</code> : <code class="text-purple-400">String</code> - Base64-encoded image data</div>
+                    <div><code class="text-amber-400">base64_string</code> : <code class="text-orange-400">String</code> - Base64-encoded image data</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Image instance</p>
@@ -96,8 +96,8 @@ println(img.width)</code></pre>
     <!-- Properties -->
     <section id="section-properties" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
             </span>
@@ -107,7 +107,7 @@ println(img.width)</code></pre>
         <section id="def-image-width-height" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-width-height" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.width</code> / <code class="text-lg font-mono text-indigo-400">img.height</code>
+                    <code class="text-lg font-mono text-amber-400">img.width</code> / <code class="text-lg font-mono text-amber-400">img.height</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -124,8 +124,8 @@ println("Size: " + str(img.width) + "x" + str(img.height))</code></pre>
     <!-- Resizing -->
     <section id="section-resizing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
             </span>
@@ -135,7 +135,7 @@ println("Size: " + str(img.width) + "x" + str(img.height))</code></pre>
         <section id="def-image-resize" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-resize" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.resize(width, height)</code>
+                    <code class="text-lg font-mono text-amber-400">img.resize(width, height)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -143,8 +143,8 @@ println("Size: " + str(img.width) + "x" + str(img.height))</code></pre>
                 <p class="text-gray-400 mb-3">Resizes the image to the specified dimensions using high-quality Lanczos3 filtering.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">width</code> : <code class="text-purple-400">Int</code> - Target width in pixels</div>
-                    <div><code class="text-amber-400">height</code> : <code class="text-purple-400">Int</code> - Target height in pixels</div>
+                    <div><code class="text-amber-400">width</code> : <code class="text-orange-400">Int</code> - Target width in pixels</div>
+                    <div><code class="text-amber-400">height</code> : <code class="text-orange-400">Int</code> - Target height in pixels</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
@@ -156,7 +156,7 @@ resized.to_file("photo_resized.jpg")</code></pre>
         <section id="def-image-thumbnail" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-thumbnail" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.thumbnail(max_size)</code>
+                    <code class="text-lg font-mono text-amber-400">img.thumbnail(max_size)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -164,7 +164,7 @@ resized.to_file("photo_resized.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Creates a thumbnail that fits within a square of the given size, <strong class="text-white">preserving the original aspect ratio</strong>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">max_size</code> : <code class="text-purple-400">Int</code> - Maximum width or height in pixels</div>
+                    <div><code class="text-amber-400">max_size</code> : <code class="text-orange-400">Int</code> - Maximum width or height in pixels</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
@@ -176,7 +176,7 @@ thumb.to_file("thumb.jpg")</code></pre>
         <section id="def-image-crop" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-crop" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.crop(x, y, width, height)</code>
+                    <code class="text-lg font-mono text-amber-400">img.crop(x, y, width, height)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -184,10 +184,10 @@ thumb.to_file("thumb.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Crops a rectangular region from the image. Coordinates must be non-negative.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">x</code> : <code class="text-purple-400">Int</code> - Left offset (>= 0)</div>
-                    <div><code class="text-amber-400">y</code> : <code class="text-purple-400">Int</code> - Top offset (>= 0)</div>
-                    <div><code class="text-amber-400">width</code> : <code class="text-purple-400">Int</code> - Crop width</div>
-                    <div><code class="text-amber-400">height</code> : <code class="text-purple-400">Int</code> - Crop height</div>
+                    <div><code class="text-amber-400">x</code> : <code class="text-orange-400">Int</code> - Left offset (>= 0)</div>
+                    <div><code class="text-amber-400">y</code> : <code class="text-orange-400">Int</code> - Top offset (>= 0)</div>
+                    <div><code class="text-amber-400">width</code> : <code class="text-orange-400">Int</code> - Crop width</div>
+                    <div><code class="text-amber-400">height</code> : <code class="text-orange-400">Int</code> - Crop height</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">New Image instance</p>
@@ -200,8 +200,8 @@ cropped.to_file("cropped.jpg")</code></pre>
     <!-- Transforms -->
     <section id="section-transforms" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
             </span>
@@ -211,49 +211,49 @@ cropped.to_file("cropped.jpg")</code></pre>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div id="def-image-grayscale" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-grayscale" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.grayscale()</code>
+                    <code class="text-base font-mono text-amber-400">img.grayscale()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Convert to grayscale.</p>
             </div>
             <div id="def-image-invert" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-invert" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.invert</code>
+                    <code class="text-base font-mono text-amber-400">img.invert</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Invert all colors.</p>
             </div>
             <div id="def-image-flip-horizontal" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-flip-horizontal" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.flip_horizontal()</code>
+                    <code class="text-base font-mono text-amber-400">img.flip_horizontal()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Flip horizontally (mirror).</p>
             </div>
             <div id="def-image-flip-vertical" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-flip-vertical" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.flip_vertical()</code>
+                    <code class="text-base font-mono text-amber-400">img.flip_vertical()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Flip vertically.</p>
             </div>
             <div id="def-image-rotate90" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-rotate90" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.rotate90()</code>
+                    <code class="text-base font-mono text-amber-400">img.rotate90()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Rotate 90° clockwise.</p>
             </div>
             <div id="def-image-rotate180" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-rotate180" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.rotate180()</code>
+                    <code class="text-base font-mono text-amber-400">img.rotate180()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Rotate 180°.</p>
             </div>
             <div id="def-image-rotate270" class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-rotate270" class="group flex items-center gap-2 mb-2">
-                    <code class="text-base font-mono text-indigo-400">img.rotate270()</code>
+                    <code class="text-base font-mono text-amber-400">img.rotate270()</code>
                     <svg class="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                 </a>
                 <p class="text-gray-400 text-sm">Rotate 270° clockwise (90° counter-clockwise).</p>
@@ -271,8 +271,8 @@ img.to_file("transformed.jpg")</code></pre>
     <!-- Adjustments -->
     <section id="section-adjustments" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
             </span>
@@ -282,7 +282,7 @@ img.to_file("transformed.jpg")</code></pre>
         <section id="def-image-blur" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-blur" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.blur(sigma)</code>
+                    <code class="text-lg font-mono text-amber-400">img.blur(sigma)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -290,7 +290,7 @@ img.to_file("transformed.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Applies a Gaussian blur. Higher sigma = more blur.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">sigma</code> : <code class="text-purple-400">Float</code> or <code class="text-purple-400">Int</code> - Blur intensity</div>
+                    <div><code class="text-amber-400">sigma</code> : <code class="text-orange-400">Float</code> or <code class="text-orange-400">Int</code> - Blur intensity</div>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">blurred = Image.new("photo.jpg").blur(3.5)</code></pre>
             </div>
@@ -299,7 +299,7 @@ img.to_file("transformed.jpg")</code></pre>
         <section id="def-image-brightness" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-brightness" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.brightness(value)</code>
+                    <code class="text-lg font-mono text-amber-400">img.brightness(value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -307,7 +307,7 @@ img.to_file("transformed.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Adjusts image brightness. Positive values brighten, negative values darken.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">value</code> : <code class="text-purple-400">Int</code> - Brightness adjustment</div>
+                    <div><code class="text-amber-400">value</code> : <code class="text-orange-400">Int</code> - Brightness adjustment</div>
                 </div>
             </div>
         </section>
@@ -315,7 +315,7 @@ img.to_file("transformed.jpg")</code></pre>
         <section id="def-image-contrast" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-contrast" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.contrast(value)</code>
+                    <code class="text-lg font-mono text-amber-400">img.contrast(value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -323,7 +323,7 @@ img.to_file("transformed.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Adjusts image contrast. Positive increases contrast, negative decreases.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">value</code> : <code class="text-purple-400">Float</code> or <code class="text-purple-400">Int</code> - Contrast adjustment</div>
+                    <div><code class="text-amber-400">value</code> : <code class="text-orange-400">Float</code> or <code class="text-orange-400">Int</code> - Contrast adjustment</div>
                 </div>
             </div>
         </section>
@@ -331,7 +331,7 @@ img.to_file("transformed.jpg")</code></pre>
         <section id="def-image-hue-rotate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-hue-rotate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.hue_rotate(degrees)</code>
+                    <code class="text-lg font-mono text-amber-400">img.hue_rotate(degrees)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -339,7 +339,7 @@ img.to_file("transformed.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Rotates the hue of all pixels by the given number of degrees.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">degrees</code> : <code class="text-purple-400">Int</code> - Hue rotation in degrees</div>
+                    <div><code class="text-amber-400">degrees</code> : <code class="text-orange-400">Int</code> - Hue rotation in degrees</div>
                 </div>
             </div>
         </section>
@@ -354,8 +354,8 @@ adjusted.to_file("adjusted.jpg")</code></pre>
     <!-- Output Settings -->
     <section id="section-output" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
@@ -366,15 +366,15 @@ adjusted.to_file("adjusted.jpg")</code></pre>
         <section id="def-image-quality" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-quality" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.quality(n)</code>
+                    <code class="text-lg font-mono text-amber-400">img.quality(n)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Sets the output quality for JPEG encoding. Default is <code class="text-indigo-400">85</code>.</p>
+                <p class="text-gray-400 mb-3">Sets the output quality for JPEG encoding. Default is <code class="text-amber-400">85</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">n</code> : <code class="text-purple-400">Int</code> - Quality from 1 (smallest) to 100 (best)</div>
+                    <div><code class="text-amber-400">n</code> : <code class="text-orange-400">Int</code> - Quality from 1 (smallest) to 100 (best)</div>
                 </div>
             </div>
         </section>
@@ -382,7 +382,7 @@ adjusted.to_file("adjusted.jpg")</code></pre>
         <section id="def-image-format" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-format" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.format(fmt)</code>
+                    <code class="text-lg font-mono text-amber-400">img.format(fmt)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -390,7 +390,7 @@ adjusted.to_file("adjusted.jpg")</code></pre>
                 <p class="text-gray-400 mb-3">Sets the output format explicitly.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">fmt</code> : <code class="text-purple-400">String</code> - One of: <code class="text-indigo-400">"jpeg"</code>, <code class="text-indigo-400">"png"</code>, <code class="text-indigo-400">"gif"</code>, <code class="text-indigo-400">"bmp"</code>, <code class="text-indigo-400">"ico"</code>, <code class="text-indigo-400">"tiff"</code>, <code class="text-indigo-400">"webp"</code></div>
+                    <div><code class="text-amber-400">fmt</code> : <code class="text-orange-400">String</code> - One of: <code class="text-amber-400">"jpeg"</code>, <code class="text-amber-400">"png"</code>, <code class="text-amber-400">"gif"</code>, <code class="text-amber-400">"bmp"</code>, <code class="text-amber-400">"ico"</code>, <code class="text-amber-400">"tiff"</code>, <code class="text-amber-400">"webp"</code></div>
                 </div>
                 <pre data-filename="Format conversion"><code class="language-soli text-sm"># Convert PNG to JPEG at 70% quality
 img = Image.new("photo.png")
@@ -404,8 +404,8 @@ img.to_file("photo.jpg")</code></pre>
     <!-- Saving & Exporting -->
     <section id="section-saving" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                 </svg>
             </span>
@@ -415,15 +415,15 @@ img.to_file("photo.jpg")</code></pre>
         <section id="def-image-to-file" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-to-file" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.to_file(path)</code>
+                    <code class="text-lg font-mono text-amber-400">img.to_file(path)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Saves the image to a file. Format is determined by: <code class="text-indigo-400">.format()</code> setting, then file extension, then PNG fallback.</p>
+                <p class="text-gray-400 mb-3">Saves the image to a file. Format is determined by: <code class="text-amber-400">.format()</code> setting, then file extension, then PNG fallback.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Output file path</div>
+                    <div><code class="text-amber-400">path</code> : <code class="text-orange-400">String</code> - Output file path</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Boolean - true on success</p>
@@ -434,7 +434,7 @@ img.to_file("photo.jpg")</code></pre>
         <section id="def-image-to-buffer" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-to-buffer" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">img.to_buffer()</code>
+                    <code class="text-lg font-mono text-amber-400">img.to_buffer()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -456,27 +456,27 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
     <!-- Parallel Processing -->
     <section id="section-parallel" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
             </span>
             Parallel Processing
         </h2>
 
-        <p class="text-gray-400 mb-4">Image transforms are CPU-bound. To process several images concurrently, build a <strong class="text-white">plan</strong> with <code class="text-indigo-400">Image.plan(path)</code>, chain the same transform methods you would on a regular image, and pass an array of plans to <code class="text-indigo-400">Image.process_all(...)</code>. Each plan runs on its own thread; the call returns when every plan finishes.</p>
+        <p class="text-gray-400 mb-4">Image transforms are CPU-bound. To process several images concurrently, build a <strong class="text-white">plan</strong> with <code class="text-amber-400">Image.plan(path)</code>, chain the same transform methods you would on a regular image, and pass an array of plans to <code class="text-amber-400">Image.process_all(...)</code>. Each plan runs on its own thread; the call returns when every plan finishes.</p>
 
-        <p class="text-gray-400 mb-4">A plan is <em>lazy</em> — methods just record operations. Nothing decodes, transforms, or writes until you call <code class="text-indigo-400">plan.run()</code> (one plan, current thread) or <code class="text-indigo-400">Image.process_all([...])</code> (many plans, in parallel).</p>
+        <p class="text-gray-400 mb-4">A plan is <em>lazy</em> — methods just record operations. Nothing decodes, transforms, or writes until you call <code class="text-amber-400">plan.run()</code> (one plan, current thread) or <code class="text-amber-400">Image.process_all([...])</code> (many plans, in parallel).</p>
 
         <section id="def-image-plan" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-plan" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Image.plan(path)</code>
+                    <code class="text-lg font-mono text-amber-400">Image.plan(path)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Creates a new lazy plan that will read its source from <code class="text-amber-400">path</code> when executed.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">path</code> : <code class="text-purple-400">String</code> - Path to the image file (read at execution time)</div>
+                    <div><code class="text-amber-400">path</code> : <code class="text-orange-400">String</code> - Path to the image file (read at execution time)</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">ImagePlan instance</p>
@@ -486,15 +486,15 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
         <section id="def-plan-methods" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Plan instance methods</h3>
-                <p class="text-gray-400 mb-3">A plan supports the same transform methods as <code class="text-indigo-400">Image</code>:</p>
-                <p class="text-gray-400 text-sm mb-4"><code class="text-indigo-400">resize(w, h)</code>, <code class="text-indigo-400">thumbnail(size)</code>, <code class="text-indigo-400">crop(x, y, w, h)</code>, <code class="text-indigo-400">grayscale()</code>, <code class="text-indigo-400">flip_horizontal()</code>, <code class="text-indigo-400">flip_vertical()</code>, <code class="text-indigo-400">rotate90()</code>, <code class="text-indigo-400">rotate180()</code>, <code class="text-indigo-400">rotate270()</code>, <code class="text-indigo-400">blur(sigma)</code>, <code class="text-indigo-400">brightness(n)</code>, <code class="text-indigo-400">contrast(n)</code>, <code class="text-indigo-400">invert()</code>, <code class="text-indigo-400">hue_rotate(degrees)</code>, <code class="text-indigo-400">format(fmt)</code>, <code class="text-indigo-400">quality(n)</code>.</p>
+                <p class="text-gray-400 mb-3">A plan supports the same transform methods as <code class="text-amber-400">Image</code>:</p>
+                <p class="text-gray-400 text-sm mb-4"><code class="text-amber-400">resize(w, h)</code>, <code class="text-amber-400">thumbnail(size)</code>, <code class="text-amber-400">crop(x, y, w, h)</code>, <code class="text-amber-400">grayscale()</code>, <code class="text-amber-400">flip_horizontal()</code>, <code class="text-amber-400">flip_vertical()</code>, <code class="text-amber-400">rotate90()</code>, <code class="text-amber-400">rotate180()</code>, <code class="text-amber-400">rotate270()</code>, <code class="text-amber-400">blur(sigma)</code>, <code class="text-amber-400">brightness(n)</code>, <code class="text-amber-400">contrast(n)</code>, <code class="text-amber-400">invert()</code>, <code class="text-amber-400">hue_rotate(degrees)</code>, <code class="text-amber-400">format(fmt)</code>, <code class="text-amber-400">quality(n)</code>.</p>
                 <p class="text-gray-400 mb-4">Each call returns a <strong class="text-white">new ImagePlan instance</strong> with the operation appended.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Plan-only methods</h4>
                 <ul class="text-sm text-gray-400 space-y-2 mb-3 list-disc pl-5">
-                    <li><code class="text-indigo-400">save_to(path)</code> — terminal; the plan will save to <code class="text-amber-400">path</code> when executed.</li>
-                    <li><code class="text-indigo-400">run()</code> — executes the plan synchronously on the current thread. Returns <code class="text-purple-400">true</code> if <code class="text-indigo-400">save_to</code> was set, otherwise an <code class="text-purple-400">Image</code> instance.</li>
-                    <li><code class="text-indigo-400">src()</code> — returns the source path.</li>
-                    <li><code class="text-indigo-400">ops_count()</code> — returns the number of recorded operations.</li>
+                    <li><code class="text-amber-400">save_to(path)</code> — terminal; the plan will save to <code class="text-amber-400">path</code> when executed.</li>
+                    <li><code class="text-amber-400">run()</code> — executes the plan synchronously on the current thread. Returns <code class="text-orange-400">true</code> if <code class="text-amber-400">save_to</code> was set, otherwise an <code class="text-orange-400">Image</code> instance.</li>
+                    <li><code class="text-amber-400">src()</code> — returns the source path.</li>
+                    <li><code class="text-amber-400">ops_count()</code> — returns the number of recorded operations.</li>
                 </ul>
             </div>
         </section>
@@ -502,19 +502,19 @@ S3.put_object("my-bucket", "thumb.jpg", base64_data, {
         <section id="def-image-process-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-image-process-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Image.process_all(plans)</code>
+                    <code class="text-lg font-mono text-amber-400">Image.process_all(plans)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Runs an array of plans in parallel (one OS thread per plan) and returns an array of results in the same order.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 mb-3 space-y-1">
-                    <div><code class="text-amber-400">plans</code> : <code class="text-purple-400">Array&lt;ImagePlan&gt;</code> - Plans to execute concurrently</div>
+                    <div><code class="text-amber-400">plans</code> : <code class="text-orange-400">Array&lt;ImagePlan&gt;</code> - Plans to execute concurrently</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <p class="text-gray-400 text-sm mb-3">Array, where each entry is:</p>
                 <ul class="text-sm text-gray-400 space-y-1 mb-3 list-disc pl-5">
-                    <li><code class="text-purple-400">true</code> if the plan had <code class="text-indigo-400">save_to(path)</code> and the file was written</li>
-                    <li>An <code class="text-purple-400">Image</code> instance if the plan had no <code class="text-indigo-400">save_to</code></li>
-                    <li>A hash <code class="text-purple-400">{"error": "..."}</code> if that plan failed (other plans still complete)</li>
+                    <li><code class="text-orange-400">true</code> if the plan had <code class="text-amber-400">save_to(path)</code> and the file was written</li>
+                    <li>An <code class="text-orange-400">Image</code> instance if the plan had no <code class="text-amber-400">save_to</code></li>
+                    <li>A hash <code class="text-orange-400">{"error": "..."}</code> if that plan failed (other plans still complete)</li>
                 </ul>
                 <pre data-filename="Fan out thumbnails"><code class="language-soli text-sm"># Generate three thumbnail variants in parallel
 results = Image.process_all([
@@ -555,15 +555,15 @@ let buf = images[1].to_buffer()</code></pre>
         </section>
 
         <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-4 text-sm text-gray-300">
-            A single chain on <code class="text-indigo-400">Image.new(...)</code> is fully synchronous and runs on one thread. Use <code class="text-indigo-400">Image.plan(...)</code> + <code class="text-indigo-400">Image.process_all([...])</code> only when you have multiple images and want them to run concurrently.
+            A single chain on <code class="text-amber-400">Image.new(...)</code> is fully synchronous and runs on one thread. Use <code class="text-amber-400">Image.plan(...)</code> + <code class="text-amber-400">Image.process_all([...])</code> only when you have multiple images and want them to run concurrently.
         </div>
     </section>
 
     <!-- Complete Examples -->
     <section id="section-examples" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
             </span>
@@ -639,7 +639,7 @@ end</code></pre>
             </svg>
             Upload
         </a>
-        <a href="/docs/builtins" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             All Built-ins
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

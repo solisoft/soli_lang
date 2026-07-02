@@ -27,7 +27,7 @@
             </span>
             About Null
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Null represents the absence of a value
 x = null
@@ -68,7 +68,7 @@ print(user&.name)  # null (no error)</code></pre>
             <section id="method-to-s" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <code class="text-lg font-mono text-amber-400">.to_s / .to_string</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -82,7 +82,7 @@ null.to_string # ""</code></pre>
             <section id="method-to-i" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-i" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_i / .to_int</code>
+                        <code class="text-lg font-mono text-amber-400">.to_i / .to_int</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -96,7 +96,7 @@ null.to_int  # 0</code></pre>
             <section id="method-to-f" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-f" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_f / .to_float</code>
+                        <code class="text-lg font-mono text-amber-400">.to_f / .to_float</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -110,7 +110,7 @@ null.to_float  # 0.0</code></pre>
             <section id="method-to-a" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-a" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_a / .to_array</code>
+                        <code class="text-lg font-mono text-amber-400">.to_a / .to_array</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -139,7 +139,7 @@ null.to_array  # []</code></pre>
             <section id="method-class" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-class" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <code class="text-lg font-mono text-amber-400">.class</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -152,7 +152,7 @@ null.to_array  # []</code></pre>
             <section id="method-inspect" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <code class="text-lg font-mono text-amber-400">.inspect</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -165,12 +165,12 @@ null.to_array  # []</code></pre>
             <section id="method-is-a" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <code class="text-lg font-mono text-amber-400">.is_a?(type_name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-indigo-400">"null"</code> and <code class="text-indigo-400">"object"</code>.</p>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-amber-400">"null"</code> and <code class="text-amber-400">"object"</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">null.is_a?("null")     # true
 null.is_a?("object")   # true
 null.is_a?("string")   # false</code></pre>
@@ -180,12 +180,12 @@ null.is_a?("string")   # false</code></pre>
             <section id="method-nil" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-nil" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.nil?</code>
+                        <code class="text-lg font-mono text-amber-400">.nil?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns true (null is the only type where <code class="text-indigo-400">.nil?</code> returns true).</p>
+                    <p class="text-gray-400 mb-3">Returns true (null is the only type where <code class="text-amber-400">.nil?</code> returns true).</p>
 <pre data-filename="Example"><code class="language-soli text-sm">null.nil?    # true</code></pre>
                 </div>
             </section>
@@ -193,7 +193,7 @@ null.is_a?("string")   # false</code></pre>
             <section id="method-blank-present" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-blank-present" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.blank? / .present?</code>
+                        <code class="text-lg font-mono text-amber-400">.blank? / .present?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -214,7 +214,7 @@ null.present?  # false</code></pre>
             </svg>
             Booleans
         </a>
-        <a href="/docs/language/decimal" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/decimal" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Decimal
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

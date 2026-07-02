@@ -9,25 +9,25 @@
             <span class="text-white">Enums</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-fuchsia-400 to-purple-400 bg-clip-text text-transparent">Enums</span>
+            <span class="bg-gradient-to-r from-orange-400 to-orange-400 bg-clip-text text-transparent">Enums</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            A type-safe set of named variants &mdash; some carrying data &mdash; matched exhaustively with pattern matching. Use them instead of stringly-typed states like <code class="text-fuchsia-400">"pending"</code>.
+            A type-safe set of named variants &mdash; some carrying data &mdash; matched exhaustively with pattern matching. Use them instead of stringly-typed states like <code class="text-orange-400">"pending"</code>.
         </p>
     </div>
 
     <!-- Declaring -->
     <section id="kw-enum" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-fuchsia-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-fuchsia-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h10" />
                 </svg>
             </span>
             Declaring an enum
         </h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">Each variant is either a plain <strong class="text-white">unit</strong> variant or one that carries a <strong class="text-white">payload</strong> of named fields (the field type is optional and used by <code class="text-fuchsia-400">soli check</code>).</p>
+            <p class="text-gray-400 mb-3">Each variant is either a plain <strong class="text-white">unit</strong> variant or one that carries a <strong class="text-white">payload</strong> of named fields (the field type is optional and used by <code class="text-orange-400">soli check</code>).</p>
             <pre data-filename="app/models/status.sl"><code class="language-soli text-sm">enum Status
   Active,
   Archived,
@@ -40,7 +40,7 @@ end</code></pre>
     <section id="section-construct" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Constructing values</h2>
         <p class="text-gray-400 mb-4">Reference a unit variant by name. Construct a payload variant by calling it &mdash; with positional or named arguments.</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">a = Status.Active                      # a unit variant
 
@@ -55,8 +55,8 @@ p.variant()                            # "Pending"  &mdash; the variant tag as a
     <!-- Pattern Matching -->
     <section id="section-match" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Matching variants</h2>
-        <p class="text-gray-400 mb-4">Match on the variant with <code class="text-fuchsia-400">EnumName.Variant</code>. A payload variant binds its fields positionally, in declaration order.</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <p class="text-gray-400 mb-4">Match on the variant with <code class="text-orange-400">EnumName.Variant</code>. A payload variant binds its fields positionally, in declaration order.</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">label = match status
   Status.Active     => "Live",
@@ -81,8 +81,8 @@ end</code></pre>
     <!-- Methods -->
     <section id="section-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Methods on enums</h2>
-        <p class="text-gray-400 mb-4">An enum can carry behaviour. Define methods in the body; inside them, <code class="text-fuchsia-400">self</code> is the value and <code class="text-fuchsia-400">match self</code> dispatches on its variant.</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <p class="text-gray-400 mb-4">An enum can carry behaviour. Define methods in the body; inside them, <code class="text-orange-400">self</code> is the value and <code class="text-orange-400">match self</code> dispatches on its variant.</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">enum Status
   Active,
@@ -107,7 +107,7 @@ Status.Pending(reason: "kyc").label()   # "Waiting: kyc"</code></pre>
     <section id="section-equality" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Equality &amp; introspection</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">Enum values compare <strong class="text-white">structurally</strong>: two values are equal when they are the same variant with equal payloads. <code class="text-fuchsia-400">variant()</code> returns the variant name as a String &mdash; handy for serializing to a database column or JSON.</p>
+            <p class="text-gray-400 mb-3">Enum values compare <strong class="text-white">structurally</strong>: two values are equal when they are the same variant with equal payloads. <code class="text-orange-400">variant()</code> returns the variant name as a String &mdash; handy for serializing to a database column or JSON.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">Status.Active == Status.Active                          # true
 Status.Active == Status.Archived                        # false
 Status.Pending(reason: "x") == Status.Pending(reason: "x")   # true  (structural)
@@ -120,8 +120,8 @@ Status.Pending(reason: "x").variant()                   # "Pending"</code></pre>
     <!-- Exhaustiveness -->
     <section id="section-exhaustiveness" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Exhaustiveness checking</h2>
-        <p class="text-gray-400 mb-4">When the value's type is a known enum, <code class="text-fuchsia-400">soli check</code> warns if a <code class="text-fuchsia-400">match</code> misses a variant and has no <code class="text-fuchsia-400">_</code> catch-all. It's a non-blocking warning &mdash; your code still runs.</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <p class="text-gray-400 mb-4">When the value's type is a known enum, <code class="text-orange-400">soli check</code> warns if a <code class="text-orange-400">match</code> misses a variant and has no <code class="text-orange-400">_</code> catch-all. It's a non-blocking warning &mdash; your code still runs.</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def describe(s: Status) -> String
   match s
@@ -139,8 +139,8 @@ end</code></pre>
     <!-- Persistence -->
     <section id="section-persistence" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Persisting enums in models</h2>
-        <p class="text-gray-400 mb-4">Declare <code class="text-fuchsia-400">enum_field :name, EnumType</code> on a model and the column round-trips automatically: a unit variant is stored as its tag string, a payload variant as a tagged object, and reads rebuild the enum value. Define the enum <em>above</em> the model so it's loaded first.</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <p class="text-gray-400 mb-4">Declare <code class="text-orange-400">enum_field :name, EnumType</code> on a model and the column round-trips automatically: a unit variant is stored as its tag string, a payload variant as a tagged object, and reads rebuild the enum value. Define the enum <em>above</em> the model so it's loaded first.</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre data-filename="app/models/order.sl"><code class="language-soli text-sm">enum Status
   Pending(reason: String),
@@ -162,7 +162,7 @@ end</code></pre>
             </div>
         </div>
         <p class="text-gray-400 mb-4">Now a real flow &mdash; create, read, transition, and branch on the status:</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre data-filename="app/controllers/orders_controller.sl"><code class="language-soli text-sm">def create(req)
   # The enum value is stored as its tag / tagged object automatically.
@@ -197,7 +197,7 @@ end</code></pre>
 
 # payload variant   → a tagged object
 { "variant": "Pending", "reason": "awaiting payment" }</code></pre>
-            <p class="text-gray-400 text-sm mt-3">Need to rebuild an enum from a stored value by hand (e.g. from a webhook payload)? Use <code class="text-fuchsia-400">Status.parse(value)</code> &mdash; it accepts either form. (The factory is <code>parse</code>, not <code>from</code>, because <code>from</code> is a reserved word.)</p>
+            <p class="text-gray-400 text-sm mt-3">Need to rebuild an enum from a stored value by hand (e.g. from a webhook payload)? Use <code class="text-orange-400">Status.parse(value)</code> &mdash; it accepts either form. (The factory is <code>parse</code>, not <code>from</code>, because <code>from</code> is a reserved word.)</p>
         </div>
     </section>
 
@@ -205,8 +205,8 @@ end</code></pre>
     <section id="section-notes" class="scroll-mt-20 mb-12">
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <div class="text-sm text-gray-400 space-y-2">
-                <div><strong class="text-white">Braces or <code>end</code>.</strong> <code class="text-fuchsia-400">enum Name { ... }</code> and <code class="text-fuchsia-400">enum Name ... end</code> are both accepted; <code class="text-fuchsia-400">soli fmt</code> normalizes to the <code>end</code> form.</div>
-                <div><strong class="text-white">Variant names</strong> are written in <code class="text-fuchsia-400">PascalCase</code>, like classes.</div>
+                <div><strong class="text-white">Braces or <code>end</code>.</strong> <code class="text-orange-400">enum Name { ... }</code> and <code class="text-orange-400">enum Name ... end</code> are both accepted; <code class="text-orange-400">soli fmt</code> normalizes to the <code>end</code> form.</div>
+                <div><strong class="text-white">Variant names</strong> are written in <code class="text-orange-400">PascalCase</code>, like classes.</div>
                 <div><strong class="text-white">Trailing commas</strong> between variants are optional.</div>
             </div>
         </div>
@@ -220,7 +220,7 @@ end</code></pre>
             </svg>
             Pattern Matching
         </a>
-        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Pipeline Operator
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

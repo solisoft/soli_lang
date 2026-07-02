@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Middleware</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Middleware</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Filter HTTP requests and responses. Middleware enables cross-cutting concerns like authentication, logging, and CORS handling.
@@ -11,7 +11,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">Request Logging</h2>
     <p class="text-gray-400 mb-6">Soli includes built-in request logging at the server level with timing information:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Server Output</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">[LOG] GET /users - 200 (1.234ms)
@@ -20,9 +20,9 @@
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">Request logging is <strong>always on in <code class="text-indigo-400">--dev</code></strong> so every route shows up in the terminal as you work. In production it's opt-in via <code class="text-indigo-400">SOLI_REQUEST_LOG=1</code>:</p>
+    <p class="text-gray-400 mb-6">Request logging is <strong>always on in <code class="text-amber-400">--dev</code></strong> so every route shows up in the terminal as you work. In production it's opt-in via <code class="text-amber-400">SOLI_REQUEST_LOG=1</code>:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Enable request logging in production
 SOLI_REQUEST_LOG=1 soli serve myapp
@@ -33,7 +33,7 @@ SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Middleware Attributes</h2>
-    <p class="text-gray-400 mb-6">Middleware files in <code class="text-indigo-400">app/middleware/</code> are loaded automatically. Control behavior using special comment attributes:</p>
+    <p class="text-gray-400 mb-6">Middleware files in <code class="text-amber-400">app/middleware/</code> are loaded automatically. Control behavior using special comment attributes:</p>
 
     <div class="overflow-x-auto mb-8">
         <table class="min-w-full text-sm">
@@ -45,15 +45,15 @@ SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
             </thead>
             <tbody class="text-gray-300">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// order: N</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">// order: N</td>
                     <td class="py-3 px-4">Execution order (lower runs first, default: 100)</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// global_only: true</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">// global_only: true</td>
                     <td class="py-3 px-4">Runs for ALL requests, cannot be scoped to specific routes</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-indigo-400">// scope_only: true</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">// scope_only: true</td>
                     <td class="py-3 px-4">Only runs when explicitly scoped, never globally</td>
                 </tr>
             </tbody>
@@ -63,7 +63,7 @@ SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Creating Middleware</h2>
     <p class="text-gray-400 mb-6">Middleware functions receive a request hash and return a result hash:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-8">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/cors.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// order: 5
@@ -79,7 +79,7 @@ fn add_cors_headers(req: Any) -&gt; Any {
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// order: 20
@@ -121,7 +121,7 @@ fn authenticate(req: Any) -&gt; Any {
     <p class="text-gray-400 mb-6">Middleware must return a hash with one of these formats:</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-        <div class="rounded-lg bg-gray-900 overflow-hidden">
+        <div class="rounded-lg bg-[#171412] overflow-hidden">
             <label class="block px-4 py-2 bg-green-500/10 text-xs text-green-400 font-mono border-b border-white/5">Continue Processing</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
@@ -130,7 +130,7 @@ fn authenticate(req: Any) -&gt; Any {
 }</code></pre>
             </div>
         </div>
-        <div class="rounded-lg bg-gray-900 overflow-hidden">
+        <div class="rounded-lg bg-[#171412] overflow-hidden">
             <label class="block px-4 py-2 bg-red-500/10 text-xs text-red-400 font-mono border-b border-white/5">Short-circuit Response</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">{
@@ -151,39 +151,39 @@ fn authenticate(req: Any) -&gt; Any {
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-stretch">
             <!-- Request -->
             <div class="md:col-span-1 flex md:flex-col items-center justify-center gap-3 text-center">
-                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-500/10 ring-1 ring-inset ring-indigo-400/30">
-                    <svg class="h-5 w-5 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 ring-1 ring-inset ring-amber-400/30">
+                    <svg class="h-5 w-5 text-amber-300" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                     </svg>
                 </div>
                 <div>
-                    <div class="text-xs font-mono uppercase tracking-wider text-indigo-300">Incoming</div>
+                    <div class="text-xs font-mono uppercase tracking-wider text-amber-300">Incoming</div>
                     <div class="text-sm font-semibold text-white">HTTP Request</div>
                 </div>
             </div>
 
             <!-- Pipeline -->
             <div class="md:col-span-3 relative">
-                <div class="hidden md:block absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-gradient-to-r from-indigo-500/40 via-purple-500/40 to-green-500/40"></div>
+                <div class="hidden md:block absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/40 to-green-500/40"></div>
                 <div class="relative grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <!-- Step 1: Global -->
-                    <div class="rounded-xl bg-gray-900/80 border border-indigo-500/30 p-4 backdrop-blur">
+                    <div class="rounded-xl bg-[#171412]/80 border border-amber-500/30 p-4 backdrop-blur">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-bold">1</span>
-                            <span class="text-xs font-mono uppercase tracking-wider text-indigo-300">Global</span>
+                            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold">1</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-amber-300">Global</span>
                         </div>
                         <div class="text-sm font-semibold text-white mb-1">Global Middleware</div>
-                        <div class="text-xs text-gray-400">Runs for every request, sorted by <code class="text-indigo-300">order</code>.</div>
+                        <div class="text-xs text-gray-400">Runs for every request, sorted by <code class="text-amber-300">order</code>.</div>
                     </div>
 
                     <!-- Step 2: Scoped -->
-                    <div class="rounded-xl bg-gray-900/80 border border-purple-500/30 p-4 backdrop-blur">
+                    <div class="rounded-xl bg-[#171412]/80 border border-orange-500/30 p-4 backdrop-blur">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold">2</span>
-                            <span class="text-xs font-mono uppercase tracking-wider text-purple-300">Scoped</span>
+                            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 text-xs font-bold">2</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-orange-300">Scoped</span>
                         </div>
                         <div class="text-sm font-semibold text-white mb-1">Route Middleware</div>
-                        <div class="text-xs text-gray-400">Only for routes wrapped in <code class="text-purple-300">middleware(...)</code>.</div>
+                        <div class="text-xs text-gray-400">Only for routes wrapped in <code class="text-orange-300">middleware(...)</code>.</div>
                     </div>
 
                     <!-- Step 3: Controller -->
@@ -213,17 +213,17 @@ fn authenticate(req: Any) -&gt; Any {
         </div>
 
         <div class="mt-6 pt-6 border-t border-white/10 flex items-start gap-3 text-sm text-gray-400">
-            <svg class="h-5 w-5 flex-none text-indigo-300 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <svg class="h-5 w-5 flex-none text-amber-300 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
             </svg>
-            <p>Any middleware can short-circuit the chain by returning <code class="text-indigo-300">{ "continue": false, "response": ... }</code>, skipping later layers and the controller entirely.</p>
+            <p>Any middleware can short-circuit the chain by returning <code class="text-amber-300">{ "continue": false, "response": ... }</code>, skipping later layers and the controller entirely.</p>
         </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Scoping Middleware to Routes</h2>
-    <p class="text-gray-400 mb-6">Use the <code class="text-indigo-400">middleware()</code> function in routes to apply scope-only middleware:</p>
+    <p class="text-gray-400 mb-6">Use the <code class="text-amber-400">middleware()</code> function in routes to apply scope-only middleware:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">// Public routes (no auth required)
@@ -245,14 +245,14 @@ middleware(["authenticate", "admin_only"], fn() {
         </div>
     </div>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
             </svg>
             Best Practices
         </h4>
-        <ul class="text-indigo-200/80 space-y-2 mt-2 text-sm">
+        <ul class="text-amber-200/80 space-y-2 mt-2 text-sm">
             <li>&#8226; Middleware files in <code>app/middleware/</code> are loaded automatically &mdash; no imports needed</li>
             <li>&#8226; Use <code>order</code> to control execution sequence (lower runs first)</li>
             <li>&#8226; Use <code>global_only: true</code> for middleware that must run on every request (CORS, security headers)</li>
@@ -263,16 +263,16 @@ middleware(["authenticate", "admin_only"], fn() {
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <a href="/docs/core-concepts/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+        <a href="/docs/core-concepts/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Controllers &rarr;</h3>
             <p class="text-sm text-gray-400">Handle the requests processed by middleware.</p>
         </a>
-        <a href="/docs/core-concepts/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Views &rarr;</h3>
+        <a href="/docs/core-concepts/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Views &rarr;</h3>
             <p class="text-sm text-gray-400">Render HTML responses for your users.</p>
         </a>
-        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Models &rarr;</h3>
             <p class="text-sm text-gray-400">Interact with your database securely.</p>
         </a>
     </div>

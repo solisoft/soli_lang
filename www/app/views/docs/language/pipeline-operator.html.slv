@@ -30,7 +30,7 @@
         <section id="op-pipeline" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#op-pipeline" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">|&gt;</code>
+                    <code class="text-lg font-mono text-amber-400">|&gt;</code>
                     <span class="text-gray-400 text-sm">Pipeline Operator</span>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -80,7 +80,7 @@ print(calc)  # ((100 - 10) / 3) * 4 = 120</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">With Collection Methods</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">
-                Iteration over arrays uses method chaining: <code class="text-pink-400">.map</code>, <code class="text-pink-400">.filter</code>, <code class="text-pink-400">.reduce</code>, <code class="text-pink-400">.each</code>. Lambdas are most concise in pipe form — <code class="text-pink-400">|x| x + 1</code> — but <code class="text-pink-400">fn(x) x + 1</code> works too.
+                Iteration over arrays uses method chaining: <code class="text-orange-400">.map</code>, <code class="text-orange-400">.filter</code>, <code class="text-orange-400">.reduce</code>, <code class="text-orange-400">.each</code>. Lambdas are most concise in pipe form — <code class="text-orange-400">|x| x + 1</code> — but <code class="text-orange-400">fn(x) x + 1</code> works too.
             </p>
             <pre data-filename="Example"><code class="language-soli text-sm">numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -99,7 +99,7 @@ print(sum_of_evens)  # 30
 # `.each` for side effects
 numbers.filter(|x| x &gt; 5).each(|x| print(x))</code></pre>
             <p class="text-gray-400 mt-3 text-sm">
-                You can still use <code class="text-pink-400">|&gt;</code> with these chains by pre-defining a callable, e.g. <code class="text-pink-400">numbers |&gt; |arr| arr.filter(|x| x &gt; 5)()</code>.
+                You can still use <code class="text-orange-400">|&gt;</code> with these chains by pre-defining a callable, e.g. <code class="text-orange-400">numbers |&gt; |arr| arr.filter(|x| x &gt; 5)()</code>.
             </p>
         </div>
     </section>
@@ -176,7 +176,7 @@ print("Total Revenue: $" + str(total_revenue))  # $2750</code></pre>
             </svg>
             Pattern Matching
         </a>
-        <a href="/docs/language/modules" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/modules" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Modules
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

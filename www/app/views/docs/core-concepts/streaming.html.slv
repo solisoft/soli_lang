@@ -40,7 +40,7 @@
 end</code></pre>
             <pre data-filename="Client (JavaScript)"><code class="language-bash text-sm">const es = new EventSource("/feed/stream")
 es.addEventListener("notice", e =&gt; console.log(JSON.parse(e.data)))</code></pre>
-            <p class="text-gray-400 mt-3"><code class="text-cyan-400">out.emit</code> returns <code class="text-purple-400">false</code> when the client has disconnected &mdash; check it to stop an open-ended loop early.</p>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">out.emit</code> returns <code class="text-orange-400">false</code> when the client has disconnected &mdash; check it to stop an open-ended loop early.</p>
         </div>
     </section>
 
@@ -62,10 +62,10 @@ end</code></pre>
 
     <!-- out API -->
     <section id="section-out" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-indigo-400">out</code> emitter</h2>
+        <h2 class="text-2xl font-bold text-white mb-4">The <code class="text-amber-400">out</code> emitter</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <div class="text-sm text-gray-400 space-y-1">
-                <div><code class="text-amber-400">out.emit(data, event?)</code> &mdash; one SSE event; multi-line <code>data</code> is split into multiple <code>data:</code> lines. Returns <code class="text-purple-400">Bool</code> (false = client gone).</div>
+                <div><code class="text-amber-400">out.emit(data, event?)</code> &mdash; one SSE event; multi-line <code>data</code> is split into multiple <code>data:</code> lines. Returns <code class="text-orange-400">Bool</code> (false = client gone).</div>
                 <div><code class="text-amber-400">out.write(data)</code> &mdash; a raw body chunk, no framing (for <code>stream</code>).</div>
             </div>
             <p class="text-gray-400 mt-3 text-sm">Named <code>emit</code>, not <code>send</code>, because <code>send</code> is the universal metaprogramming method.</p>
@@ -76,7 +76,7 @@ end</code></pre>
     <section id="section-pubsub" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Many connections: pub/sub</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">The <code class="text-cyan-400">sse(...)</code>/<code class="text-cyan-400">stream(...)</code> blocks above hold a worker thread while they run &mdash; great for a finite job, but you don't want one worker per idle connection on a dashboard with thousands of viewers. For that, <strong class="text-white">subscribe</strong> instead: <code class="text-cyan-400">sse_subscribe(req, topic)</code> registers the connection and returns immediately (no worker held), and <code class="text-cyan-400">sse_broadcast(topic, data, event?)</code> fans an event out to every subscriber &mdash; called from any controller, <a href="/docs/builtins/jobs" class="text-indigo-400 hover:text-indigo-300">job</a>, or model callback.</p>
+            <p class="text-gray-400 mb-3">The <code class="text-cyan-400">sse(...)</code>/<code class="text-cyan-400">stream(...)</code> blocks above hold a worker thread while they run &mdash; great for a finite job, but you don't want one worker per idle connection on a dashboard with thousands of viewers. For that, <strong class="text-white">subscribe</strong> instead: <code class="text-cyan-400">sse_subscribe(req, topic)</code> registers the connection and returns immediately (no worker held), and <code class="text-cyan-400">sse_broadcast(topic, data, event?)</code> fans an event out to every subscriber &mdash; called from any controller, <a href="/docs/builtins/jobs" class="text-amber-400 hover:text-amber-300">job</a>, or model callback.</p>
             <pre data-filename="app/controllers/notifications_controller.sl"><code class="language-soli text-sm"># Each browser holds a cheap async connection — not a worker.
 def subscribe(req)
   sse_subscribe(req, "user:#{current_user.id}")
@@ -99,8 +99,8 @@ es.addEventListener("alert", e =&gt; toast(e.data))</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <div class="text-sm text-gray-400 space-y-2">
                 <div><strong class="text-white">SSE</strong> &mdash; one-way server → browser updates (notifications, token streams, progress). Simpler than WebSockets; auto-reconnects.</div>
-                <div><strong class="text-white"><a href="/docs/core-concepts/websockets" class="text-indigo-400 hover:text-indigo-300">WebSockets</a></strong> &mdash; two-way, low-latency (chat, presence, games).</div>
-                <div><strong class="text-white"><a href="/docs/core-concepts/liveview" class="text-indigo-400 hover:text-indigo-300">Live View</a></strong> &mdash; server-rendered reactive UI without writing client JS.</div>
+                <div><strong class="text-white"><a href="/docs/core-concepts/websockets" class="text-amber-400 hover:text-amber-300">WebSockets</a></strong> &mdash; two-way, low-latency (chat, presence, games).</div>
+                <div><strong class="text-white"><a href="/docs/core-concepts/liveview" class="text-amber-400 hover:text-amber-300">Live View</a></strong> &mdash; server-rendered reactive UI without writing client JS.</div>
             </div>
             <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
                 <p class="text-sm text-amber-200"><strong>Pick the path by lifetime.</strong> A <code>sse</code>/<code>stream</code> <em>block</em> holds one worker thread until it finishes &mdash; use it for finite, active streams (an agent run, an export), and size the pool for how many run at once. For many long-lived, mostly-idle connections, use <code>sse_subscribe</code>/<code>sse_broadcast</code>: those are async and don't consume a worker per connection. Backpressure is automatic in both (a slow client pauses a block; for broadcasts a full client drops the message but keeps its subscription).</p>

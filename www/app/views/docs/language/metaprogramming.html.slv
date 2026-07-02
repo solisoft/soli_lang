@@ -56,7 +56,7 @@ person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> within <code class="text-pink-400">instance_member_access</code>:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code> within <code class="text-orange-400">instance_member_access</code>:
             </p>
             <pre><code class="language-rust text-sm">// Implementation flow:
 // 1. Check native methods via find_native_method
@@ -103,7 +103,7 @@ person.any_undefined_method     # => "Method 'any_undefined_method' was called"<
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> at the end of <code class="text-pink-400">instance_member_access</code>:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code> at the end of <code class="text-orange-400">instance_member_access</code>:
             </p>
             <pre><code class="language-rust text-sm">// When a method is not found:
 // 1. Check if class has method_missing defined
@@ -147,7 +147,7 @@ person.respond_to?("inspect")      # => true (universal method)</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> as a universal instance method:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code> as a universal instance method:
             </p>
             <pre><code class="language-rust text-sm">// Checks class methods, native methods, AND universal methods
 // Universal methods (inspect, class, nil?, etc.) are handled inline
@@ -197,7 +197,7 @@ foo2.greet()  # => "Hello!"</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code>:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code>:
             </p>
             <pre><code class="language-rust text-sm">// define_method writes to Class.methods (RefCell for interior mutability).
 // Class-level form (Foo.define_method) is supported alongside the
@@ -222,7 +222,7 @@ foo2.greet()  # => "Hello!"</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            <code class="text-pink-400">Int</code>, <code class="text-pink-400">Float</code>, <code class="text-pink-400">Bool</code>, <code class="text-pink-400">Decimal</code>, <code class="text-pink-400">String</code>, <code class="text-pink-400">Array</code>, <code class="text-pink-400">Hash</code>, <code class="text-pink-400">Symbol</code>, and <code class="text-pink-400">Null</code> can be reopened with <code class="text-pink-400">define_method</code> / <code class="text-pink-400">alias_method</code>. User methods are checked before built-ins and shadow them on collision.
+            <code class="text-orange-400">Int</code>, <code class="text-orange-400">Float</code>, <code class="text-orange-400">Bool</code>, <code class="text-orange-400">Decimal</code>, <code class="text-orange-400">String</code>, <code class="text-orange-400">Array</code>, <code class="text-orange-400">Hash</code>, <code class="text-orange-400">Symbol</code>, and <code class="text-orange-400">Null</code> can be reopened with <code class="text-orange-400">define_method</code> / <code class="text-orange-400">alias_method</code>. User methods are checked before built-ins and shadow them on collision.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -251,7 +251,7 @@ String.alias_method("shout", "yell")</code></pre>
                 Lookup order on a primitive value: user methods → built-in methods → (for Hash) literal hash-key fallback. A user method on Hash shadows the literal-key access, matching Ruby's monkey-patching semantics.
             </p>
             <p class="text-gray-400 text-sm">
-                Dispatch is gated by a single Relaxed atomic load. When no user methods have been registered for any primitive type, every call short-circuits in one cycle — no measurable overhead on the hot path. Storage is <code class="text-pink-400">thread_local!</code>; each worker thread registers its own copy when models load.
+                Dispatch is gated by a single Relaxed atomic load. When no user methods have been registered for any primitive type, every call short-circuits in one cycle — no measurable overhead on the hot path. Storage is <code class="text-orange-400">thread_local!</code>; each worker thread registers its own copy when models load.
             </p>
         </div>
     </section>
@@ -268,7 +268,7 @@ String.alias_method("shout", "yell")</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            <code class="text-pink-400">scope</code> is a class-body DSL — same shape as <code class="text-pink-400">validates</code>, <code class="text-pink-400">has_many</code>, <code class="text-pink-400">before_save</code>. The class is auto-prepended to the call, and <code class="text-pink-400">this</code> inside the closure is bound to a fresh <code class="text-pink-400">QueryBuilder</code> for the model.
+            <code class="text-orange-400">scope</code> is a class-body DSL — same shape as <code class="text-orange-400">validates</code>, <code class="text-orange-400">has_many</code>, <code class="text-orange-400">before_save</code>. The class is auto-prepended to the call, and <code class="text-orange-400">this</code> inside the closure is bound to a fresh <code class="text-orange-400">QueryBuilder</code> for the model.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -285,7 +285,7 @@ let posts = Post.published.where("author_id = @id", { "id": 42 }).all</code></pr
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm">
-                The closure returns the (possibly refined) <code class="text-pink-400">QueryBuilder</code>. Scope storage is per-thread (<code class="text-pink-400">Rc&lt;Function&gt;</code> is <code class="text-pink-400">!Send</code> and can't go in the process-global <code class="text-pink-400">MODEL_REGISTRY</code>); each worker registers scopes when it loads model files. See <code class="text-pink-400">src/interpreter/builtins/model/scopes.rs</code>.
+                The closure returns the (possibly refined) <code class="text-orange-400">QueryBuilder</code>. Scope storage is per-thread (<code class="text-orange-400">Rc&lt;Function&gt;</code> is <code class="text-orange-400">!Send</code> and can't go in the process-global <code class="text-orange-400">MODEL_REGISTRY</code>); each worker registers scopes when it loads model files. See <code class="text-orange-400">src/interpreter/builtins/model/scopes.rs</code>.
             </p>
         </div>
     </section>
@@ -293,8 +293,8 @@ let posts = Post.published.where("author_id = @id", { "id": 42 }).all</code></pr
     <!-- alias_method -->
     <section id="section-alias-method" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
             </span>
@@ -321,7 +321,7 @@ foo.say_hello("World")  # => "Hello, World!"</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code>:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code>:
             </p>
             <pre><code class="language-rust text-sm">// alias_method copies the method function to the new name
 class.methods.borrow_mut().insert(new_name, method.clone());
@@ -341,7 +341,7 @@ class.all_methods_cache.borrow_mut().take();</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            Called automatically when a class inherits from another class. Define <code class="text-pink-400">static fn inherited(child)</code> on a class to be notified when subclasses are created.
+            Called automatically when a class inherits from another class. Define <code class="text-orange-400">static fn inherited(child)</code> on a class to be notified when subclasses are created.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -359,7 +359,7 @@ class Child < Parent { }
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/statements.rs</code>:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/statements.rs</code>:
             </p>
             <pre><code class="language-rust text-sm">// After class creation, call inherited hook if superclass has one
 if let Some(inherited_func) = superclass.find_static_method("inherited") {
@@ -377,8 +377,8 @@ if let Some(inherited_native) = superclass.find_native_static_method("inherited"
     <!-- class_eval and instance_eval -->
     <section id="section-eval" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
             </span>
@@ -386,7 +386,7 @@ if let Some(inherited_native) = superclass.find_native_static_method("inherited"
         </h2>
 
         <p class="text-gray-400 mb-4">
-            Evaluate a block in the context of an instance, with <code class="text-pink-400">this</code> and <code class="text-pink-400">self</code> bound to the instance.
+            Evaluate a block in the context of an instance, with <code class="text-orange-400">this</code> and <code class="text-orange-400">self</code> bound to the instance.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -409,7 +409,7 @@ val  # => 42</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Implemented in <code class="text-pink-400">src/interpreter/executor/access/member.rs</code> as an instance method:
+                Implemented in <code class="text-orange-400">src/interpreter/executor/access/member.rs</code> as an instance method:
             </p>
             <pre><code class="language-rust text-sm">// instance_eval executes a block with:
 // - 'this' bound to the instance
@@ -463,7 +463,7 @@ User.new.to_json</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Hook into the <code class="text-pink-400">include</code> statement resolution in the parser/interpreter. The <code class="text-pink-400">included</code> static method would be called automatically:
+                Hook into the <code class="text-orange-400">include</code> statement resolution in the parser/interpreter. The <code class="text-orange-400">included</code> static method would be called automatically:
             </p>
             <pre><code class="language-rust text-sm">// When processing `include ModuleName`:
 // 1. Load the module (existing behavior)
@@ -501,42 +501,42 @@ User.new.to_json</code></pre>
                     </thead>
                     <tbody class="divide-y divide-white/5">
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">methods()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">methods()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">All accessible method names</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">public_methods()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">public_methods()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">Public method names</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">private_methods()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">private_methods()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">Private method names</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">instance_variables()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">instance_variables()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">Instance variable names (including @)</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">instance_variable_get(name)</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">instance_variable_get(name)</code></td>
                             <td class="py-2 px-4 text-gray-400">Any</td>
                             <td class="py-2 px-4 text-gray-400">Get instance variable value</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">instance_variable_set(name, value)</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">instance_variable_set(name, value)</code></td>
                             <td class="py-2 px-4 text-gray-400">Any</td>
                             <td class="py-2 px-4 text-gray-400">Set instance variable value</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">class_variables()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">class_variables()</code></td>
                             <td class="py-2 px-4 text-gray-400">Array&lt;String&gt;</td>
                             <td class="py-2 px-4 text-gray-400">Class variable names</td>
                         </tr>
                         <tr>
-                            <td class="py-2 px-4"><code class="text-pink-400">constants()</code></td>
+                            <td class="py-2 px-4"><code class="text-orange-400">constants()</code></td>
                             <td class="py-2 px-4 text-gray-400">Hash</td>
                             <td class="py-2 px-4 text-gray-400">Constants defined in class/module</td>
                         </tr>
@@ -565,7 +565,7 @@ user.respond_to?("greet") # => true</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mt-4">
             <h3 class="text-lg font-semibold text-white mb-3">Implementation Notes</h3>
             <p class="text-gray-400 text-sm mb-3">
-                These use existing data structures in <code class="text-pink-400">Class</code> and <code class="text-pink-400">Instance</code>:
+                These use existing data structures in <code class="text-orange-400">Class</code> and <code class="text-orange-400">Instance</code>:
             </p>
             <pre><code class="language-rust text-sm">// Instance.fields: HashMap<String, Value>
 // Class.methods: HashMap<String, Rc<Function>>
@@ -588,7 +588,7 @@ user.respond_to?("greet") # => true</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            A practical application combining <code class="text-pink-400">method_missing</code> and <code class="text-pink-400">respond_to?</code> to create Rails-style dynamic finders.
+            A practical application combining <code class="text-orange-400">method_missing</code> and <code class="text-orange-400">respond_to?</code> to create Rails-style dynamic finders.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -673,19 +673,19 @@ User.find_by_name_and_status("Bob", "active")  # => "Finding by name_and_status"
     <section id="section-see-also" class="scroll-mt-20">
         <h2 class="text-2xl font-bold text-white mb-4">See Also</h2>
         <div class="flex flex-wrap gap-3">
-            <a href="/docs/language/classes-oop" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+            <a href="/docs/language/classes-oop" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
                 Classes & OOP
             </a>
-            <a href="/docs/language/modules" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+            <a href="/docs/language/modules" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
                 Modules
             </a>
-            <a href="/docs/language/pattern-matching" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
+            <a href="/docs/language/pattern-matching" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 text-gray-300 hover:text-white transition-all">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>

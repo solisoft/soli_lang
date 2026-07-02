@@ -2,7 +2,7 @@
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Soli Language Reference</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Soli Language Reference</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             A comprehensive guide to the Soli programming language. Learn the syntax, types, control flow, functions, classes, and advanced features that make Soli unique.
@@ -12,21 +12,21 @@
     <!-- Table of Contents -->
     <nav class="not-prose mb-16">
         <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
             Language Topics
         </h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <a href="/docs/language/variables-types" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">1</span>
+            <a href="/docs/language/variables-types" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">1</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Variables & Types</span>
             </a>
-            <a href="/docs/language/operators" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-sm font-mono">2</span>
+            <a href="/docs/language/operators" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">2</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Operators</span>
             </a>
-            <a href="/docs/language/control-flow" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/control-flow" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">3</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Control Flow</span>
             </a>
@@ -34,27 +34,27 @@
                 <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">4</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Error Handling</span>
             </a>
-            <a href="/docs/language/functions" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/functions" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">5</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Functions</span>
             </a>
-            <a href="/docs/language/arrays" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/arrays" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Collections</span>
             </a>
-            <a href="/docs/language/classes-oop" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/classes-oop" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Classes & OOP</span>
             </a>
-            <a href="/docs/language/pattern-matching" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/pattern-matching" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">8</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Pattern Matching</span>
             </a>
-            <a href="/docs/language/pipeline-operator" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/pipeline-operator" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">9</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Pipeline Operator</span>
             </a>
-            <a href="/docs/language/modules" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="/docs/language/modules" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-sm font-mono">10</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Modules</span>
             </a>
@@ -66,8 +66,8 @@
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">12</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Floats</span>
             </a>
-            <a href="/docs/language/booleans" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-purple-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">13</span>
+            <a href="/docs/language/booleans" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-orange-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">13</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Booleans</span>
             </a>
             <a href="/docs/language/null" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-gray-500/50 hover:bg-white/10 transition-all group">
@@ -78,12 +78,12 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">15</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Decimal Type</span>
             </a>
-            <a href="/docs/language/symbols" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-fuchsia-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 text-sm font-mono">16</span>
+            <a href="/docs/language/symbols" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-orange-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">16</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Symbols</span>
             </a>
-            <a href="/docs/language/blocks" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-violet-500/20 flex items-center justify-center text-violet-400 text-sm font-mono">17</span>
+            <a href="/docs/language/blocks" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">17</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Block Syntax</span>
             </a>
             <a href="/docs/language/linting" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-yellow-500/50 hover:bg-white/10 transition-all group">
@@ -100,8 +100,8 @@
     <!-- Getting Started Section -->
     <section id="section-getting-started" class="scroll-mt-20 mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
             </span>
@@ -221,13 +221,13 @@ p[1] > 0);</code></pre>
     </section>
 
     <!-- Call to Action -->
-    <div class="rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 p-8 text-center">
+    <div class="rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-orange-500/10 border border-amber-500/20 p-8 text-center">
         <h3 class="text-2xl font-bold text-white mb-3">Ready to Learn?</h3>
         <p class="text-gray-400 mb-6">
             Start with Variables & Types to learn the fundamentals of Soli.
         </p>
         <div class="flex flex-wrap justify-center gap-4">
-            <a href="/docs/language/variables-types" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors">
+            <a href="/docs/language/variables-types" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>

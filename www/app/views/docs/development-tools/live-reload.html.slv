@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Live Reload</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Live Reload</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Experience instant feedback. Soli's development server automatically detects changes and updates your browser without a restart.
@@ -30,17 +30,17 @@
     </p>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-indigo-500/50 transition-all">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-amber-500/50 transition-all">
             <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <svg class="w-16 h-16 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                <svg class="w-16 h-16 text-amber-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
             </div>
             <h3 class="text-lg font-bold text-white mb-2">1. File Changed</h3>
             <p class="text-gray-400 text-sm">You save a controller, view, or model file.</p>
         </div>
 
-        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-purple-500/50 transition-all">
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group hover:border-orange-500/50 transition-all">
             <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <svg class="w-16 h-16 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                <svg class="w-16 h-16 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
             </div>
             <h3 class="text-lg font-bold text-white mb-2">2. Recompile</h3>
             <p class="text-gray-400 text-sm">Soli instantly re-parses and reloads the changed files in memory.</p>
@@ -58,7 +58,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">Starting the Server</h2>
     <p class="text-gray-400 mb-6">Use the CLI to start your app in development mode:</p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
         <pre data-filename="Terminal"><code class="language-bash text-sm"># Run with hot reload
 soli serve . --dev
 
@@ -71,13 +71,13 @@ soli serve . --dev --port 8080</code></pre>
         Soli handles asset compilation automatically. When you start the server with <code>soli serve --dev</code>, it will automatically compile your assets, including Tailwind CSS, without needing any complex build steps.
     </p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="Terminal"><code class="language-bash text-sm"># Just run the server with --dev!
 soli serve . --dev</code></pre>
     </div>
 
     <p class="text-gray-400 mb-4">
-        The dev server scans <code class="text-indigo-400">app/assets/css/*.css</code>, detects whether your project is <strong class="text-white">Tailwind v3 or v4</strong> (from your CSS directives and <code>package.json</code> &mdash; v4 needs no <code>tailwind.config.js</code>), compiles into <code class="text-indigo-400">public/css/</code>, and recompiles on startup and whenever views, asset CSS, controllers, or helpers change. It uses your local <code class="text-indigo-400">node_modules/.bin/tailwindcss</code> if present, otherwise a SHA-256-pinned standalone CLI cached in <code class="text-indigo-400">~/.soli/bin/</code> (Tailwind v4.3.1 for v4 projects, v3.4.17 for legacy v3).
+        The dev server scans <code class="text-amber-400">app/assets/css/*.css</code>, detects whether your project is <strong class="text-white">Tailwind v3 or v4</strong> (from your CSS directives and <code>package.json</code> &mdash; v4 needs no <code>tailwind.config.js</code>), compiles into <code class="text-amber-400">public/css/</code>, and recompiles on startup and whenever views, asset CSS, controllers, or helpers change. It uses your local <code class="text-amber-400">node_modules/.bin/tailwindcss</code> if present, otherwise a SHA-256-pinned standalone CLI cached in <code class="text-amber-400">~/.soli/bin/</code> (Tailwind v4.3.1 for v4 projects, v3.4.17 for legacy v3).
     </p>
     <p class="text-gray-400 mb-12">
         Because of this, a separate Tailwind watcher is optional &mdash; the <code>npm run dev</code> / <code>npm run watch:css</code> scripts in the template still work if you'd rather run the official <code>--watch</code> mode yourself.
@@ -98,17 +98,17 @@ soli serve . --dev</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Production Mode</h2>
     <p class="text-gray-400 mb-6">
-        When you start the server <strong>without</strong> <code class="text-indigo-400">--dev</code>, behaviour flips for static assets:
+        When you start the server <strong>without</strong> <code class="text-amber-400">--dev</code>, behaviour flips for static assets:
     </p>
     <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
         <li><strong class="text-white">Live reload is disabled.</strong> No WebSocket, no file watcher, no auto-refresh.</li>
-        <li><strong class="text-white">CSS and JS files are snapshotted into memory at startup.</strong> The server walks <code class="text-indigo-400">public/</code> once and serves the bytes it loaded, with content-hash <code>ETag</code> and <code>Cache-Control: public, max-age=31536000, immutable</code>.</li>
+        <li><strong class="text-white">CSS and JS files are snapshotted into memory at startup.</strong> The server walks <code class="text-amber-400">public/</code> once and serves the bytes it loaded, with content-hash <code>ETag</code> and <code>Cache-Control: public, max-age=31536000, immutable</code>.</li>
     </ul>
     <p class="text-gray-400 mb-6">
-        The in-memory snapshot exists to prevent a deploy-time race. If you overwrite <code class="text-indigo-400">public/css/app.css</code> on disk before restarting the binary, the running process keeps serving the <strong>old</strong> bytes. Browsers that already loaded HTML referencing a specific asset version don't suddenly fetch mismatched new bytes against the cached page. The next binary restart reloads from disk.
+        The in-memory snapshot exists to prevent a deploy-time race. If you overwrite <code class="text-amber-400">public/css/app.css</code> on disk before restarting the binary, the running process keeps serving the <strong>old</strong> bytes. Browsers that already loaded HTML referencing a specific asset version don't suddenly fetch mismatched new bytes against the cached page. The next binary restart reloads from disk.
     </p>
 
-    <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="Server log"><code class="language-text text-sm">Cached 12 CSS/JS assets (438213 bytes) for prod-mode serving</code></pre>
     </div>
 
@@ -118,12 +118,12 @@ soli serve . --dev</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Installation &rarr;</h3>
+        <a href="/docs/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Installation &rarr;</h3>
             <p class="text-sm text-gray-400">Start a new project.</p>
         </a>
-        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Controllers &rarr;</h3>
+        <a href="/docs/controllers" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Controllers &rarr;</h3>
             <p class="text-sm text-gray-400">Learn about request handling.</p>
         </a>
     </div>

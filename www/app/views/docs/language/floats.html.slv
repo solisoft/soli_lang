@@ -26,7 +26,7 @@
             </span>
             Creating Floats
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">pi = 3.14159
 temp = -40.0
@@ -52,7 +52,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-round" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-round" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.round / .round(digits)</code>
+                        <code class="text-lg font-mono text-amber-400">.round / .round(digits)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -65,14 +65,14 @@ let typed: Float = 1.5</code></pre>
                  #          representation, so binary-float artifacts
                  #          like 38.995 == 38.99499999... don't bite
 12345.0.round(-2) # 12300.0  — negative digits round to powers of 10</code></pre>
-                    <p class="text-gray-400 mt-3 text-sm">For exact decimal arithmetic (currency, etc.), prefer the <a href="/docs/language/decimal" class="text-indigo-400 hover:underline">Decimal</a> type.</p>
+                    <p class="text-gray-400 mt-3 text-sm">For exact decimal arithmetic (currency, etc.), prefer the <a href="/docs/language/decimal" class="text-amber-400 hover:underline">Decimal</a> type.</p>
                 </div>
             </section>
 
             <section id="method-ceil" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-ceil" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.ceil</code>
+                        <code class="text-lg font-mono text-amber-400">.ceil</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -86,7 +86,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-floor" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-floor" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.floor</code>
+                        <code class="text-lg font-mono text-amber-400">.floor</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -100,7 +100,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-truncate" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-truncate" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.truncate</code>
+                        <code class="text-lg font-mono text-amber-400">.truncate</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -114,7 +114,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-abs" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-abs" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.abs</code>
+                        <code class="text-lg font-mono text-amber-400">.abs</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -128,7 +128,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-sqrt" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sqrt" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sqrt</code>
+                        <code class="text-lg font-mono text-amber-400">.sqrt</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -156,7 +156,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-zero" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-zero" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.zero? / .positive? / .negative?</code>
+                        <code class="text-lg font-mono text-amber-400">.zero? / .positive? / .negative?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -171,7 +171,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-finite-infinite-nan" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-finite-infinite-nan" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.finite? / .infinite? / .nan?</code>
+                        <code class="text-lg font-mono text-amber-400">.finite? / .infinite? / .nan?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -186,7 +186,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-between" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-between" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.between?(min, max)</code>
+                        <code class="text-lg font-mono text-amber-400">.between?(min, max)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -200,7 +200,7 @@ let typed: Float = 1.5</code></pre>
             <section id="method-clamp" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-clamp" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.clamp(min, max)</code>
+                        <code class="text-lg font-mono text-amber-400">.clamp(min, max)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -228,12 +228,12 @@ let typed: Float = 1.5</code></pre>
             <section id="method-sleep" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sleep" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sleep</code>
+                        <code class="text-lg font-mono text-amber-400">.sleep</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Pauses the current thread for the float number of seconds (sub-second precision). Negative, NaN, or infinite values are a no-op. Returns <code class="text-indigo-400">null</code>.</p>
+                    <p class="text-gray-400 mb-3">Pauses the current thread for the float number of seconds (sub-second precision). Negative, NaN, or infinite values are a no-op. Returns <code class="text-amber-400">null</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">0.5.sleep       # pause for 500ms
 0.01.sleep      # pause for 10ms
 delay = 1.5
@@ -258,7 +258,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-to-i" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-i" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_i / .to_int</code>
+                        <code class="text-lg font-mono text-amber-400">.to_i / .to_int</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -272,7 +272,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-to-s" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <code class="text-lg font-mono text-amber-400">.to_s / .to_string</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -301,7 +301,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-class" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-class" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <code class="text-lg font-mono text-amber-400">.class</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -314,7 +314,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-inspect" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <code class="text-lg font-mono text-amber-400">.inspect</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -327,12 +327,12 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-is-a" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <code class="text-lg font-mono text-amber-400">.is_a?(type_name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-indigo-400">"float"</code>, <code class="text-indigo-400">"numeric"</code>, and <code class="text-indigo-400">"object"</code>.</p>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-amber-400">"float"</code>, <code class="text-amber-400">"numeric"</code>, and <code class="text-amber-400">"object"</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">3.14.is_a?("float")     # true
 3.14.is_a?("numeric")   # true
 3.14.is_a?("int")       # false</code></pre>
@@ -342,7 +342,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             <section id="method-nil" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-nil" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.nil? / .blank? / .present?</code>
+                        <code class="text-lg font-mono text-amber-400">.nil? / .blank? / .present?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -364,7 +364,7 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
             </svg>
             Integers
         </a>
-        <a href="/docs/language/booleans" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/booleans" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Booleans
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

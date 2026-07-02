@@ -2,7 +2,7 @@
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Debugging & Breakpoints</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Debugging & Breakpoints</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Learn how to use soli's powerful debugging tools including breakpoints, interactive REPL, and the development error page.
@@ -12,37 +12,37 @@
     <!-- Table of Contents -->
     <nav class="not-prose mb-16">
         <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
             Table of Contents
         </h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <a href="#breakpoints" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-sm font-mono">1</span>
+            <a href="#breakpoints" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">1</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Breakpoints</span>
             </a>
-            <a href="#debug-page" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-mono">2</span>
+            <a href="#debug-page" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">2</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Debug Page</span>
             </a>
-            <a href="#interactive-repl" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="#interactive-repl" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">3</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Interactive REPL</span>
             </a>
-            <a href="#aql-query-log" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="#aql-query-log" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-mono">4</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">AQL Query Log</span>
             </a>
-            <a href="#dev-bar-flamegraph" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
-                <span class="w-8 h-8 rounded bg-pink-500/20 flex items-center justify-center text-pink-400 text-sm font-mono">5</span>
+            <a href="#dev-bar-flamegraph" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-sm font-mono">5</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Flamegraph</span>
             </a>
-            <a href="#dev-bar-requests" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="#dev-bar-requests" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Page Requests</span>
             </a>
-            <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all group">
+            <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
             </a>
@@ -52,8 +52,8 @@
     <!-- Section 1: Breakpoints -->
     <section id="breakpoints" class="mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                <svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
             </span>
@@ -61,11 +61,11 @@
         </h2>
 
         <p class="text-gray-400 mb-6">
-            Use the <code class="text-indigo-400">break()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
+            Use the <code class="text-amber-400">break()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Setting Breakpoints</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def process_user(user_id: Int) -> Hash
   user = database.find(user_id)
@@ -86,7 +86,7 @@ end</code></pre></code></pre>
         <h3 class="text-xl font-semibold text-white mb-4">Why Use Breakpoints?</h3>
         <div class="not-prose grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <span class="inline-block px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-bold font-mono mb-2">Inspect State</span>
+                <span class="inline-block px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-bold font-mono mb-2">Inspect State</span>
                 <p class="text-sm text-gray-400">Examine variable values and data structures at any point in your code</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
@@ -98,7 +98,7 @@ end</code></pre></code></pre>
                 <p class="text-sm text-gray-400">Run arbitrary soli code to test hypotheses or calculate values</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <span class="inline-block px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-bold font-mono mb-2">Debug Errors</span>
+                <span class="inline-block px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-bold font-mono mb-2">Debug Errors</span>
                 <p class="text-sm text-gray-400">Automatically triggered on errors to help diagnose issues</p>
             </div>
         </div>
@@ -111,7 +111,7 @@ end</code></pre></code></pre>
                 <div>
                     <h4 class="text-blue-400 font-semibold mb-1">Tip</h4>
                     <p class="text-sm text-gray-300">
-                        Breakpoints only work in development mode. In production, <code class="text-indigo-400">break()</code> calls are ignored.
+                        Breakpoints only work in development mode. In production, <code class="text-amber-400">break()</code> calls are ignored.
                     </p>
                 </div>
             </div>
@@ -121,8 +121,8 @@ end</code></pre></code></pre>
     <!-- Section 2: Debug Page -->
     <section id="debug-page" class="mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                <svg class="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
             </span>
@@ -134,7 +134,7 @@ end</code></pre></code></pre>
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Debug Page Features</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Interactive REPL - Execute soli code in breakpoint context
 # Stack Trace - Navigate through call stack frames
@@ -148,7 +148,7 @@ end</code></pre></code></pre>
         <p class="text-gray-400 mb-4">
             Click on any stack frame to view the source code at that location. The source viewer shows the relevant code with the error line highlighted.
         </p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-text text-sm">Stack Trace:
  0. process_user at ./src/users.sl:15
@@ -193,7 +193,7 @@ Click on any frame to see the source code.</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Available Variables</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Request object - access all request data
 req              # Full request object
@@ -211,7 +211,7 @@ breakpoint_env   # Local variables at breakpoint</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">REPL Features</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Use @ to reference the last result
 req["params"]["id"]  # Returns: "123"
@@ -230,7 +230,7 @@ config["database"];  # View configuration</code></pre>
         <p class="text-gray-400 mb-4">
             Click the quick inspect buttons to instantly view common data:
         </p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Available quick inspect buttons:
 req        # View full request object
@@ -280,7 +280,7 @@ headers    # View HTTP headers</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Controller Example</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index
@@ -298,7 +298,7 @@ end</code></pre>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Debug Bar Partial</h3>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/shared/_dev_bar.html.erb</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-erb text-sm">&lt;% if queries.length &gt; 0 %&gt;
@@ -359,8 +359,8 @@ end</code></pre>
     <!-- Section 4b: Dev Bar Flamegraph -->
     <section id="dev-bar-flamegraph" class="mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-pink-500/20 flex items-center justify-center">
-                <svg class="w-5 h-5 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.24 17 7.341 18.1 9.5 18.1 11.5 17 13c-1.5 2-3 1-3-1 0-1 1-2 1-2-2 0-3 1-3 3 0 2 1 4 3 5z" />
                 </svg>
             </span>
@@ -368,7 +368,7 @@ end</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-6">
-            Click <code class="text-pink-400">flame</code> in the dev bar to expand a hierarchical flamegraph of every span captured during the request — middleware, before/after actions, controller dispatch, view, partials, every Soli function call, plus DB and HTTP. Hover any rectangle for an exact duration; click to zoom in; double-click to reset.
+            Click <code class="text-orange-400">flame</code> in the dev bar to expand a hierarchical flamegraph of every span captured during the request — middleware, before/after actions, controller dispatch, view, partials, every Soli function call, plus DB and HTTP. Hover any rectangle for an exact duration; click to zoom in; double-click to reset.
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">What gets captured</h3>
@@ -389,8 +389,8 @@ end</code></pre>
                     <tr><td class="py-2 px-4 font-mono text-amber-200">before_action / after_action</td><td class="py-2 px-4 text-gray-400">dim amber</td><td class="py-2 px-4 text-gray-400">Per controller hook fire</td></tr>
                     <tr><td class="py-2 px-4 font-mono text-cyan-300">action</td><td class="py-2 px-4 text-gray-400">cyan</td><td class="py-2 px-4 text-gray-400">Top-level handler dispatch (e.g. <code>posts#show</code>)</td></tr>
                     <tr><td class="py-2 px-4 font-mono text-emerald-300">view / partial</td><td class="py-2 px-4 text-gray-400">green</td><td class="py-2 px-4 text-gray-400">Each <code>render(...)</code> / <code>render_partial(...)</code></td></tr>
-                    <tr><td class="py-2 px-4 font-mono text-purple-300">db</td><td class="py-2 px-4 text-gray-400">purple</td><td class="py-2 px-4 text-gray-400">Each AQL query (name = first 80 chars)</td></tr>
-                    <tr><td class="py-2 px-4 font-mono text-pink-300">http</td><td class="py-2 px-4 text-gray-400">pink</td><td class="py-2 px-4 text-gray-400">Each outbound <code>HTTP.*</code> call</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-orange-300">db</td><td class="py-2 px-4 text-gray-400">purple</td><td class="py-2 px-4 text-gray-400">Each AQL query (name = first 80 chars)</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-orange-300">http</td><td class="py-2 px-4 text-gray-400">pink</td><td class="py-2 px-4 text-gray-400">Each outbound <code>HTTP.*</code> call</td></tr>
                     <tr><td class="py-2 px-4 font-mono text-gray-400">fn</td><td class="py-2 px-4 text-gray-400">slate</td><td class="py-2 px-4 text-gray-400">Every Soli function call (interpreter path)</td></tr>
                 </tbody>
             </table>
@@ -436,7 +436,7 @@ end</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-6">
-            Every response the dev server sends carries an <code class="text-sky-400">X-Soli-Route</code> header naming the route that handled it (e.g. <code class="text-pink-400">users#show</code>). The dev bar header shows the current page's route right after the URL, and <strong>clicking the URL</strong> expands a <em>Requests</em> panel listing every route the page touched — the main page plus each XHR / <code>fetch</code> / HTMx call it fired afterwards.
+            Every response the dev server sends carries an <code class="text-sky-400">X-Soli-Route</code> header naming the route that handled it (e.g. <code class="text-orange-400">users#show</code>). The dev bar header shows the current page's route right after the URL, and <strong>clicking the URL</strong> expands a <em>Requests</em> panel listing every route the page touched — the main page plus each XHR / <code>fetch</code> / HTMx call it fired afterwards.
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">How it works</h3>
@@ -448,7 +448,7 @@ end</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4">Inspect any request</h3>
         <p class="text-gray-400 mb-4">
-            <strong>Click a row</strong> to retarget the <code class="text-purple-400">db</code>, <code class="text-pink-400">http</code>, <code class="text-amber-400">kv</code>, and <code class="text-pink-400">flame</code> panels (and their header badges) to that request — so you can open the flamegraph or query list for a specific XHR call, not just the main page. Every dev response also carries an <code class="text-sky-400">X-Soli-Request-Id</code>; the bar stores each request's snapshot server-side (a small ring buffer of the most recent requests) and the row-click fetches <code class="text-cyan-400">/__solidev/request/:id</code> to re-render its panels in place. The selected row is highlighted; row 0 is always the page itself.
+            <strong>Click a row</strong> to retarget the <code class="text-orange-400">db</code>, <code class="text-orange-400">http</code>, <code class="text-amber-400">kv</code>, and <code class="text-orange-400">flame</code> panels (and their header badges) to that request — so you can open the flamegraph or query list for a specific XHR call, not just the main page. Every dev response also carries an <code class="text-sky-400">X-Soli-Request-Id</code>; the bar stores each request's snapshot server-side (a small ring buffer of the most recent requests) and the row-click fetches <code class="text-cyan-400">/__solidev/request/:id</code> to re-render its panels in place. The selected row is highlighted; row 0 is always the page itself.
         </p>
 
         <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
@@ -480,7 +480,7 @@ end</code></pre>
             Start the development server with hot reload to enable all debugging features:
         </p>
 
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm"># Start development server with hot reload
 soli serve
@@ -530,13 +530,13 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
     </section>
 
     <!-- Call to Action -->
-    <div class="rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 p-8 text-center">
+    <div class="rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-orange-500/10 border border-amber-500/20 p-8 text-center">
         <h3 class="text-2xl font-bold text-white mb-3">Next Steps</h3>
         <p class="text-gray-400 mb-6">
             Combine debugging with testing to build robust applications.
         </p>
         <div class="flex flex-wrap justify-center gap-4">
-            <a href="/docs/testing" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors">
+            <a href="/docs/testing" class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>

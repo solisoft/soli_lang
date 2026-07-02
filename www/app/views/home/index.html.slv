@@ -1,581 +1,469 @@
-<!-- Hero Section -->
+<style>
+    /* Request-trace signature: vertical rail, node dots, travelling pulse */
+    .trace-rail {
+        position: absolute;
+        left: 11px;
+        top: 10px;
+        bottom: 10px;
+        width: 2px;
+        background: linear-gradient(to bottom,
+            rgba(245, 158, 11, 0) 0%,
+            rgba(245, 158, 11, 0.45) 5%,
+            rgba(245, 158, 11, 0.45) 95%,
+            rgba(245, 158, 11, 0) 100%);
+    }
+    .trace-pulse {
+        position: absolute;
+        left: -3px;
+        top: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: #FDE68A;
+        box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.55);
+        animation: trace-pulse-run 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes trace-pulse-run {
+        0%   { top: 0%;   opacity: 0; }
+        8%   { opacity: 1; }
+        88%  { opacity: 1; }
+        100% { top: 99%;  opacity: 0; }
+    }
+    .trace-node {
+        position: absolute;
+        left: -42px;
+        top: 16px;
+        width: 12px;
+        height: 12px;
+        border-radius: 9999px;
+        background: #0C0A09;
+        border: 2px solid #F59E0B;
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .trace-pulse { display: none; }
+    }
+</style>
+
+<!-- Hero -->
 <section class="relative isolate overflow-hidden">
-    <!-- Animated background gradient -->
-    <div class="absolute inset-0 -z-10 overflow-hidden">
-        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-600/20 blur-[120px] animate-blob"></div>
-        <div class="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-purple-600/20 blur-[120px] animate-blob animation-delay-2000"></div>
-        <div class="absolute bottom-[-10%] left-[20%] w-[40%] h-[40%] rounded-full bg-pink-600/20 blur-[120px] animate-blob animation-delay-4000"></div>
-        <div class="absolute bottom-[-20%] right-[10%] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px] animate-blob animation-delay-6000"></div>
-        <!-- Grid pattern overlay -->
-        <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
-    </div>
-
-    <div class="container mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:py-40 lg:px-8">
-        <div class="text-center">
-            <!-- Badge -->
-            <div class="mb-8 flex justify-center reveal-on-scroll">
-                <div class="relative rounded-full px-4 py-1.5 text-sm leading-6 text-gray-300 ring-1 ring-white/10 hover:ring-white/20 hover:bg-white/5 transition-all cursor-default backdrop-blur-md bg-white/5">
-                    <span class="inline-flex items-center gap-2">
-                        <span class="relative flex h-2 w-2">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                        </span>
-                        <span class="font-medium text-indigo-300">New</span>
-                        <span class="w-1 h-1 rounded-full bg-gray-600"></span>
-                        <span id="version-badge">Loading latest version ...</span>
-                    </span>
-                </div>
-            </div>
-
-            <!-- Main heading -->
-            <h1 class="text-4xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl reveal-on-scroll" style="transition-delay: 100ms;">
-                <span class="block">    Build Beautiful</span>
-                <span class="inline-block mt-2 bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 bg-clip-text text-transparent pb-2">Web Applications</span>
-            </h1>
-
-            <p class="mt-6 text-lg leading-8 text-gray-300 sm:text-xl reveal-on-scroll" style="transition-delay: 200ms;">
-                A modern, expressive web framework that combines the elegance of Ruby with the performance of Rust.
-                Build faster, ship sooner, sleep better.
-            </p>
-
-            <!-- CTA Buttons -->
-            <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 reveal-on-scroll" style="transition-delay: 300ms;">
-                <a href="/docs/getting-started/introduction" class="group relative inline-flex items-center justify-center gap-2 rounded-xl bg-white px-8 py-4 text-sm font-semibold text-gray-900 shadow-lg shadow-indigo-500/20 hover:bg-gray-50 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-indigo-500/30">
-                    <span>Get Started</span>
-                    <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                </a>
-                <a href="https://github.com/solisoft/soli_lang" target="_blank" class="group inline-flex items-center justify-center gap-2 rounded-xl px-8 py-4 text-sm font-semibold text-white ring-1 ring-white/20 hover:ring-white/40 hover:bg-white/5 transition-all duration-300 backdrop-blur-sm">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
-                    <span>View on GitHub</span>
-                </a>
-            </div>
-
-            <!-- Stats -->
-            <div class="mt-16 flex flex-wrap justify-center gap-8 sm:gap-16 reveal-on-scroll" style="transition-delay: 400ms;">
-                <div class="text-center group">
-                    <div class="text-3xl font-bold text-white group-hover:text-green-400 transition-colors">1.2M+</div>
-                    <div class="text-sm text-gray-400 mt-1">Plaintext req/s</div>
-                </div>
-                <div class="text-center group">
-                    <div class="text-3xl font-bold text-white group-hover:text-emerald-400 transition-colors">834k+</div>
-                    <div class="text-sm text-gray-400 mt-1">JSON req/s</div>
-                </div>
-                <div class="text-center group">
-                    <div class="text-3xl font-bold text-white group-hover:text-pink-400 transition-colors">0</div>
-                    <div class="text-sm text-gray-400 mt-1">Dependencies</div>
-                </div>
+    <div class="container mx-auto max-w-6xl px-6 py-20 sm:py-28 lg:py-32 lg:px-8">
+        <!-- Version badge -->
+        <div class="mb-8 reveal-on-scroll">
+            <div class="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm leading-6 text-stone-300 ring-1 ring-white/10 bg-white/5">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                <span id="version-badge">Loading latest version ...</span>
             </div>
         </div>
 
-        <!-- Code Preview -->
-        <div class="mt-20 sm:mt-24 reveal-on-scroll">
-            <div class="relative">
-                <!-- Glow effect behind the code window -->
-                <div class="absolute -inset-4 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-2xl blur-2xl"></div>
+        <!-- Headline -->
+        <h1 class="font-display text-5xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl max-w-4xl reveal-on-scroll" style="transition-delay: 100ms;">
+            The whole framework,
+            <span class="block mt-1"><span class="text-amber-400">one</span> binary.</span>
+        </h1>
 
-                <div class="relative rounded-2xl bg-gray-950 shadow-2xl ring-1 ring-white/10 overflow-hidden transform transition-transform hover:scale-[1.01] duration-500" id="mvc-demo">
-                    <!-- Window header with Tabs -->
-                    <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5 backdrop-blur-sm">
-                        <div class="flex items-center gap-2">
-                            <div class="flex gap-1.5 mr-4">
-                                <div class="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer"></div>
-                                <div class="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 transition-colors cursor-pointer"></div>
-                                <div class="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-500 transition-colors cursor-pointer"></div>
-                            </div>
+        <p class="mt-8 text-lg leading-8 text-stone-300 sm:text-xl max-w-3xl reveal-on-scroll" style="transition-delay: 200ms;">
+            Soli is a programming language with a complete MVC framework built in &mdash;
+            models, validations, auth, background jobs, mailer, PDF, WebSockets, live views,
+            i18n, tests. Ruby's expressiveness, Rust's speed, and nothing to install but
+            <code class="text-amber-200 text-base">soli</code> itself.
+        </p>
 
-                            <!-- Tabs -->
-                            <div class="flex space-x-1 bg-black/20 p-1 rounded-lg">
-                                <button onclick="switchTab('model')" id="tab-model" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-white bg-white/10 shadow-sm">Model</button>
-                                <button onclick="switchTab('view')" id="tab-view" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5">View</button>
-                                <button onclick="switchTab('controller')" id="tab-controller" class="px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5">Controller</button>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2 px-3 py-1 rounded-md bg-white/5 text-xs font-mono text-gray-500" id="file-path">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <span id="filename-display">app/models/post.sl</span>
-                        </div>
-                    </div>
+        <!-- CTAs -->
+        <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 reveal-on-scroll" style="transition-delay: 300ms;">
+            <a href="/docs/getting-started/introduction" class="group inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-semibold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all duration-300 hover:shadow-xl hover:shadow-amber-500/30">
+                <span>Get started</span>
+                <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+            <button onclick="copyNewAppCmd(this)" class="group inline-flex items-center gap-3 rounded-xl px-5 py-3.5 text-sm font-mono text-stone-200 ring-1 ring-white/15 hover:ring-amber-500/40 hover:bg-white/5 transition-all duration-300" title="Copy to clipboard">
+                <span class="text-[#4ADE80] select-none">$</span>
+                <span>soli new blog &amp;&amp; soli serve blog</span>
+                <svg data-copy-icon class="w-4 h-4 text-stone-500 group-hover:text-amber-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+            </button>
+            <a href="https://github.com/solisoft/soli_lang" target="_blank" class="inline-flex items-center gap-2 px-2 py-3.5 text-sm font-medium text-stone-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
+                <span>GitHub</span>
+            </a>
+        </div>
 
-                    <!-- Code content areas -->
-                    <div class="px-6 py-6 overflow-x-auto min-h-[300px]">
-                        <!-- Model Content -->
-                        <div id="content-model">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">Post</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
-  <span class="text-gray-500"># Validations</span>
-  <span class="text-blue-400">validates</span>(<span class="text-green-400">"title"</span>, {
-    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-    <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">3</span>
-  })
-  <span class="text-blue-400">validates</span>(<span class="text-green-400">"author_id"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span> })
-
-  <span class="text-gray-500"># Relationships via methods</span>
-  <span class="text-purple-400">def</span> <span class="text-blue-400">author</span>
-    <span class="text-yellow-200">User</span>.<span class="text-blue-400">find</span>(<span class="text-blue-400">this</span>.author_id)
-  <span class="text-purple-400">end</span>
-
-  <span class="text-purple-400">def</span> <span class="text-blue-400">comments</span>
-    <span class="text-yellow-200">Comment</span>.<span class="text-blue-400">where</span>(
-      <span class="text-green-400">"doc.post_id == @id"</span>,
-      { <span class="text-green-400">"id"</span>: <span class="text-blue-400">this</span>.id }
-    )
-  <span class="text-purple-400">end</span>
-<span class="text-purple-400">end</span></code></pre>
-                        </div>
-
-                        <!-- View Content -->
-                        <div id="content-view" class="hidden">
-<pre class="text-sm leading-7"><code class="language-html"><span class="text-gray-500">&lt;!-- ERB-style templates --&gt;</span>
-<span class="text-blue-400">&lt;h1&gt;</span><span class="text-white">&lt;%= title %&gt;</span><span class="text-blue-400">&lt;/h1&gt;</span>
-
-<span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"posts"</span><span class="text-blue-400">&gt;</span>
- <span class="text-white">&lt;% for post in @post %&gt;</span>
-  <span class="text-blue-400">&lt;article&gt;</span>
-   <span class="text-blue-400">&lt;h2&gt;</span><span class="text-white">&lt;%= post["title"] %&gt;</span><span class="text-blue-400">&lt;/h2&gt;</span>
-   <span class="text-blue-400">&lt;p&gt;</span><span class="text-white">&lt;%= post["excerpt"] %&gt;</span><span class="text-blue-400">&lt;/p&gt;</span>
-   <span class="text-blue-400">&lt;a</span> <span class="text-purple-400">href=</span><span class="text-green-400">"/posts/&lt;%= post["id"] %&gt;"</span><span class="text-blue-400">&gt;</span>
-    Read more
-   <span class="text-blue-400">&lt;/a&gt;</span>
-  <span class="text-blue-400">&lt;/article&gt;</span>
- <span class="text-purple-400">&lt;% end %&gt;</span>
-<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
-                        </div>
-
-                        <!-- Controller Content -->
-                        <div id="content-controller" class="hidden">
-<pre class="text-sm leading-7"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">PostsController</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Controller</span>
-  <span class="text-purple-400">def</span> <span class="text-blue-400">index</span>(<span class="text-orange-300">req</span>)
-    @post = <span class="text-yellow-200">Post</span>
-      .<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.status == @s"</span>, { <span class="text-green-400">"s"</span>: <span class="text-green-400">"published"</span> })
-      .<span class="text-blue-400">order</span>(<span class="text-green-400">"created_at"</span>, <span class="text-green-400">"desc"</span>)
-      .<span class="text-blue-400">limit</span>(<span class="text-orange-300">10</span>)
-      .<span class="text-blue-400">all</span>
-
-    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/index"</span>, { <span class="text-green-400">"title"</span>: <span class="text-green-400">"Latest Posts"</span> })
-  <span class="text-purple-400">end</span>
-
-  <span class="text-purple-400">def</span> <span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>)
-    result = <span class="text-yellow-200">Post</span>.<span class="text-blue-400">create</span>(<span class="text-orange-300">req</span>[<span class="text-green-400">"params"</span>]);
-    <span class="text-purple-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/posts"</span>) <span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
-
-    <span class="text-blue-400">render</span>(<span class="text-green-400">"posts/new"</span>)
-  <span class="text-purple-400">end</span>
-<span class="text-purple-400">end</span></code></pre>
-                        </div>
-                    </div>
-                </div>
+        <!-- Stats -->
+        <div class="mt-16 flex flex-wrap gap-10 sm:gap-16 reveal-on-scroll" style="transition-delay: 400ms;">
+            <div>
+                <div class="font-display text-3xl font-bold text-white">1.2M+</div>
+                <div class="text-sm text-stone-400 mt-1">Plaintext req/s</div>
+            </div>
+            <div>
+                <div class="font-display text-3xl font-bold text-white">834k+</div>
+                <div class="text-sm text-stone-400 mt-1">JSON req/s</div>
+            </div>
+            <div>
+                <div class="font-display text-3xl font-bold text-amber-400">0</div>
+                <div class="text-sm text-stone-400 mt-1">Dependencies</div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Features Section -->
-<section class="relative py-24 sm:py-32">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+<!-- Request trace: the signature -->
+<section class="relative py-20 sm:py-28">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
         <div class="reveal-on-scroll">
-            <h2 class="text-base font-semibold leading-7 text-indigo-400 tracking-wide uppercase">Why Soli?</h2>
-            <p class="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Everything you need to build modern web apps
-            </p>
-            <p class="mt-6 text-lg leading-8 text-gray-400">
-                Stop wrestling with configuration. Soli includes batteries, so you can focus on building.
+            <div class="inline-flex items-center gap-2 rounded-md bg-white/5 ring-1 ring-white/10 px-3 py-1.5 font-mono text-sm">
+                <span class="text-amber-400 font-semibold">GET</span>
+                <span class="text-stone-200">/posts</span>
+            </div>
+            <h2 class="font-display mt-5 text-3xl font-bold tracking-tight text-white sm:text-5xl">Anatomy of a request</h2>
+            <p class="mt-5 text-lg leading-8 text-stone-400 max-w-3xl">
+                One route, one controller, one model, one view &mdash; and the dev bar times every hop.
+                This is the entire stack. There is nothing else to wire up.
             </p>
         </div>
 
-        <div class="mt-16">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-                <!-- Feature 1: Performance (Large, spans 2 cols on lg) -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 lg:col-span-2 hover:bg-white/5 transition-all duration-300 reveal-on-scroll overflow-hidden">
-                    <div class="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl group-hover:bg-indigo-500/30 transition-all duration-500"></div>
-                    <div class="relative flex flex-col md:flex-row gap-8 items-start md:items-center h-full">
-                        <div class="flex-1">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 mb-6 group-hover:scale-110 transition-transform">
-                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                                </svg>
-                            </div>
-                            <h3 class="text-2xl font-bold text-white mb-3">Blazing Fast Performance</h3>
-                            <p class="text-gray-400 leading-relaxed">
-                                Built on Rust for raw speed, with the expressiveness of Ruby. Soli handles over <span class="text-green-400 font-semibold">1.2 million</span> plaintext requests per second.
-                            </p>
+        <div class="mt-14 relative pl-12 max-w-4xl">
+            <div class="trace-rail" aria-hidden="true"><div class="trace-pulse"></div></div>
 
-                            <!-- Mini Chart Representation -->
-                            <div class="mt-8 flex items-end gap-2 h-24 w-full max-w-[200px] opacity-70 group-hover:opacity-100 transition-opacity">
-                                <div class="w-1/4 bg-gray-700 rounded-t-sm h-[30%]"></div>
-                                <div class="w-1/4 bg-gray-600 rounded-t-sm h-[50%]"></div>
-                                <div class="w-1/4 bg-indigo-900 rounded-t-sm h-[70%]"></div>
-                                <div class="w-1/4 bg-indigo-500 rounded-t-sm h-[100%] shadow-[0_0_15px_rgba(99,102,241,0.5)]"></div>
-                            </div>
-                        </div>
-                        <div class="hidden md:block w-1/3 bg-black/30 rounded-lg p-4 font-mono text-xs text-green-300 border border-green-500/20 shadow-lg">
-                            <div>$ wrk -t12 -c400 -d30s</div>
-                            <div class="mt-2 text-white">Running 30s test @ http://localhost:5011</div>
-                            <div class="mt-2 text-green-400">Requests/sec: 1,206,408</div>
-                            <div class="text-green-400">Transfer/sec: 142.31MB</div>
-                        </div>
+            <!-- Hop 1: routes -->
+            <div class="relative mb-8 reveal-on-scroll">
+                <div class="trace-node" aria-hidden="true"></div>
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="font-mono text-xs text-stone-400">config/routes.sl</span>
+                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">2 &micro;s</span>
+                    </div>
+                    <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-stone-300">get(</span><span class="text-stone-100">"/posts"</span><span class="text-stone-300">, </span><span class="text-stone-100">"posts#index"</span><span class="text-stone-300">)</span></code></pre>
                     </div>
                 </div>
+            </div>
 
-                <!-- Feature 2: Secure (Standard) -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll overflow-hidden" style="transition-delay: 100ms;">
-                    <div class="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                    <div>
-                        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 mb-6 group-hover:scale-110 transition-transform">
-                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                            </svg>
-                        </div>
-                        <h3 class="text-xl font-bold text-white mb-3">Secure by Default</h3>
-                        <p class="text-gray-400 leading-relaxed mb-6">
-                            Security isn't an afterthought. We include CSRF protection, secure headers, and SQL injection prevention.
-                        </p>
-                        <ul class="space-y-3 text-sm text-gray-300">
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                                <span>CSRF Token Validation</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                                <span>XSS Sanitization</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                                <span>Secure Session Cookies</span>
-                            </li>
-                        </ul>
+            <!-- Hop 2: controller -->
+            <div class="relative mb-8 reveal-on-scroll">
+                <div class="trace-node" aria-hidden="true"></div>
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="font-mono text-xs text-stone-400">app/controllers/posts_controller.sl</span>
+                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">14 &micro;s</span>
+                    </div>
+                    <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">PostsController</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Controller</span>
+  <span class="text-orange-300">def</span> <span class="text-stone-200">index</span>
+    <span class="text-orange-200">@posts</span> <span class="text-stone-300">=</span> <span class="text-amber-200">Post</span>
+      <span class="text-stone-300">.where(</span><span class="text-stone-100">"doc.status == @s"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"s"</span><span class="text-stone-300">: </span><span class="text-stone-100">"published"</span><span class="text-stone-300"> })</span>
+      <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
+      <span class="text-stone-300">.limit(</span><span class="text-amber-300">10</span><span class="text-stone-300">).all</span>
+    <span class="text-stone-300">render(</span><span class="text-stone-100">"posts/index"</span><span class="text-stone-300">)</span>
+  <span class="text-orange-300">end</span>
+<span class="text-orange-300">end</span></code></pre>
                     </div>
                 </div>
+            </div>
 
-                <!-- Feature 3: Hot Reload (Standard) -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll backdrop-blur-sm" style="transition-delay: 200ms;">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-500/10 text-pink-400 mb-6 group-hover:rotate-12 transition-transform">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                        </svg>
+            <!-- Hop 3: model + SoliDB -->
+            <div class="relative mb-8 reveal-on-scroll">
+                <div class="trace-node" aria-hidden="true"></div>
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="font-mono text-xs text-stone-400">app/models/post.sl</span>
+                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">190 &micro;s</span>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Instant Hot Reload</h3>
-                    <p class="text-gray-400 text-sm">
-                        See your changes instantly. Soli watches your files and recompiles in milliseconds, keeping your development flow uninterrupted.
-                    </p>
-                </div>
+                    <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">Post</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
+  <span class="text-stone-300">validates(</span><span class="text-stone-100">"title"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"presence"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300">, </span><span class="text-stone-100">"min_length"</span><span class="text-stone-300">: </span><span class="text-amber-300">3</span><span class="text-stone-300"> })</span>
 
-                <!-- Feature 4: Full Stack (Standard) -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll" style="transition-delay: 300ms;">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400 mb-6 group-hover:scale-110 transition-transform">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-                        </svg>
+  <span class="text-orange-300">def</span> <span class="text-stone-200">author</span>
+    <span class="text-amber-200">User</span><span class="text-stone-300">.find(</span><span class="text-orange-300">this</span><span class="text-stone-300">.author_id)</span>
+  <span class="text-orange-300">end</span>
+<span class="text-orange-300">end</span></code></pre>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Battery-Included ORM</h3>
-                    <p class="text-gray-400 text-sm">
-                        Powerful Active Record ORM with migrations, relationships, and validations. Database work made simple.
-                    </p>
+                    <div class="px-5 py-3 border-t border-white/[0.06] bg-black/20">
+                        <div class="font-mono text-[11px] text-stone-500 mb-1.5">dev_queries() &middot; 1 AQL query &middot; 0.19 ms</div>
+                        <pre class="font-mono text-xs text-stone-400 overflow-x-auto">FOR doc IN posts FILTER doc.status == @s SORT doc.created_at DESC LIMIT 10 RETURN doc</pre>
+                    </div>
                 </div>
+            </div>
 
-                <!-- Feature 6: Developer Experience (Standard) -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll" style="transition-delay: 500ms;">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-500/10 text-teal-400 mb-6 group-hover:scale-110 transition-transform">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                        </svg>
+            <!-- Hop 4: view -->
+            <div class="relative mb-8 reveal-on-scroll">
+                <div class="trace-node" aria-hidden="true"></div>
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="font-mono text-xs text-stone-400">app/views/posts/index.html.slv</span>
+                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">34 &micro;s</span>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Developer Experience</h3>
-                    <p class="text-gray-400 text-sm">
-                        Beautiful error pages, convention over configuration, and intuitive APIs designed for developer happiness.
-                    </p>
+                    <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-orange-300">&lt;% for post in @posts %&gt;</span>
+  <span class="text-stone-400">&lt;article&gt;</span>
+    <span class="text-stone-400">&lt;h2&gt;</span><span class="text-stone-100">&lt;%= h(post["title"]) %&gt;</span><span class="text-stone-400">&lt;/h2&gt;</span>
+    <span class="text-stone-400">&lt;p&gt;</span><span class="text-stone-100">&lt;%= post["excerpt"] %&gt;</span><span class="text-stone-400">&lt;/p&gt;</span>
+  <span class="text-stone-400">&lt;/article&gt;</span>
+<span class="text-orange-300">&lt;% end %&gt;</span></code></pre>
+                    </div>
                 </div>
+            </div>
+
+            <!-- Response -->
+            <div class="relative reveal-on-scroll">
+                <div class="trace-node" aria-hidden="true"></div>
+                <div class="rounded-xl bg-[#171412] ring-1 ring-amber-500/20 overflow-hidden">
+                    <div class="px-5 py-4">
+<pre class="font-mono text-sm leading-7"><code><span class="text-[#4ADE80]">HTTP/1.1 200 OK</span>
+<span class="text-stone-400">X-Soli-Route:</span> <span class="text-stone-200">posts#index</span>
+<span class="text-stone-400">X-Soli-Render-Us:</span> <span class="text-amber-300 font-semibold">240</span></code></pre>
+                        <p class="mt-3 text-sm text-stone-500">240 &micro;s of server time &mdash; the dev bar measures every request, every query, on every page you build.</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- Performance Benchmarks Section -->
-<section class="relative py-24 sm:py-32 bg-white/5">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+<!-- Batteries actually included -->
+<section class="relative py-20 sm:py-28 bg-white/[0.02] border-y border-white/[0.04]">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
         <div class="reveal-on-scroll">
-            <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                <span class="bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">World-Class Performance</span>
-            </h2>
-            <p class="mt-4 text-lg text-gray-400">
-                Ranked among the fastest web frameworks in the world
+            <h2 class="text-base font-semibold leading-7 text-amber-400 tracking-wide uppercase">Soli MVC</h2>
+            <p class="font-display mt-2 text-3xl font-bold tracking-tight text-white sm:text-5xl">
+                Batteries actually included
+            </p>
+            <p class="mt-6 text-lg leading-8 text-stone-400 max-w-3xl">
+                The parts every app needs live in the binary, not in a package registry.
+                No Gemfile, no package.json, no supply chain &mdash; one real line of code each.
             </p>
         </div>
 
-        <div class="mt-16">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Plaintext Benchmark -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll overflow-hidden">
-                    <div class="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-green-500/20 rounded-full blur-3xl group-hover:bg-green-500/30 transition-all duration-500"></div>
-                    <div class="relative">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10 text-green-400">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                                </svg>
-                            </div>
-                            <span class="text-sm font-medium text-gray-400">Plaintext</span>
-                        </div>
-                        <div class="text-5xl font-bold text-white mb-2">1,206,408</div>
-                        <div class="text-lg text-green-400 font-medium">req/s</div>
-                        <p class="mt-4 text-sm text-gray-500">
-                            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=plaintext" target="_blank" class="hover:text-green-400 transition-colors">TechEmpower Plaintext</a>
-                        </p>
-                    </div>
-                </div>
-
-                <!-- JSON Benchmark -->
-                <div class="group relative rounded-3xl bg-gray-900 border border-white/10 p-8 hover:bg-white/5 transition-all duration-300 reveal-on-scroll overflow-hidden" style="transition-delay: 100ms;">
-                    <div class="absolute top-0 right-0 -mt-20 -mr-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl group-hover:bg-emerald-500/30 transition-all duration-500"></div>
-                    <div class="relative">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                                </svg>
-                            </div>
-                            <span class="text-sm font-medium text-gray-400">JSON</span>
-                        </div>
-                        <div class="text-5xl font-bold text-white mb-2">834,109</div>
-                        <div class="text-lg text-emerald-400 font-medium">req/s</div>
-                        <p class="mt-4 text-sm text-gray-500">
-                            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=json" target="_blank" class="hover:text-emerald-400 transition-colors">TechEmpower JSON</a>
-                        </p>
-                    </div>
-                </div>
+        <div class="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Auth -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">Authentication &amp; policies</h3>
+                <p class="mt-1.5 text-sm text-stone-400"><code class="text-stone-300">soli generate auth</code> scaffolds login, sessions, and a Pundit-style policy layer.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-stone-300">authorize(post)</span>  <span class="text-stone-500"># 403 unless PostPolicy allows it</span></code></pre>
             </div>
+            <!-- Validations -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">Validations &amp; callbacks</h3>
+                <p class="mt-1.5 text-sm text-stone-400">Declared on the model, enforced on every create and update.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>validates(<span class="text-stone-100">"email"</span>, { <span class="text-stone-100">"presence"</span>: <span class="text-orange-300">true</span>, <span class="text-stone-100">"uniqueness"</span>: <span class="text-orange-300">true</span> })</code></pre>
+            </div>
+            <!-- Jobs -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">Background jobs</h3>
+                <p class="mt-1.5 text-sm text-stone-400">SolidB-backed queue with scheduling, priorities, retries, and cron.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-amber-200">WelcomeEmailJob</span>.perform_in(<span class="text-stone-100">"5 minutes"</span>, { <span class="text-stone-100">"user_id"</span>: <span class="text-amber-300">42</span> })</code></pre>
+            </div>
+            <!-- Mailer -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">Mailer</h3>
+                <p class="mt-1.5 text-sm text-stone-400">Rails-style mailers with templates, layouts, and attachments.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-amber-200">UserMailer</span>.welcome(user).deliver_later</code></pre>
+            </div>
+            <!-- PDF -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">PDF generation</h3>
+                <p class="mt-1.5 text-sm text-stone-400">JSON templates to invoice-grade PDFs, returned straight from an action.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>pdf_response(template, data, { <span class="text-stone-100">"filename"</span>: <span class="text-stone-100">"invoice.pdf"</span> })</code></pre>
+            </div>
+            <!-- WebSockets -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">WebSockets</h3>
+                <p class="mt-1.5 text-sm text-stone-400">Channels, rooms, and broadcast &mdash; hashes serialize themselves.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>ws_broadcast_room(room, { <span class="text-stone-100">"user"</span>: name, <span class="text-stone-100">"body"</span>: msg })</code></pre>
+            </div>
+            <!-- LiveView -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">Live views</h3>
+                <p class="mt-1.5 text-sm text-stone-400">Server-rendered reactive components without writing JavaScript.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"increment"</span><span class="text-stone-400">&gt;</span>+<span class="text-stone-400">&lt;/button&gt;</span></code></pre>
+            </div>
+            <!-- i18n -->
+            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
+                <h3 class="text-base font-semibold text-white">i18n</h3>
+                <p class="mt-1.5 text-sm text-stone-400">Translations with interpolation and pluralization built in.</p>
+                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>t(<span class="text-stone-100">"welcome.greeting"</span>, { <span class="text-stone-100">"name"</span>: user[<span class="text-stone-100">"name"</span>] })</code></pre>
+            </div>
+        </div>
 
-            <div class="mt-8 text-center">
-                <p class="text-sm text-gray-500">
-                    Benchmarks run on <span class="text-white">21 AWS c7i.2xlarge instances</span> via <a href="https://www.techempower.com/" target="_blank" class="text-indigo-400 hover:text-indigo-300">TechEmpower</a>
-                </p>
+        <!-- The rest, quietly -->
+        <div class="mt-10 reveal-on-scroll">
+            <div class="text-sm text-stone-500 mb-3">Also in the box:</div>
+            <div class="flex flex-wrap gap-2">
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Sessions</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Cache &amp; KV</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Rate limiting</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Uploads</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">S3</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Spreadsheets</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Migrations</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">State machines</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Feature flags</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Cron</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Testing &amp; coverage</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Linter</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Formatter</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Hot reload</span>
+                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Dev bar</span>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Scaffold Generator Demo -->
-<section class="relative py-24 sm:py-32 bg-white/5 w-full">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
-        <div class="mb-12">
-            <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Scaffold Generator</span>
-            </h2>
-            <p class="mt-4 text-lg text-gray-400">
-                Generate complete MVC resources in seconds
-            </p>
-        </div>
-
-        <div>
-            <div class="rounded-2xl bg-gray-900 border border-white/10 overflow-hidden shadow-2xl">
-                <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
-                    <span class="text-sm font-mono text-gray-400">Terminal</span>
-                    <div class="flex gap-1.5">
-                        <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
-                        <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                        <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
-                    </div>
-                </div>
-                <div class="p-6">
-                    <pre class="text-sm font-mono"><span class="text-green-400">$</span> <span class="text-white type-animation invisible">soli generate scaffold blog_posts title:string content:text author:string published:boolean</span>
-<span class="text-green-400">Success!</span> Created scaffold for blog_posts
-
-<span class="text-gray-500"># Generated files:</span>
-<span class="text-indigo-400">app/models/blog_posts_model.sl</span>
-<span class="text-indigo-400">app/controllers/blog_posts_controller.sl</span>
-<span class="text-indigo-400">app/views/blog_posts/index.html.slv</span>
-<span class="text-indigo-400">app/views/blog_posts/show.html.slv</span>
-<span class="text-indigo-400">app/views/blog_posts/new.html.slv</span>
-<span class="text-indigo-400">app/views/blog_posts/edit.html.slv</span>
-<span class="text-indigo-400">app/views/blog_posts/_form.html.slv</span>
-<span class="text-indigo-400">tests/models/blog_posts_test.sl</span>
-<span class="text-indigo-400">tests/controllers/blog_posts_controller_test.sl</span>
-<span class="text-indigo-400">db/migrations/*create_blog_posts_*.sl</span>
-<span class="text-green-400">✓</span> Routes added to config/routes.sl</pre>
-                </div>
-            </div>
-
-            <div class="mt-8 text-center">
-                <a href="/docs/development-tools/scaffold" class="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-                    <span>Learn more about scaffold generator</span>
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                </a>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- SoliDB Database Section -->
-<section class="relative py-24 sm:py-32">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+<!-- Generators -->
+<section class="relative py-20 sm:py-28">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
         <div class="mb-12 reveal-on-scroll">
-            <div class="flex items-center gap-4 mb-4">
-                <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                    Powered by <span class="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">SoliDB</span>
-                </h2>
-            </div>
-            <p class="mt-4 text-lg text-gray-400 max-w-3xl">
-                A distributed, ACID-compliant multi-model database built in Rust.
-                Documents, time-series, graph, key-value, vector search, and blob storage &mdash; all in a single runtime.
+            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">From zero to CRUD in one command</h2>
+            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
+                Scaffolds generate the model, controller, views, tests, migration, and routes.
+                The auth generator does the same for login, sessions, and policies.
             </p>
         </div>
 
-        <!-- SoliDB capabilities grid -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-12 reveal-on-scroll">
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all">
-                <div class="text-lg font-bold text-cyan-400 group-hover:scale-110 transition-transform">Documents</div>
-                <div class="text-xs text-gray-500 mt-1">JSON Store</div>
+        <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden reveal-on-scroll">
+            <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                <span class="text-xs font-mono text-stone-400">Terminal</span>
             </div>
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-blue-500/10 hover:border-blue-500/30 transition-all">
-                <div class="text-lg font-bold text-blue-400 group-hover:scale-110 transition-transform">Graph</div>
-                <div class="text-xs text-gray-500 mt-1">Edges & Traversal</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all">
-                <div class="text-lg font-bold text-indigo-400 group-hover:scale-110 transition-transform">Vector</div>
-                <div class="text-xs text-gray-500 mt-1">HNSW Search</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-purple-500/10 hover:border-purple-500/30 transition-all">
-                <div class="text-lg font-bold text-purple-400 group-hover:scale-110 transition-transform">Time Series</div>
-                <div class="text-xs text-gray-500 mt-1">Metrics & Logs</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-pink-500/10 hover:border-pink-500/30 transition-all">
-                <div class="text-lg font-bold text-pink-400 group-hover:scale-110 transition-transform">Full-Text</div>
-                <div class="text-xs text-gray-500 mt-1">Search Engine</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10 group hover:bg-amber-500/10 hover:border-amber-500/30 transition-all">
-                <div class="text-lg font-bold text-amber-400 group-hover:scale-110 transition-transform">Blobs</div>
-                <div class="text-xs text-gray-500 mt-1">File Storage</div>
+            <div class="p-6 overflow-x-auto">
+                <pre class="text-sm font-mono leading-6"><span class="text-[#4ADE80]">$</span> <span class="text-stone-100 type-animation invisible">soli generate scaffold blog_posts title:string content:text author:string published:boolean</span>
+<span class="text-[#4ADE80]">Success!</span> <span class="text-stone-300">Created scaffold for blog_posts</span>
+
+<span class="text-stone-500"># Generated files:</span>
+<span class="text-amber-200">app/models/blog_posts_model.sl</span>
+<span class="text-amber-200">app/controllers/blog_posts_controller.sl</span>
+<span class="text-amber-200">app/views/blog_posts/index.html.slv</span>
+<span class="text-amber-200">app/views/blog_posts/show.html.slv</span>
+<span class="text-amber-200">app/views/blog_posts/new.html.slv</span>
+<span class="text-amber-200">app/views/blog_posts/edit.html.slv</span>
+<span class="text-amber-200">app/views/blog_posts/_form.html.slv</span>
+<span class="text-amber-200">tests/models/blog_posts_test.sl</span>
+<span class="text-amber-200">tests/controllers/blog_posts_controller_test.sl</span>
+<span class="text-amber-200">db/migrations/*create_blog_posts_*.sl</span>
+<span class="text-[#4ADE80]">&#10003;</span> <span class="text-stone-300">Routes added to config/routes.sl</span>
+
+<span class="text-[#4ADE80]">$</span> <span class="text-stone-100">soli generate auth</span>
+<span class="text-[#4ADE80]">Success!</span> <span class="text-stone-300">Session authentication generated</span>
+<span class="text-amber-200">app/policies/application_policy.sl</span>
+<span class="text-amber-200">app/policies/user_policy.sl</span>
+<span class="text-amber-200">app/helpers/auth_helper.sl</span>
+<span class="text-stone-500">+ User model, login/signup/logout controllers &amp; views</span></pre>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Model + Validations -->
-            <div class="reveal-on-scroll">
-                <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
-                    <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
-                        <span class="text-xs text-gray-400 font-mono">app/models/user.sl</span>
-                    </div>
-                    <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">class</span> <span class="text-yellow-200">User</span> <span class="text-purple-400">&lt;</span> <span class="text-yellow-200">Model</span>
-  <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, {
-    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-    <span class="text-green-400">"uniqueness"</span>: <span class="text-purple-400">true</span>
-  })
-  <span class="text-blue-400">validates</span>(<span class="text-green-400">"name"</span>, {
-    <span class="text-green-400">"presence"</span>: <span class="text-purple-400">true</span>,
-    <span class="text-green-400">"min_length"</span>: <span class="text-orange-300">2</span>
-  })
-
-  <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_email"</span>)  <span class="text-gray-600"># or :normalize_email</span>
-  <span class="text-blue-400">after_create</span>(<span class="text-green-400">"send_welcome_email"</span>)
-
-  <span class="text-purple-400">def</span> <span class="text-blue-400">normalize_email</span>
-    <span class="text-purple-400">this</span>.email = <span class="text-purple-400">this</span>.email.<span class="text-blue-400">downcase</span>
-  <span class="text-purple-400">end</span>
-
-  <span class="text-purple-400">def</span> <span class="text-blue-400">posts</span>
-    <span class="text-yellow-200">Post</span>.<span class="text-blue-400">where</span>(<span class="text-green-400">"doc.user_id == @id"</span>, { <span class="text-green-400">"id"</span>: <span class="text-purple-400">this</span>.id })
-  <span class="text-purple-400">end</span>
-<span class="text-purple-400">end</span></code></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Query Builder -->
-            <div class="reveal-on-scroll" style="transition-delay: 100ms;">
-                <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
-                    <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
-                        <span class="text-xs text-gray-400 font-mono">app/controllers/users_controller.sl</span>
-                    </div>
-                    <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Chainable query builder</span>
-<span class="text-purple-400">let</span> admins = <span class="text-yellow-200">User</span>
-  <span class="text-green-400">"name"</span>: <span class="text-green-400">"Alice"</span>,
-  <span class="text-green-400">"email"</span>: <span class="text-green-400">"alice@example.com"</span>
-})
-
-<span class="text-purple-400">if</span> result[<span class="text-green-400">"valid"</span>]
-  <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users/"</span> + result[<span class="text-green-400">"record"</span>][<span class="text-green-400">"id"</span>])
-<span class="text-purple-400">else</span>
-  <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, { <span class="text-green-400">"errors"</span>: result[<span class="text-green-400">"errors"</span>] })
-<span class="text-purple-400">end</span></code></pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Migrations -->
-        <div class="mt-8 reveal-on-scroll" style="transition-delay: 200ms;">
-            <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
-                <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
-                    <span class="text-xs text-gray-400 font-mono">db/migrations/20260122_create_users.sl</span>
-                </div>
-                <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-purple-400">def</span> <span class="text-blue-400">up</span>(<span class="text-orange-300">db</span>)
-  db.<span class="text-blue-400">create_collection</span>(<span class="text-green-400">"users"</span>)
-  db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_email"</span>, [<span class="text-green-400">"email"</span>], { <span class="text-green-400">"unique"</span>: <span class="text-purple-400">true</span> })
-  db.<span class="text-blue-400">create_index</span>(<span class="text-green-400">"users"</span>, <span class="text-green-400">"idx_role"</span>, [<span class="text-green-400">"role"</span>], {})
-<span class="text-purple-400">end</span>
-
-<span class="text-purple-400">def</span> <span class="text-blue-400">down</span>(<span class="text-orange-300">db</span>)
-  db.<span class="text-blue-400">drop_collection</span>(<span class="text-green-400">"users"</span>)
-<span class="text-purple-400">end</span></code></pre>
-                </div>
-            </div>
-        </div>
-
-        <!-- Feature cards -->
-        <div class="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 reveal-on-scroll" style="transition-delay: 300ms;">
-            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 mb-4">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">Live Queries</h3>
-                <p class="text-sm text-gray-400">WebSocket-powered real-time updates. Query once, get live changes pushed to clients.</p>
-            </div>
-            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 mb-4">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">ACID Transactions</h3>
-                <p class="text-sm text-gray-400">Multi-document atomic commits, rollbacks, and configurable isolation levels.</p>
-            </div>
-            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 mb-4">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">Distributed</h3>
-                <p class="text-sm text-gray-400">Master-master replication, auto-sharding, and automatic failover built in.</p>
-            </div>
-            <div class="p-6 rounded-xl bg-white/5 border border-white/10">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400 mb-4">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">Lua Runtime</h3>
-                <p class="text-sm text-gray-400">Embedded scripting for triggers, stored procedures, and server-side logic.</p>
-            </div>
-        </div>
-
-        <div class="mt-8 flex items-center justify-center gap-6 reveal-on-scroll">
-            <a href="/docs/database/models" class="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-                <span>Soli ORM Docs</span>
+        <div class="mt-8 flex flex-wrap items-center gap-6 reveal-on-scroll">
+            <a href="/docs/development-tools/scaffold" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <span>Scaffold generator docs</span>
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
             </a>
-            <a href="https://solidb.solisoft.net/docs" target="_blank" class="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors">
-                <span>SoliDB Documentation</span>
+            <a href="/docs/security/authorization" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <span>Auth &amp; policies docs</span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Performance band -->
+<section class="relative py-16 sm:py-20 bg-white/[0.02] border-y border-white/[0.04]">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
+        <div class="flex flex-col lg:flex-row lg:items-center gap-10 lg:gap-16 reveal-on-scroll">
+            <div class="lg:max-w-sm">
+                <h2 class="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">Fast enough to be the whole stack</h2>
+                <p class="mt-3 text-sm text-stone-400">
+                    Measured by <a href="https://www.techempower.com/" target="_blank" class="text-amber-400 hover:text-amber-300 transition-colors">TechEmpower</a> on 21&times; AWS c7i.2xlarge instances.
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-10 sm:gap-16">
+                <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=plaintext" target="_blank" class="group">
+                    <div class="font-display text-4xl font-bold text-white group-hover:text-amber-300 transition-colors">1,206,408</div>
+                    <div class="text-sm text-stone-400 mt-1">Plaintext req/s</div>
+                </a>
+                <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=json" target="_blank" class="group">
+                    <div class="font-display text-4xl font-bold text-white group-hover:text-amber-300 transition-colors">834,109</div>
+                    <div class="text-sm text-stone-400 mt-1">JSON req/s</div>
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- SoliDB -->
+<section class="relative py-20 sm:py-28">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
+        <div class="mb-12 reveal-on-scroll">
+            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">Powered by SoliDB</h2>
+            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
+                A distributed, ACID-compliant multi-model database built in Rust. Documents, graph,
+                vector search, time series, full-text, and blobs &mdash; the ORM speaks to all of it.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10 reveal-on-scroll">
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Documents</div>
+                <div class="text-xs text-stone-500 mt-1">JSON store</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Graph</div>
+                <div class="text-xs text-stone-500 mt-1">Edges &amp; traversal</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Vector</div>
+                <div class="text-xs text-stone-500 mt-1">HNSW search</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Time series</div>
+                <div class="text-xs text-stone-500 mt-1">Metrics &amp; logs</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Full-text</div>
+                <div class="text-xs text-stone-500 mt-1">Search engine</div>
+            </div>
+            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                <div class="text-sm font-semibold text-stone-200">Blobs</div>
+                <div class="text-xs text-stone-500 mt-1">File storage</div>
+            </div>
+        </div>
+
+        <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden reveal-on-scroll">
+            <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                <span class="text-xs font-mono text-stone-400">app/models/user.sl</span>
+            </div>
+            <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">User</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
+  <span class="text-stone-300">validates(</span><span class="text-stone-100">"email"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"presence"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300">, </span><span class="text-stone-100">"uniqueness"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300"> })</span>
+  <span class="text-stone-300">before_save(</span><span class="text-stone-100">"normalize_email"</span><span class="text-stone-300">)</span>
+
+  <span class="text-orange-300">def</span> <span class="text-stone-200">normalize_email</span>
+    <span class="text-orange-300">this</span><span class="text-stone-300">.email = </span><span class="text-orange-300">this</span><span class="text-stone-300">.email.trim().downcase() </span><span class="text-orange-300">unless</span> <span class="text-orange-300">this</span><span class="text-stone-300">.email.blank?</span>
+  <span class="text-orange-300">end</span>
+<span class="text-orange-300">end</span>
+
+<span class="text-stone-500"># Chainable query builder — compiles to a single AQL query</span>
+<span class="text-stone-300">admins = </span><span class="text-amber-200">User</span>
+  <span class="text-stone-300">.where(</span><span class="text-stone-100">"doc.role == @r"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"r"</span><span class="text-stone-300">: </span><span class="text-stone-100">"admin"</span><span class="text-stone-300"> })</span>
+  <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
+  <span class="text-stone-300">.limit(</span><span class="text-amber-300">20</span><span class="text-stone-300">).all</span></code></pre>
+            </div>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-6 reveal-on-scroll">
+            <a href="/docs/database/models" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <span>Soli ORM docs</span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+            <a href="https://solidb.solisoft.net/docs" target="_blank" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <span>SoliDB documentation</span>
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
@@ -584,230 +472,113 @@
     </div>
 </section>
 
-<!-- Live View Demo Section -->
-<section id="live-view-demo" class="relative py-24 sm:py-32">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
+<!-- Live view demo -->
+<section id="live-view-demo" class="relative py-20 sm:py-28 bg-white/[0.02] border-y border-white/[0.04]">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
         <div class="mb-12 reveal-on-scroll">
-            <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Live View</span>
-            </h2>
-            <p class="mt-4 text-lg text-gray-400">
-                Server-rendered reactive components without writing JavaScript
+            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">This counter is live, right now</h2>
+            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
+                A server-rendered reactive component over a WebSocket &mdash; no JavaScript written,
+                ~2&nbsp;KB client, diff-based updates. Click it.
             </p>
         </div>
 
-        <div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Counter Demo -->
-                <div class="reveal-on-scroll">
-                    <div class="rounded-2xl bg-gray-900 border border-white/10 overflow-hidden shadow-2xl">
-                        <div class="px-4 py-3 bg-white/5 border-b border-white/10">
-                            <span class="text-sm font-medium text-gray-400">Counter Demo</span>
-                        </div>
-                        <div class="p-8" id="live-counter-container" data-live-root data-liveview-url="/live/socket/counter">
-                            <div class="text-center">
-                                <div class="text-6xl font-bold text-white mb-8">...</div>
-                                <p class="text-sm text-gray-500">Connecting...</p>
-                            </div>
-                        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="reveal-on-scroll">
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="text-xs font-mono text-stone-400">Live demo &middot; /live/socket/counter</span>
                     </div>
-                    <div class="mt-6 grid grid-cols-3 gap-4">
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div class="text-lg font-bold text-indigo-400">0 JS</div>
-                            <div class="text-xs text-gray-500">Required</div>
-                        </div>
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div class="text-lg font-bold text-purple-400">Diff</div>
-                            <div class="text-xs text-gray-500">Updates</div>
-                        </div>
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div class="text-lg font-bold text-pink-400">~2KB</div>
-                            <div class="text-xs text-gray-500">Client</div>
+                    <div class="p-8" id="live-counter-container" data-live-root data-liveview-manual data-liveview-url="/live/socket/counter">
+                        <div class="text-center">
+                            <div class="text-6xl font-bold text-white mb-8">...</div>
+                            <p class="text-sm text-stone-500">Connecting...</p>
                         </div>
                     </div>
                 </div>
-
-                <!-- Real-time Metrics Demo -->
-                <div class="reveal-on-scroll">
-                    <div class="rounded-2xl bg-gray-900 border border-white/10 overflow-hidden shadow-2xl">
-                        <div class="px-4 py-3 bg-white/5 border-b border-white/10 flex justify-between items-center">
-                            <span class="text-sm font-medium text-gray-400">Live Server Time</span>
-                            <span id="fps-counter" class="text-sm font-mono text-green-400">-- fps</span>
-                        </div>
-                        <div class="p-6" id="live-metrics-container" data-live-root data-liveview-url="/live/socket/metrics">
-                            <div class="text-center">
-                                <div class="text-3xl font-bold text-white mb-4">...</div>
-                                <p class="text-sm text-gray-500">Connecting...</p>
-                            </div>
-                        </div>
+                <div class="mt-6 grid grid-cols-3 gap-4">
+                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                        <div class="text-lg font-bold text-amber-400">0 JS</div>
+                        <div class="text-xs text-stone-500">Written</div>
                     </div>
-                    <div class="mt-6 grid grid-cols-3 gap-4">
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div id="fps-stat" class="text-lg font-bold text-indigo-400">--</div>
-                            <div class="text-xs text-gray-500">Updates/s</div>
-                        </div>
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div class="text-lg font-bold text-purple-400">&lt;100B</div>
-                            <div class="text-xs text-gray-500">Per Update</div>
-                        </div>
-                        <div class="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <div class="text-lg font-bold text-pink-400">Push</div>
-                            <div class="text-xs text-gray-500">Server-Sent</div>
-                        </div>
+                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                        <div class="text-lg font-bold text-amber-400">Diff</div>
+                        <div class="text-xs text-stone-500">Updates</div>
+                    </div>
+                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
+                        <div class="text-lg font-bold text-amber-400">~2KB</div>
+                        <div class="text-xs text-stone-500">Client</div>
                     </div>
                 </div>
             </div>
 
-            <div class="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Counter Code Example -->
-                <div class="reveal-on-scroll" style="transition-delay: 100ms;">
-                    <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
-                        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
-                            <span class="text-xs text-gray-400 font-mono">app/views/live/counter.sliv</span>
-                        </div>
-                        <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-html"><span class="text-gray-500">&lt;!-- That's it. No JavaScript needed! --&gt;</span>
-<span class="text-blue-400">&lt;div</span> <span class="text-purple-400">class=</span><span class="text-green-400">"counter"</span><span class="text-blue-400">&gt;</span>
-  <span class="text-blue-400">&lt;h2&gt;</span><span class="text-orange-300">@count</span><span class="text-blue-400">&lt;/h2&gt;</span>
-  <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"decrement"</span><span class="text-blue-400">&gt;</span>-<span class="text-blue-400">&lt;/button&gt;</span>
-  <span class="text-blue-400">&lt;button</span> <span class="text-purple-400">soli-click=</span><span class="text-green-400">"increment"</span><span class="text-blue-400">&gt;</span>+<span class="text-blue-400">&lt;/button&gt;</span>
-<span class="text-blue-400">&lt;/div&gt;</span></code></pre>
-                        </div>
+            <div class="reveal-on-scroll" style="transition-delay: 100ms;">
+                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
+                    <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+                        <span class="text-xs font-mono text-stone-400">app/views/live/counter.sliv</span>
+                    </div>
+                    <div class="px-5 py-4 overflow-x-auto">
+<pre class="text-sm leading-7"><code><span class="text-stone-500">&lt;!-- That's the whole component. --&gt;</span>
+<span class="text-stone-400">&lt;div</span> <span class="text-orange-300">class=</span><span class="text-stone-100">"counter"</span><span class="text-stone-400">&gt;</span>
+  <span class="text-stone-400">&lt;h2&gt;</span><span class="text-orange-200">@count</span><span class="text-stone-400">&lt;/h2&gt;</span>
+  <span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"decrement"</span><span class="text-stone-400">&gt;</span>-<span class="text-stone-400">&lt;/button&gt;</span>
+  <span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"increment"</span><span class="text-stone-400">&gt;</span>+<span class="text-stone-400">&lt;/button&gt;</span>
+<span class="text-stone-400">&lt;/div&gt;</span></code></pre>
                     </div>
                 </div>
-
-                <!-- Metrics Code Example -->
-                <div class="reveal-on-scroll" style="transition-delay: 200ms;">
-                    <div class="rounded-2xl bg-gray-950 border border-white/10 overflow-hidden shadow-xl">
-                        <div class="px-4 py-2 border-b border-white/5 bg-white/5 flex items-center">
-                            <span class="text-xs text-gray-400 font-mono">app/controllers/live_controller.sl</span>
-                        </div>
-                        <div class="p-4 overflow-x-auto">
-<pre class="text-sm leading-relaxed"><code class="language-soli"><span class="text-gray-500"># Server pushes updates via tick events</span>
-<span class="text-purple-400">def</span> <span class="text-blue-400">metrics</span>(<span class="text-orange-300">event</span>)
-  <span class="text-purple-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"tick"</span>
-    <span class="text-purple-400">return</span> {
-      <span class="text-green-400">"state"</span>: {
-        <span class="text-green-400">"time"</span>: <span class="text-blue-400">now</span>(),
-        <span class="text-green-400">"cpu"</span>: <span class="text-blue-400">system_cpu</span>(),
-        <span class="text-green-400">"memory"</span>: <span class="text-blue-400">system_memory</span>()
-      }
-    };
-  <span class="text-purple-400">end</span>
-  {}
-<span class="text-purple-400">end</span></code></pre>
-                        </div>
-                    </div>
+                <div class="mt-6 text-sm text-stone-500">
+                    The server holds the state; the client patches the DOM.
+                    A second live demo &mdash; a server clock pushing 20 updates a second &mdash; runs in the
+                    <a href="/docs/core-concepts/liveview" class="text-amber-400 hover:text-amber-300 transition-colors">LiveView docs</a>.
                 </div>
             </div>
+        </div>
+    </div>
+</section>
 
-            <div class="mt-12 text-center reveal-on-scroll">
-                <a href="/docs/core-concepts/liveview" class="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-                    <span>Learn more about Live View</span>
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                </a>
+<!-- CTA -->
+<section class="relative py-20 sm:py-28">
+    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
+        <div class="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/[0.12] via-orange-500/[0.06] to-transparent px-8 py-16 sm:px-16 sm:py-20 ring-1 ring-amber-500/20">
+            <div class="reveal-on-scroll">
+                <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                    Build something this afternoon
+                </h2>
+                <p class="mt-4 text-lg leading-8 text-stone-300">
+                    Join the developer<span class="opacity-50">*</span> who is already shipping with Soli.
+                </p>
+                <p class="text-xs text-stone-500 mt-2">* It's just me. But I'm having a great time!</p>
+                <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <a href="/docs/getting-started/installation" class="rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-bold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all duration-300">
+                        Install Soli
+                    </a>
+                    <a href="/docs" class="rounded-xl px-7 py-3.5 text-sm font-semibold text-white ring-1 ring-white/20 hover:ring-white/40 hover:bg-white/5 transition-all duration-300">
+                        Read the docs
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 </section>
 
 <script>
-    // Send tick events to metrics LiveView with FPS tracking
-    document.addEventListener('DOMContentLoaded', () => {
-        // FPS tracking
-        let frameCount = 0;
-        let lastFpsUpdate = performance.now();
-        let currentFps = 0;
-
-        function updateFpsDisplay() {
-            const fpsEl = document.getElementById('fps-counter');
-            if (fpsEl) {
-                fpsEl.textContent = currentFps + ' fps';
-            }
-            const fpsStat = document.getElementById('fps-stat');
-            if (fpsStat) {
-                fpsStat.textContent = currentFps;
-            }
-        }
-
-        setTimeout(() => {
-            console.log('SoliLiveView:', window.SoliLiveView);
-            console.log('instances:', window.SoliLiveView ? window.SoliLiveView.instances : 'N/A');
-            if (window.SoliLiveView && window.SoliLiveView.instances) {
-                window.SoliLiveView.instances.forEach(lv => {
-                    console.log('LV url:', lv.socketUrl, 'state:', lv.state);
-                    if (lv.socketUrl && lv.socketUrl.includes('metrics')) {
-                        // Track actual FPS from patches received
-                        lv.on('patch', () => {
-                            frameCount++;
-                            const now = performance.now();
-                            const elapsed = now - lastFpsUpdate;
-                            if (elapsed >= 1000) {
-                                currentFps = Math.round(frameCount * 1000 / elapsed);
-                                frameCount = 0;
-                                lastFpsUpdate = now;
-                                updateFpsDisplay();
-                            }
-                        });
-
-                        const startTicking = () => {
-                            setInterval(() => {
-                                lv.send({ type: 'event', event: 'tick', liveview_id: lv.liveviewId, params: {}, target: 'metrics' });
-                            }, 50); // 20 updates/sec
-                        };
-
-                        if (lv.state === 2) {
-                            startTicking();
-                        } else {
-                            lv.on('stateChanged', (state) => {
-                                if (state === 2) {
-                                    startTicking();
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-        }, 1000);
-    });
-</script>
-
-<script>
-    // Simplified script for index page interactions
-    function switchTab(tab) {
-        // Content
-        ['model', 'view', 'controller'].forEach(t => {
-            const el = document.getElementById('content-' + t);
-            if (t === tab) {
-                el.classList.remove('hidden');
-            } else {
-                el.classList.add('hidden');
-            }
+    // Copy the "soli new" command from the hero chip.
+    function copyNewAppCmd(btn) {
+        const cmd = 'soli new blog && soli serve blog';
+        navigator.clipboard.writeText(cmd).then(() => {
+            const icon = btn.querySelector('[data-copy-icon]');
+            if (!icon) return;
+            icon.classList.add('text-amber-400');
+            btn.classList.add('ring-amber-500/40');
+            setTimeout(() => {
+                icon.classList.remove('text-amber-400');
+                btn.classList.remove('ring-amber-500/40');
+            }, 1200);
         });
-
-        // Tabs
-        ['model', 'view', 'controller'].forEach(t => {
-            const btn = document.getElementById('tab-' + t);
-            if (t === tab) {
-                btn.className = "px-3 py-1 text-xs font-medium rounded-md transition-all text-white bg-white/10 shadow-sm";
-            } else {
-                btn.className = "px-3 py-1 text-xs font-medium rounded-md transition-all text-gray-400 hover:text-white hover:bg-white/5";
-            }
-        });
-
-        // Filename
-        const filenames = {
-            'model': 'app/models/post.sl',
-            'view': 'app/views/posts/index.html.slv',
-            'controller': 'app/controllers/posts_controller.sl'
-        };
-        document.getElementById('filename-display').textContent = filenames[tab];
     }
 
-    // Typing Animation
-    document.addEventListener('DOMContentLoaded', () => {
+    // Typing animation for the terminal demo.
+    (function () {
         const typeElements = document.querySelectorAll('.type-animation');
 
         const observer = new IntersectionObserver((entries) => {
@@ -825,6 +596,10 @@
         typeElements.forEach(el => observer.observe(el));
 
         function typeText(element) {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                element.classList.remove('invisible');
+                return;
+            }
             const html = element.innerHTML;
             element.innerHTML = '';
             element.classList.remove('invisible');
@@ -836,58 +611,52 @@
             function type() {
                 if (i < html.length) {
                     let char = html.charAt(i);
-
-                    if (char === '<') {
-                        tag = true;
-                    } else if (char === '>') {
-                        tag = false;
-                    }
+                    if (char === '<') tag = true;
+                    else if (char === '>') tag = false;
 
                     currentHtml += char;
-                    element.innerHTML = currentHtml; // + (tag ? '' : '<span class="animate-pulse">|</span>');
-
+                    element.innerHTML = currentHtml;
                     i++;
                     if (tag || char === ' ') {
-                        type(); // Skip delay for tags and spaces to make it faster
+                        type();
                     } else {
                         setTimeout(type, Math.random() * 20 + 10);
                     }
-                } else {
-                    // element.innerHTML = html; // Remove cursor at end
                 }
             }
-
             type();
         }
-    });
+    })();
+
+    // Connect LiveView roots. live.js only auto-connects on DOMContentLoaded,
+    // which never re-fires after an instant-nav <body> swap — so roots are
+    // marked data-liveview-manual and connected by hand here, loading live.js
+    // on demand when the swap came from a layout that doesn't include it.
+    (function () {
+        function connectLiveRoots() {
+            document.querySelectorAll('[data-liveview-url][data-liveview-manual]').forEach(function (el) {
+                if (el.dataset.lvConnected) return;
+                el.dataset.lvConnected = '1';
+                let url = el.getAttribute('data-liveview-url');
+                if (url.startsWith('/')) {
+                    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    url = protocol + '//' + location.host + url;
+                }
+                window.live(url, { rootElement: el });
+            });
+        }
+
+        if (window.live) {
+            connectLiveRoots();
+            return;
+        }
+        let loader = document.getElementById('__livejs-loader');
+        if (!loader) {
+            loader = document.createElement('script');
+            loader.id = '__livejs-loader';
+            loader.src = '/js/live.js';
+            document.head.appendChild(loader);
+        }
+        loader.addEventListener('load', connectLiveRoots, { once: true });
+    })();
 </script>
-
-<!-- CTA Section -->
-<section class="relative py-24 sm:py-32">
-    <div class="container mx-auto max-w-7xl px-6 lg:px-8">
-        <div class="relative isolate overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-900 to-purple-900 px-8 py-16 sm:px-16 sm:py-24 shadow-2xl ring-1 ring-white/10">
-            <!-- Background pattern -->
-            <div class="absolute -top-24 right-0 -z-10 transform-gpu blur-3xl opacity-50" aria-hidden="true">
-                <div class="aspect-[1404/767] w-[87.75rem] bg-gradient-to-r from-indigo-400 to-purple-400 opacity-25"></div>
-            </div>
-
-            <div class="reveal-on-scroll">
-                <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                    Ready to build something amazing?
-                </h2>
-                <p class="text-lg leading-8 text-indigo-100">
-                    Join the developer<span class="opacity-50">*</span> who is already building faster with Soli.
-                </p>
-                <p class="text-xs text-indigo-300/50 mt-2">* It's just me. But I'm having a great time!</p>
-                <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <a href="/docs/getting-started/installation" class="rounded-xl bg-white px-8 py-4 text-sm font-bold text-gray-900 shadow-lg hover:bg-gray-50 transition-all duration-300 hover:scale-105">
-                        Install Soli
-                    </a>
-                    <a href="/docs" class="rounded-xl px-8 py-4 text-sm font-semibold text-white ring-2 ring-white/30 hover:ring-white/50 hover:bg-white/10 transition-all duration-300">
-                        Read Documentation
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>

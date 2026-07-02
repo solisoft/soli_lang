@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Introduction</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Introduction</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Welcome to <strong>Soli</strong>, a dynamically-typed, high-performance web framework and programming language written in Rust. Soli combines the expressiveness of Ruby with a batteries-included MVC stack &mdash; 170,000+ requests/second and sub-millisecond response times, powered by a bytecode VM.
@@ -26,20 +26,20 @@
 
     <h2 class="text-2xl font-bold text-white mb-6">What is Soli?</h2>
     <p class="text-gray-400 mb-6">
-        Soli is two things in one: a <strong>dynamically-typed language</strong> with optional type annotations, and a <strong>batteries-included MVC web framework</strong> built on top of it. No compile step gates execution &mdash; but <code class="text-indigo-300">soli check</code> will static type-check the parts you've annotated.
+        Soli is two things in one: a <strong>dynamically-typed language</strong> with optional type annotations, and a <strong>batteries-included MVC web framework</strong> built on top of it. No compile step gates execution &mdash; but <code class="text-amber-300">soli check</code> will static type-check the parts you've annotated.
     </p>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-2xl font-bold text-indigo-400">170,000+</div>
+            <div class="text-2xl font-bold text-amber-400">170,000+</div>
             <p class="text-xs text-gray-400 mt-1">requests/second, single server</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-2xl font-bold text-purple-400">Sub-millisecond</div>
+            <div class="text-2xl font-bold text-orange-400">Sub-millisecond</div>
             <p class="text-xs text-gray-400 mt-1">typical response times</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-            <div class="text-2xl font-bold text-pink-400">3 commands</div>
+            <div class="text-2xl font-bold text-orange-400">3 commands</div>
             <p class="text-xs text-gray-400 mt-1">from install to running app</p>
         </div>
     </div>
@@ -49,7 +49,7 @@
 
     <!-- Language -->
     <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
         </span>
         Language
@@ -61,11 +61,11 @@
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Classes &amp; interfaces</h4>
-            <p class="text-sm text-gray-400">Familiar OOP with inheritance &mdash; <code class="text-indigo-300">class Foo &lt; Bar</code>.</p>
+            <p class="text-sm text-gray-400">Familiar OOP with inheritance &mdash; <code class="text-amber-300">class Foo &lt; Bar</code>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Pattern matching</h4>
-            <p class="text-sm text-gray-400"><code class="text-indigo-300">match</code> with guards and destructuring.</p>
+            <p class="text-sm text-gray-400"><code class="text-amber-300">match</code> with guards and destructuring.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Enums</h4>
@@ -73,28 +73,28 @@
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Closures &amp; pipelines</h4>
-            <p class="text-sm text-gray-400"><code class="text-indigo-300">fn(x) {}</code>, <code class="text-indigo-300">|x| {}</code>, and the <code class="text-indigo-300">|&gt;</code> pipeline operator.</p>
+            <p class="text-sm text-gray-400"><code class="text-amber-300">fn(x) {}</code>, <code class="text-amber-300">|x| {}</code>, and the <code class="text-amber-300">|&gt;</code> pipeline operator.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Error handling</h4>
-            <p class="text-sm text-gray-400"><code class="text-indigo-300">try/catch/finally</code> plus postfix <code class="text-indigo-300">rescue</code>.</p>
+            <p class="text-sm text-gray-400"><code class="text-amber-300">try/catch/finally</code> plus postfix <code class="text-amber-300">rescue</code>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Modern conveniences</h4>
-            <p class="text-sm text-gray-400">String interpolation, <code class="text-indigo-300">??</code>, <code class="text-indigo-300">&amp;.</code>, spread/rest, named params.</p>
+            <p class="text-sm text-gray-400">String interpolation, <code class="text-amber-300">??</code>, <code class="text-amber-300">&amp;.</code>, spread/rest, named params.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Metaprogramming</h4>
-            <p class="text-sm text-gray-400"><code class="text-indigo-300">define_method</code>, <code class="text-indigo-300">method_missing</code>, and more.</p>
+            <p class="text-sm text-gray-400"><code class="text-amber-300">define_method</code>, <code class="text-amber-300">method_missing</code>, and more.</p>
         </div>
     </div>
     <div class="mb-10 text-sm">
-        <a href="/docs/language" class="text-indigo-400 hover:text-indigo-300">Full language reference &rarr;</a>
+        <a href="/docs/language" class="text-amber-400 hover:text-amber-300">Full language reference &rarr;</a>
     </div>
 
     <!-- Web Framework -->
     <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/20 text-purple-400">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>
         </span>
         Web Framework
@@ -106,11 +106,11 @@
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Declarative routing</h4>
-            <p class="text-sm text-gray-400"><code class="text-purple-300">resources()</code>, nesting, namespaces, named route helpers.</p>
+            <p class="text-sm text-gray-400"><code class="text-orange-300">resources()</code>, nesting, namespaces, named route helpers.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">ERB-style views</h4>
-            <p class="text-sm text-gray-400"><code class="text-purple-300">.html.slv</code> templates with layouts and partials.</p>
+            <p class="text-sm text-gray-400"><code class="text-orange-300">.html.slv</code> templates with layouts and partials.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h4 class="font-semibold text-white mb-1 text-sm">Middleware pipeline</h4>
@@ -118,10 +118,10 @@
         </div>
     </div>
     <div class="flex flex-wrap gap-3 mb-10 text-sm">
-        <a href="/docs/core-concepts/routing" class="text-purple-400 hover:text-purple-300">Routing &rarr;</a>
-        <a href="/docs/core-concepts/controllers" class="text-purple-400 hover:text-purple-300">Controllers &rarr;</a>
-        <a href="/docs/core-concepts/views" class="text-purple-400 hover:text-purple-300">Views &rarr;</a>
-        <a href="/docs/core-concepts/middleware" class="text-purple-400 hover:text-purple-300">Middleware &rarr;</a>
+        <a href="/docs/core-concepts/routing" class="text-orange-400 hover:text-orange-300">Routing &rarr;</a>
+        <a href="/docs/core-concepts/controllers" class="text-orange-400 hover:text-orange-300">Controllers &rarr;</a>
+        <a href="/docs/core-concepts/views" class="text-orange-400 hover:text-orange-300">Views &rarr;</a>
+        <a href="/docs/core-concepts/middleware" class="text-orange-400 hover:text-orange-300">Middleware &rarr;</a>
     </div>
 
     <!-- Data & Persistence -->
@@ -293,7 +293,7 @@
             </div>
         </div>
         <div class="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-lg">C</div>
+            <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-lg">C</div>
             <div>
                 <h3 class="text-white font-semibold">Controller</h3>
                 <p class="text-gray-400 text-sm mt-1">Coordinates between Models and Views to handle requests. Located in <code>app/controllers/</code>.</p>
@@ -358,7 +358,7 @@ soli serve . --dev</code></pre>
     <div class="space-y-8 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400 text-xs font-bold">1</span>
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">1</span>
                 Define a Route
             </h3>
             <pre data-filename="config/routes.sl"><code class="language-soli text-sm">get("/", "home#index")
@@ -367,7 +367,7 @@ get("/users/:id", "users#show")</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-purple-400 text-xs font-bold">2</span>
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">2</span>
                 Create a Controller
             </h3>
             <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">class HomeController &lt; Controller
@@ -384,7 +384,7 @@ end</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 text-xs font-bold">3</span>
+                <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">3</span>
                 Build a View
             </h3>
             <pre data-filename="app/views/home/index.html.slv"><code class="language-erb text-sm">&lt;h1&gt;&lt;%= message %&gt;&lt;/h1&gt;
@@ -402,7 +402,7 @@ soli install                    # install everything from soli.toml
 soli publish                    # publish your package to a registry</code></pre>
 
     <p class="text-gray-400 mt-4 mb-12 text-sm">
-        See <a href="/docs/language/modules" class="text-indigo-400 hover:text-indigo-300">Modules &amp; Packages</a> for the full <code class="bg-white/10 px-1 rounded">soli.toml</code> reference.
+        See <a href="/docs/language/modules" class="text-amber-400 hover:text-amber-300">Modules &amp; Packages</a> for the full <code class="bg-white/10 px-1 rounded">soli.toml</code> reference.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Design Philosophy</h2>
@@ -412,28 +412,28 @@ soli publish                    # publish your package to a registry</code></pre
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <a href="/docs/getting-started/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Installation &rarr;</h3>
+        <a href="/docs/getting-started/installation" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Installation &rarr;</h3>
             <p class="text-sm text-gray-400">Get Soli running on your machine.</p>
         </a>
-        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Configuration &rarr;</h3>
+        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Configuration &rarr;</h3>
             <p class="text-sm text-gray-400">Environment variables for databases, sessions, jobs, and deployment.</p>
         </a>
-        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Routing &rarr;</h3>
+        <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Routing &rarr;</h3>
             <p class="text-sm text-gray-400">Learn how to define your application's URLs.</p>
         </a>
-        <a href="/docs/language" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Language Reference &rarr;</h3>
+        <a href="/docs/language" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Language Reference &rarr;</h3>
             <p class="text-sm text-gray-400">The complete Soli syntax, types, and language features.</p>
         </a>
-        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models &rarr;</h3>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Models &rarr;</h3>
             <p class="text-sm text-gray-400">ORM-style data modeling with CRUD operations.</p>
         </a>
-        <a href="/docs/development-tools/deploy" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Deploy &rarr;</h3>
+        <a href="/docs/development-tools/deploy" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Deploy &rarr;</h3>
             <p class="text-sm text-gray-400">Ship to production with blue-green deployment.</p>
         </a>
     </div>

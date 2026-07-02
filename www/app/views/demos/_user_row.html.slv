@@ -18,7 +18,7 @@
           @keydown.escape="editingName = false; nameValue = nameOriginal"
           class="inline-flex gap-1">
       <input x-ref="nameInput" x-model="nameValue" name="value"
-             class="w-36 px-2 py-1 text-sm rounded bg-gray-900 border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+             class="w-36 px-2 py-1 text-sm rounded bg-[#171412] border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
       <button type="submit" class="px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition">save</button>
     </form>
   </td>
@@ -36,7 +36,7 @@
           @keydown.escape="editingEmail = false; emailValue = emailOriginal"
           class="inline-flex gap-1">
       <input x-ref="emailInput" x-model="emailValue" name="value" type="email"
-             class="w-56 px-2 py-1 text-sm rounded bg-gray-900 border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
+             class="w-56 px-2 py-1 text-sm rounded bg-[#171412] border border-cyan-500/40 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30" />
       <button type="submit" class="px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 transition">save</button>
     </form>
   </td>
@@ -47,7 +47,7 @@
             hx-target="#user-row-<%= user["_key"] %>"
             hx-swap="outerHTML"
             hx-trigger="change"
-            class="px-2 py-1 text-sm rounded bg-gray-950 border border-white/10 text-gray-300 cursor-pointer hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/40 transition-colors">
+            class="px-2 py-1 text-sm rounded bg-[#0C0A09] border border-white/10 text-gray-300 cursor-pointer hover:border-cyan-500/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/40 transition-colors">
       <% for role in ["Admin", "Editor", "Viewer", "Contributor"] %>
         <option value="<%= role %>" <%= user["role"] == role ? "selected" : "" %>><%= role %></option>
       <% end %>

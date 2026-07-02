@@ -30,12 +30,12 @@
         <section id="kw-def" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-def" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">fn</code> / <code class="text-lg font-mono text-indigo-400">def</code>
+                    <code class="text-lg font-mono text-amber-400">fn</code> / <code class="text-lg font-mono text-amber-400">def</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Declares a function with optional parameters and return type. <code class="text-indigo-400">def</code> is an alias for <code class="text-indigo-400">fn</code> (Ruby-style).</p>
+                <p class="text-gray-400 mb-3">Declares a function with optional parameters and return type. <code class="text-amber-400">def</code> is an alias for <code class="text-amber-400">fn</code> (Ruby-style).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># No parameters, no return
 def say_hello end
 
@@ -68,7 +68,7 @@ end</code></pre>
     <!-- Recursive Functions -->
     <section id="section-recursion" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Recursive Functions</h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Calculate factorial
 def factorial(n: Int) -> Int
@@ -116,7 +116,7 @@ end</code></pre>
     <section id="section-higher-order" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Higher-Order Functions</h2>
         <p class="text-gray-400 mb-4">Functions can accept other functions as parameters:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Function as parameter
 def apply(x: Int, f: (Int) -> Int) -> Int
@@ -161,9 +161,9 @@ doubled = transform_array(numbers, fn(x) x * 2)  # [2, 4, 6, 8, 10]</code></pre>
         </h2>
         <p class="text-gray-400 mb-4">Soli provides four interchangeable syntax styles for creating anonymous functions. They all produce the same result &mdash; the choice is purely stylistic.</p>
 
-        <h3 class="text-lg font-semibold text-white mb-3"><code class="text-indigo-400">fn()</code> syntax</h3>
+        <h3 class="text-lg font-semibold text-white mb-3"><code class="text-amber-400">fn()</code> syntax</h3>
         <p class="text-gray-400 mb-4">The most explicit form. Supports inline expressions and multi-line bodies:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Inline expression body
 doubled = [1, 2, 3].map(fn(x)
@@ -180,9 +180,9 @@ print(process(5));  # 11</code></pre>
             </div>
         </div>
 
-        <h3 class="text-lg font-semibold text-white mb-3">Pipe syntax <code class="text-indigo-400">|args| expr</code></h3>
+        <h3 class="text-lg font-semibold text-white mb-3">Pipe syntax <code class="text-amber-400">|args| expr</code></h3>
         <p class="text-gray-400 mb-4">A concise alternative, commonly used with collection methods:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Single parameter
 doubled = [1, 2, 3].map(|x| x * 2)
@@ -199,9 +199,9 @@ print(upper);  # ["ALICE", "BOB", "CHARLIE"]</code></pre>
             </div>
         </div>
 
-        <h3 class="text-lg font-semibold text-white mb-3">Empty pipe <code class="text-indigo-400">|| expr</code></h3>
+        <h3 class="text-lg font-semibold text-white mb-3">Empty pipe <code class="text-amber-400">|| expr</code></h3>
         <p class="text-gray-400 mb-4">For zero-parameter lambdas:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Zero-parameter lambda
 greet = || "Hello, world!"
@@ -214,9 +214,9 @@ result = lazy_value()</code></pre>
             </div>
         </div>
 
-        <h3 class="text-lg font-semibold text-white mb-3">Stabby arrow <code class="text-indigo-400">-> expr</code></h3>
+        <h3 class="text-lg font-semibold text-white mb-3">Stabby arrow <code class="text-amber-400">-> expr</code></h3>
         <p class="text-gray-400 mb-4">Another zero-parameter shorthand:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Arrow lambda (no parameters)
 greet = -> "Hello, world!"
@@ -232,7 +232,7 @@ print(b());  # 42</code></pre>
 
         <h3 class="text-lg font-semibold text-white mb-3">Body styles</h3>
         <p class="text-gray-400 mb-4">All lambda syntaxes support three body formats:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># 1. Inline expression (single expression)
 add = fn(a, b)
@@ -265,8 +265,8 @@ end);</code></pre>
         </div>
 
         <h3 class="text-lg font-semibold text-white mb-3">Trailing block syntax</h3>
-        <p class="text-gray-400 mb-4">When a method's last argument is a lambda, you can pass it as a <strong class="text-white">trailing block</strong> &mdash; outside the parentheses, terminated by <code class="text-indigo-400">end</code>:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <p class="text-gray-400 mb-4">When a method's last argument is a lambda, you can pass it as a <strong class="text-white">trailing block</strong> &mdash; outside the parentheses, terminated by <code class="text-amber-400">end</code>:</p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Trailing block — no parentheses needed
 [1, 2, 3].map |x| x * 2 end          # [2, 4, 6]
@@ -298,7 +298,7 @@ end
 
         <h3 class="text-lg font-semibold text-white mb-3">Practical examples</h3>
         <p class="text-gray-400 mb-4">Lambdas shine when used with collection methods:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">users = [
   {"name": "Alice", "age": 30},
@@ -329,7 +329,7 @@ print(result);  # [20, 40, 60]</code></pre>
     <section id="section-closures" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Closures</h2>
         <p class="text-gray-400 mb-4">Functions that capture variables from their enclosing scope:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Counter using closure
 def make_counter -> () -> Int
@@ -369,7 +369,7 @@ print(say_hola("Bob"));     # "Hola, Bob!"</code></pre>
     <!-- Default Parameters -->
     <section id="section-default-params" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Default Parameters</h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def greet(name: String, greeting: String = "Hello") -> String
   greeting + ", " + name + "!"
@@ -399,7 +399,7 @@ user3 = create_user("Charlie", "charlie@example.com", "admin");</code></pre>
     <section id="section-named-params" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Named Parameters</h2>
         <p class="text-gray-400 mb-4">Call functions with named parameters using colon syntax for improved readability:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) -> Hash
   {"host": host, "port": port, "debug": debug}
@@ -421,7 +421,7 @@ config3 = configure(port: 443)
 
         <h3 class="text-lg font-semibold text-white mb-3">Rules</h3>
         <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
-            <li>Named arguments use colon syntax: <code class="text-indigo-400">parameter_name: value</code></li>
+            <li>Named arguments use colon syntax: <code class="text-amber-400">parameter_name: value</code></li>
             <li>Named arguments must come after all positional arguments</li>
             <li>Duplicate named arguments cause a runtime error</li>
             <li>Unknown parameter names cause a runtime error</li>
@@ -429,7 +429,7 @@ config3 = configure(port: 443)
 
         <h3 class="text-lg font-semibold text-white mb-3">Ruby-Style Calls Without Parentheses</h3>
         <p class="text-gray-400 mb-4">You can call methods on objects without parentheses, using Ruby-style syntax:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># With parentheses (standard)
 user.update(name: "Bob", age: 30);
@@ -444,14 +444,14 @@ puts "Hello world";</code></pre>
         </div>
         <p class="text-gray-400 mb-4">This works for:</p>
         <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
-            <li>Method calls on objects with named arguments: <code class="text-indigo-400">obj.method arg: value</code></li>
-            <li>Method calls on objects without arguments: <code class="text-indigo-400">obj.method</code></li>
-            <li>Standalone function calls with named arguments: <code class="text-indigo-400">fn_name arg: value</code></li>
+            <li>Method calls on objects with named arguments: <code class="text-amber-400">obj.method arg: value</code></li>
+            <li>Method calls on objects without arguments: <code class="text-amber-400">obj.method</code></li>
+            <li>Standalone function calls with named arguments: <code class="text-amber-400">fn_name arg: value</code></li>
         </ul>
 
         <h3 class="text-lg font-semibold text-white mb-3">Constructor Named Parameters</h3>
         <p class="text-gray-400 mb-4">Named parameters also work with class constructors:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class User
   name: String
@@ -482,8 +482,8 @@ user3 = new User(name: "Charlie", role: "moderator");</code></pre>
             </span>
             Implicit Returns
         </h2>
-        <p class="text-gray-400 mb-4">The last expression in a function body is automatically returned, without needing the <code class="text-indigo-400">return</code> keyword. This applies to all functions, methods, and lambdas.</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <p class="text-gray-400 mb-4">The last expression in a function body is automatically returned, without needing the <code class="text-amber-400">return</code> keyword. This applies to all functions, methods, and lambdas.</p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Simple implicit return
 def add(a: Int, b: Int) -> Int
@@ -516,9 +516,9 @@ print(nothing())  # null</code></pre>
             </div>
         </div>
 
-        <div class="my-6 p-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-            <h4 class="text-base font-semibold text-indigo-400 mb-2">When to use explicit <code>return</code></h4>
-            <p class="text-indigo-200/80 text-sm">
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">When to use explicit <code>return</code></h4>
+            <p class="text-amber-200/80 text-sm">
                 Use <code>return</code> for <strong>early exits</strong> from a function &mdash; when you want to exit before reaching the last expression.
                 For the final expression in a function body, omit <code>return</code> for cleaner code.
             </p>
@@ -532,7 +532,7 @@ print(nothing())  # null</code></pre>
         <section id="kw-return" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-return" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">return</code>
+                    <code class="text-lg font-mono text-amber-400">return</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -582,7 +582,7 @@ f.inspect    # "&lt;function&gt;"</code></pre>
             </svg>
             Error Handling
         </a>
-        <a href="/docs/language/blocks" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/blocks" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Blocks
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

@@ -30,12 +30,12 @@
         <section id="kw-try" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-try" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">try</code> / <code class="text-lg font-mono text-indigo-400">catch</code> / <code class="text-lg font-mono text-indigo-400">finally</code>
+                    <code class="text-lg font-mono text-amber-400">try</code> / <code class="text-lg font-mono text-amber-400">catch</code> / <code class="text-lg font-mono text-amber-400">finally</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-indigo-400">end</code>-delimited syntax just like <code class="text-indigo-400">if</code>, <code class="text-indigo-400">while</code>, and <code class="text-indigo-400">for</code>. Ruby-style aliases are supported: <code class="text-indigo-400">begin</code> for <code class="text-indigo-400">try</code>, <code class="text-indigo-400">rescue</code> for <code class="text-indigo-400">catch</code>, and <code class="text-indigo-400">ensure</code> for <code class="text-indigo-400">finally</code>. They are interchangeable with the canonical keywords; <code class="text-indigo-400">soli fmt</code> normalizes them to <code class="text-indigo-400">try</code>/<code class="text-indigo-400">catch</code>/<code class="text-indigo-400">finally</code>.</p>
+                <p class="text-gray-400 mb-3">Handles exceptions with try/catch blocks, using <code class="text-amber-400">end</code>-delimited syntax just like <code class="text-amber-400">if</code>, <code class="text-amber-400">while</code>, and <code class="text-amber-400">for</code>. Ruby-style aliases are supported: <code class="text-amber-400">begin</code> for <code class="text-amber-400">try</code>, <code class="text-amber-400">rescue</code> for <code class="text-amber-400">catch</code>, and <code class="text-amber-400">ensure</code> for <code class="text-amber-400">finally</code>. They are interchangeable with the canonical keywords; <code class="text-amber-400">soli fmt</code> normalizes them to <code class="text-amber-400">try</code>/<code class="text-amber-400">catch</code>/<code class="text-amber-400">finally</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Basic try/catch
 try
   result = 10 / 0
@@ -83,7 +83,7 @@ end</code></pre>
     <section id="section-catch-syntax" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Catch Variable Syntax</h2>
         <p class="text-gray-400 mb-4">The catch variable can be written with or without parentheses:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm"># Without parentheses
 try
@@ -116,12 +116,12 @@ end</code></pre>
         <section id="kw-throw" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-throw" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">throw</code>
+                    <code class="text-lg font-mono text-amber-400">throw</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Raises an exception that can be caught by a surrounding <code class="text-indigo-400">try/catch</code> block.</p>
+                <p class="text-gray-400 mb-3">Raises an exception that can be caught by a surrounding <code class="text-amber-400">try/catch</code> block.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def divide(a: Int, b: Int) -> Int
   if b == 0
     throw "Division by zero"
@@ -142,7 +142,7 @@ end</code></pre>
     <section id="section-brace-syntax" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">End Syntax</h2>
         <p class="text-gray-400 mb-4">Try/catch supports end-delimited blocks:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
   result = risky_operation()
@@ -169,12 +169,12 @@ end</code></pre>
         <section id="kw-typed-catch" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-typed-catch" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">catch ClassName e</code>
+                    <code class="text-lg font-mono text-amber-400">catch ClassName e</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Catch specific error types by class name. Multiple <code class="text-indigo-400">catch</code> blocks are tried in order. A bare <code class="text-indigo-400">catch</code> without a type acts as a catch-all.</p>
+                <p class="text-gray-400 mb-3">Catch specific error types by class name. Multiple <code class="text-amber-400">catch</code> blocks are tried in order. A bare <code class="text-amber-400">catch</code> without a type acts as a catch-all.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Define error classes
 class NotFoundError
   message: String
@@ -206,12 +206,12 @@ end</code></pre>
         <section id="typed-catch-inheritance" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#typed-catch-inheritance" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Catching by Superclass</code>
+                    <code class="text-lg font-mono text-amber-400">Catching by Superclass</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Typed catches walk the inheritance chain. A <code class="text-indigo-400">catch BaseError</code> will also catch any subclass of <code class="text-indigo-400">BaseError</code>.</p>
+                <p class="text-gray-400 mb-3">Typed catches walk the inheritance chain. A <code class="text-amber-400">catch BaseError</code> will also catch any subclass of <code class="text-amber-400">BaseError</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">class AppError
   message: String
   new(msg: String)
@@ -243,12 +243,12 @@ end</code></pre>
         <section id="typed-catch-rethrow" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#typed-catch-rethrow" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Unmatched Exceptions</code>
+                    <code class="text-lg font-mono text-amber-400">Unmatched Exceptions</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">If no typed catch matches, the exception is re-thrown to the next outer <code class="text-indigo-400">try/catch</code>. Add a bare <code class="text-indigo-400">catch</code> at the end to handle all remaining exceptions.</p>
+                <p class="text-gray-400 mb-3">If no typed catch matches, the exception is re-thrown to the next outer <code class="text-amber-400">try/catch</code>. Add a bare <code class="text-amber-400">catch</code> at the end to handle all remaining exceptions.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">class ErrorA {}
 class ErrorB {}
 
@@ -276,9 +276,9 @@ end</code></pre>
                     <ul class="text-gray-400 text-sm space-y-1">
                         <li>Typed catches only match class instances (strings, ints, etc. will not match)</li>
                         <li>Catches are tried in order &mdash; put more specific types first</li>
-                        <li>A bare <code class="text-indigo-400">catch e</code> catches everything (including non-instance values)</li>
+                        <li>A bare <code class="text-amber-400">catch e</code> catches everything (including non-instance values)</li>
                         <li>Subclasses match their parent class catches (walks the inheritance chain)</li>
-                        <li>Works with both <code class="text-indigo-400">end</code> and <code class="text-indigo-400">{}</code> syntax</li>
+                        <li>Works with both <code class="text-amber-400">end</code> and <code class="text-amber-400">{}</code> syntax</li>
                     </ul>
                 </div>
             </div>
@@ -289,7 +289,7 @@ end</code></pre>
     <section id="section-nested" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Nested Try/Catch</h2>
         <p class="text-gray-400 mb-4">Try/catch blocks can be nested for fine-grained error handling:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">try
   print("Outer try")
@@ -320,12 +320,12 @@ end</code></pre>
         <section id="kw-rescue" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-rescue" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">expr rescue fallback</code>
+                    <code class="text-lg font-mono text-amber-400">expr rescue fallback</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Returns <code class="text-indigo-400">fallback</code> if <code class="text-indigo-400">expr</code> throws an exception. A concise alternative to try/catch for simple cases.</p>
+                <p class="text-gray-400 mb-3">Returns <code class="text-amber-400">fallback</code> if <code class="text-amber-400">expr</code> throws an exception. A concise alternative to try/catch for simple cases.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Simple rescue
 data = fetch_data() rescue null;
 print(data);  # null if fetch_data threw
@@ -344,12 +344,12 @@ data = user_id |> fetch_user |> validate_user rescue null;</code></pre>
         <section id="rescue-precedence" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#rescue-precedence" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Precedence</code>
+                    <code class="text-lg font-mono text-amber-400">Precedence</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Rescue has the same precedence as assignment, so <code class="text-indigo-400">x = y rescue z</code> parses as <code class="text-indigo-400">x = (y rescue z)</code>.</p>
+                <p class="text-gray-400 mb-3">Rescue has the same precedence as assignment, so <code class="text-amber-400">x = y rescue z</code> parses as <code class="text-amber-400">x = (y rescue z)</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># These are equivalent
 x = risky() rescue "default";
 x = (risky() rescue "default");
@@ -368,7 +368,7 @@ a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
                     <p class="text-amber-200 font-medium mb-1">When to Use Postfix Rescue</p>
                     <ul class="text-gray-400 text-sm space-y-1">
                         <li>Use for simple fallbacks where you just need a default value</li>
-                        <li>Use <code class="text-indigo-400">try/catch</code> when you need to handle the error, run cleanup code, or make decisions based on the error type</li>
+                        <li>Use <code class="text-amber-400">try/catch</code> when you need to handle the error, run cleanup code, or make decisions based on the error type</li>
                         <li>Rescue swallows the error - if you need to log or re-throw, use try/catch instead</li>
                     </ul>
                 </div>
@@ -384,7 +384,7 @@ a = throw "err" rescue "x" or "y";  # ("x" or "y") is the fallback</code></pre>
             </svg>
             Control Flow
         </a>
-        <a href="/docs/language/functions" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/functions" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

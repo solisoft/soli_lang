@@ -38,7 +38,7 @@
         </h2>
 
         <p class="text-gray-400 mb-4">Import the module, then gate any code path on a flag:</p>
-        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto mb-6">
+        <div class="rounded-xl border border-white/10 bg-[#171412]/60 overflow-x-auto mb-6">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">import "../../stdlib/feature_flags.sl"
 
@@ -52,7 +52,7 @@ return render("checkout/v1")</code></pre>
         </div>
 
         <p class="text-gray-400 mb-4">Manage flags from a console, an admin action, or <code class="text-cyan-300">config/application.sl</code> at boot:</p>
-        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+        <div class="rounded-xl border border-white/10 bg-[#171412]/60 overflow-x-auto">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">FeatureFlags.enable("checkout_v2")            # on for everyone
 FeatureFlags.disable("checkout_v2")           # global kill-switch
@@ -94,7 +94,7 @@ FeatureFlags.enable_group("checkout_v2", "beta")   # allowlist a group</code></p
         <p class="text-gray-400 mb-4">
             <code class="text-cyan-300">set_rollout(name, percent)</code> turns a flag on for a stable slice of users. Membership is derived from a hash of the flag name and the user id, so a given user always gets the same answer — and as you ramp the percentage up, users who were already in stay in:
         </p>
-        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+        <div class="rounded-xl border border-white/10 bg-[#171412]/60 overflow-x-auto">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-soli text-sm">FeatureFlags.set_rollout("new_dashboard", 10)   # 10% see it
 # …later, once it looks healthy…
@@ -117,7 +117,7 @@ FeatureFlags.set_rollout("new_dashboard", 100)  # everyone</code></pre>
         <p class="text-gray-400 mb-4">
             <code class="text-amber-400">SOLI_FEATURE_&lt;NAME&gt;</code> forces a flag without touching the cache — ideal for CI, local development, and emergency kill-switches. The env name is <code class="text-amber-400">SOLI_FEATURE_</code> plus the flag name upper-cased:
         </p>
-        <div class="rounded-xl border border-white/10 bg-gray-900/60 overflow-x-auto">
+        <div class="rounded-xl border border-white/10 bg-[#171412]/60 overflow-x-auto">
             <div class="p-6 overflow-x-auto">
 <pre><code class="language-bash text-sm">SOLI_FEATURE_CHECKOUT_V2=1   # force on
 SOLI_FEATURE_CHECKOUT_V2=0   # force off</code></pre>

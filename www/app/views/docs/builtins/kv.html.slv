@@ -34,12 +34,12 @@
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">SOLIKV_RESP_HOST</code></td>
                             <td class="py-3 pr-4">SoliKV host</td>
-                            <td class="py-3"><code class="text-purple-400">localhost</code></td>
+                            <td class="py-3"><code class="text-orange-400">localhost</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">SOLIKV_RESP_PORT</code></td>
                             <td class="py-3 pr-4">RESP port</td>
-                            <td class="py-3"><code class="text-purple-400">6380</code></td>
+                            <td class="py-3"><code class="text-orange-400">6380</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-emerald-400">SOLIKV_TOKEN</code></td>
@@ -70,7 +70,7 @@ SOLIKV_TOKEN=my-secret-token</code></pre>
         <section id="def-set" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-set" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.set(key, value, ttl?)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.set(key, value, ttl?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Store a value. Optionally set TTL in seconds. Without TTL the key lives forever.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.set("user:1", { "name": "Alice" })
@@ -81,9 +81,9 @@ KV.set("temp:token", "abc123", 60)   # expires in 60 seconds</code></pre>
         <section id="def-get" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-get" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.get(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.get(key)</code>
                 </a>
-                <p class="text-gray-400">Retrieve a value. Returns <code class="text-purple-400">null</code> if the key doesn't exist.</p>
+                <p class="text-gray-400">Retrieve a value. Returns <code class="text-orange-400">null</code> if the key doesn't exist.</p>
                 <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">user = KV.get("user:1")     # => { "name": "Alice" }
 missing = KV.get("nope")    # => null</code></pre>
             </div>
@@ -92,18 +92,18 @@ missing = KV.get("nope")    # => null</code></pre>
         <section id="def-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-delete" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.delete(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.delete(key)</code>
                 </a>
-                <p class="text-gray-400">Delete a key. Returns <code class="text-purple-400">true</code> if the key was removed, <code class="text-purple-400">false</code> if it didn't exist.</p>
+                <p class="text-gray-400">Delete a key. Returns <code class="text-orange-400">true</code> if the key was removed, <code class="text-orange-400">false</code> if it didn't exist.</p>
             </div>
         </section>
 
         <section id="def-exists" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-exists" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.exists(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.exists(key)</code>
                 </a>
-                <p class="text-gray-400">Check if a key exists. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Check if a key exists. Returns <code class="text-orange-400">Bool</code>.</p>
                 <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">if KV.exists("user:1")
     println("User exists")
 end</code></pre>
@@ -113,11 +113,11 @@ end</code></pre>
         <section id="def-keys" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-keys" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.keys(pattern?)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.keys(pattern?)</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">denied by default</span>
                 </a>
-                <p class="text-gray-400 mb-3">List keys matching a glob pattern. Defaults to <code class="text-purple-400">"*"</code>.</p>
-                <p class="text-amber-300 text-sm mb-3"><strong>Gated:</strong> Bulk key enumeration is O(N) and exposes the entire keyspace. Set <code class="text-purple-400">SOLI_KV_ALLOW_ADMIN=1</code> to enable.</p>
+                <p class="text-gray-400 mb-3">List keys matching a glob pattern. Defaults to <code class="text-orange-400">"*"</code>.</p>
+                <p class="text-amber-300 text-sm mb-3"><strong>Gated:</strong> Bulk key enumeration is O(N) and exposes the entire keyspace. Set <code class="text-orange-400">SOLI_KV_ALLOW_ADMIN=1</code> to enable.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">all   = KV.keys           # all keys
 users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
             </div>
@@ -126,18 +126,18 @@ users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
         <section id="def-type" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-type" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.type(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.type(key)</code>
                 </a>
-                <p class="text-gray-400">Get the data type of a key — <code class="text-purple-400">string</code>, <code class="text-purple-400">list</code>, <code class="text-purple-400">set</code>, <code class="text-purple-400">hash</code>, or <code class="text-purple-400">none</code>.</p>
+                <p class="text-gray-400">Get the data type of a key — <code class="text-orange-400">string</code>, <code class="text-orange-400">list</code>, <code class="text-orange-400">set</code>, <code class="text-orange-400">hash</code>, or <code class="text-orange-400">none</code>.</p>
             </div>
         </section>
 
         <section id="def-rename" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-rename" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.rename(key, newkey)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.rename(key, newkey)</code>
                 </a>
-                <p class="text-gray-400">Rename a key. Errors if <code class="text-purple-400">newkey</code> already exists.</p>
+                <p class="text-gray-400">Rename a key. Errors if <code class="text-orange-400">newkey</code> already exists.</p>
             </div>
         </section>
     </section>
@@ -156,9 +156,9 @@ users = KV.keys("user:*")   # keys starting with "user:"</code></pre>
         <section id="def-setnx" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-setnx" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.setnx(key, value)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.setnx(key, value)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Set a key only if it does not already exist. Returns <code class="text-purple-400">true</code> if it was set. Handy for locks and "first writer wins".</p>
+                <p class="text-gray-400 mb-3">Set a key only if it does not already exist. Returns <code class="text-orange-400">true</code> if it was set. Handy for locks and "first writer wins".</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if KV.setnx("lock:job", "held")
     run_job()
 end</code></pre>
@@ -168,16 +168,16 @@ end</code></pre>
         <section id="def-getset" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-getset" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.getset(key, value) / KV.getdel(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.getset(key, value) / KV.getdel(key)</code>
                 </a>
-                <p class="text-gray-400">Atomically swap in a new value and return the old one, or read-and-delete in one step. Both return the previous value (or <code class="text-purple-400">nil</code>).</p>
+                <p class="text-gray-400">Atomically swap in a new value and return the old one, or read-and-delete in one step. Both return the previous value (or <code class="text-orange-400">nil</code>).</p>
             </div>
         </section>
 
         <section id="def-append" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-append" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.append(key, value) / KV.strlen(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.append(key, value) / KV.strlen(key)</code>
                 </a>
                 <p class="text-gray-400">Append to a string value (returns the new length) or read the current length.</p>
             </div>
@@ -186,9 +186,9 @@ end</code></pre>
         <section id="def-mget" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-mget" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.mget(...keys) / KV.mset(key, value, ...)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.mget(...keys) / KV.mset(key, value, ...)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Read or write many keys in a single round-trip. <code class="text-purple-400">mget</code> returns an array (nil for missing keys); <code class="text-purple-400">mset</code> takes alternating key/value pairs.</p>
+                <p class="text-gray-400 mb-3">Read or write many keys in a single round-trip. <code class="text-orange-400">mget</code> returns an array (nil for missing keys); <code class="text-orange-400">mset</code> takes alternating key/value pairs.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.mset("a", "1", "b", "2")
 KV.mget("a", "b", "missing")   # => ["1", "2", nil]</code></pre>
             </div>
@@ -209,18 +209,18 @@ KV.mget("a", "b", "missing")   # => ["1", "2", nil]</code></pre>
         <section id="def-ttl" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ttl" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.ttl(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.ttl(key)</code>
                 </a>
-                <p class="text-gray-400">Remaining TTL in seconds. Returns <code class="text-purple-400">null</code> if the key has no expiry or doesn't exist.</p>
+                <p class="text-gray-400">Remaining TTL in seconds. Returns <code class="text-orange-400">null</code> if the key has no expiry or doesn't exist.</p>
             </div>
         </section>
 
         <section id="def-expire" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-expire" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.expire(key, seconds)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.expire(key, seconds)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Set a TTL on an existing key. Returns <code class="text-purple-400">true</code> if successful.</p>
+                <p class="text-gray-400 mb-3">Set a TTL on an existing key. Returns <code class="text-orange-400">true</code> if successful.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.expire("user:1", 3600)   # key expires in 1 hour</code></pre>
             </div>
         </section>
@@ -228,36 +228,36 @@ KV.mget("a", "b", "missing")   # => ["1", "2", nil]</code></pre>
         <section id="def-persist" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-persist" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.persist(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.persist(key)</code>
                 </a>
-                <p class="text-gray-400">Remove the TTL and make the key persistent. Returns <code class="text-purple-400">true</code> on success.</p>
+                <p class="text-gray-400">Remove the TTL and make the key persistent. Returns <code class="text-orange-400">true</code> on success.</p>
             </div>
         </section>
 
         <section id="def-pexpire" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pexpire" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.pexpire(key, milliseconds) / KV.pttl(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.pexpire(key, milliseconds) / KV.pttl(key)</code>
                 </a>
-                <p class="text-gray-400">Millisecond-precision versions of <code class="text-purple-400">expire</code> / <code class="text-purple-400">ttl</code>. <code class="text-purple-400">pttl</code> returns the remaining milliseconds, or <code class="text-purple-400">nil</code>.</p>
+                <p class="text-gray-400">Millisecond-precision versions of <code class="text-orange-400">expire</code> / <code class="text-orange-400">ttl</code>. <code class="text-orange-400">pttl</code> returns the remaining milliseconds, or <code class="text-orange-400">nil</code>.</p>
             </div>
         </section>
 
         <section id="def-expireat" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-expireat" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.expireat(key, unix_timestamp)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.expireat(key, unix_timestamp)</code>
                 </a>
-                <p class="text-gray-400">Expire a key at an absolute Unix time (seconds). Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Expire a key at an absolute Unix time (seconds). Returns <code class="text-orange-400">Bool</code>.</p>
             </div>
         </section>
 
         <section id="def-touch" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-touch" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.touch(...keys) / KV.unlink(...keys)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.touch(...keys) / KV.unlink(...keys)</code>
                 </a>
-                <p class="text-gray-400"><code class="text-purple-400">touch</code> bumps last-access time and returns how many keys existed; <code class="text-purple-400">unlink</code> deletes keys without blocking and returns the count removed.</p>
+                <p class="text-gray-400"><code class="text-orange-400">touch</code> bumps last-access time and returns how many keys existed; <code class="text-orange-400">unlink</code> deletes keys without blocking and returns the count removed.</p>
             </div>
         </section>
     </section>
@@ -276,7 +276,7 @@ KV.mget("a", "b", "missing")   # => ["1", "2", nil]</code></pre>
         <section id="def-incr" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-incr" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.incr(key) / KV.decr(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.incr(key) / KV.decr(key)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Atomically increment or decrement by 1. Creates the key with value 0 if it doesn't exist. Returns the new value.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.incr("visits")     # => 1
@@ -288,7 +288,7 @@ KV.decr("visits")     # => 1</code></pre>
         <section id="def-incrby" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-incrby" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.incrby(key, amount) / KV.decrby(key, amount)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.incrby(key, amount) / KV.decrby(key, amount)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Increment or decrement by a specified amount. Returns the new value.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.incrby("score", 10)   # => 10
@@ -299,9 +299,9 @@ KV.decrby("score", 3)    # => 7</code></pre>
         <section id="def-incrbyfloat" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-incrbyfloat" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.incrbyfloat(key, amount)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.incrbyfloat(key, amount)</code>
                 </a>
-                <p class="text-gray-400">Increment by a floating-point amount. Returns the new value as a <code class="text-purple-400">Float</code>.</p>
+                <p class="text-gray-400">Increment by a floating-point amount. Returns the new value as a <code class="text-orange-400">Float</code>.</p>
             </div>
         </section>
     </section>
@@ -320,7 +320,7 @@ KV.decrby("score", 3)    # => 7</code></pre>
         <section id="def-lpush" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-lpush" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.lpush(key, ...values) / KV.rpush(key, ...values)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.lpush(key, ...values) / KV.rpush(key, ...values)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Push values to the head (left) or tail (right) of a list. Returns the new list length.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.rpush("queue", "job1")
@@ -332,7 +332,7 @@ KV.lpush("queue", "urgent")</code></pre>
         <section id="def-lpop" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-lpop" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.lpop(key) / KV.rpop(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.lpop(key) / KV.rpop(key)</code>
                 </a>
                 <p class="text-gray-400">Remove and return the first (left) or last (right) element.</p>
             </div>
@@ -341,9 +341,9 @@ KV.lpush("queue", "urgent")</code></pre>
         <section id="def-lrange" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-lrange" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.lrange(key, start, stop)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.lrange(key, start, stop)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Get a range of elements. Use <code class="text-purple-400">0, -1</code> for the entire list.</p>
+                <p class="text-gray-400 mb-3">Get a range of elements. Use <code class="text-orange-400">0, -1</code> for the entire list.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">all = KV.lrange("queue", 0, -1)</code></pre>
             </div>
         </section>
@@ -351,7 +351,7 @@ KV.lpush("queue", "urgent")</code></pre>
         <section id="def-llen" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-llen" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.llen(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.llen(key)</code>
                 </a>
                 <p class="text-gray-400">Get the length of a list.</p>
             </div>
@@ -360,27 +360,27 @@ KV.lpush("queue", "urgent")</code></pre>
         <section id="def-lindex" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-lindex" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.lindex(key, index) / KV.lset(key, index, value)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.lindex(key, index) / KV.lset(key, index, value)</code>
                 </a>
-                <p class="text-gray-400">Read or overwrite the element at <code class="text-purple-400">index</code> (negative counts from the tail). <code class="text-purple-400">lindex</code> returns the element or <code class="text-purple-400">nil</code>.</p>
+                <p class="text-gray-400">Read or overwrite the element at <code class="text-orange-400">index</code> (negative counts from the tail). <code class="text-orange-400">lindex</code> returns the element or <code class="text-orange-400">nil</code>.</p>
             </div>
         </section>
 
         <section id="def-lrem" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-lrem" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.lrem(key, count, value) / KV.ltrim(key, start, stop)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.lrem(key, count, value) / KV.ltrim(key, start, stop)</code>
                 </a>
-                <p class="text-gray-400"><code class="text-purple-400">lrem</code> removes <code class="text-purple-400">count</code> occurrences of a value (returns how many were removed); <code class="text-purple-400">ltrim</code> keeps only the elements in the given range.</p>
+                <p class="text-gray-400"><code class="text-orange-400">lrem</code> removes <code class="text-orange-400">count</code> occurrences of a value (returns how many were removed); <code class="text-orange-400">ltrim</code> keeps only the elements in the given range.</p>
             </div>
         </section>
 
         <section id="def-rpoplpush" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-rpoplpush" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.rpoplpush(source, dest)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.rpoplpush(source, dest)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Atomically pop from the tail of <code class="text-purple-400">source</code> and push to the head of <code class="text-purple-400">dest</code> — the building block for reliable work queues. Returns the moved element or <code class="text-purple-400">nil</code>.</p>
+                <p class="text-gray-400 mb-3">Atomically pop from the tail of <code class="text-orange-400">source</code> and push to the head of <code class="text-orange-400">dest</code> — the building block for reliable work queues. Returns the moved element or <code class="text-orange-400">nil</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">job = KV.rpoplpush("queue", "processing")</code></pre>
             </div>
         </section>
@@ -400,7 +400,7 @@ KV.lpush("queue", "urgent")</code></pre>
         <section id="def-sadd" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sadd" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.sadd(key, ...members) / KV.srem(key, ...members)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.sadd(key, ...members) / KV.srem(key, ...members)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Add or remove members from a set. Returns the number of elements actually added or removed.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.sadd("tags", "rust", "soli", "redis")
@@ -411,7 +411,7 @@ KV.srem("tags", "redis")</code></pre>
         <section id="def-smembers" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-smembers" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.smembers(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.smembers(key)</code>
                 </a>
                 <p class="text-gray-400">Get all members of a set. Returns an array.</p>
             </div>
@@ -420,9 +420,9 @@ KV.srem("tags", "redis")</code></pre>
         <section id="def-sismember" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sismember" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.sismember(key, member)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.sismember(key, member)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Check if a value is a member of a set. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400 mb-3">Check if a value is a member of a set. Returns <code class="text-orange-400">Bool</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">if KV.sismember("beta-users", user_id)
     render("beta/feature")
 end</code></pre>
@@ -432,7 +432,7 @@ end</code></pre>
         <section id="def-scard" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-scard" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.scard(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.scard(key)</code>
                 </a>
                 <p class="text-gray-400">Get the number of members in a set.</p>
             </div>
@@ -441,25 +441,25 @@ end</code></pre>
         <section id="def-smismember" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-smismember" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.smismember(key, ...members)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.smismember(key, ...members)</code>
                 </a>
-                <p class="text-gray-400">Check membership for several values at once. Returns an array of <code class="text-purple-400">Bool</code>, one per member.</p>
+                <p class="text-gray-400">Check membership for several values at once. Returns an array of <code class="text-orange-400">Bool</code>, one per member.</p>
             </div>
         </section>
 
         <section id="def-spop" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-spop" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.spop(key, count?) / KV.srandmember(key, count?)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.spop(key, count?) / KV.srandmember(key, count?)</code>
                 </a>
-                <p class="text-gray-400">Return random members — <code class="text-purple-400">spop</code> removes them, <code class="text-purple-400">srandmember</code> leaves them in place. Pass <code class="text-purple-400">count</code> to get an array.</p>
+                <p class="text-gray-400">Return random members — <code class="text-orange-400">spop</code> removes them, <code class="text-orange-400">srandmember</code> leaves them in place. Pass <code class="text-orange-400">count</code> to get an array.</p>
             </div>
         </section>
 
         <section id="def-sinter" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sinter" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.sinter(...keys) / KV.sunion(...keys) / KV.sdiff(...keys)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.sinter(...keys) / KV.sunion(...keys) / KV.sdiff(...keys)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Set intersection, union, and difference across two or more sets. Each returns an array.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.sadd("a", "x", "y", "z")
@@ -472,9 +472,9 @@ KV.sdiff("a", "b")    # => ["x"]</code></pre>
         <section id="def-smove" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-smove" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.smove(source, dest, member)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.smove(source, dest, member)</code>
                 </a>
-                <p class="text-gray-400">Atomically move a member from one set to another. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Atomically move a member from one set to another. Returns <code class="text-orange-400">Bool</code>.</p>
             </div>
         </section>
     </section>
@@ -493,7 +493,7 @@ KV.sdiff("a", "b")    # => ["x"]</code></pre>
         <section id="def-hset" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hset" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hset(key, field, value)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hset(key, field, value)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Set a field in a hash. Creates the hash if it doesn't exist.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.hset("user:1", "name", "Alice")
@@ -504,16 +504,16 @@ KV.hset("user:1", "email", "alice@example.com")</code></pre>
         <section id="def-hget" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hget" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hget(key, field)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hget(key, field)</code>
                 </a>
-                <p class="text-gray-400">Get a single field value from a hash. Returns <code class="text-purple-400">null</code> if the field or key doesn't exist.</p>
+                <p class="text-gray-400">Get a single field value from a hash. Returns <code class="text-orange-400">null</code> if the field or key doesn't exist.</p>
             </div>
         </section>
 
         <section id="def-hgetall" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hgetall" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hgetall(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hgetall(key)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Get all fields and values as a Soli Hash.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">user = KV.hgetall("user:1")
@@ -524,7 +524,7 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-hdel" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hdel" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hdel(key, ...fields)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hdel(key, ...fields)</code>
                 </a>
                 <p class="text-gray-400">Delete one or more fields from a hash. Returns the number of fields removed.</p>
             </div>
@@ -533,43 +533,43 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-hexists" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hexists" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hexists(key, field)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hexists(key, field)</code>
                 </a>
-                <p class="text-gray-400">Check if a field exists in a hash. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Check if a field exists in a hash. Returns <code class="text-orange-400">Bool</code>.</p>
             </div>
         </section>
 
         <section id="def-hkeys" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hkeys" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hkeys(key) / KV.hlen(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hkeys(key) / KV.hlen(key)</code>
                 </a>
-                <p class="text-gray-400">Get all field names in a hash or the number of fields. <code class="text-purple-400">hkeys</code> returns an array, <code class="text-purple-400">hlen</code> returns an int.</p>
+                <p class="text-gray-400">Get all field names in a hash or the number of fields. <code class="text-orange-400">hkeys</code> returns an array, <code class="text-orange-400">hlen</code> returns an int.</p>
             </div>
         </section>
 
         <section id="def-hsetnx" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hsetnx" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hsetnx(key, field, value)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hsetnx(key, field, value)</code>
                 </a>
-                <p class="text-gray-400">Set a field only if it doesn't already exist. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Set a field only if it doesn't already exist. Returns <code class="text-orange-400">Bool</code>.</p>
             </div>
         </section>
 
         <section id="def-hmget" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hmget" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hmget(key, ...fields) / KV.hvals(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hmget(key, ...fields) / KV.hvals(key)</code>
                 </a>
-                <p class="text-gray-400"><code class="text-purple-400">hmget</code> reads several fields at once (nil for missing); <code class="text-purple-400">hvals</code> returns all values. Both return an array.</p>
+                <p class="text-gray-400"><code class="text-orange-400">hmget</code> reads several fields at once (nil for missing); <code class="text-orange-400">hvals</code> returns all values. Both return an array.</p>
             </div>
         </section>
 
         <section id="def-hincrby" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hincrby" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.hincrby(key, field, amount) / KV.hincrbyfloat(key, field, amount)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.hincrby(key, field, amount) / KV.hincrbyfloat(key, field, amount)</code>
                 </a>
                 <p class="text-gray-400">Increment a hash field by an integer or floating-point amount. Returns the new value (Int or Float).</p>
             </div>
@@ -594,7 +594,7 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-zadd" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-zadd" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.zadd(key, score, member, ...) / KV.zrem(key, ...members)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.zadd(key, score, member, ...) / KV.zrem(key, ...members)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Add score/member pairs (returns the number of new members) or remove members.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.zadd("scores", 100, "alice", 80, "bob", 120, "carol")</code></pre>
@@ -604,36 +604,36 @@ println(user["name"])   # => "Alice"</code></pre>
         <section id="def-zscore" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-zscore" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.zscore(key, member) / KV.zincrby(key, amount, member)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.zscore(key, member) / KV.zincrby(key, amount, member)</code>
                 </a>
-                <p class="text-gray-400">Read a member's score (Float, or <code class="text-purple-400">nil</code>) or bump it by <code class="text-purple-400">amount</code> (returns the new score).</p>
+                <p class="text-gray-400">Read a member's score (Float, or <code class="text-orange-400">nil</code>) or bump it by <code class="text-orange-400">amount</code> (returns the new score).</p>
             </div>
         </section>
 
         <section id="def-zrank" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-zrank" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.zrank(key, member) / KV.zrevrank(key, member)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.zrank(key, member) / KV.zrevrank(key, member)</code>
                 </a>
-                <p class="text-gray-400">0-based rank ascending or descending by score. Returns the rank or <code class="text-purple-400">nil</code> if the member is absent.</p>
+                <p class="text-gray-400">0-based rank ascending or descending by score. Returns the rank or <code class="text-orange-400">nil</code> if the member is absent.</p>
             </div>
         </section>
 
         <section id="def-zcard" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-zcard" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.zcard(key) / KV.zcount(key, min, max)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.zcard(key) / KV.zcount(key, min, max)</code>
                 </a>
-                <p class="text-gray-400">Total number of members, or the count whose score falls within <code class="text-purple-400">[min, max]</code>.</p>
+                <p class="text-gray-400">Total number of members, or the count whose score falls within <code class="text-orange-400">[min, max]</code>.</p>
             </div>
         </section>
 
         <section id="def-zrange" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-zrange" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.zrange(key, start, stop, with_scores?) / KV.zrevrange(...) / KV.zrangebyscore(key, min, max)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.zrange(key, start, stop, with_scores?) / KV.zrevrange(...) / KV.zrangebyscore(key, min, max)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Fetch members by rank (ascending or descending) or by score range. Pass <code class="text-purple-400">true</code> for <code class="text-purple-400">with_scores</code> to interleave scores in the result.</p>
+                <p class="text-gray-400 mb-3">Fetch members by rank (ascending or descending) or by score range. Pass <code class="text-orange-400">true</code> for <code class="text-orange-400">with_scores</code> to interleave scores in the result.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Top 3 of a leaderboard, with scores
 KV.zrevrange("scores", 0, 2, true)</code></pre>
             </div>
@@ -654,16 +654,16 @@ KV.zrevrange("scores", 0, 2, true)</code></pre>
         <section id="def-setbit" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-setbit" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.setbit(key, offset, value) / KV.getbit(key, offset)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.setbit(key, offset, value) / KV.getbit(key, offset)</code>
                 </a>
-                <p class="text-gray-400">Set or read a single bit at <code class="text-purple-400">offset</code>. <code class="text-purple-400">setbit</code> returns the previous bit; <code class="text-purple-400">getbit</code> returns 0 or 1. Great for compact per-user flags.</p>
+                <p class="text-gray-400">Set or read a single bit at <code class="text-orange-400">offset</code>. <code class="text-orange-400">setbit</code> returns the previous bit; <code class="text-orange-400">getbit</code> returns 0 or 1. Great for compact per-user flags.</p>
             </div>
         </section>
 
         <section id="def-bitcount" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-bitcount" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.bitcount(key)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.bitcount(key)</code>
                 </a>
                 <p class="text-gray-400">Count the set bits in a value — e.g. how many days a user was active in a daily-activity bitmap.</p>
             </div>
@@ -688,9 +688,9 @@ KV.zrevrange("scores", 0, 2, true)</code></pre>
         <section id="def-pfadd" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pfadd" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.pfadd(key, ...elements)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.pfadd(key, ...elements)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Add one or more elements to the HyperLogLog at <code class="text-purple-400">key</code> (created on first use). Returns <code class="text-purple-400">1</code> if the estimate likely changed, else <code class="text-purple-400">0</code>.</p>
+                <p class="text-gray-400 mb-3">Add one or more elements to the HyperLogLog at <code class="text-orange-400">key</code> (created on first use). Returns <code class="text-orange-400">1</code> if the estimate likely changed, else <code class="text-orange-400">0</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.pfadd("visitors:2026-06-24", "alice", "bob", "alice")
 KV.pfadd("visitors:2026-06-24", "carol")
 KV.pfcount("visitors:2026-06-24")   # => ~3 (an estimate, not exact)</code></pre>
@@ -700,7 +700,7 @@ KV.pfcount("visitors:2026-06-24")   # => ~3 (an estimate, not exact)</code></pre
         <section id="def-pfcount" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pfcount" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.pfcount(key, ...keys)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.pfcount(key, ...keys)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Estimated cardinality. Pass several keys to get the cardinality of their <strong>union</strong> without modifying any of them.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Union estimate across two days, computed on the fly
@@ -711,9 +711,9 @@ KV.pfcount("visitors:2026-06-23", "visitors:2026-06-24")</code></pre>
         <section id="def-pfmerge" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pfmerge" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.pfmerge(destkey, ...sourcekeys)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.pfmerge(destkey, ...sourcekeys)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Merge the source HyperLogLogs into <code class="text-purple-400">destkey</code> (the union). Returns <code class="text-purple-400">nil</code>.</p>
+                <p class="text-gray-400 mb-3">Merge the source HyperLogLogs into <code class="text-orange-400">destkey</code> (the union). Returns <code class="text-orange-400">nil</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.pfmerge("visitors:week", "visitors:2026-06-23", "visitors:2026-06-24")
 KV.pfcount("visitors:week")   # => ~unique across both days</code></pre>
             </div>
@@ -738,16 +738,16 @@ KV.pfcount("visitors:week")   # => ~unique across both days</code></pre>
         <section id="def-ping" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ping" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.ping</code>
+                    <code class="text-lg font-mono text-amber-400">KV.ping</code>
                 </a>
-                <p class="text-gray-400">Check connectivity with the SoliKV server. Returns <code class="text-purple-400">"PONG"</code>.</p>
+                <p class="text-gray-400">Check connectivity with the SoliKV server. Returns <code class="text-orange-400">"PONG"</code>.</p>
             </div>
         </section>
 
         <section id="def-dbsize" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-dbsize" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.dbsize</code>
+                    <code class="text-lg font-mono text-amber-400">KV.dbsize</code>
                 </a>
                 <p class="text-gray-400">Total number of keys in the SoliKV database.</p>
             </div>
@@ -756,17 +756,17 @@ KV.pfcount("visitors:week")   # => ~unique across both days</code></pre>
         <section id="def-flushdb" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-flushdb" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.flushdb</code>
+                    <code class="text-lg font-mono text-amber-400">KV.flushdb</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">denied by default</span>
                 </a>
-                <p class="text-gray-400">Delete all keys. Gated behind <code class="text-purple-400">SOLI_KV_ALLOW_ADMIN=1</code>.</p>
+                <p class="text-gray-400">Delete all keys. Gated behind <code class="text-orange-400">SOLI_KV_ALLOW_ADMIN=1</code>.</p>
             </div>
         </section>
 
         <section id="def-cmd" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cmd" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">KV.cmd(...args)</code>
+                    <code class="text-lg font-mono text-amber-400">KV.cmd(...args)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Run a raw SoliKV command. The first argument is the command verb, filtered through the admin denylist.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">KV.cmd("SET", "key", "value")
@@ -784,7 +784,7 @@ CONFIG  DEBUG  SHUTDOWN  MONITOR  CLIENT
 SLAVEOF  REPLICAOF  BGREWRITEAOF  BGSAVE  SAVE
 CLUSTER  FAILOVER  RESET  ACL
 SCRIPT  EVAL  EVALSHA  FUNCTION</code></pre>
-            <p class="text-gray-400">To enable raw admin access, set <code class="text-purple-400">SOLI_KV_ALLOW_ADMIN=1</code> on the process that needs it. Leave this unset on workers reachable from user traffic — a controller bug or template injection cannot reach <code class="text-amber-400">KV.cmd("FLUSHALL")</code>.</p>
+            <p class="text-gray-400">To enable raw admin access, set <code class="text-orange-400">SOLI_KV_ALLOW_ADMIN=1</code> on the process that needs it. Leave this unset on workers reachable from user traffic — a controller bug or template injection cannot reach <code class="text-amber-400">KV.cmd("FLUSHALL")</code>.</p>
         </div>
     </section>
 

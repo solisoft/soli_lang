@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">AI Agents in Soli Projects</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">AI Agents in Soli Projects</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             <code>soli new</code> scaffolds a project that's ready for AI coding agents (Claude Code, Cursor, Aider, Copilot CLI, Codex CLI) from the first commit. This page describes what ships and how to use it.
@@ -20,18 +20,18 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Root agent guide — verification loop, footgun cheatsheet, recipes</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">AGENTS.md</td><td class="px-6 py-4 text-gray-400">Tool-agnostic stub pointing other agents to <code>CLAUDE.md</code></td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">app/controllers/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Controller-specific rules: auto-loaded models, named route helpers, mass-assignment</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">app/models/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Model rules: don't override CRUD; safe <code>where</code> / <code>@sdbql{}</code> forms</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">app/views/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Escaping, locals, helpers, indent</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">app/middleware/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Shape and directive comments</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">tests/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">BDD DSL, controller HTTP client, coverage gate</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">db/migrations/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Migration naming and <code>up</code>/<code>down</code> requirements</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">.claude/settings.json</td><td class="px-6 py-4 text-gray-400">Permissions allowlist for safe <code>soli</code> subcommands</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">.claude/commands/soli-verify.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-verify</code> — lint + test + coverage</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">.claude/commands/soli-test.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-test [path]</code> — one spec or full suite</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">.claude/commands/soli-resource.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-resource &lt;name&gt;</code> — full RESTful resource</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Root agent guide — verification loop, footgun cheatsheet, recipes</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">AGENTS.md</td><td class="px-6 py-4 text-gray-400">Tool-agnostic stub pointing other agents to <code>CLAUDE.md</code></td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">app/controllers/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Controller-specific rules: auto-loaded models, named route helpers, mass-assignment</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">app/models/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Model rules: don't override CRUD; safe <code>where</code> / <code>@sdbql{}</code> forms</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">app/views/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Escaping, locals, helpers, indent</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">app/middleware/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Shape and directive comments</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">tests/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">BDD DSL, controller HTTP client, coverage gate</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">db/migrations/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Migration naming and <code>up</code>/<code>down</code> requirements</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/settings.json</td><td class="px-6 py-4 text-gray-400">Permissions allowlist for safe <code>soli</code> subcommands</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-verify.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-verify</code> — lint + test + coverage</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-test.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-test [path]</code> — one spec or full suite</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-resource.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-resource &lt;name&gt;</code> — full RESTful resource</td></tr>
             </tbody>
         </table>
     </div>
@@ -41,7 +41,7 @@
     <h2 class="text-2xl font-bold text-white mb-6">The verification loop</h2>
     <p class="text-gray-400 mb-6">Every agent working in a Soli project should run, before reporting a task complete:</p>
 
-    <div class="mb-8 rounded-xl bg-gray-900/50 border border-white/10 overflow-hidden">
+    <div class="mb-8 rounded-xl bg-[#171412]/50 border border-white/10 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
             <span class="text-sm font-mono text-gray-400">Terminal</span>
         </div>
@@ -66,9 +66,9 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">/soli-verify</td><td class="px-6 py-4 text-gray-400">Full pre-merge check (lint + test with coverage gate)</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">/soli-test [path|all]</td><td class="px-6 py-4 text-gray-400">One spec for fast feedback, or the full suite with coverage</td></tr>
-                <tr><td class="px-6 py-4 font-mono text-indigo-300">/soli-resource &lt;singular&gt;</td><td class="px-6 py-4 text-gray-400">Scaffolds model + migration + controller + views + route + spec</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">/soli-verify</td><td class="px-6 py-4 text-gray-400">Full pre-merge check (lint + test with coverage gate)</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">/soli-test [path|all]</td><td class="px-6 py-4 text-gray-400">One spec for fast feedback, or the full suite with coverage</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">/soli-resource &lt;singular&gt;</td><td class="px-6 py-4 text-gray-400">Scaffolds model + migration + controller + views + route + spec</td></tr>
             </tbody>
         </table>
     </div>

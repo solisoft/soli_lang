@@ -26,7 +26,7 @@
             </span>
             Crypto Class
         </h2>
-        <p class="text-gray-400 mb-4">All cryptographic functions are available as static methods on the <code class="text-indigo-400">Crypto</code> class. Standalone function aliases are also provided for convenience.</p>
+        <p class="text-gray-400 mb-4">All cryptographic functions are available as static methods on the <code class="text-amber-400">Crypto</code> class. Standalone function aliases are also provided for convenience.</p>
     </section>
 
     <!-- Hash Functions -->
@@ -42,26 +42,26 @@
 
         <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
             <p class="text-sm text-gray-300">
-                <strong class="text-red-400">Not for password storage.</strong> SHA-256, SHA-512, and MD5 are general-purpose hashes &mdash; they are fast by design, which is exactly the wrong property for a password store (an attacker brute-forces them just as fast). For passwords, use <a href="#def-argon2-hash" class="text-indigo-300 underline">Crypto.argon2_hash</a>. For verifying tokens / MACs in constant time, use <a href="#def-secure-compare" class="text-indigo-300 underline">secure_compare</a>.
+                <strong class="text-red-400">Not for password storage.</strong> SHA-256, SHA-512, and MD5 are general-purpose hashes &mdash; they are fast by design, which is exactly the wrong property for a password store (an attacker brute-forces them just as fast). For passwords, use <a href="#def-argon2-hash" class="text-amber-300 underline">Crypto.argon2_hash</a>. For verifying tokens / MACs in constant time, use <a href="#def-secure-compare" class="text-amber-300 underline">secure_compare</a>.
             </p>
         </div>
 
         <section id="def-sha256" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sha256" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.sha256(data)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.sha256(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute SHA-256 hash of a string. Also available as <code class="text-indigo-400">sha256()</code>. Use for file checksums, ETags, content addressing &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
+                <p class="text-gray-400 mb-3">Compute SHA-256 hash of a string. Also available as <code class="text-amber-400">sha256()</code>. Use for file checksums, ETags, content addressing &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                    <code class="text-amber-400">data</code> : <code class="text-orange-400">String</code> - The data to hash
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
+                    <code class="text-orange-400">String</code> - 64-character hex string (32 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.sha256("hello")
 # "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"</code></pre>
@@ -71,19 +71,19 @@
         <section id="def-sha512" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sha512" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.sha512(data)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.sha512(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute SHA-512 hash of a string. Also available as <code class="text-indigo-400">sha512()</code>. Same caveats as SHA-256 &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
+                <p class="text-gray-400 mb-3">Compute SHA-512 hash of a string. Also available as <code class="text-amber-400">sha512()</code>. Same caveats as SHA-256 &mdash; <strong class="text-red-400">not</strong> for password hashing (use <code>argon2_hash</code>).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                    <code class="text-amber-400">data</code> : <code class="text-orange-400">String</code> - The data to hash
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - 128-character hex string (64 bytes)
+                    <code class="text-orange-400">String</code> - 128-character hex string (64 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.sha512("hello")
 # 128-character hex string</code></pre>
@@ -93,19 +93,19 @@
         <section id="def-md5" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-md5" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.md5(data)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.md5(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute MD5 hash of a string. Also available as <code class="text-indigo-400">md5()</code>. <span class="text-red-400"><strong>Cryptographically broken</strong> &mdash; collisions can be constructed cheaply. Use only for non-security checksums (e.g. content fingerprinting where adversarial collisions don't matter). Never use for passwords or signatures.</span></p>
+                <p class="text-gray-400 mb-3">Compute MD5 hash of a string. Also available as <code class="text-amber-400">md5()</code>. <span class="text-red-400"><strong>Cryptographically broken</strong> &mdash; collisions can be constructed cheaply. Use only for non-security checksums (e.g. content fingerprinting where adversarial collisions don't matter). Never use for passwords or signatures.</span></p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> - The data to hash
+                    <code class="text-amber-400">data</code> : <code class="text-orange-400">String</code> - The data to hash
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - 32-character hex string (16 bytes)
+                    <code class="text-orange-400">String</code> - 32-character hex string (16 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.md5("hello")
 # "5d41402abc4b2a76b9719d911017c592"</code></pre>
@@ -115,20 +115,20 @@
         <section id="def-hmac" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hmac" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.hmac(message, key)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.hmac(message, key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute HMAC-SHA256 message authentication code. Also available as <code class="text-indigo-400">hmac()</code>.</p>
+                <p class="text-gray-400 mb-3">Compute HMAC-SHA256 message authentication code. Also available as <code class="text-amber-400">hmac()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">message</code> : <code class="text-purple-400">String</code> - The message to authenticate</div>
-                    <div><code class="text-amber-400">key</code> : <code class="text-purple-400">String</code> - The secret key</div>
+                    <div><code class="text-amber-400">message</code> : <code class="text-orange-400">String</code> - The message to authenticate</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - The secret key</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - 64-character hex string (32 bytes)
+                    <code class="text-orange-400">String</code> - 64-character hex string (32 bytes)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.</code></pre>
@@ -138,20 +138,20 @@
         <section id="def-secure-compare" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-secure-compare" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.secure_compare(a, b)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.secure_compare(a, b)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Constant-time string equality. Also available as <code class="text-indigo-400">secure_compare()</code>. Use whenever comparing two values where one comes from an untrusted source and timing-leak of the comparison would help an attacker &mdash; verifying an HMAC, a webhook signature, a CSRF token, a session-derived MAC. A naïve <code>a == b</code> short-circuits at the first differing byte and leaks the prefix length to a timing attacker.</p>
+                <p class="text-gray-400 mb-3">Constant-time string equality. Also available as <code class="text-amber-400">secure_compare()</code>. Use whenever comparing two values where one comes from an untrusted source and timing-leak of the comparison would help an attacker &mdash; verifying an HMAC, a webhook signature, a CSRF token, a session-derived MAC. A naïve <code>a == b</code> short-circuits at the first differing byte and leaks the prefix length to a timing attacker.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">a</code> : <code class="text-purple-400">String</code></div>
-                    <div><code class="text-amber-400">b</code> : <code class="text-purple-400">String</code></div>
+                    <div><code class="text-amber-400">a</code> : <code class="text-orange-400">String</code></div>
+                    <div><code class="text-amber-400">b</code> : <code class="text-orange-400">String</code></div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Bool</code> - <code>true</code> only when both strings have the same length <strong>and</strong> bytes. Length is not secret; equal-length inputs run in time proportional only to the length, not the position of any differing byte.
+                    <code class="text-orange-400">Bool</code> - <code>true</code> only when both strings have the same length <strong>and</strong> bytes. Length is not secret; equal-length inputs run in time proportional only to the length, not the position of any differing byte.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">expected = Crypto.hmac(payload, getenv("WEBHOOK_SECRET"))
 if secure_compare(expected, request_signature)
@@ -175,19 +175,19 @@ end</code></pre>
         <section id="def-argon2-hash" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-argon2-hash" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.argon2_hash(password)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.argon2_hash(password)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Hash a password using Argon2id (recommended algorithm). Also available as <code class="text-indigo-400">argon2_hash()</code> and <code class="text-indigo-400">password_hash()</code>.</p>
+                <p class="text-gray-400 mb-3">Hash a password using Argon2id (recommended algorithm). Also available as <code class="text-amber-400">argon2_hash()</code> and <code class="text-amber-400">password_hash()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to hash
+                    <code class="text-amber-400">password</code> : <code class="text-orange-400">String</code> - The plain text password to hash
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - The Argon2id hash string
+                    <code class="text-orange-400">String</code> - The Argon2id hash string
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">hash = Crypto.argon2_hash("secretpassword")
 # $argon2id$v=19$m=19456,t=2,p=1$...</code></pre>
@@ -197,20 +197,20 @@ end</code></pre>
         <section id="def-argon2-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-argon2-verify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.argon2_verify(password, hash)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.argon2_verify(password, hash)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Verify a password against an Argon2id hash. Also available as <code class="text-indigo-400">argon2_verify()</code> and <code class="text-indigo-400">password_verify()</code>.</p>
+                <p class="text-gray-400 mb-3">Verify a password against an Argon2id hash. Also available as <code class="text-amber-400">argon2_verify()</code> and <code class="text-amber-400">password_verify()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> - The plain text password to verify</div>
-                    <div><code class="text-amber-400">hash</code> : <code class="text-purple-400">String</code> - The stored hash to verify against</div>
+                    <div><code class="text-amber-400">password</code> : <code class="text-orange-400">String</code> - The plain text password to verify</div>
+                    <div><code class="text-amber-400">hash</code> : <code class="text-orange-400">String</code> - The stored hash to verify against</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Bool</code> - true if password matches, false otherwise
+                    <code class="text-orange-400">Bool</code> - true if password matches, false otherwise
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">if Crypto.argon2_verify(user_input, stored_hash)
   println("Password correct!")
@@ -227,15 +227,15 @@ end</code></pre>
 
         <section id="def-encrypt" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-indigo-400">Crypto.encrypt(plaintext, key?)</code>
+                <code class="text-lg font-mono text-amber-400">Crypto.encrypt(plaintext, key?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Authenticated encryption with AES-256-GCM. Returns base64 of <code class="text-cyan-400">nonce ‖ ciphertext+tag</code>. The key defaults to the <code class="text-cyan-400">SOLI_ENCRYPTION_KEY</code> environment variable; any string works (it's hashed to a 32-byte key), but use a long, high-entropy secret.</p>
-                <code class="text-lg font-mono text-indigo-400">Crypto.decrypt(ciphertext, key?)</code>
+                <code class="text-lg font-mono text-amber-400">Crypto.decrypt(ciphertext, key?)</code>
                 <p class="text-gray-400 mt-3">Reverses <code>Crypto.encrypt</code>. Throws if the key is wrong or the data was tampered with (GCM authentication).</p>
                 <pre data-filename="Encrypt a secret" class="mt-3"><code class="language-soli text-sm">let key = Crypto.random_hex(32)
 let token = Crypto.encrypt("secret value", key)
 Crypto.decrypt(token, key)        # =&gt; "secret value"</code></pre>
-                <div class="rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4 mt-4">
-                    <p class="text-sm text-indigo-200">For model fields, prefer the <a href="/docs/database/models#encrypted-attributes" class="underline">encrypts</a> DSL, which encrypts on save and decrypts on load automatically. Note: GCM uses a random nonce, so ciphertext is non-deterministic &mdash; you can't match encrypted values in a query.</p>
+                <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
+                    <p class="text-sm text-amber-200">For model fields, prefer the <a href="/docs/database/models#encrypted-attributes" class="underline">encrypts</a> DSL, which encrypts on save and decrypts on load automatically. Note: GCM uses a random nonce, so ciphertext is non-deterministic &mdash; you can't match encrypted values in a query.</p>
                 </div>
             </div>
         </section>
@@ -248,15 +248,15 @@ Crypto.decrypt(token, key)        # =&gt; "secret value"</code></pre>
         <section id="def-x25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-x25519-keypair" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_keypair()</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.x25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate an X25519 key pair for Diffie-Hellman key exchange. Also available as <code class="text-indigo-400">x25519_keypair()</code>.</p>
+                <p class="text-gray-400 mb-3">Generate an X25519 key pair for Diffie-Hellman key exchange. Also available as <code class="text-amber-400">x25519_keypair()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
+                    <code class="text-orange-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.x25519_keypair
 println(keypair["public"])   # Hex-encoded public key
@@ -267,20 +267,20 @@ println(keypair["private"])  # Hex-encoded private key</code></pre>
         <section id="def-x25519-shared-secret" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-x25519-shared-secret" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_shared_secret(private_key, public_key)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.x25519_shared_secret(private_key, public_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key. Also available as <code class="text-indigo-400">x25519_shared_secret()</code>.</p>
+                <p class="text-gray-400 mb-3">Compute a shared secret from your private key and another party's public key. Also available as <code class="text-amber-400">x25519_shared_secret()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> - Your hex-encoded private key</div>
-                    <div><code class="text-amber-400">public_key</code> : <code class="text-purple-400">String</code> - Their hex-encoded public key</div>
+                    <div><code class="text-amber-400">private_key</code> : <code class="text-orange-400">String</code> - Your hex-encoded private key</div>
+                    <div><code class="text-amber-400">public_key</code> : <code class="text-orange-400">String</code> - Their hex-encoded public key</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - Hex-encoded shared secret
+                    <code class="text-orange-400">String</code> - Hex-encoded shared secret
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">alice = Crypto.x25519_keypair
 bob = Crypto.x25519_keypair
@@ -295,19 +295,19 @@ bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
         <section id="def-x25519-public-key" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-x25519-public-key" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.x25519_public_key(private_key)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.x25519_public_key(private_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Derive the public key from a private key. Also available as <code class="text-indigo-400">x25519_public_key()</code>.</p>
+                <p class="text-gray-400 mb-3">Derive the public key from a private key. Also available as <code class="text-amber-400">x25519_public_key()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> - Hex-encoded private key
+                    <code class="text-amber-400">private_key</code> : <code class="text-orange-400">String</code> - Hex-encoded private key
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - Hex-encoded public key
+                    <code class="text-orange-400">String</code> - Hex-encoded public key
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.x25519_keypair
 derived_public = Crypto.x25519_public_key(keypair["private"])
@@ -323,15 +323,15 @@ derived_public = Crypto.x25519_public_key(keypair["private"])
         <section id="def-ed25519-keypair" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ed25519-keypair" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.ed25519_keypair()</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.ed25519_keypair()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate an Ed25519 signing key pair for digital signatures. Also available as <code class="text-indigo-400">ed25519_keypair()</code>.</p>
+                <p class="text-gray-400 mb-3">Generate an Ed25519 signing key pair for digital signatures. Also available as <code class="text-amber-400">ed25519_keypair()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
+                    <code class="text-orange-400">Hash</code> - <code>{ "private": String, "public": String }</code> (hex-encoded, 64 chars each)
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">keypair = Crypto.ed25519_keypair
 # Use keypair["private"] to sign messages
@@ -343,27 +343,27 @@ derived_public = Crypto.x25519_public_key(keypair["private"])
     <!-- ID Generation (UUID, ULID, NanoID) -->
     <section id="section-uuid" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
                 </svg>
             </span>
             ID Generation
         </h2>
-        <p class="text-gray-400 mb-4">Four ID generators: UUID v4 / v7 (RFC 4122), ULID, and NanoID. Use <code class="text-indigo-400">uuid_v7()</code> or <code class="text-indigo-400">ulid()</code> for time-sortable DB primary keys, <code class="text-indigo-400">uuid_v4()</code> when you specifically <em>don&apos;t</em> want the timestamp leaking into the ID, and <code class="text-indigo-400">nanoid()</code> for compact URL-safe random IDs with custom length / alphabet.</p>
+        <p class="text-gray-400 mb-4">Four ID generators: UUID v4 / v7 (RFC 4122), ULID, and NanoID. Use <code class="text-amber-400">uuid_v7()</code> or <code class="text-amber-400">ulid()</code> for time-sortable DB primary keys, <code class="text-amber-400">uuid_v4()</code> when you specifically <em>don&apos;t</em> want the timestamp leaking into the ID, and <code class="text-amber-400">nanoid()</code> for compact URL-safe random IDs with custom length / alphabet.</p>
 
         <section id="def-uuid-v4" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-uuid-v4" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">UUID.v4()</code>
+                    <code class="text-lg font-mono text-amber-400">UUID.v4()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate a random (version 4) UUID with 122 bits of OS-CSPRNG randomness. Also available as <code class="text-indigo-400">uuid_v4()</code>.</p>
+                <p class="text-gray-400 mb-3">Generate a random (version 4) UUID with 122 bits of OS-CSPRNG randomness. Also available as <code class="text-amber-400">uuid_v4()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; 36-character hyphenated UUID
+                    <code class="text-orange-400">String</code> &mdash; 36-character hyphenated UUID
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">id = uuid_v4()
 # "c74d395d-5b75-41c3-b873-ca597e1ccaac"
@@ -375,15 +375,15 @@ token = UUID.v4()  # equivalent, via the UUID class</code></pre>
         <section id="def-uuid-v7" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-uuid-v7" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">UUID.v7()</code>
+                    <code class="text-lg font-mono text-amber-400">UUID.v7()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate a time-ordered (version 7) UUID. The high 48 bits are a Unix millisecond timestamp; the remaining bits are random. UUIDs minted in different milliseconds sort by creation time as strings &mdash; ideal for B-tree primary keys. Also available as <code class="text-indigo-400">uuid_v7()</code>.</p>
+                <p class="text-gray-400 mb-3">Generate a time-ordered (version 7) UUID. The high 48 bits are a Unix millisecond timestamp; the remaining bits are random. UUIDs minted in different milliseconds sort by creation time as strings &mdash; ideal for B-tree primary keys. Also available as <code class="text-amber-400">uuid_v7()</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; 36-character hyphenated UUID
+                    <code class="text-orange-400">String</code> &mdash; 36-character hyphenated UUID
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">id = uuid_v7()
 # "019e6ef2-ba58-7460-ad04-55e291a8c28b"
@@ -396,15 +396,15 @@ record_id = UUID.v7()</code></pre>
         <section id="def-ulid" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ulid" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">ULID.generate()</code>
+                    <code class="text-lg font-mono text-amber-400">ULID.generate()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate a ULID &mdash; a 128-bit identifier encoded as 26 Crockford Base32 chars (high 48 bits are a millisecond timestamp, low 80 bits are random). Sorts by creation time as a string, no dashes, shorter than a UUID. Also available as <code class="text-indigo-400">ulid()</code>, and <code class="text-indigo-400">ULID.new()</code> as an alias.</p>
+                <p class="text-gray-400 mb-3">Generate a ULID &mdash; a 128-bit identifier encoded as 26 Crockford Base32 chars (high 48 bits are a millisecond timestamp, low 80 bits are random). Sorts by creation time as a string, no dashes, shorter than a UUID. Also available as <code class="text-amber-400">ulid()</code>, and <code class="text-amber-400">ULID.new()</code> as an alias.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; 26-character Crockford Base32 ULID
+                    <code class="text-orange-400">String</code> &mdash; 26-character Crockford Base32 ULID
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">id = ulid()
 # "01KSQG6MAN1B4S05KRV29NWZPT"
@@ -416,20 +416,20 @@ record_id = ULID.generate()</code></pre>
         <section id="def-nanoid" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-nanoid" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">NanoID.generate(size?, alphabet?)</code>
+                    <code class="text-lg font-mono text-amber-400">NanoID.generate(size?, alphabet?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate a NanoID &mdash; a short, URL-safe, cryptographically random ID. Defaults to 21 characters from the 64-char URL-safe alphabet (<code>A-Z a-z 0-9 _ -</code>), giving ~126 bits of entropy &mdash; comparable to a v4 UUID. Also available as <code class="text-indigo-400">nanoid()</code>, and <code class="text-indigo-400">NanoID.new(...)</code> as an alias.</p>
+                <p class="text-gray-400 mb-3">Generate a NanoID &mdash; a short, URL-safe, cryptographically random ID. Defaults to 21 characters from the 64-char URL-safe alphabet (<code>A-Z a-z 0-9 _ -</code>), giving ~126 bits of entropy &mdash; comparable to a v4 UUID. Also available as <code class="text-amber-400">nanoid()</code>, and <code class="text-amber-400">NanoID.new(...)</code> as an alias.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">size</code> : <code class="text-purple-400">Int?</code> &mdash; Length of the generated ID (1&ndash;1024). Default: <code>21</code>.</div>
-                    <div><code class="text-amber-400">alphabet</code> : <code class="text-purple-400">String?</code> &mdash; Character set to draw from (1&ndash;255 chars). Default: URL-safe 64-char alphabet.</div>
+                    <div><code class="text-amber-400">size</code> : <code class="text-orange-400">Int?</code> &mdash; Length of the generated ID (1&ndash;1024). Default: <code>21</code>.</div>
+                    <div><code class="text-amber-400">alphabet</code> : <code class="text-orange-400">String?</code> &mdash; Character set to draw from (1&ndash;255 chars). Default: URL-safe 64-char alphabet.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; <code>size</code>-character random ID
+                    <code class="text-orange-400">String</code> &mdash; <code>size</code>-character random ID
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">id = nanoid()
 # "XBwf0cjEQmwsx8YSQRCws"
@@ -464,7 +464,7 @@ slug = NanoID.generate(12)</code></pre>
         <section id="def-totp-generate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-totp-generate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_generate(secret, time?, period?)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.totp_generate(secret, time?, period?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -472,13 +472,13 @@ slug = NanoID.generate(12)</code></pre>
                 <p class="text-gray-400 mb-3">Generate a TOTP code (6-digit time-based one-time password). Uses HMAC-SHA1 per RFC 6238.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
-                    <div><code class="text-amber-400">time</code> : <code class="text-purple-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
-                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-orange-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">time</code> : <code class="text-orange-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-orange-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - 6-digit TOTP code
+                    <code class="text-orange-400">String</code> - 6-digit TOTP code
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Generate code for current time
 code = Crypto.totp_generate("JBSWY3DPEHPK3PXP")
@@ -495,7 +495,7 @@ code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
         <section id="def-totp-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-totp-verify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_verify(secret, code, time?, period?)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.totp_verify(secret, code, time?, period?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -503,14 +503,14 @@ code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
                 <p class="text-gray-400 mb-3">Verify a TOTP code against a secret. Accepts the current code and the previous/next code (1 step window) to handle clock drift.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
-                    <div><code class="text-amber-400">code</code> : <code class="text-purple-400">String</code> - 6-digit TOTP code to verify</div>
-                    <div><code class="text-amber-400">time</code> : <code class="text-purple-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
-                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-orange-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">code</code> : <code class="text-orange-400">String</code> - 6-digit TOTP code to verify</div>
+                    <div><code class="text-amber-400">time</code> : <code class="text-orange-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-orange-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Bool</code> - true if code is valid, false otherwise
+                    <code class="text-orange-400">Bool</code> - true if code is valid, false otherwise
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">secret = "JBSWY3DPEHPK3PXP"
 user_code = request.body["code"]
@@ -526,22 +526,22 @@ end</code></pre>
         <section id="def-totp-uri" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-totp-uri" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.totp_uri(secret, account_name?, issuer?, period?)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.totp_uri(secret, account_name?, issuer?, period?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Generate an <code class="text-indigo-400">otpauth://</code> URI for easy TOTP setup in authenticator apps. This URI can be encoded into a QR code.</p>
+                <p class="text-gray-400 mb-3">Generate an <code class="text-amber-400">otpauth://</code> URI for easy TOTP setup in authenticator apps. This URI can be encoded into a QR code.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">secret</code> : <code class="text-purple-400">String</code> - Base32-encoded secret key</div>
-                    <div><code class="text-amber-400">account_name</code> : <code class="text-purple-400">String?</code> - Optional account name (e.g., email)</div>
-                    <div><code class="text-amber-400">issuer</code> : <code class="text-purple-400">String?</code> - Optional service name (e.g., "MyApp")</div>
-                    <div><code class="text-amber-400">period</code> : <code class="text-purple-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                    <div><code class="text-amber-400">secret</code> : <code class="text-orange-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">account_name</code> : <code class="text-orange-400">String?</code> - Optional account name (e.g., email)</div>
+                    <div><code class="text-amber-400">issuer</code> : <code class="text-orange-400">String?</code> - Optional service name (e.g., "MyApp")</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-orange-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - otpauth:// URI
+                    <code class="text-orange-400">String</code> - otpauth:// URI
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">secret = "JBSWY3DPEHPK3PXP"
 uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
@@ -565,7 +565,7 @@ qr_data = QRCode.encode(uri)
             XML Digital Signature Primitives
         </h2>
 
-        <p class="text-gray-400 mb-4">Low-level building blocks for RSA signatures and XML-DSig / SAML / WS-Security: 2048-bit modular exponentiation, PKCS#1 v1.5 padding, and exclusive XML canonicalization. Octet inputs are hex strings (an optional <code class="text-indigo-400">0x</code> prefix is allowed) or arrays of byte-valued <code class="text-purple-400">Int</code>s; results are returned as hex strings.</p>
+        <p class="text-gray-400 mb-4">Low-level building blocks for RSA signatures and XML-DSig / SAML / WS-Security: 2048-bit modular exponentiation, PKCS#1 v1.5 padding, and exclusive XML canonicalization. Octet inputs are hex strings (an optional <code class="text-amber-400">0x</code> prefix is allowed) or arrays of byte-valued <code class="text-orange-400">Int</code>s; results are returned as hex strings.</p>
 
         <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
             <p class="text-sm text-gray-300">
@@ -576,19 +576,19 @@ qr_data = QRCode.encode(uri)
         <section id="def-modexp" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-modexp" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.modexp(base, exp, modulus)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.modexp(base, exp, modulus)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Compute <code class="text-indigo-400">base^exp mod modulus</code> over big-endian octet strings. The result is left-padded with zero octets to the modulus width (<code>k = ceil(bits(modulus)/8)</code>), matching the RSA convention where a signature or ciphertext is always <code>k</code> octets wide &mdash; so the output drops straight into the PKCS#1 helpers.</p>
+                <p class="text-gray-400 mb-3">Compute <code class="text-amber-400">base^exp mod modulus</code> over big-endian octet strings. The result is left-padded with zero octets to the modulus width (<code>k = ceil(bits(modulus)/8)</code>), matching the RSA convention where a signature or ciphertext is always <code>k</code> octets wide &mdash; so the output drops straight into the PKCS#1 helpers.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">base</code>, <code class="text-amber-400">exp</code>, <code class="text-amber-400">modulus</code> : <code class="text-purple-400">String | Array</code> - big-endian octets (hex or byte array)
+                    <code class="text-amber-400">base</code>, <code class="text-amber-400">exp</code>, <code class="text-amber-400">modulus</code> : <code class="text-orange-400">String | Array</code> - big-endian octets (hex or byte array)
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - big-endian hex, <code>k</code> octets wide. Errors if the modulus is zero.
+                    <code class="text-orange-400">String</code> - big-endian hex, <code>k</code> octets wide. Errors if the modulus is zero.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># 4^13 mod 497 = 445 (0x01bd); modulus 0x01f1 is 2 octets, so output is 2 octets
 Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
@@ -598,7 +598,7 @@ Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
         <section id="def-pkcs1-pad" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pkcs1-pad" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.pkcs1_pad(data, key_size, block_type?)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.pkcs1_pad(data, key_size, block_type?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -606,13 +606,13 @@ Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
                 <p class="text-gray-400 mb-3">Apply PKCS#1 v1.5 padding (RFC 8017): <code>EM = 0x00 || BT || PS || 0x00 || data</code>, producing an encoded message exactly <code>key_size</code> octets long. <code class="text-amber-400">block_type</code> defaults to <code>1</code> (signature padding &mdash; <code>PS</code> is all <code>0xFF</code>); pass <code>2</code> for encryption padding (<code>PS</code> is random non-zero octets). <code>data</code> must be at most <code>key_size - 11</code> octets.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">data</code> : <code class="text-purple-400">String | Array</code> - octets to pad<br>
-                    <code class="text-amber-400">key_size</code> : <code class="text-purple-400">Int</code> - target octet length of the encoded message<br>
-                    <code class="text-amber-400">block_type</code> : <code class="text-purple-400">Int?</code> - 1 (signatures, default) or 2 (encryption)
+                    <code class="text-amber-400">data</code> : <code class="text-orange-400">String | Array</code> - octets to pad<br>
+                    <code class="text-amber-400">key_size</code> : <code class="text-orange-400">Int</code> - target octet length of the encoded message<br>
+                    <code class="text-amber-400">block_type</code> : <code class="text-orange-400">Int?</code> - 1 (signatures, default) or 2 (encryption)
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - the <code>key_size</code>-octet encoded message as hex
+                    <code class="text-orange-400">String</code> - the <code>key_size</code>-octet encoded message as hex
                 </div>
             </div>
         </section>
@@ -620,7 +620,7 @@ Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
         <section id="def-pkcs1-unpad" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-pkcs1-unpad" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Crypto.pkcs1_unpad(encoded_message)</code>
+                    <code class="text-lg font-mono text-amber-400">Crypto.pkcs1_unpad(encoded_message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -628,7 +628,7 @@ Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
                 <p class="text-gray-400 mb-3">Strip PKCS#1 v1.5 padding, returning the embedded data. Validates the <code>0x00 || BT</code> prefix, the minimum 8-octet padding string, and (for block type 1) that every padding octet is <code>0xFF</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - the recovered data octets as hex. Errors on malformed padding.
+                    <code class="text-orange-400">String</code> - the recovered data octets as hex. Errors on malformed padding.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># RSA sign/verify round-trip: sign a digest with the private exponent d,
 # verify by raising the signature to the public exponent e.
@@ -644,7 +644,7 @@ assert(recovered == digest)</code></pre>
         <section id="def-c14n-exclusive" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-c14n-exclusive" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Xml.c14n_exclusive(xml, inclusive_prefixes_or_options?)</code>
+                    <code class="text-lg font-mono text-amber-400">Xml.c14n_exclusive(xml, inclusive_prefixes_or_options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -652,12 +652,12 @@ assert(recovered == digest)</code></pre>
                 <p class="text-gray-400 mb-3">Canonicalize an XML document with the W3C <strong class="text-white">Exclusive XML Canonicalization 1.0</strong> algorithm (<code>http://www.w3.org/2001/10/xml-exc-c14n#</code>) &mdash; the canonical form signed by XML-DSig. Empty elements expand to start/end pairs, attributes and namespace declarations are sorted, the XML declaration and comments are removed, and (the "exclusive" part) namespace declarations that are not visibly utilized are dropped rather than inherited from ancestors. <code>DOCTYPE</code> declarations are rejected (XXE defense).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">xml</code> : <code class="text-purple-400">String</code> - the XML document to canonicalize<br>
-                    2nd arg : <code class="text-purple-400">String | Array | Hash?</code> - either the InclusiveNamespaces PrefixList directly (e.g. <code>"ds saml"</code>, <code>#default</code> = default namespace), or an options hash: <code class="text-amber-400">inclusive_prefixes</code>, <code class="text-amber-400">id</code> (canonicalize only the subtree whose <code>Id</code> attribute matches &mdash; resolves <code>Reference URI="#..."</code>), <code class="text-amber-400">enveloped_signature</code> (Bool &mdash; drop any descendant <code>&lt;ds:Signature&gt;</code>).
+                    <code class="text-amber-400">xml</code> : <code class="text-orange-400">String</code> - the XML document to canonicalize<br>
+                    2nd arg : <code class="text-orange-400">String | Array | Hash?</code> - either the InclusiveNamespaces PrefixList directly (e.g. <code>"ds saml"</code>, <code>#default</code> = default namespace), or an options hash: <code class="text-amber-400">inclusive_prefixes</code>, <code class="text-amber-400">id</code> (canonicalize only the subtree whose <code>Id</code> attribute matches &mdash; resolves <code>Reference URI="#..."</code>), <code class="text-amber-400">enveloped_signature</code> (Bool &mdash; drop any descendant <code>&lt;ds:Signature&gt;</code>).
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - the canonical UTF-8 serialization
+                    <code class="text-orange-400">String</code> - the canonical UTF-8 serialization
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">Xml.c14n_exclusive("&lt;?xml version=\"1.0\"?&gt;&lt;doc b='2' a='1'/&gt;")
 # => "&lt;doc a=\"1\" b=\"2\"&gt;&lt;/doc&gt;"
@@ -676,42 +676,42 @@ Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": t
         <section id="def-get-element-by-id" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-get-element-by-id" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Xml.get_element_by_id(xml, id)</code>
+                    <code class="text-lg font-mono text-amber-400">Xml.get_element_by_id(xml, id)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Return the element whose <code>Id</code>/<code>ID</code>/<code>id</code> attribute equals <code>id</code>, serialized as a standalone XML fragment with the inherited ancestor namespaces injected onto its root (so it re-parses and re-canonicalizes identically to the in-context subtree). Errors if no such element exists.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> - the element subtree as standalone XML</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - the element subtree as standalone XML</div>
             </div>
         </section>
 
         <section id="def-get-elements-by-tag" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-get-elements-by-tag" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Xml.get_elements_by_tag(xml, local_name)</code>
+                    <code class="text-lg font-mono text-amber-400">Xml.get_elements_by_tag(xml, local_name)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Return every element with the given local name (namespace prefix ignored), each as a standalone XML fragment. Used to locate elements with no <code>Id</code>, such as <code>&lt;ds:SignedInfo&gt;</code>.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">Array&lt;String&gt;</code></div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code></div>
             </div>
         </section>
 
         <section id="def-x509-public-key" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-x509-public-key" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">X509.public_key(cert)</code>
+                    <code class="text-lg font-mono text-amber-400">X509.public_key(cert)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Parse an X.509 certificate and extract its RSA public key. Accepts PEM (<code>-----BEGIN CERTIFICATE-----</code>), bare base64 (as found in a SAML metadata <code>&lt;ds:X509Certificate&gt;</code>), hex, or a raw DER byte array.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">Hash</code> - <code>{ "algorithm": "RSA", "n": hex, "e": hex, "bits": Int }</code>. The <code>n</code>/<code>e</code> hex strings drop straight into <code>Crypto.modexp</code>.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - <code>{ "algorithm": "RSA", "n": hex, "e": hex, "bits": Int }</code>. The <code>n</code>/<code>e</code> hex strings drop straight into <code>Crypto.modexp</code>.</div>
                 <pre data-filename="Example"><code class="language-soli text-sm">key = X509.public_key(idp_metadata_cert)
 em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step</code></pre>
             </div>
@@ -720,21 +720,21 @@ em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step</code></p
         <section id="def-x509-fingerprint" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-x509-fingerprint" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">X509.fingerprint(cert, algorithm?)</code>
+                    <code class="text-lg font-mono text-amber-400">X509.fingerprint(cert, algorithm?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Certificate fingerprint (hash of the DER bytes) as hex. <code class="text-amber-400">algorithm</code> is <code>"sha256"</code> (default) or <code>"sha1"</code>. Useful for pinning an IdP certificate.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> - hex digest</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> - hex digest</div>
             </div>
         </section>
 
         <section id="def-deflate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-deflate" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Deflate.deflate(data) / Deflate.inflate(data)</code>
+                    <code class="text-lg font-mono text-amber-400">Deflate.deflate(data) / Deflate.inflate(data)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -751,21 +751,21 @@ param = Base64.encode(Deflate.deflate(authn_request_xml))</code></pre>
         <section id="def-rsakey-private" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-rsakey-private" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">RsaKey.private_from_pem(pem)</code>
+                    <code class="text-lg font-mono text-amber-400">RsaKey.private_from_pem(pem)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Parse an RSA private key &mdash; PKCS#8 (<code>-----BEGIN PRIVATE KEY-----</code>) or PKCS#1 (<code>-----BEGIN RSA PRIVATE KEY-----</code>) PEM &mdash; so a Service Provider can <strong class="text-white">sign</strong>. (The verification side, <code>X509.public_key</code>, only yields <code>(n, e)</code>.)</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">Hash</code> - <code>{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }</code>. Sign with the private exponent: <code>Crypto.modexp(padded, key["d"], key["n"])</code>.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - <code>{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }</code>. Sign with the private exponent: <code>Crypto.modexp(padded, key["d"], key["n"])</code>.</div>
             </div>
         </section>
 
         <section id="def-hex" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-hex" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Hex.encode(data) / Hex.decode(hex)</code>
+                    <code class="text-lg font-mono text-amber-400">Hex.encode(data) / Hex.decode(hex)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -824,7 +824,7 @@ recovered == "3031300d060960864801650304020105000420" + si_hash</code></pre>
             </svg>
             Markdown Class
         </a>
-        <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             JWT Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

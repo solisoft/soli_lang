@@ -9,7 +9,7 @@
             <span class="text-white">Integers</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Integers</span>
+            <span class="bg-gradient-to-r from-blue-400 to-amber-400 bg-clip-text text-transparent">Integers</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             64-bit signed integers with built-in methods for arithmetic, iteration, and type inspection.
@@ -26,7 +26,7 @@
             </span>
             Creating Integers
         </h2>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">x = 42
 negative = -100
@@ -51,7 +51,7 @@ let typed: Int = 10</code></pre>
             <section id="method-abs" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-abs" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.abs</code>
+                        <code class="text-lg font-mono text-amber-400">.abs</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -65,7 +65,7 @@ let typed: Int = 10</code></pre>
             <section id="method-pow" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-pow" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.pow(exponent)</code>
+                        <code class="text-lg font-mono text-amber-400">.pow(exponent)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -80,7 +80,7 @@ let typed: Int = 10</code></pre>
             <section id="method-sqrt" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sqrt" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sqrt</code>
+                        <code class="text-lg font-mono text-amber-400">.sqrt</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -94,7 +94,7 @@ let typed: Int = 10</code></pre>
             <section id="method-gcd" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-gcd" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.gcd(other)</code>
+                        <code class="text-lg font-mono text-amber-400">.gcd(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -108,7 +108,7 @@ let typed: Int = 10</code></pre>
             <section id="method-lcm" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-lcm" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.lcm(other)</code>
+                        <code class="text-lg font-mono text-amber-400">.lcm(other)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -136,7 +136,7 @@ let typed: Int = 10</code></pre>
             <section id="method-even-odd" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-even-odd" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.even? / .odd?</code>
+                        <code class="text-lg font-mono text-amber-400">.even? / .odd?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -152,7 +152,7 @@ let typed: Int = 10</code></pre>
             <section id="method-zero" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-zero" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.zero?</code>
+                        <code class="text-lg font-mono text-amber-400">.zero?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -166,7 +166,7 @@ let typed: Int = 10</code></pre>
             <section id="method-positive-negative" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-positive-negative" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.positive? / .negative?</code>
+                        <code class="text-lg font-mono text-amber-400">.positive? / .negative?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -182,7 +182,7 @@ let typed: Int = 10</code></pre>
             <section id="method-between" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-between" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.between?(min, max)</code>
+                        <code class="text-lg font-mono text-amber-400">.between?(min, max)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -196,7 +196,7 @@ let typed: Int = 10</code></pre>
             <section id="method-clamp" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-clamp" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.clamp(min, max)</code>
+                        <code class="text-lg font-mono text-amber-400">.clamp(min, max)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -225,7 +225,7 @@ let typed: Int = 10</code></pre>
             <section id="method-times" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-times" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.times |i| ... end</code>
+                        <code class="text-lg font-mono text-amber-400">.times |i| ... end</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -243,7 +243,7 @@ end
             <section id="method-upto" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-upto" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.upto(limit) |i| ... end</code>
+                        <code class="text-lg font-mono text-amber-400">.upto(limit) |i| ... end</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -259,7 +259,7 @@ end
             <section id="method-downto" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-downto" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.downto(limit) |i| ... end</code>
+                        <code class="text-lg font-mono text-amber-400">.downto(limit) |i| ... end</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -289,12 +289,12 @@ end
             <section id="method-sleep" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-sleep" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.sleep</code>
+                        <code class="text-lg font-mono text-amber-400">.sleep</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Pauses the current thread for the integer number of seconds. Negative values are a no-op. Returns <code class="text-indigo-400">null</code>.</p>
+                    <p class="text-gray-400 mb-3">Pauses the current thread for the integer number of seconds. Negative values are a no-op. Returns <code class="text-amber-400">null</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">2.sleep         # pause for 2 seconds
 n = 5
 n.sleep         # pause for 5 seconds</code></pre>
@@ -318,7 +318,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-to-s" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-s" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_s / .to_string</code>
+                        <code class="text-lg font-mono text-amber-400">.to_s / .to_string</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -338,7 +338,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-to-f" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-f" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.to_f / .to_float</code>
+                        <code class="text-lg font-mono text-amber-400">.to_f / .to_float</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -352,7 +352,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-chr" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-chr" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.chr</code>
+                        <code class="text-lg font-mono text-amber-400">.chr</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -382,7 +382,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-class" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-class" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.class</code>
+                        <code class="text-lg font-mono text-amber-400">.class</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -395,7 +395,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-inspect" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-inspect" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.inspect</code>
+                        <code class="text-lg font-mono text-amber-400">.inspect</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -408,12 +408,12 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-is-a" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-is-a" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.is_a?(type_name)</code>
+                        <code class="text-lg font-mono text-amber-400">.is_a?(type_name)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-indigo-400">"int"</code>, <code class="text-indigo-400">"numeric"</code>, and <code class="text-indigo-400">"object"</code>.</p>
+                    <p class="text-gray-400 mb-3">Check if the value is of the given type. Supports <code class="text-amber-400">"int"</code>, <code class="text-amber-400">"numeric"</code>, and <code class="text-amber-400">"object"</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">42.is_a?("int")       # true
 42.is_a?("numeric")   # true
 42.is_a?("string")    # false</code></pre>
@@ -423,7 +423,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-nil" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-nil" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.nil?</code>
+                        <code class="text-lg font-mono text-amber-400">.nil?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -436,7 +436,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             <section id="method-blank-present" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-blank-present" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">.blank? / .present?</code>
+                        <code class="text-lg font-mono text-amber-400">.blank? / .present?</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -459,7 +459,7 @@ n.sleep         # pause for 5 seconds</code></pre>
             </svg>
             Blocks
         </a>
-        <a href="/docs/language/floats" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/floats" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Floats
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

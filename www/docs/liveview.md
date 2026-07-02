@@ -119,6 +119,8 @@ Two synthetic events are dispatched by the server in addition to user-driven dir
 
 For real-time dashboards, monitoring, and live data feeds, a handler can opt into a per-instance recurring tick. Return the **wrapped form** `{ "state": {...}, "tick_interval": <ms> }` from any handler invocation:
 
+> **Live demo.** A tick-driven server clock runs live on the [LiveView docs page](/docs/core-concepts/liveview) — it's this site's own `live#metrics` handler pushing ~20 diffs a second.
+
 ```soli
 # app/controllers/live_controller.sl
 fn metrics_dashboard(event_data: Any) -> Any {

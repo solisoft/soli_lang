@@ -36,7 +36,7 @@
         <section id="def-json-parse" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-json-parse" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">JSON.parse(string)</code>
+                    <code class="text-lg font-mono text-amber-400">JSON.parse(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -44,11 +44,11 @@
                 <p class="text-gray-400 mb-3">Parse a JSON string into a Soli value (Hash, Array, String, Int, Float, Bool, or null).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">string</code> : <code class="text-purple-400">String</code> - A valid JSON string
+                    <code class="text-amber-400">string</code> : <code class="text-orange-400">String</code> - A valid JSON string
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Any</code> - The parsed value
+                    <code class="text-orange-400">Any</code> - The parsed value
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">data = JSON.parse('{"name": "Alice", "age": 30}')
 println(data["name"])  # "Alice"
@@ -70,7 +70,7 @@ println(numbers[0])  # 1</code></pre>
         <section id="def-json-stringify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-json-stringify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">JSON.stringify(value)</code>
+                    <code class="text-lg font-mono text-amber-400">JSON.stringify(value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -78,11 +78,11 @@ println(numbers[0])  # 1</code></pre>
                 <p class="text-gray-400 mb-3">Serialize a Soli value to a JSON string.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-amber-400">value</code> : <code class="text-purple-400">Any</code> - A JSON-compatible value (Hash, Array, String, Int, Float, Bool, null)
+                    <code class="text-amber-400">value</code> : <code class="text-orange-400">Any</code> - A JSON-compatible value (Hash, Array, String, Int, Float, Bool, null)
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - The JSON string representation
+                    <code class="text-orange-400">String</code> - The JSON string representation
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">json = JSON.stringify({ "name": "Alice", "scores": [95, 87] })
 println(json)  # {"name":"Alice","scores":[95,87]}
@@ -117,7 +117,7 @@ barf("data.json", JSON.stringify(data))</code></pre>
             </svg>
             HTTP Functions
         </a>
-        <a href="/docs/builtins/markdown" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/markdown" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Markdown Class
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

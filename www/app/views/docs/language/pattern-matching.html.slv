@@ -30,7 +30,7 @@
         <section id="kw-match" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#kw-match" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">match</code>
+                    <code class="text-lg font-mono text-amber-400">match</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -50,8 +50,8 @@ print(result);  # "the answer"</code></pre>
     <!-- Guard Clauses -->
     <section id="section-guards" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Guard Clauses</h2>
-        <p class="text-gray-400 mb-4">Add conditions to patterns using <code class="text-indigo-400">if</code> guards:</p>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <p class="text-gray-400 mb-4">Add conditions to patterns using <code class="text-amber-400">if</code> guards:</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">n = 5
 category = match n
@@ -84,7 +84,7 @@ print(handle_status(404));  # "Not Found"</code></pre>
     <!-- Array Patterns -->
     <section id="section-array-patterns" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Array Patterns</h2>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">numbers = [1, 2, 3]
 
@@ -120,7 +120,7 @@ end</code></pre>
     <!-- Hash Patterns -->
     <section id="section-hash-patterns" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Hash Patterns</h2>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">user = {"name": "Alice", "age": 30, "city": "Paris"}
 
@@ -152,7 +152,7 @@ end</code></pre>
     <!-- Type-Based Dispatch -->
     <section id="section-type-dispatch" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Type-Based Dispatch</h2>
-        <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def describe_value(val: Any) -> String
   match val
@@ -181,7 +181,7 @@ print(describe_value([1, 2, 3]));   # "Array with 3 elements"</code></pre>
         <section id="op-wildcard" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#op-wildcard" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">_</code>
+                    <code class="text-lg font-mono text-amber-400">_</code>
                     <span class="text-gray-400 text-sm">Wildcard / Default Case</span>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
@@ -206,7 +206,7 @@ end</code></pre>
             </svg>
             Classes & OOP
         </a>
-        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/pipeline-operator" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Pipeline Operator
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

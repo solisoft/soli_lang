@@ -9,10 +9,10 @@
             <span class="text-white">Regex</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-pink-400 to-rose-400 bg-clip-text text-transparent">Regex Class</span>
+            <span class="bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Regex Class</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Regular expression matching, finding, replacing, splitting, and capturing via the <code class="text-pink-400">Regex</code> class.
+            Regular expression matching, finding, replacing, splitting, and capturing via the <code class="text-orange-400">Regex</code> class.
         </p>
         <div class="mt-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
             <p class="text-yellow-300 text-sm">
@@ -24,8 +24,8 @@
     <!-- Matching -->
     <section id="section-matching" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
             </span>
@@ -35,7 +35,7 @@
         <section id="def-regex-matches" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-matches" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.matches(pattern, string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.matches(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -43,7 +43,7 @@
                 <p class="text-gray-400 mb-3">Test if a string matches a regex pattern.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Bool</code> - true if the pattern matches, false otherwise
+                    <code class="text-orange-400">Bool</code> - true if the pattern matches, false otherwise
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">Regex.matches(r"^[a-z]+$", "hello")  # true
 Regex.matches(r"^[0-9]+$", "hello")  # false
@@ -54,7 +54,7 @@ Regex.matches(r"\d{3}-\d{4}", "555-1234")  # true</code></pre>
         <section id="def-regex-find" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-find" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.find(pattern, string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.find(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -62,7 +62,7 @@ Regex.matches(r"\d{3}-\d{4}", "555-1234")  # true</code></pre>
                 <p class="text-gray-400 mb-3">Find the first match in a string.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash?</code> - <code>{ "match": String, "start": Int, "end": Int }</code> or null if no match
+                    <code class="text-orange-400">Hash?</code> - <code>{ "match": String, "start": Int, "end": Int }</code> or null if no match
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">result = Regex.find(r"[0-9]+", "abc123def")
 println(result["match"])  # "123"
@@ -74,7 +74,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-find-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-find-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.find_all(pattern, string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.find_all(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -82,7 +82,7 @@ println(result["end"])    # 6</code></pre>
                 <p class="text-gray-400 mb-3">Find all matches in a string.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Array</code> - Array of match objects
+                    <code class="text-orange-400">Array</code> - Array of match objects
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">all = Regex.find_all(r"[0-9]+", "a1b2c3")
 # [{"match": "1", "start": 1, "end": 2},
@@ -99,7 +99,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-replace" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-replace" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.replace(pattern, string, replacement)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.replace(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -112,7 +112,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-replace-all" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-replace-all" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.replace_all(pattern, string, replacement)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.replace_all(pattern, string, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -126,7 +126,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-string-gsub" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-string-gsub" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">string.gsub(pattern, replacement)</code>
+                    <code class="text-lg font-mono text-amber-400">string.gsub(pattern, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -140,7 +140,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-string-sub" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-string-sub" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">string.sub(pattern, replacement)</code>
+                    <code class="text-lg font-mono text-amber-400">string.sub(pattern, replacement)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -158,7 +158,7 @@ println(result["end"])    # 6</code></pre>
         <section id="def-regex-split" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-split" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.split(pattern, string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.split(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -172,7 +172,7 @@ Regex.split(r"\s+", "hello   world")  # ["hello", "world"]</code></pre>
         <section id="def-regex-capture" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-capture" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.capture(pattern, string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.capture(pattern, string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -191,7 +191,7 @@ println(result["day"])    # "15"</code></pre>
         <section id="def-regex-escape" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-regex-escape" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Regex.escape(string)</code>
+                    <code class="text-lg font-mono text-amber-400">Regex.escape(string)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -211,7 +211,7 @@ Regex.escape("(test)")       # "\\(test\\)"</code></pre>
             </svg>
             JWT Functions
         </a>
-        <a href="/docs/builtins/env" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/env" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Env Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

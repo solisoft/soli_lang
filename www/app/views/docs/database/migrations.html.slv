@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">Database Migrations</span>
+            <span class="bg-gradient-to-r from-cyan-400 via-blue-400 to-amber-400 bg-clip-text text-transparent">Database Migrations</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Evolve your database schema with versioned migration files.
@@ -22,7 +22,7 @@
         </p>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_users.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)
@@ -45,7 +45,7 @@ end</code></pre></code></pre>
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">generate</span>
                 Create a Migration
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm">soli db:migrate generate create_users_table</code></pre>
             </div>
             <p class="text-sm text-gray-400 mt-2">Creates: <code>db/migrations/20260122143052_create_users_table.sl</code></p>
@@ -56,7 +56,7 @@ end</code></pre></code></pre>
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">up</span>
                 Run Migrations
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm"># Apply all pending migrations
 soli db:migrate
 
@@ -70,7 +70,7 @@ soli db:migrate up</code></pre>
                 <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-400 text-xs font-mono">down</span>
                 Rollback
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm"># Rollback the last migration
 soli db:migrate down</code></pre>
             </div>
@@ -78,13 +78,13 @@ soli db:migrate down</code></pre>
 
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">status</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">status</span>
                 Check Status
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm">soli db:migrate status</code></pre>
             </div>
-            <div class="rounded-lg bg-gray-900 p-3 mt-3 text-sm font-mono text-gray-300">
+            <div class="rounded-lg bg-[#171412] p-3 mt-3 text-sm font-mono text-gray-300">
 <pre>  Database Migrations
 
   Version         Name                            Status
@@ -104,7 +104,7 @@ soli db:migrate down</code></pre>
             <code class="text-cyan-300 font-bold">db.create_collection(name, type?)</code>
             <p class="text-sm text-gray-400 mt-1">Create a collection. <code>type</code> is optional &mdash; one of <code>"blob"</code>, <code>"columnar"</code>, <code>"timeseries"</code>, &hellip; (forwarded verbatim to SolidB). Default is a document collection.</p>
             <ul class="text-xs text-gray-500 mt-2 space-y-1">
-                <li><code>blob</code> &mdash; binary attachments; required for <code>solidb_store_blob</code> and the <a href="/docs/database/models#uploaders" class="text-indigo-400 hover:underline">uploader DSL</a>.</li>
+                <li><code>blob</code> &mdash; binary attachments; required for <code>solidb_store_blob</code> and the <a href="/docs/database/models#uploaders" class="text-amber-400 hover:underline">uploader DSL</a>.</li>
                 <li><code>columnar</code> &mdash; analytics workloads; column-oriented storage with fast aggregations.</li>
                 <li><code>timeseries</code> &mdash; append-only time-indexed events (metrics, logs, telemetry).</li>
             </ul>
@@ -123,7 +123,7 @@ soli db:migrate down</code></pre>
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Collection Examples</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)
@@ -162,7 +162,7 @@ end</code></pre></code></pre>
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Index Examples</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Simple index
@@ -190,7 +190,7 @@ end</code></pre></code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
     <p class="text-gray-400 mb-6">For operations not covered by helpers, use raw SDBQL queries:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Insert seed data
   db.query("INSERT { name: 'Admin', role: 'admin' } INTO users")
@@ -216,7 +216,7 @@ end</code></pre></code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
     <p class="text-gray-400 mb-6">A migration for a blog application:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/migrations/20260122143052_create_blog_schema.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def up(db: Any)    # Create collections
@@ -268,7 +268,7 @@ end</code></pre></code></pre>
     </p>
 
     <p class="text-gray-400 mb-2">Seeds live in two places, run in this order:</p>
-    <div class="rounded-lg bg-gray-950 p-3 mb-6">
+    <div class="rounded-lg bg-[#0C0A09] p-3 mb-6">
 <pre><code class="language-bash text-sm">db/seeds.sl          # runs first
 db/seeds/*.sl        # then every file here, sorted by name</code></pre>
     </div>
@@ -279,7 +279,7 @@ db/seeds/*.sl        # then every file here, sorted by name</code></pre>
                 <span class="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-mono">generate</span>
                 Create a Seed File
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm">soli db:seed generate demo_users</code></pre>
             </div>
             <p class="text-sm text-gray-400 mt-2">Creates: <code>db/seeds/20260623161240_demo_users.sl</code></p>
@@ -290,7 +290,7 @@ db/seeds/*.sl        # then every file here, sorted by name</code></pre>
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">seed</span>
                 Run Seeds
             </h3>
-            <div class="rounded-lg bg-gray-950 p-3 mt-3">
+            <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm"># Run db/seeds.sl, then db/seeds/*.sl
 soli db:seed
 
@@ -307,7 +307,7 @@ soli db:seed ./myapp</code></pre>
         Seeds run with your <code>app/models</code> (and <code>app/services</code>) auto-loaded, so
         they can use the Model API directly — no imports needed:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">db/seeds.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-ruby text-sm">3.times do |i|
@@ -322,7 +322,7 @@ print("Seeded users")</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Environment Configuration</h2>
     <p class="text-gray-400 mb-6">Configure database connection via <code>.env</code> file:</p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">.env</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">SOLIDB_HOST=http://localhost:6745

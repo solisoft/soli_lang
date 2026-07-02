@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Finders & Aggregations</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Finders & Aggregations</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Locate records by field values, compute aggregates, pluck specific columns,
@@ -54,7 +54,7 @@ user = User.find_or_create_by("email", "new@example.com", { "name": "New User" }
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 text-xs font-mono">DYNAMIC FINDERS</span>
+                <span class="px-2 py-1 rounded bg-amber-500/20 text-amber-400 text-xs font-mono">DYNAMIC FINDERS</span>
                 Dynamic Finder Methods
             </h3>
             <p class="text-gray-400 mb-4">
@@ -79,8 +79,8 @@ post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code>
         Aggregation methods let you compute sums, averages, minimums, maximums, and grouped totals directly in the database.
     </p>
 
-    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
-        <p class="text-indigo-300 text-sm">
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <p class="text-amber-300 text-sm">
             <strong>QueryBuilder mode:</strong> Aggregation methods (<code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>group_by</code>) return a QueryBuilder in aggregation mode. Chain with <code>.first</code> to execute and get the result, or <code>.to_query</code> to inspect the generated SDBQL.
         </p>
     </div>
@@ -88,7 +88,7 @@ post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code>
     <div class="space-y-8 mb-12">
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">SUM</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">SUM</span>
                 Sum
             </h3>
             <p class="text-gray-400 mb-4">
@@ -100,7 +100,7 @@ total = User.where("age > @a", { "a": 18 }).sum("balance").first</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">AVG</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">AVG</span>
                 Average
             </h3>
             <pre><code class="language-soli text-sm"># Average
@@ -109,7 +109,7 @@ avg = User.avg("score").first</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">MIN</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">MIN</span>
                 Minimum
             </h3>
             <pre><code class="language-soli text-sm"># Minimum
@@ -118,7 +118,7 @@ min_score = User.min("score").first</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">MAX</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">MAX</span>
                 Maximum
             </h3>
             <pre><code class="language-soli text-sm"># Maximum
@@ -127,7 +127,7 @@ max_score = User.max("views").first</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">GROUP_BY</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">GROUP_BY</span>
                 Group By Aggregation
             </h3>
             <p class="text-gray-400 mb-4">
@@ -236,7 +236,7 @@ user.decrement("stock")            # -1</code></pre>
                 On success the in-memory instance's field <em>and</em> <code>_rev</code> are refreshed. Concurrent increments cannot lose updates &mdash; every successful PUT was the unique continuation of the rev it read.
             </p>
             <p class="text-gray-400">
-                Under extreme contention all 10 retries can fail; the call returns an error like <code>"increment failed: Atomic update of users.view_count failed after 10 attempts (too much contention)"</code> instead of silently dropping the update. See <a href="/docs/database/models" class="text-indigo-400 hover:text-indigo-300">Models</a> for the same details from the model-API surface.
+                Under extreme contention all 10 retries can fail; the call returns an error like <code>"increment failed: Atomic update of users.view_count failed after 10 attempts (too much contention)"</code> instead of silently dropping the update. See <a href="/docs/database/models" class="text-amber-400 hover:text-amber-300">Models</a> for the same details from the model-API surface.
             </p>
         </div>
 
@@ -268,13 +268,13 @@ user.reload</code></pre>
     <h2 id="vector-similarity-search" class="text-2xl font-bold text-white mb-6">Vector / Similarity Search</h2>
     <p class="text-gray-400 mb-6">
         Soli supports AI-native vector similarity search as a first-class database primitive.
-        Chain <code class="text-indigo-400">.similar(query, field?, top_k?)</code> onto any query to rank results by semantic relevance.
+        Chain <code class="text-amber-400">.similar(query, field?, top_k?)</code> onto any query to rank results by semantic relevance.
     </p>
 
     <div class="space-y-8 mb-12">
         <div>
             <h3 id="similar-simple" class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">.SIMILAR()</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">.SIMILAR()</span>
                 Basic Similarity Search
             </h3>
             <p class="text-gray-400 mb-4">
@@ -292,7 +292,7 @@ end</code></pre>
 
         <div>
             <h3 id="similar-custom" class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">OPTIONS</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">OPTIONS</span>
                 Custom Field &amp; Top-K
             </h3>
             <p class="text-gray-400 mb-4">
@@ -326,14 +326,14 @@ SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
             </p>
         </div>
 
-        <div class="rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-6">
-            <h4 class="text-lg font-semibold text-indigo-300 mb-2">SolidDB Native Vector Search</h4>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6">
+            <h4 class="text-lg font-semibold text-amber-300 mb-2">SolidDB Native Vector Search</h4>
             <p class="text-gray-400 text-sm mb-3">
                 SolidDB provides native vector search with HNSW indexes, <code>VECTOR_SIMILARITY()</code> in SDBQL,
                 scalar quantization (4x memory reduction), and hybrid search combining vector + fulltext.
                 Create a vector index on your embedding field for production-scale workloads:
             </p>
-            <pre class="text-sm text-indigo-100/80"><code>curl -X POST http://localhost:6745/_api/database/solidb/vector/products \
+            <pre class="text-sm text-amber-100/80"><code>curl -X POST http://localhost:6745/_api/database/solidb/vector/products \
   -H "Content-Type: application/json" \
   -d '{
     "name": "embedding_idx",
@@ -342,8 +342,8 @@ SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
     "metric": "cosine"
   }'</code></pre>
             <p class="text-gray-400 text-sm mt-3">
-                See the <a href="https://solidb.solisoft.net/docs/vector-search" class="text-indigo-400 underline">SolidDB Vector Search docs</a>
-                and <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-indigo-400 underline">Hybrid Search docs</a>
+                See the <a href="https://solidb.solisoft.net/docs/vector-search" class="text-amber-400 underline">SolidDB Vector Search docs</a>
+                and <a href="https://solidb.solisoft.net/docs/hybrid-search" class="text-amber-400 underline">Hybrid Search docs</a>
                 for SDBQL functions, REST API, and production tuning.
             </p>
         </div>
@@ -351,12 +351,12 @@ SOLI_EMBEDDING_MODEL=text-embedding-3-small              # Default</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Query Builder &rarr;</h3>
+        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Query Builder &rarr;</h3>
             <p class="text-sm text-gray-400">Build complex queries with chaining, filters, ordering, and pagination.</p>
         </a>
-        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Advanced &rarr;</h3>
+        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Advanced &rarr;</h3>
             <p class="text-sm text-gray-400">Raw queries, transactions, and advanced database patterns.</p>
         </a>
     </div>

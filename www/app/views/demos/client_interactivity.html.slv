@@ -18,7 +18,7 @@
             <span class="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">HTMx v2.0.10</span>
             <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Alpine.js v3.14.1</span>
             <span class="px-3 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">Tailwind CSS</span>
-            <a href="/docs/core-concepts/client-interactivity" class="px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-500/20">Read the docs &rarr;</a>
+            <a href="/docs/core-concepts/client-interactivity" class="px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20">Read the docs &rarr;</a>
         </div>
     </header>
 
@@ -76,7 +76,7 @@
          x-transition:leave-end="opacity-0"
          @click.self="cancel()" @keydown.escape.window="cancel()"
          class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-gray-900 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
+        <div class="bg-[#171412] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
              x-transition:enter-end="opacity-100 scale-100">
@@ -148,14 +148,14 @@
                 <h2 class="text-lg font-semibold text-white">1. Optimistic Like</h2>
                 <p class="text-sm text-gray-400">Alpine flips the heart immediately; HTMx posts and swaps the button with the server's truth.</p>
             </header>
-            <div class="flex items-center justify-center p-8 rounded-xl bg-gray-950">
+            <div class="flex items-center justify-center p-8 rounded-xl bg-[#0C0A09]">
                 <%- partial("demos/like_button", { "liked": false }) %>
             </div>
             <details class="mt-4 text-xs text-gray-500">
                 <summary class="cursor-pointer hover:text-gray-300">show snippet</summary>
-                <pre class="mt-2 p-3 rounded bg-gray-950 overflow-x-auto text-gray-300"><code>&lt;button x-data="{ liked: false }"
+                <pre class="mt-2 p-3 rounded bg-[#0C0A09] overflow-x-auto text-gray-300"><code>&lt;button x-data="{ liked: false }"
         @click="liked = !liked"
-        :class="liked && 'text-pink-500'"
+        :class="liked && 'text-orange-500'"
         hx-post="/demos/api/like"
         hx-vals='{"liked": "false"}'
         hx-swap="outerHTML"&gt;
@@ -176,7 +176,7 @@
                        hx-trigger="keyup changed delay:300ms, search"
                        hx-target="#fruit-results"
                        hx-swap="innerHTML"
-                       class="w-full px-4 py-2 rounded-lg bg-gray-950 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40" />
+                       class="w-full px-4 py-2 rounded-lg bg-[#0C0A09] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40" />
                 <div id="fruit-results" class="min-h-24 text-sm text-gray-500">
                     <p class="text-gray-600">Start typing to search 39 fruits.</p>
                 </div>
@@ -213,7 +213,7 @@
                 <h2 class="text-lg font-semibold text-white">4. Inline Edit</h2>
                 <p class="text-sm text-gray-400">Click the text to edit. <kbd class="px-1 py-0.5 text-xs bg-white/10 rounded">Enter</kbd> saves, <kbd class="px-1 py-0.5 text-xs bg-white/10 rounded">Esc</kbd> cancels.</p>
             </header>
-            <div id="todo-row" class="p-4 rounded-xl bg-gray-950">
+            <div id="todo-row" class="p-4 rounded-xl bg-[#0C0A09]">
                 <%- partial("demos/todo_row", { "value": "Ship the demo page" }) %>
             </div>
         </section>
@@ -248,7 +248,7 @@
                         class="px-3 py-1.5 text-xs rounded-lg border transition">
                     <span x-text="live ? '● live' : '○ paused'"></span>
                 </button>
-                <div class="flex-1 p-4 rounded-xl bg-gray-950 flex items-center justify-center">
+                <div class="flex-1 p-4 rounded-xl bg-[#0C0A09] flex items-center justify-center">
                     <!-- HTMx polls every 2s. The `[live]` filter in `hx-trigger` is
                          a boolean expression evaluated in the element's scope; we
                          expose Alpine state as a data attribute and read it here. -->
@@ -276,7 +276,7 @@
                         x-transition:leave="transition ease-in duration-200 overflow-hidden"
                         x-transition:leave-start="opacity-100 max-h-20"
                         x-transition:leave-end="opacity-0 max-h-0"
-                        class="flex items-center justify-between p-3 rounded-lg bg-gray-950 border border-white/10">
+                        class="flex items-center justify-between p-3 rounded-lg bg-[#0C0A09] border border-white/10">
                         <span class="text-sm text-gray-200"><%= label %></span>
                         <button @click="dismissed = true; setTimeout(() => htmx.ajax('DELETE', '/demos/api/item', { source: $el, swap: 'none' }), 220)"
                                 class="text-rose-400/70 hover:text-rose-300 text-xs">dismiss</button>
@@ -293,13 +293,13 @@
             </header>
             <div x-data="{ open: false }">
                 <button @click="open = true; htmx.ajax('GET', '/demos/api/modal-form', { target: $refs.body, swap: 'innerHTML' })"
-                        class="px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium transition">
+                        class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-sm font-medium transition">
                     Open modal
                 </button>
                 <div x-show="open" x-cloak @click.self="open = false"
                      class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div @keydown.escape.window="open = false"
-                         class="bg-gray-900 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
+                         class="bg-[#171412] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
                          x-transition:enter="transition ease-out duration-200"
                          x-transition:enter-start="opacity-0 scale-95"
                          x-transition:enter-end="opacity-100 scale-100">
@@ -335,12 +335,12 @@
                  hx-get="/demos/api/chart"
                  hx-trigger="load, every 2s[this.dataset.live === 'true']"
                  hx-swap="innerHTML transition:true"
-                 class="p-4 rounded-xl bg-gray-950 min-h-40">
+                 class="p-4 rounded-xl bg-[#0C0A09] min-h-40">
                 <div class="h-32 flex items-center justify-center text-xs text-gray-600 shimmer rounded">Connecting…</div>
             </div>
             <details class="mt-4 text-xs text-gray-500">
                 <summary class="cursor-pointer hover:text-gray-300">show snippet</summary>
-                <pre class="mt-2 p-3 rounded bg-gray-950 overflow-x-auto text-gray-300"><code>&lt;div hx-get="/demos/api/chart"
+                <pre class="mt-2 p-3 rounded bg-[#0C0A09] overflow-x-auto text-gray-300"><code>&lt;div hx-get="/demos/api/chart"
      hx-trigger="load, every 2s[this.dataset.live === 'true']"
      hx-swap="innerHTML"&gt;&lt;/div&gt;</code></pre>
             </details>
@@ -367,10 +367,10 @@
                                hx-trigger="keyup changed delay:300ms, search"
                                hx-target="#users-table-container"
                                hx-swap="outerHTML"
-                               class="w-full pl-9 pr-4 py-2 text-sm rounded-lg bg-gray-950 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40" />
+                               class="w-full pl-9 pr-4 py-2 text-sm rounded-lg bg-[#0C0A09] border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40" />
                     </div>
                     <button @click="addOpen = true; $nextTick(() => htmx.ajax('GET', '/demos/api/user-form', { target: $refs.addBody, swap: 'innerHTML' }))"
-                            class="px-4 py-2 text-sm font-medium rounded-lg bg-indigo-500/15 text-indigo-200 border border-indigo-500/30 hover:bg-indigo-500/25 transition whitespace-nowrap">
+                            class="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500/15 text-amber-200 border border-amber-500/30 hover:bg-amber-500/25 transition whitespace-nowrap">
                         + Add User
                     </button>
                 </div>
@@ -389,7 +389,7 @@
             <div x-show="addOpen" x-cloak @click.self="addOpen = false"
                  class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
                 <div @keydown.escape.window="addOpen = false"
-                     class="bg-gray-900 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
+                     class="bg-[#171412] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"
                      x-transition:enter="transition ease-out duration-200"
                      x-transition:enter-start="opacity-0 scale-95"
                      x-transition:enter-end="opacity-100 scale-100"

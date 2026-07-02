@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Validations & Callbacks</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Validations & Callbacks</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Ensure data integrity with model validations and hook into the lifecycle of your records with callbacks.
@@ -14,7 +14,7 @@
         Validations run automatically before <code>create</code> and <code>save</code> operations.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
@@ -92,7 +92,7 @@ end</code></pre>
         On success, <code>_errors</code> is <code>nil</code>.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">user = User.create({ "email": "" })
 if user._errors
@@ -105,8 +105,8 @@ end</code></pre>
         </div>
     </div>
 
-    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <p class="text-indigo-300 text-sm">
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-300 text-sm">
             <strong>Tip:</strong> Always check <code>user._errors</code> before treating the record as persisted. When validations fail, the record is <strong class="text-white">not</strong> persisted to the database.
         </p>
     </div>
@@ -116,7 +116,7 @@ end</code></pre>
         <code>uniqueness: true</code> issues a <code>SELECT &hellip; LIMIT 1</code> before the write, but that check is <strong class="text-white">best-effort</strong>: two concurrent <code>User.create({ "email": "x" })</code> calls can both pass the SELECT and both insert. To make uniqueness atomic, declare a unique index on the column at deploy time and let the database enforce it. Soli detects the resulting 409 from <code>Model.create</code>, <code>instance.save</code>, <code>instance.update</code>, <code>Model.upsert</code>, and <code>Model.find_or_create_by</code>, and turns it into the same <code>_errors</code> entry the SELECT path produces (<code>field: "has already been taken"</code>), so callers handle the race identically.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Run once at deploy time (e.g. in a migration):
 solidb.create_index("users", "users_email_unique", ["email"], { "unique": true })</code></pre>
@@ -135,7 +135,7 @@ solidb.create_index("users", "users_email_unique", ["email"], { "unique": true }
         Use <code>this</code> to access the current instance's fields.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
@@ -166,7 +166,7 @@ end</code></pre>
         Callbacks let you hook into the lifecycle of a model record. Declare them at the class level with the name of the instance method to call — strings or symbols are both accepted.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
@@ -187,8 +187,8 @@ end</code></pre>
         </div>
     </div>
 
-    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
-        <p class="text-indigo-300 text-sm">
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <p class="text-amber-300 text-sm">
             <strong>Execution order:</strong> <code>before_save</code> runs before both create and update operations, making it ideal for data normalization. Specific callbacks like <code>before_create</code> or <code>before_update</code> run only for their respective operation.
         </p>
     </div>
@@ -262,7 +262,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         Returning <code>false</code> from any <code>before_*</code> callback aborts the operation. The native DB write is skipped, after-callbacks don't run, and the instance picks up an <code>_errors</code> entry of the form <code>[{ "message": "before_&lt;event&gt; callback returned false; persistence aborted" }]</code>. Callers receive <code>false</code> (or, for <code>Model.create</code>&nbsp;/&nbsp;<code>Model.update</code>, the instance with <code>_errors</code> populated) so they can branch on the result identically to a validation failure.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Audited &lt; Model
   before_save("can_save")   # symbols also work: before_save(:can_save)
@@ -279,7 +279,7 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model
@@ -338,14 +338,14 @@ end</code></pre>
         </div>
     </div>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
             </svg>
             Best Practices
         </h4>
-        <ul class="text-indigo-200/80 text-sm space-y-2">
+        <ul class="text-amber-200/80 text-sm space-y-2">
             <li><strong>Validate early</strong> - Add validations to catch bad data before it reaches the database</li>
             <li><strong>Use presence checks</strong> - Required fields should always have <code>presence: true</code></li>
             <li><strong>Keep callbacks focused</strong> - Each callback method should do one thing well</li>
@@ -357,12 +357,12 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Models & ORM &rarr;</h3>
+        <a href="/docs/database/models" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Models & ORM &rarr;</h3>
             <p class="text-sm text-gray-400">Learn about CRUD operations, query building, and relationships.</p>
         </a>
-        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Advanced Queries &rarr;</h3>
+        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Advanced Queries &rarr;</h3>
             <p class="text-sm text-gray-400">Aggregations, raw queries, transactions, and more.</p>
         </a>
     </div>

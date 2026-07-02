@@ -9,13 +9,13 @@
 
 <!-- Search Modal -->
 <div id="searchModal" class="search-modal fixed inset-0 z-[100] items-start justify-center pt-20 lg:pt-24 px-4 bg-black/70 backdrop-blur-sm overflow-hidden" onclick="closeSearchModal(event)">
-    <div class="w-full max-w-2xl bg-gray-900 rounded-xl border border-white/10 shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
+    <div class="w-full max-w-2xl bg-[#171412] rounded-xl border border-white/10 shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
         <div class="flex items-center gap-3 p-4 border-b border-white/10">
-            <svg class="w-5 h-5 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input type="text" id="searchInput" class="flex-1 bg-gray-800/50 text-white placeholder-gray-500 outline-none px-4 py-2.5 rounded-lg border border-white/10 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all text-base" placeholder="Search documentation..." oninput="handleSearch(this.value)" autocomplete="off" spellcheck="false">
-            <kbd class="px-2 py-1 text-xs bg-gray-800 text-gray-400 rounded border border-white/10 flex-shrink-0">ESC</kbd>
+            <input type="text" id="searchInput" class="flex-1 bg-stone-800/50 text-white placeholder-gray-500 outline-none px-4 py-2.5 rounded-lg border border-white/10 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 transition-all text-base" placeholder="Search documentation..." oninput="handleSearch(this.value)" autocomplete="off" spellcheck="false">
+            <kbd class="px-2 py-1 text-xs bg-stone-800 text-gray-400 rounded border border-white/10 flex-shrink-0">ESC</kbd>
         </div>
         <div id="searchResults" class="overflow-y-auto p-2" style="max-height: calc(100vh - 180px);">
             <div class="text-center py-8 text-gray-500">Type to search...</div>
@@ -89,7 +89,7 @@ function handleSearch(query) {
         const item = r.item;
         const typeColors = {
             function: 'bg-blue-500/20 text-blue-400',
-            keyword: 'bg-purple-500/20 text-purple-400',
+            keyword: 'bg-orange-500/20 text-orange-400',
             operator: 'bg-amber-500/20 text-amber-400',
             type: 'bg-green-500/20 text-green-400',
             page: 'bg-gray-500/20 text-gray-400'
@@ -101,7 +101,7 @@ function handleSearch(query) {
                     <span class="px-2 py-0.5 text-xs rounded ${color}">${item.type}</span>
                     <span class="font-medium text-white">${item.title}</span>
                 </div>
-                ${item.signature ? `<code class="text-sm text-indigo-400">${item.signature}</code>` : ''}
+                ${item.signature ? `<code class="text-sm text-amber-400">${item.signature}</code>` : ''}
                 <p class="text-sm text-gray-500 mt-1">${item.description || item.category}</p>
             </a>
         `;

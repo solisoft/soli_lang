@@ -48,17 +48,17 @@
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">disk</code></td>
                             <td class="py-3 pr-4">File-based JSON storage</td>
-                            <td class="py-3"><code class="text-purple-400">path</code>: directory (default: <code class="text-purple-400">./sessions</code>)</td>
+                            <td class="py-3"><code class="text-orange-400">path</code>: directory (default: <code class="text-orange-400">./sessions</code>)</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">solidb</code></td>
                             <td class="py-3 pr-4">SolidB HTTP database</td>
-                            <td class="py-3"><code class="text-purple-400">solidb_host</code>, <code class="text-purple-400">solidb_database</code>, <code class="text-purple-400">solidb_collection</code></td>
+                            <td class="py-3"><code class="text-orange-400">solidb_host</code>, <code class="text-orange-400">solidb_database</code>, <code class="text-orange-400">solidb_collection</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">solikv</code></td>
                             <td class="py-3 pr-4">SoliKV/Redis with TTL</td>
-                            <td class="py-3"><code class="text-purple-400">solikv_host</code>, <code class="text-purple-400">solikv_port</code>, <code class="text-purple-400">solikv_token</code></td>
+                            <td class="py-3"><code class="text-orange-400">solikv_host</code>, <code class="text-orange-400">solikv_port</code>, <code class="text-orange-400">solikv_token</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -73,12 +73,12 @@
         <section id="def-session-configure" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-configure" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_configure(options)</code>
+                    <code class="text-lg font-mono text-amber-400">session_configure(options)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Configure session storage at runtime. Supports <code class="text-purple-400">driver</code>, <code class="text-purple-400">path</code>, <code class="text-purple-400">solidb_*</code>, and <code class="text-purple-400">solikv_*</code> options.</p>
+                <p class="text-gray-400 mb-3">Configure session storage at runtime. Supports <code class="text-orange-400">driver</code>, <code class="text-orange-400">path</code>, <code class="text-orange-400">solidb_*</code>, and <code class="text-orange-400">solikv_*</code> options.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Examples</h4>
                 <pre data-filename="Disk Storage"><code class="language-soli text-sm">session_configure({"driver": "disk", "path": "./sessions"})</code></pre>
                 <pre data-filename="SolidB Storage"><code class="language-soli text-sm">session_configure({"driver": "solidb", "solidb_host": "localhost:8080", "solidb_database": "myapp"})</code></pre>
@@ -89,7 +89,7 @@
         <section id="def-session-driver" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-driver" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_driver()</code>
+                    <code class="text-lg font-mono text-amber-400">session_driver()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -97,7 +97,7 @@
                 <p class="text-gray-400 mb-3">Get the current session storage driver name.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> - One of: <code class="text-amber-400">"in_memory"</code>, <code class="text-amber-400">"disk"</code>, <code class="text-amber-400">"solidb"</code>, <code class="text-amber-400">"solikv"</code>
+                    <code class="text-orange-400">String</code> - One of: <code class="text-amber-400">"in_memory"</code>, <code class="text-amber-400">"disk"</code>, <code class="text-amber-400">"solidb"</code>, <code class="text-amber-400">"solikv"</code>
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">current = session_driver()
 print("Using: " + current)</code></pre>
@@ -107,7 +107,7 @@ print("Using: " + current)</code></pre>
         <section id="def-session-config" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-config" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">session_config()</code>
+                    <code class="text-lg font-mono text-amber-400">session_config()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -115,7 +115,7 @@ print("Using: " + current)</code></pre>
                 <p class="text-gray-400 mb-3">Get the current session configuration as a Hash.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> - Configuration with driver, path, host, port, ttl, etc.
+                    <code class="text-orange-400">Hash</code> - Configuration with driver, path, host, port, ttl, etc.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">config = session_config()
 print(config["driver"])
@@ -147,7 +147,7 @@ print(config["ttl"])</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">GET /up</code></td>
-                            <td class="py-3">Returns <code class="text-purple-400">503 warming</code> until the session-store connection is warmed, then <code class="text-purple-400">200 ready</code>. Ready immediately for in-memory/disk drivers.</td>
+                            <td class="py-3">Returns <code class="text-orange-400">503 warming</code> until the session-store connection is warmed, then <code class="text-orange-400">200 ready</code>. Ready immediately for in-memory/disk drivers.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -182,37 +182,37 @@ print(config["ttl"])</code></pre>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_DRIVER</code></td>
                             <td class="py-3 pr-4">Storage backend</td>
-                            <td class="py-3"><code class="text-purple-400">in_memory</code></td>
+                            <td class="py-3"><code class="text-orange-400">in_memory</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_PATH</code></td>
                             <td class="py-3 pr-4">Path for disk storage</td>
-                            <td class="py-3"><code class="text-purple-400">./sessions</code></td>
+                            <td class="py-3"><code class="text-orange-400">./sessions</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIDB_HOST</code></td>
                             <td class="py-3 pr-4">SolidB server address</td>
-                            <td class="py-3"><code class="text-purple-400">localhost:8080</code></td>
+                            <td class="py-3"><code class="text-orange-400">localhost:8080</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIDB_DATABASE</code></td>
                             <td class="py-3 pr-4">SolidB database name</td>
-                            <td class="py-3"><code class="text-purple-400">solidb</code></td>
+                            <td class="py-3"><code class="text-orange-400">solidb</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIKV_HOST</code></td>
                             <td class="py-3 pr-4">SoliKV server address</td>
-                            <td class="py-3"><code class="text-purple-400">localhost</code></td>
+                            <td class="py-3"><code class="text-orange-400">localhost</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SOLIKV_PORT</code></td>
                             <td class="py-3 pr-4">SoliKV port</td>
-                            <td class="py-3"><code class="text-purple-400">6380</code></td>
+                            <td class="py-3"><code class="text-orange-400">6380</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_TTL</code></td>
                             <td class="py-3 pr-4">Session timeout (seconds)</td>
-                            <td class="py-3"><code class="text-purple-400">86400</code></td>
+                            <td class="py-3"><code class="text-orange-400">86400</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -231,7 +231,7 @@ print(config["ttl"])</code></pre>
             <section id="fn-http-cookies" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-http-cookies" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">cookies</code>
+                        <code class="text-lg font-mono text-amber-400">cookies</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -246,7 +246,7 @@ session_id = cookies.session_id</code></pre>
             <section id="fn-http-set-cookie" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-http-set-cookie" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">set_cookie(name, value)</code>
+                        <code class="text-lg font-mono text-amber-400">set_cookie(name, value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -322,7 +322,7 @@ flash("error", "Invalid email address")</code></pre>
             </svg>
             Validation Functions
         </a>
-        <a href="/docs/builtins/jobs" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/jobs" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Jobs &amp; Cron
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

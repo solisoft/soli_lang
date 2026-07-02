@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Models & ORM</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Models & ORM</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Models manage data and business logic in your MVC application.
@@ -26,15 +26,15 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
         </p>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User < Model end</code></pre>
         </div>
     </div>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <p class="text-indigo-200/80 text-sm">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/80 text-sm">
             That's it! No need to manually specify collection names or field definitions.
         </p>
     </div>
@@ -43,7 +43,7 @@ on a collection that doesn't exist yet, SoliLang will automatically create the c
     <p class="text-gray-400 mb-4">
         Every <code>.sl</code> file under <code>app/models/</code> is loaded automatically at startup &mdash; by <code>soli serve</code> (in each worker) and by the REPL. Model classes are therefore available everywhere (controllers, views, other models, the REPL) without an <code>import</code> statement.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl &mdash; no import needed</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class UsersController < Controller
@@ -58,7 +58,7 @@ end</code></pre>
     </p>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
         <li><code>app/services/</code> &mdash; integration / domain-service classes (Stripe, mailers, etc.)</li>
-        <li><code>app/policies/</code> &mdash; authorization policies (see <a href="/docs/authorization" class="text-indigo-400 hover:underline">Authorization</a>)</li>
+        <li><code>app/policies/</code> &mdash; authorization policies (see <a href="/docs/authorization" class="text-amber-400 hover:underline">Authorization</a>)</li>
     </ul>
     <p class="text-gray-400 mb-6">
         Within a directory, files load in alphabetical order and <em>before</em> their subdirectories (top-down). Soli executes files eagerly, so if one class extends another defined in a different file, keep the base class at an equal-or-shallower depth (e.g. <code>app/models/application_record.sl</code>) so it loads first. In <code>--dev</code>, edits to nested files hot-reload without a restart.
@@ -71,8 +71,8 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">CRUD Operations</h2>
 
-    <div class="my-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
-        <p class="text-indigo-300 text-sm">
+    <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <p class="text-amber-300 text-sm">
             <strong>Auto-creation:</strong> All Model operations automatically create the collection &mdash; and the database itself, if it's missing too &mdash; when it doesn't exist. This only happens on the first call that encounters a missing collection or database.
         </p>
     </div>
@@ -183,7 +183,7 @@ user.delete()</code></pre>
 
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                <span class="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">COUNT</span>
+                <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">COUNT</span>
                 Counting Records
             </h3>
             <pre><code class="language-soli text-sm">total = User.count</code></pre>
@@ -203,46 +203,46 @@ user.delete()</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.save(hash?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.save(hash?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Insert (if new) or update (if existing). Optional hash is merged onto the instance before validation &amp; persist. Returns the instance with <code>_key</code> populated.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.update(hash?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.update(hash?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Persist current non-<code>_</code> fields to DB. Optional hash is merged first. Requires <code>_key</code>.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.delete()</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.delete()</code></td>
                     <td class="py-3 px-4 text-gray-400">Delete the document from DB. Requires <code>_key</code>. Supports soft delete.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.reload()</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.reload()</code></td>
                     <td class="py-3 px-4 text-gray-400">Refresh instance from database.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.increment(field, n?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.increment(field, n?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Atomically add <code>n</code> (default 1) to a numeric field. Uses an <code>If-Match</code> CAS loop on <code>_rev</code> with bounded retry — concurrent increments cannot lose updates.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.decrement(field, n?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.decrement(field, n?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Atomically subtract <code>n</code> (default 1) from a numeric field. Same CAS-on-<code>_rev</code> retry as <code>increment</code>.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.touch()</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.touch()</code></td>
                     <td class="py-3 px-4 text-gray-400">Update <code>_updated_at</code> timestamp without changing other fields.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.restore()</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.restore()</code></td>
                     <td class="py-3 px-4 text-gray-400">Restore a soft-deleted record (clear <code>deleted_at</code>).</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">instance.errors</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">instance.errors</code></td>
                     <td class="py-3 px-4 text-gray-400">Return validation errors from last save/update.</td>
                 </tr>
             </tbody>
         </table>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Create a new instance and save it
 user = User.new()
@@ -285,7 +285,7 @@ user.delete()</code></pre>
         Both <code>.save()</code> and <code>.update()</code> accept an optional hash of attributes that get merged onto the instance <em>before</em> validations and the DB write run. One call replaces N assignments + save:
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Instead of:
 user.name = "Alice"
@@ -306,7 +306,7 @@ user.save({
         Merge semantics: keys you don't pass keep their current instance value; keys you do pass overwrite. Mix it with direct assignment too — hash wins on conflict:
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># Partial update
 p = Product.find(id)
@@ -340,127 +340,127 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.create(data)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.create(data)</code></td>
                     <td class="py-3 px-4 text-gray-400">Insert a new document. Returns a class instance; on failure <code>instance._errors</code> is an array and the record is not persisted, on success <code>instance._errors</code> is <code>nil</code>.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.create_many([data, ...])</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.create_many([data, ...])</code></td>
                     <td class="py-3 px-4 text-gray-400">Batch insert multiple documents, returns <code>{ "created": n }</code></td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find(id)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.find(id)</code></td>
                     <td class="py-3 px-4 text-gray-400"><strong class="text-white">Raises</strong> <code>RecordNotFound</code> when the id is missing (auto-mapped to a <strong class="text-white">404</strong> HTTP response). Use <code>find_by</code> for optional lookups.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find_by(field, value)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.find_by(field, value)</code></td>
                     <td class="py-3 px-4 text-gray-400">Find first record by field value, returns <code>null</code> when missing.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.first_by(field, value)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.first_by(field, value)</code></td>
                     <td class="py-3 px-4 text-gray-400">Find first record by field with ordering</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find_or_create_by(field, value, data?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.find_or_create_by(field, value, data?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Find by field, or create if not found</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.find_by_*</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.find_by_*</code></td>
                     <td class="py-3 px-4 text-gray-400">Dynamic finder: find_by_field, find_by_field1_and_field2(...), etc.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(hash)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.where(hash)</code></td>
                     <td class="py-3 px-4 text-gray-400">Hash filter — safe for user input (keys validated, values bound)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.where(string, bind_vars)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.where(string, bind_vars)</code></td>
                     <td class="py-3 px-4 text-gray-400">SDBQL filter string — developer-trusted only (do not pass user input)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.order(field, direction)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.order(field, direction)</code></td>
                     <td class="py-3 px-4 text-gray-400">Start a query chain sorted by field ("asc"/"desc")</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.limit(n)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.limit(n)</code></td>
                     <td class="py-3 px-4 text-gray-400">Start a query chain limited to n results</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.offset(n)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.offset(n)</code></td>
                     <td class="py-3 px-4 text-gray-400">Start a query chain with offset</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.paginate(hash)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.paginate(hash)</code></td>
                     <td class="py-3 px-4 text-gray-400">Terminal: fetch paginated results + metadata. Args: <code>page</code> (default 1), <code>per</code> (default 25)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.all</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.all</code></td>
                     <td class="py-3 px-4 text-gray-400">Get all documents as instances</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.count</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.count</code></td>
                     <td class="py-3 px-4 text-gray-400">Count all documents</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.update(id, data)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.update(id, data)</code></td>
                     <td class="py-3 px-4 text-gray-400">Update a document</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.upsert(id, data)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.upsert(id, data)</code></td>
                     <td class="py-3 px-4 text-gray-400">Insert or update document by ID</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete(id)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.delete(id)</code></td>
                     <td class="py-3 px-4 text-gray-400">Delete a document</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.delete_all</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.delete_all</code></td>
                     <td class="py-3 px-4 text-gray-400">Wipe every document in the collection (primarily for test setup/teardown). For filtered bulk deletes use <code>Model.where(...).delete_all</code>.</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.transaction()</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.transaction()</code></td>
                     <td class="py-3 px-4 text-gray-400">Get transaction handle for manual control</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.scope(name)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.scope(name)</code></td>
                     <td class="py-3 px-4 text-gray-400">Execute a named scope (returns QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.with_deleted</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.with_deleted</code></td>
                     <td class="py-3 px-4 text-gray-400">Include soft-deleted records (QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.only_deleted</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.only_deleted</code></td>
                     <td class="py-3 px-4 text-gray-400">Query only deleted records (QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.includes(rel, ...)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.includes(rel, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Eager load relations (returns QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.select(field, ...)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.select(field, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Select specific fields (returns QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.join(rel, filter?, binds?)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.join(rel, filter?, binds?)</code></td>
                     <td class="py-3 px-4 text-gray-400">Filter by related existence (returns QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.sum(field) / avg / min / max</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.sum(field) / avg / min / max</code></td>
                     <td class="py-3 px-4 text-gray-400">Aggregation (returns QueryBuilder, chain <code>.first</code> to execute)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.group_by(field, func, agg_field)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.group_by(field, func, agg_field)</code></td>
                     <td class="py-3 px-4 text-gray-400">Group-by aggregation (returns QueryBuilder, chain <code>.all</code>)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">Model.pluck(field, ...)</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.pluck(field, ...)</code></td>
                     <td class="py-3 px-4 text-gray-400">Select fields only (returns QueryBuilder, chain <code>.all</code>)</td>
                 </tr>
                 <tr class="border-t border-white/10">
-                    <td class="py-3 px-4"><code class="text-purple-300">Model.mock_query_result(query, results)</code></td>
+                    <td class="py-3 px-4"><code class="text-orange-300">Model.mock_query_result(query, results)</code></td>
                     <td class="py-3 px-4 text-gray-400">Register mock data for an AQL query (for testing)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-purple-300">Model.clear_mocks()</code></td>
+                    <td class="py-3 px-4"><code class="text-orange-300">Model.clear_mocks()</code></td>
                     <td class="py-3 px-4 text-gray-400">Clear all registered mock responses</td>
                 </tr>
             </tbody>
@@ -472,7 +472,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         By default, <code>Model.create(hash)</code> and <code>instance.update(hash)</code> write <strong>every</strong> key in the supplied hash straight to the document. If <code>hash</code> came from a request body, that includes any field a client decides to send &mdash; <code>role</code>, <code>is_admin</code>, <code>password_digest</code>, etc. Declare <code>attr_accessible(...)</code> on the model to lock down which keys mass-assign accepts.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User &lt; Model
@@ -511,7 +511,7 @@ User.create({
         For controller-side filtering (when you'd rather hand-pick keys at the boundary), <code>hash.slice(["a", "b"])</code> returns a new hash with only the listed keys &mdash; useful when you need a different whitelist per action:
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/users_controller.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">fn update
@@ -540,12 +540,12 @@ end</code></pre>
             </thead>
             <tbody>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4"><code class="text-indigo-300">page</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">page</code></td>
                     <td class="py-3 px-4 text-gray-400"><code>1</code></td>
                     <td class="py-3 px-4 text-gray-400">Page number (1-indexed, clamped to valid range)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-indigo-300">per</code></td>
+                    <td class="py-3 px-4"><code class="text-amber-300">per</code></td>
                     <td class="py-3 px-4 text-gray-400"><code>25</code></td>
                     <td class="py-3 px-4 text-gray-400">Results per page</td>
                 </tr>
@@ -554,7 +554,7 @@ end</code></pre>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-3">Return Value</h3>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">{
   "records": [...],                <span class="text-gray-600"># Array of model instances for this page</span>
@@ -570,7 +570,7 @@ end</code></pre>
 
     <h3 class="text-lg font-semibold text-white mb-3">Usage</h3>
     <p class="text-gray-400 mb-4">Chain from any QueryBuilder — all filters, includes, ordering, etc. are preserved:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/contacts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">def index
@@ -595,7 +595,7 @@ end</code></pre>
         Declare a blob attachment on a model with <code>uploader(name, options)</code>. Soli registers the field, validates incoming files against the rules you supply, and stores the blob in SoliDB. The DSL also auto-generates instance methods so the controller is a one-liner.
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contact.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Contact &lt; Model
@@ -624,7 +624,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         To avoid storing heavy originals (e.g. large PNG photos), declare a <code>format</code> and/or size caps. Soli decodes the upload, optionally downscales it, re-encodes it to the target format, and stores the result &mdash; updating the blob's content-type and filename extension to match. WebP is encoded <strong>lossy</strong> (via libwebp) so photos shrink dramatically; JPEG quality is honoured too.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/listing.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Listing &lt; Model
@@ -654,16 +654,16 @@ end</code></pre>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.attach_photo(file)</td><td class="px-6 py-3 text-gray-400">Validate, store, replace the previous blob (single mode) or append (multiple mode). Sets <code>_errors</code> on failure.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.detach_photo([blob_id])</td><td class="px-6 py-3 text-gray-400">Remove the current blob (single) or the named one (multiple). <code>blob_id</code> is required for multiple uploaders.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.photo_url()</td><td class="px-6 py-3 text-gray-400">Return the proxy URL or <code>null</code>. Single-mode only.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">contact.photo_urls()</td><td class="px-6 py-3 text-gray-400">Return one URL per stored blob_id. Multiple-mode only.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">contact.attach_photo(file)</td><td class="px-6 py-3 text-gray-400">Validate, store, replace the previous blob (single mode) or append (multiple mode). Sets <code>_errors</code> on failure.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">contact.detach_photo([blob_id])</td><td class="px-6 py-3 text-gray-400">Remove the current blob (single) or the named one (multiple). <code>blob_id</code> is required for multiple uploaders.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">contact.photo_url()</td><td class="px-6 py-3 text-gray-400">Return the proxy URL or <code>null</code>. Single-mode only.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">contact.photo_urls()</td><td class="px-6 py-3 text-gray-400">Return one URL per stored blob_id. Multiple-mode only.</td></tr>
             </tbody>
         </table>
     </div>
 
     <p class="text-gray-400 mb-4">A typical edit flow becomes a single call:</p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">def update
   @contact = Contact.find(params.id)
@@ -681,7 +681,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         Set <code>multiple: true</code> to keep an array of blob ids on the record. The auto-generated <code>attach_&lt;field&gt;(file)</code> appends; <code>detach_&lt;field&gt;(blob_id)</code> removes a specific blob. <code>detach_all_uploads(record)</code> walks every uploader on destroy.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contact.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class Contact &lt; Model
@@ -698,7 +698,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         For HTML form upload (POST &rarr; redirect &rarr; flash &rarr; reload page), thin the controller to one call per side; <code>_errors</code> carries the framework's validation message:
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/contacts_controller.sl</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># POST /contacts/:id/documents
@@ -734,7 +734,7 @@ end</code></pre>
     <h3 class="text-lg font-semibold text-white mb-3">Shipped with the framework &mdash; no setup needed</h3>
     <p class="text-gray-400 mb-4">
         The upload helpers (<code>find_uploaded_file</code>, <code>attach_upload</code>, <code>detach_upload</code>, <code>detach_all_uploads</code>, <code>upload_url</code>) and the generic <code>AttachmentsController</code> that handles
-        <a href="/docs/routing#auto-routed-attachments" class="text-indigo-400 hover:underline">auto-routed attachments</a>
+        <a href="/docs/routing#auto-routed-attachments" class="text-amber-400 hover:underline">auto-routed attachments</a>
         are loaded on every <code>soli serve</code> &mdash; you do <strong>not</strong> need to copy any controller file into <code>app/controllers/</code>. Declaring <code>uploader(...)</code> on a model and <code>uploads("resource", "field")</code> in routes is enough.
     </p>
     <p class="text-gray-400 mb-4">
@@ -749,7 +749,7 @@ end</code></pre>
     <h3 class="text-lg font-semibold text-white mb-3">Image transforms via URL</h3>
     <p class="text-gray-400 mb-4">
         For image attachments, the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint can resize, crop, recompress, and reformat on the fly. Pass options to <code>upload_url(...)</code> (or the auto-generated <code>&lt;field&gt;_url(...)</code> dot-method) and they're rendered into the URL's query string. The <code>AttachmentsController</code> reads the same params from <code>req["query"]</code>, runs the bytes through the
-        <a href="/docs/builtins/image" class="text-indigo-400 hover:underline">Image class</a>, and returns the transformed payload.
+        <a href="/docs/builtins/image" class="text-amber-400 hover:underline">Image class</a>, and returns the transformed payload.
     </p>
 
     <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
@@ -762,23 +762,23 @@ end</code></pre>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">w</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Width. Alone: thumbnail to that max edge (preserves aspect). With <code>h</code>: behaviour depends on <code>fit</code>. Values above 1000 are silently clamped.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">h</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Height. Pair with <code>w</code>. Clamped to 1000.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">thumb</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Square-fit thumbnail at this max edge. Output is at most N×N <strong>preserving aspect</strong> — a 800×400 source becomes 200×100 with <code>thumb=200</code>. Wins over <code>w</code>/<code>h</code> if both supplied. Clamped to 1000.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">square</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Sugar for <code>w=N&amp;h=N&amp;fit=cover</code>. Output is <strong>exactly</strong> N×N, scaled-and-cropped to fill — typical avatar/grid use case. Explicit <code>w</code>/<code>h</code>/<code>fit</code> override the shorthand. Clamped to 1000.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">crop</td><td class="px-6 py-3 text-gray-400">String <code>x,y,w,h</code></td><td class="px-6 py-3 text-gray-400">Crop a rectangular region from the source <strong>before</strong> any resize. e.g. <code>crop=10,20,300,200</code>. Accepts an Array <code>[10,20,300,200]</code> in the options hash. The <code>w</code> and <code>h</code> components are clamped to 1000; <code>x</code>/<code>y</code> offsets are unbounded (out-of-bounds is rejected by the Image lib and falls back to the raw blob).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">fit</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Pairs with <code>w</code> + <code>h</code>: <code>cover</code> = scale to fill then center-crop overflow (output is exactly w×h); <code>contain</code> = scale to fit inside w×h, preserving aspect. Without <code>fit</code>, <code>w + h</code> is an exact resize that may distort.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">flipx</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror horizontally (<code>img.flip_horizontal()</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">flipy</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror vertically (<code>img.flip_vertical()</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">rot</td><td class="px-6 py-3 text-gray-400">Int <code>90</code>/<code>180</code>/<code>270</code></td><td class="px-6 py-3 text-gray-400">Rotate clockwise. Other values are ignored.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">blur</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Gaussian blur sigma — higher = more blur. <code>blur=3.5</code>.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">bright</td><td class="px-6 py-3 text-gray-400">Int (±)</td><td class="px-6 py-3 text-gray-400">Brightness offset (<code>img.brightness(value)</code>). Positive brightens, negative darkens.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">contrast</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Contrast factor (<code>img.contrast(value)</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">hue</td><td class="px-6 py-3 text-gray-400">Int degrees</td><td class="px-6 py-3 text-gray-400">Hue rotation (<code>img.hue_rotate(degrees)</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">gray</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Convert to grayscale (<code>img.grayscale()</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>.</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-indigo-300">q</td><td class="px-6 py-3 text-gray-400">Int 1–100</td><td class="px-6 py-3 text-gray-400">JPEG/WebP quality.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">w</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Width. Alone: thumbnail to that max edge (preserves aspect). With <code>h</code>: behaviour depends on <code>fit</code>. Values above 1000 are silently clamped.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">h</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Height. Pair with <code>w</code>. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">thumb</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Square-fit thumbnail at this max edge. Output is at most N×N <strong>preserving aspect</strong> — a 800×400 source becomes 200×100 with <code>thumb=200</code>. Wins over <code>w</code>/<code>h</code> if both supplied. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">square</td><td class="px-6 py-3 text-gray-400">Int (px, ≤1000)</td><td class="px-6 py-3 text-gray-400">Sugar for <code>w=N&amp;h=N&amp;fit=cover</code>. Output is <strong>exactly</strong> N×N, scaled-and-cropped to fill — typical avatar/grid use case. Explicit <code>w</code>/<code>h</code>/<code>fit</code> override the shorthand. Clamped to 1000.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">crop</td><td class="px-6 py-3 text-gray-400">String <code>x,y,w,h</code></td><td class="px-6 py-3 text-gray-400">Crop a rectangular region from the source <strong>before</strong> any resize. e.g. <code>crop=10,20,300,200</code>. Accepts an Array <code>[10,20,300,200]</code> in the options hash. The <code>w</code> and <code>h</code> components are clamped to 1000; <code>x</code>/<code>y</code> offsets are unbounded (out-of-bounds is rejected by the Image lib and falls back to the raw blob).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">fit</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Pairs with <code>w</code> + <code>h</code>: <code>cover</code> = scale to fill then center-crop overflow (output is exactly w×h); <code>contain</code> = scale to fit inside w×h, preserving aspect. Without <code>fit</code>, <code>w + h</code> is an exact resize that may distort.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">flipx</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror horizontally (<code>img.flip_horizontal()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">flipy</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Mirror vertically (<code>img.flip_vertical()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">rot</td><td class="px-6 py-3 text-gray-400">Int <code>90</code>/<code>180</code>/<code>270</code></td><td class="px-6 py-3 text-gray-400">Rotate clockwise. Other values are ignored.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">blur</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Gaussian blur sigma — higher = more blur. <code>blur=3.5</code>.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">bright</td><td class="px-6 py-3 text-gray-400">Int (±)</td><td class="px-6 py-3 text-gray-400">Brightness offset (<code>img.brightness(value)</code>). Positive brightens, negative darkens.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">contrast</td><td class="px-6 py-3 text-gray-400">Float</td><td class="px-6 py-3 text-gray-400">Contrast factor (<code>img.contrast(value)</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">hue</td><td class="px-6 py-3 text-gray-400">Int degrees</td><td class="px-6 py-3 text-gray-400">Hue rotation (<code>img.hue_rotate(degrees)</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">gray</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Convert to grayscale (<code>img.grayscale()</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert</code>).</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">q</td><td class="px-6 py-3 text-gray-400">Int 1–100</td><td class="px-6 py-3 text-gray-400">JPEG/WebP quality.</td></tr>
             </tbody>
         </table>
     </div>
@@ -791,22 +791,22 @@ end</code></pre>
         </p>
     </div>
 
-    <div class="my-4 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-6">
-        <p class="text-indigo-200/80 text-sm mb-2">
+    <div class="my-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-6">
+        <p class="text-amber-200/80 text-sm mb-2">
             <strong>Sizing modes — when to use which.</strong> Given a <strong>800×400</strong> source:
         </p>
-        <ul class="text-indigo-200/80 text-sm space-y-1 ml-5 list-disc">
+        <ul class="text-amber-200/80 text-sm space-y-1 ml-5 list-disc">
             <li><code>w=200</code> alone or <code>thumb=200</code> → <strong>200×100</strong> (fits within 200×200, aspect preserved, smaller dim shrinks too).</li>
             <li><code>w=200&amp;h=200</code> → <strong>200×200</strong> stretched (squashed, aspect distorted — usually not what you want).</li>
             <li><code>w=200&amp;h=200&amp;fit=cover</code> or <code>square=200</code> → <strong>200×200</strong> exact (scale-and-crop, content cropped left/right, aspect preserved within the crop).</li>
             <li><code>w=200&amp;h=200&amp;fit=contain</code> → <strong>200×100</strong> (same as <code>thumb=200</code> here; useful when you want a non-square bounding box).</li>
         </ul>
-        <p class="text-indigo-200/80 text-sm mt-2">
+        <p class="text-amber-200/80 text-sm mt-2">
             Reach for <code>square=N</code> for avatars and grid tiles where every cell must be the same size. Use <code>thumb=N</code> (or <code>w=N</code>) when you need to bound the larger edge but keep aspect.
         </p>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">In a view — request a 200 px thumbnail</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">&lt;img src="&lt;%= contact.photo_url({ "thumb": 200 }) %&gt;" alt="..."&gt;
@@ -814,7 +814,7 @@ end</code></pre>
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">A grayscale 800×600 WebP at 80% quality</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({
@@ -828,7 +828,7 @@ end</code></pre>
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Square avatar — shorthand vs. longhand (identical result)</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({ "square": 200 })
@@ -841,7 +841,7 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Crop a region of interest then resize (Array shorthand)</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({ "crop": [100, 50, 600, 600], "w": 200 })
@@ -850,7 +850,7 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         </div>
     </div>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Rotate, blur, and brightness adjustment</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({
@@ -876,8 +876,8 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         </ol>
     </div>
 
-    <div class="my-6 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-8">
-        <p class="text-indigo-200/80 text-sm">
+    <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+        <p class="text-amber-200/80 text-sm">
             <strong>Caching.</strong> Each unique combination of params is a different URL — browsers and CDNs cache them as separate entries. The cache buster (<code>?v=&lt;blob_id&gt;</code>) keeps single-mode URLs unique per blob, so replacing the photo invalidates every transformed variant at once. Transformed responses are served with <code>Cache-Control: public, max-age=86400</code>; the raw passthrough uses <code>private, max-age=300</code>.
         </p>
     </div>
@@ -890,7 +890,7 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
     <p class="text-gray-400 mb-4">
         Define a same-named function or class in <code>app/controllers/</code> and your version wins &mdash; the framework prelude runs before user controllers, so user definitions naturally shadow it.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/attachments_controller.sl &mdash; custom auth + response shape</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class AttachmentsController &lt; ApplicationController
@@ -911,7 +911,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         <code>before_delete</code> callbacks aren't yet dispatched by <code>Model.delete(id)</code>, so call <code>detach_all_uploads(record)</code> explicitly before deleting until that lands. The helper iterates every uploader declared on the class.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">def destroy
   contact = Contact.find(params.id)
@@ -931,7 +931,7 @@ end</code></pre>
     </ul>
 
     <p class="text-gray-400 mb-12">
-        See <a href="/docs/routing#auto-routed-attachments" class="text-indigo-400 hover:underline">Auto-routed attachments</a> for the matching <code>uploads(resource, field)</code> route helper, which mounts <code>show</code>/<code>create</code>/<code>destroy</code> endpoints driven by the same config.
+        See <a href="/docs/routing#auto-routed-attachments" class="text-amber-400 hover:underline">Auto-routed attachments</a> for the matching <code>uploads(resource, field)</code> route helper, which mounts <code>show</code>/<code>create</code>/<code>destroy</code> endpoints driven by the same config.
     </p>
 
     <h2 id="encrypted-attributes" class="text-2xl font-bold text-white mb-6">Encrypted Attributes</h2>
@@ -940,7 +940,7 @@ end</code></pre>
         Encrypt sensitive fields at rest with <code>encrypts</code>. Values are encrypted on create/save/update and decrypted transparently on load, using AES-256-GCM. The key comes from the <code>SOLI_ENCRYPTION_KEY</code> environment variable (use a long, high-entropy secret such as <code>Crypto.random_hex(32)</code>).
     </p>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-4">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User &lt; Model
   encrypts(:ssn, :api_token)
@@ -957,7 +957,7 @@ User.find(u._key).ssn   # =&gt; "123-45-6789" (decrypted)</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm"># app/models/user.sl
 class User < Model
@@ -1044,7 +1044,7 @@ end</code></pre>
     <p class="text-gray-400 mb-4">
         When the server runs with <code class="text-cyan-400">--dev</code>, every AQL query a request executes through the Model layer is captured into a per-request stack. Read it from any controller or view with the <code class="text-cyan-400">dev_queries()</code> builtin to render a debug bar.
     </p>
-    <div class="rounded-lg bg-gray-900 overflow-hidden mb-6">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">fn index
   users = User.where("doc.active == true").all
@@ -1061,14 +1061,14 @@ end
         </p>
     </div>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
             </svg>
             Best Practices
         </h4>
-        <ul class="text-indigo-200/80 text-sm space-y-2">
+        <ul class="text-amber-200/80 text-sm space-y-2">
             <li><strong>Keep models simple</strong> - Just extend <code>Model</code>, no configuration needed</li>
             <li><strong>Use meaningful class names</strong> - They become collection names automatically</li>
             <li><strong>Add validations</strong> - Validate data before it reaches the database</li>
@@ -1082,28 +1082,28 @@ end
 
     <h2 class="text-2xl font-bold text-white mb-6">Explore Further</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Query Builder &rarr;</h3>
+        <a href="/docs/database/query-builder" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Query Builder &rarr;</h3>
             <p class="text-sm text-gray-400">Chain methods to build complex queries with filters, ordering, limits, and more.</p>
         </a>
-        <a href="/docs/database/relationships" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Relationships &rarr;</h3>
+        <a href="/docs/database/relationships" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Relationships &rarr;</h3>
             <p class="text-sm text-gray-400">has_many, has_one, belongs_to, has_and_belongs_to_many, eager loading with includes, and join filtering.</p>
         </a>
-        <a href="/docs/database/validations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Validations & Callbacks &rarr;</h3>
+        <a href="/docs/database/validations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Validations & Callbacks &rarr;</h3>
             <p class="text-sm text-gray-400">Validate data before saving and run lifecycle callbacks.</p>
         </a>
-        <a href="/docs/database/finders" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Finders & Aggregations &rarr;</h3>
+        <a href="/docs/database/finders" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Finders & Aggregations &rarr;</h3>
             <p class="text-sm text-gray-400">find_by, pluck, exists, sum, avg, min, max, and group_by.</p>
         </a>
-        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Advanced Features &rarr;</h3>
+        <a href="/docs/database/advanced" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Advanced Features &rarr;</h3>
             <p class="text-sm text-gray-400">Soft delete, scopes, batch operations, transactions, and raw queries.</p>
         </a>
-        <a href="/docs/database/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Migrations &rarr;</h3>
+        <a href="/docs/database/migrations" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Migrations &rarr;</h3>
             <p class="text-sm text-gray-400">Create collections and indexes with database migrations.</p>
         </a>
     </div>

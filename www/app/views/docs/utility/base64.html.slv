@@ -9,7 +9,7 @@
             <span class="text-white">Base64</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Base64 Encoding</span>
+            <span class="bg-gradient-to-r from-orange-400 to-orange-400 bg-clip-text text-transparent">Base64 Encoding</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Encode and decode data using Base64 format. Useful for binary data in text-based contexts like JSON, URLs, and HTTP headers.
@@ -19,8 +19,8 @@
     <!-- Overview -->
     <section id="section-overview" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
             </span>
@@ -53,7 +53,7 @@
             <section id="method-encode" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-encode" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Base64.encode(value)</code>
+                        <code class="text-lg font-mono text-amber-400">Base64.encode(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -71,7 +71,7 @@ Base64.encode("\n\t");     # "CQo="</code></pre>
             <section id="method-decode" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-decode" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Base64.decode(value)</code>
+                        <code class="text-lg font-mono text-amber-400">Base64.decode(value)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -103,7 +103,7 @@ round_trip = Base64.decode(Base64.encode(original))assert_eq(round_trip, origina
             <section id="use-case-json" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#use-case-json" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Embedding Binary in JSON</code>
+                        <code class="text-lg font-mono text-amber-400">Embedding Binary in JSON</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -121,7 +121,7 @@ json_response = json_stringify({
             <section id="use-case-api" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#use-case-api" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">API Authentication</code>
+                        <code class="text-lg font-mono text-amber-400">API Authentication</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -141,7 +141,7 @@ header = basic_auth_header("user", "secret123")
             <section id="use-case-data-url" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#use-case-data-url" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-indigo-400">Data URLs</code>
+                        <code class="text-lg font-mono text-amber-400">Data URLs</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -202,7 +202,7 @@ end</code></pre>
             </svg>
             Crypto
         </a>
-        <a href="/docs/builtins/regex" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/regex" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Regex
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

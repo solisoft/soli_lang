@@ -147,22 +147,22 @@ end</code></pre>
 
         <section id="def-pdf-render" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-indigo-400">pdf_render(template, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">pdf_render(template, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render a PDF from a JSON layout <code>template</code> and a JSON <code>data</code> document. Returns the PDF as a base64 string.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">template</code> : <code class="text-purple-400">String</code> &mdash; the layout template JSON (see the Template reference below).</div>
-                    <div><code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> &mdash; the data document JSON. May be <code>{ "data": {...} }</code> or a bare object.</div>
-                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; see <a href="#section-options" class="text-teal-300 hover:underline">Options</a>.</div>
+                    <div><code class="text-amber-400">template</code> : <code class="text-orange-400">String</code> &mdash; the layout template JSON (see the Template reference below).</div>
+                    <div><code class="text-amber-400">data</code> : <code class="text-orange-400">String</code> &mdash; the data document JSON. May be <code>{ "data": {...} }</code> or a bare object.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; see <a href="#section-options" class="text-teal-300 hover:underline">Options</a>.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF bytes.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; base64-encoded PDF bytes.</div>
             </div>
         </section>
 
         <section id="def-pdf-response" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-indigo-400">pdf_response(template, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">pdf_response(template, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render <strong>and</strong> wrap as a ready HTTP response &mdash; return it straight from a controller action, no <code>file_write_base64</code> + redirect dance. The binary body travels via the <code>body_base64</code> response key, decoded by the server (usable by any handler, not just PDFs).</p>
                 <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def download
   let tpl  = slurp("pdf/invoice.json")
@@ -171,40 +171,40 @@ end</code></pre>
 end</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div>As <code>pdf_render</code>, plus <code class="text-amber-400">filename</code> : <code class="text-purple-400">String?</code> &mdash; adds <code>Content-Disposition: attachment</code>; omit to render inline in the browser.</div>
+                    <div>As <code>pdf_render</code>, plus <code class="text-amber-400">filename</code> : <code class="text-orange-400">String?</code> &mdash; adds <code>Content-Disposition: attachment</code>; omit to render inline in the browser.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }</code>.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }</code>.</div>
             </div>
         </section>
 
         <section id="def-pdf-facturx" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-indigo-400">pdf_facturx(template, data, xml, options?)</code>
+                <code class="text-lg font-mono text-amber-400">pdf_facturx(template, data, xml, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render the visual PDF, then embed the caller-provided Cross-Industry-Invoice <code>xml</code> and apply everything PDF/A&#8209;3b + Factur-X require: the embedded <code>factur-x.xml</code> file, the <code>/AF</code> + name-tree wiring, an sRGB OutputIntent, and the strict XMP packet (PDF/A id + Factur-X extension schema). Returns base64 PDF/A&#8209;3b bytes.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">template</code>, <code class="text-amber-400">data</code> : <code class="text-purple-400">String</code> &mdash; as above.</div>
-                    <div><code class="text-amber-400">xml</code> : <code class="text-purple-400">String</code> &mdash; your EN 16931 CII XML. <strong>The library embeds it; it does not generate it</strong> &mdash; so its contents (totals, VAT, party data) are yours to get right.</div>
-                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
+                    <div><code class="text-amber-400">template</code>, <code class="text-amber-400">data</code> : <code class="text-orange-400">String</code> &mdash; as above.</div>
+                    <div><code class="text-amber-400">xml</code> : <code class="text-orange-400">String</code> &mdash; your EN 16931 CII XML. <strong>The library embeds it; it does not generate it</strong> &mdash; so its contents (totals, VAT, party data) are yours to get right.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
             </div>
         </section>
 
         <section id="def-pdf-facturx-from-invoice" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-indigo-400">pdf_facturx_from_invoice(template, invoice, options?)</code>
+                <code class="text-lg font-mono text-amber-400">pdf_facturx_from_invoice(template, invoice, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render the visual PDF <strong>and</strong> generate the EN 16931 CII XML from a single typed <a href="#section-typed-invoice" class="text-teal-300 hover:underline">invoice document</a>, then embed it. Line totals, the VAT breakdown and the grand/amount-due totals are <em>computed</em> from the line items &mdash; so the human-readable PDF and the machine-readable XML can never disagree. Returns base64 PDF/A&#8209;3b bytes.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">template</code> : <code class="text-purple-400">String</code> &mdash; the layout template JSON, using the <code>invoice.*</code> / <code>company.*</code> / <code>customer.*</code> / <code>items[]</code> / <code>total.*</code> / <code>infos.text</code> paths the invoice maps onto.</div>
-                    <div><code class="text-amber-400">invoice</code> : <code class="text-purple-400">String</code> &mdash; the typed invoice JSON (see <a href="#section-typed-invoice" class="text-teal-300 hover:underline">Typed invoice document</a>).</div>
-                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
+                    <div><code class="text-amber-400">template</code> : <code class="text-orange-400">String</code> &mdash; the layout template JSON, using the <code>invoice.*</code> / <code>company.*</code> / <code>customer.*</code> / <code>items[]</code> / <code>total.*</code> / <code>infos.text</code> paths the invoice maps onto.</div>
+                    <div><code class="text-amber-400">invoice</code> : <code class="text-orange-400">String</code> &mdash; the typed invoice JSON (see <a href="#section-typed-invoice" class="text-teal-300 hover:underline">Typed invoice document</a>).</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; the render options below, plus <code>profile</code> / <code>title</code> / <code>author</code> / <code>subject</code>.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-purple-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; base64-encoded PDF/A-3b bytes.</div>
             </div>
         </section>
 
@@ -233,7 +233,7 @@ end</code></pre>
     <!-- Saving / serving -->
     <section id="section-serving" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Saving &amp; serving</h2>
-        <p class="text-gray-400 mb-4"><code class="text-indigo-400">file_write_base64(path, b64)</code> decodes the base64 string and writes the bytes &mdash; the natural partner to either builtin.</p>
+        <p class="text-gray-400 mb-4"><code class="text-amber-400">file_write_base64(path, b64)</code> decodes the base64 string and writes the bytes &mdash; the natural partner to either builtin.</p>
         <pre data-filename="Save to disk"><code class="language-soli text-sm">let pdf = pdf_render(tpl, data)
 file_write_base64("storage/invoice.pdf", pdf)</code></pre>
         <p class="text-gray-400 mt-4 mb-2">To stream it as a download, return base64 with a PDF content type and let your front-end / proxy decode, or persist then redirect to the file:</p>

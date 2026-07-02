@@ -30,7 +30,7 @@
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
                 <li>An instance holds a host, database name, and (optional) basic-auth credentials &mdash; nothing is opened until the first call.</li>
                 <li>Each method round-trips to SoliDB over HTTP. There is no per-instance connection pool: keep an instance around to avoid recreating state, but don't worry about closing it on every request.</li>
-                <li>Queries are <a href="/docs/database/configuration#section-queries" class="text-emerald-400 hover:underline">SDBQL</a>; values from <code class="text-purple-400">bindvars</code> are bound, never concatenated.</li>
+                <li>Queries are <a href="/docs/database/configuration#section-queries" class="text-emerald-400 hover:underline">SDBQL</a>; values from <code class="text-orange-400">bindvars</code> are bound, never concatenated.</li>
                 <li>Inside <a href="/docs/database/migrations" class="text-emerald-400 hover:underline">migrations</a>, a pre-wired <code class="text-emerald-400">db</code> helper is injected for you &mdash; you don't construct one manually.</li>
             </ul>
         </div>
@@ -43,12 +43,12 @@
         <section id="def-constructor" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-constructor" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Solidb(host, database)</code>
+                    <code class="text-lg font-mono text-amber-400">Solidb(host, database)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Build a client pointed at <code class="text-emerald-400">host</code> and the named <code class="text-emerald-400">database</code>. Add credentials with <code class="text-emerald-400">auth</code> when the server requires them.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">db = Solidb("http://localhost:6745", "mydb")
 db.auth("admin", "secret")</code></pre>
-                <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-purple-400">Solidb</code> instance.</p>
+                <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-orange-400">Solidb</code> instance.</p>
             </div>
         </section>
 
@@ -68,11 +68,11 @@ db.auth("admin", "secret")</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.ping</code></td>
-                            <td class="py-3">Returns the server's current timestamp as a <code class="text-purple-400">String</code>.</td>
+                            <td class="py-3">Returns the server's current timestamp as a <code class="text-orange-400">String</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.connected()</code></td>
-                            <td class="py-3">Whether <code class="text-emerald-400">auth</code> has been called on this instance. Returns <code class="text-purple-400">Bool</code>.</td>
+                            <td class="py-3">Whether <code class="text-emerald-400">auth</code> has been called on this instance. Returns <code class="text-orange-400">Bool</code>.</td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.close()</code></td>
@@ -91,10 +91,10 @@ db.auth("admin", "secret")</code></pre>
         <section id="def-query" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-query" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">db.query(sdbql, bindvars?)</code>
+                    <code class="text-lg font-mono text-amber-400">db.query(sdbql, bindvars?)</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">parameterized</span>
                 </a>
-                <p class="text-gray-400 mb-3">Run an SDBQL statement. <code class="text-emerald-400">bindvars</code> values fill <code class="text-emerald-400">@param</code> placeholders &mdash; they are bound on the server, never concatenated. Returns a <code class="text-purple-400">Array</code> of result rows.</p>
+                <p class="text-gray-400 mb-3">Run an SDBQL statement. <code class="text-emerald-400">bindvars</code> values fill <code class="text-emerald-400">@param</code> placeholders &mdash; they are bound on the server, never concatenated. Returns a <code class="text-orange-400">Array</code> of result rows.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">db.query("FOR u IN users FILTER u.active RETURN u")
 
 db.query(
@@ -108,7 +108,7 @@ db.query(
         <section id="def-explain" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-explain" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">db.explain(sdbql, bindvars?)</code>
+                    <code class="text-lg font-mono text-amber-400">db.explain(sdbql, bindvars?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Return the planner output without executing the query &mdash; useful when checking that an index is being picked up.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">db.explain(
@@ -137,33 +137,33 @@ db.query(
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.get(coll, key)</code></td>
-                            <td class="py-3 pr-4">Fetch one document by <code class="text-purple-400">_key</code>.</td>
-                            <td class="py-3"><code class="text-purple-400">Hash</code> | <code class="text-purple-400">null</code></td>
+                            <td class="py-3 pr-4">Fetch one document by <code class="text-orange-400">_key</code>.</td>
+                            <td class="py-3"><code class="text-orange-400">Hash</code> | <code class="text-orange-400">null</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.insert(coll, key?, doc)</code></td>
-                            <td class="py-3 pr-4">Create a document. Pass <code class="text-purple-400">null</code> for the key to let the server generate one.</td>
-                            <td class="py-3"><code class="text-purple-400">Hash</code></td>
+                            <td class="py-3 pr-4">Create a document. Pass <code class="text-orange-400">null</code> for the key to let the server generate one.</td>
+                            <td class="py-3"><code class="text-orange-400">Hash</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.update(coll, key, doc)</code></td>
                             <td class="py-3 pr-4">Patch an existing document. Fails if the key is missing.</td>
-                            <td class="py-3"><code class="text-purple-400">Hash</code></td>
+                            <td class="py-3"><code class="text-orange-400">Hash</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.upsert(coll, key, doc)</code></td>
                             <td class="py-3 pr-4">Update if it exists, insert otherwise.</td>
-                            <td class="py-3"><code class="text-purple-400">Hash</code></td>
+                            <td class="py-3"><code class="text-orange-400">Hash</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.delete(coll, key)</code></td>
                             <td class="py-3 pr-4">Remove a document.</td>
-                            <td class="py-3"><code class="text-purple-400">String</code></td>
+                            <td class="py-3"><code class="text-orange-400">String</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.list(coll)</code></td>
                             <td class="py-3 pr-4">List documents in a collection. Capped at 100 &mdash; for larger reads use <code class="text-emerald-400">query</code>.</td>
-                            <td class="py-3"><code class="text-purple-400">Array</code></td>
+                            <td class="py-3"><code class="text-orange-400">Array</code></td>
                         </tr>
                     </tbody>
                 </table>
@@ -193,7 +193,7 @@ db.delete("users", "1")</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.create_collection(name, type?)</code></td>
-                            <td class="py-3"><code class="text-purple-400">type</code> is optional &mdash; <code class="text-purple-400">"blob"</code>, <code class="text-purple-400">"columnar"</code>, <code class="text-purple-400">"timeseries"</code>, &hellip; default is a regular document collection.</td>
+                            <td class="py-3"><code class="text-orange-400">type</code> is optional &mdash; <code class="text-orange-400">"blob"</code>, <code class="text-orange-400">"columnar"</code>, <code class="text-orange-400">"timeseries"</code>, &hellip; default is a regular document collection.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.drop_collection(name)</code></td>
@@ -229,7 +229,7 @@ db.delete("users", "1")</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.create_index(coll, name, fields, options?)</code></td>
-                            <td class="py-3"><code class="text-purple-400">fields</code> is an Array of field names (or a single String). Common options: <code class="text-purple-400">{ "unique": true }</code>, <code class="text-purple-400">{ "sparse": true }</code>.</td>
+                            <td class="py-3"><code class="text-orange-400">fields</code> is an Array of field names (or a single String). Common options: <code class="text-orange-400">{ "unique": true }</code>, <code class="text-orange-400">{ "sparse": true }</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.drop_index(coll, name)</code></td>
@@ -302,7 +302,7 @@ db.drop_index("users", "idx_email")</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">solidb_connect(addr)</code></td>
-                            <td class="py-3">Connect and ping. Returns <code class="text-purple-400">"Connected (ping: ...)"</code>.</td>
+                            <td class="py-3">Connect and ping. Returns <code class="text-orange-400">"Connected (ping: ...)"</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">solidb_ping(addr)</code></td>

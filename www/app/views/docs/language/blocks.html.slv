@@ -9,20 +9,20 @@
             <span class="text-white">Blocks</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">Block Syntax</span>
+            <span class="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">Block Syntax</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Soli supports two block termination styles: <code class="text-pink-400">end</code> keyword and curly braces <code class="text-pink-400">{}</code>. Both are interchangeable.
+            Soli supports two block termination styles: <code class="text-orange-400">end</code> keyword and curly braces <code class="text-orange-400">{}</code>. Both are interchangeable.
         </p>
     </div>
 
     <!-- Overview -->
     <section id="section-overview" class="scroll-mt-20 mb-12">
-        <div class="rounded-xl bg-violet-500/10 border border-violet-500/20 p-6 mb-8">
-            <h3 class="text-lg font-semibold text-violet-400 mb-2">When to use each style</h3>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6 mb-8">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">When to use each style</h3>
             <ul class="text-gray-300 space-y-2 text-sm">
-                <li>• <code class="text-pink-400">end</code> - Recommended for empty blocks, simple guards, and cleaner syntax</li>
-                <li>• <code class="text-pink-400">{}</code> - Useful for multi-line blocks with many statements</li>
+                <li>• <code class="text-orange-400">end</code> - Recommended for empty blocks, simple guards, and cleaner syntax</li>
+                <li>• <code class="text-orange-400">{}</code> - Useful for multi-line blocks with many statements</li>
             </ul>
         </div>
     </section>
@@ -227,8 +227,8 @@ end</code></pre>
     <!-- Mixed Usage -->
     <section id="section-mixed" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
             </span>
@@ -284,28 +284,28 @@ end</code></pre>
                 <tbody class="text-gray-300">
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">Function</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">def foo { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">def foo end</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">def foo { }</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">def foo end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">If</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">if cond { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">if cond end</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">if cond { }</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">if cond end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">While</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">while cond { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">while cond end</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">while cond { }</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">while cond end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">For</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">for x in items { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">for x in items end</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">for x in items { }</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">for x in items end</code></td>
                     </tr>
                     <tr class="border-b border-white/5">
                         <td class="py-3 px-4">Class</td>
-                        <td class="py-3 px-4"><code class="text-pink-400">class Foo { }</code></td>
-                        <td class="py-3 px-4"><code class="text-pink-400">class Foo end</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">class Foo { }</code></td>
+                        <td class="py-3 px-4"><code class="text-orange-400">class Foo end</code></td>
                     </tr>
                 </tbody>
             </table>
@@ -320,7 +320,7 @@ end</code></pre>
             </svg>
             Functions
         </a>
-        <a href="/docs/language/integers" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language/integers" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Integers
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

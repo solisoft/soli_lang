@@ -38,12 +38,12 @@
             <section id="fn-file-read" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-read" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.read(path, encoding?)</code>
+                        <code class="text-lg font-mono text-amber-400">File.read(path, encoding?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Read file contents as a string. Pass a charset label (<code class="text-amber-400">"latin1"</code>, <code class="text-amber-400">"iso-8859-1"</code>, …) to decode a non-UTF-8 file. See <a href="/docs/utility/encoding" class="text-indigo-400 hover:underline">Encoding</a>.</p>
+                    <p class="text-gray-400 mb-3">Read file contents as a string. Pass a charset label (<code class="text-amber-400">"latin1"</code>, <code class="text-amber-400">"iso-8859-1"</code>, …) to decode a non-UTF-8 file. See <a href="/docs/utility/encoding" class="text-amber-400 hover:underline">Encoding</a>.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">content = File.read("config.json")
 legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
                 </div>
@@ -52,7 +52,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-write" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-write" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.write(path, content)</code>
+                        <code class="text-lg font-mono text-amber-400">File.write(path, content)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -65,7 +65,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-exists" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-exists" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.exists(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.exists(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -80,7 +80,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-delete" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-delete" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.delete(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.delete(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -93,7 +93,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-glob" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-glob" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.glob(pattern)</code>
+                        <code class="text-lg font-mono text-amber-400">File.glob(pattern)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -106,7 +106,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-glob-recursive" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-glob-recursive" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.glob_recursive(pattern)</code>
+                        <code class="text-lg font-mono text-amber-400">File.glob_recursive(pattern)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -119,7 +119,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-lines" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-lines" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.lines(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.lines(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -132,7 +132,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-is-dir" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-is-dir" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.is_dir(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.is_dir(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -144,7 +144,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-is-file" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-is-file" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.is_file(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.is_file(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -156,7 +156,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-size" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-size" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.size(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.size(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -168,7 +168,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-modified" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-modified" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.modified(path)</code>
+                        <code class="text-lg font-mono text-amber-400">File.modified(path)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -181,7 +181,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-copy" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-copy" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.copy(src, dest)</code>
+                        <code class="text-lg font-mono text-amber-400">File.copy(src, dest)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -193,7 +193,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-rename" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-rename" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.rename(old, new)</code>
+                        <code class="text-lg font-mono text-amber-400">File.rename(old, new)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -205,7 +205,7 @@ legacy  = File.read("clients.csv", "latin1")  # Latin-1 -> UTF-8</code></pre>
             <section id="fn-file-append" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-file-append" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-indigo-400">File.append(path, content)</code>
+                        <code class="text-lg font-mono text-amber-400">File.append(path, content)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>

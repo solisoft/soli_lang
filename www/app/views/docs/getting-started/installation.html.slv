@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Installation</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Installation</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Get Soli MVC up and running on your machine in minutes.
@@ -10,7 +10,7 @@
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">1</div>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">1</div>
         Prerequisites
     </h2>
 
@@ -18,22 +18,22 @@
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="font-semibold text-white mb-2">Node.js</h3>
             <p class="text-sm text-gray-400">v16 or higher (for Tailwind CSS)</p>
-            <code class="text-xs text-indigo-300 mt-2 block">node --version</code>
+            <code class="text-xs text-amber-300 mt-2 block">node --version</code>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="font-semibold text-white mb-2">npm</h3>
             <p class="text-sm text-gray-400">Package manager</p>
-            <code class="text-xs text-indigo-300 mt-2 block">npm --version</code>
+            <code class="text-xs text-amber-300 mt-2 block">npm --version</code>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <h3 class="font-semibold text-white mb-2">OpenSSL</h3>
-            <p class="text-sm text-gray-400">Required to build from source (<code class="text-indigo-300">libssl-dev</code> / <code class="text-indigo-300">openssl-devel</code> / Homebrew <code class="text-indigo-300">openssl</code>)</p>
-            <code class="text-xs text-indigo-300 mt-2 block">openssl version</code>
+            <p class="text-sm text-gray-400">Required to build from source (<code class="text-amber-300">libssl-dev</code> / <code class="text-amber-300">openssl-devel</code> / Homebrew <code class="text-amber-300">openssl</code>)</p>
+            <code class="text-xs text-amber-300 mt-2 block">openssl version</code>
         </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">2</div>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">2</div>
         Install Soli CLI
     </h2>
 
@@ -45,28 +45,28 @@
     <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh</code></pre>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
-        This detects your OS and architecture, downloads the latest release binary, and installs it to <code class="text-indigo-300">~/.local/bin</code>.
+        This detects your OS and architecture, downloads the latest release binary, and installs it to <code class="text-amber-300">~/.local/bin</code>.
     </p>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
-        When run as <strong class="text-white">root</strong> (e.g. through <code class="text-indigo-300">sudo</code>, or inside a Docker image build),
-        the installer automatically targets <code class="text-indigo-300">/usr/local/bin</code> so every user can run <code class="text-indigo-300">soli</code> — no <code class="text-indigo-300">--system</code> flag needed:
+        When run as <strong class="text-white">root</strong> (e.g. through <code class="text-amber-300">sudo</code>, or inside a Docker image build),
+        the installer automatically targets <code class="text-amber-300">/usr/local/bin</code> so every user can run <code class="text-amber-300">soli</code> — no <code class="text-amber-300">--system</code> flag needed:
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sudo sh</code></pre>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
-        A global install also removes any stale per-user copy (e.g. <code class="text-indigo-300">/root/.local/bin/soli</code>) left by older installs, so PATH can't shadow the new binary with an outdated one.
+        A global install also removes any stale per-user copy (e.g. <code class="text-amber-300">/root/.local/bin/soli</code>) left by older installs, so PATH can't shadow the new binary with an outdated one.
     </p>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
-        For system-wide installation as a non-root user (the script uses <code class="text-indigo-300">sudo</code> for the copy step):
+        For system-wide installation as a non-root user (the script uses <code class="text-amber-300">sudo</code> for the copy step):
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh -s -- --system</code></pre>
 
     <p class="text-gray-400 mt-4 mb-8 text-sm">
-        To force a per-user install even when running as root, pass <code class="text-indigo-300">--user</code>.
+        To force a per-user install even when running as root, pass <code class="text-amber-300">--user</code>.
     </p>
 
     <h3 class="text-xl font-semibold text-white mb-4 mt-8">Via Cargo</h3>
@@ -88,18 +88,18 @@ soli --version</code></pre>
     <h3 class="text-xl font-semibold text-white mb-4 mt-8">Updating</h3>
 
     <p class="text-gray-400 mb-2 text-sm">
-        <code class="text-indigo-300">soli update</code> replaces the binary in place, wherever it was installed.
-        If Soli lives in a root-owned directory (such as <code class="text-indigo-300">/usr/local/bin</code>), run the update with <code class="text-indigo-300">sudo</code>:
+        <code class="text-amber-300">soli update</code> replaces the binary in place, wherever it was installed.
+        If Soli lives in a root-owned directory (such as <code class="text-amber-300">/usr/local/bin</code>), run the update with <code class="text-amber-300">sudo</code>:
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">sudo soli update</code></pre>
 
     <p class="text-gray-400 mt-4 mb-8 text-sm">
-        Running <code class="text-indigo-300">soli update</code> without the needed permissions prints a hint telling you to re-run with <code class="text-indigo-300">sudo</code>.
+        Running <code class="text-amber-300">soli update</code> without the needed permissions prints a hint telling you to re-run with <code class="text-amber-300">sudo</code>.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">3</div>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">3</div>
         Create Your Project
     </h2>
 
@@ -111,7 +111,7 @@ soli new my_app</code></pre>
     </p>
 
     <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
-        <li>MVC directory structure (<code class="text-indigo-300">app/controllers</code>, <code class="text-indigo-300">app/views</code>, <code class="text-indigo-300">app/models</code>)</li>
+        <li>MVC directory structure (<code class="text-amber-300">app/controllers</code>, <code class="text-amber-300">app/views</code>, <code class="text-amber-300">app/models</code>)</li>
         <li>Tailwind CSS configuration and dependencies</li>
         <li>Home controller and welcome page</li>
         <li>Application layout with responsive design</li>
@@ -119,7 +119,7 @@ soli new my_app</code></pre>
     </ul>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">4</div>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400">4</div>
         Start Development Server
     </h2>
 
@@ -127,7 +127,7 @@ soli new my_app</code></pre>
 soli serve . --dev</code></pre>
 
     <p class="mb-8 text-gray-400">
-        Your app is now running at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>.
+        Your app is now running at <a href="http://localhost:5011" class="text-amber-400 hover:text-amber-300 font-medium">http://localhost:5011</a>.
         In <code class="bg-white/10 px-1 rounded">--dev</code> mode the server also compiles your Tailwind CSS automatically &mdash; it
         auto-detects Tailwind v3 vs v4 (v4 needs no <code class="bg-white/10 px-1 rounded">tailwind.config.js</code>) and recompiles
         <code class="bg-white/10 px-1 rounded">app/assets/css</code> into <code class="bg-white/10 px-1 rounded">public/css</code> on change, so a separate watcher is optional.
@@ -160,8 +160,8 @@ soli serve . --dev</code></pre>
 docker pull ghcr.io/solisoft/soli_lang:latest</code></pre>
 
     <p class="text-gray-400 mt-4 mb-6">
-        The image's entrypoint <strong class="text-white">is</strong> the <code class="text-indigo-300">soli</code> binary,
-        so any <code class="text-indigo-300">soli</code> subcommand works as the container command:
+        The image's entrypoint <strong class="text-white">is</strong> the <code class="text-amber-300">soli</code> binary,
+        so any <code class="text-amber-300">soli</code> subcommand works as the container command:
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">docker run --rm ghcr.io/solisoft/soli_lang:latest --version</code></pre>
@@ -170,7 +170,7 @@ docker pull ghcr.io/solisoft/soli_lang:latest</code></pre>
 
     <p class="text-gray-400 mb-4 text-sm">
         Mount your project into the container and publish the server port. The server binds
-        <code class="text-indigo-300">0.0.0.0</code> by default, so the published port is reachable from the host:
+        <code class="text-amber-300">0.0.0.0</code> by default, so the published port is reachable from the host:
     </p>
 
     <pre data-filename="Terminal"><code class="language-bash text-sm">docker run --rm -p 5011:5011 \
@@ -178,13 +178,13 @@ docker pull ghcr.io/solisoft/soli_lang:latest</code></pre>
   ghcr.io/solisoft/soli_lang:latest serve . --port 5011</code></pre>
 
     <p class="text-gray-400 mt-4 mb-6 text-sm">
-        Your app is now available at <a href="http://localhost:5011" class="text-indigo-400 hover:text-indigo-300 font-medium">http://localhost:5011</a>.
+        Your app is now available at <a href="http://localhost:5011" class="text-amber-400 hover:text-amber-300 font-medium">http://localhost:5011</a>.
     </p>
 
     <h3 class="text-xl font-semibold text-white mb-4 mt-8">Build the image yourself</h3>
 
     <p class="text-gray-400 mb-4 text-sm">
-        The repository ships a multi-stage <code class="text-indigo-300">Dockerfile</code> that compiles a release binary
+        The repository ships a multi-stage <code class="text-amber-300">Dockerfile</code> that compiles a release binary
         and copies it into a slim Debian runtime:
     </p>
 
@@ -250,12 +250,12 @@ soli serve . -d</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <a href="/docs/getting-started/introduction" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Introduction &rarr;</h3>
+        <a href="/docs/getting-started/introduction" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Introduction &rarr;</h3>
             <p class="text-sm text-gray-400">Learn about MVC architecture and Soli's philosophy.</p>
         </a>
-        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Configuration &rarr;</h3>
+        <a href="/docs/getting-started/configuration" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Configuration &rarr;</h3>
             <p class="text-sm text-gray-400">Set up environment variables for databases, sessions, jobs, and deployment.</p>
         </a>
     </div>

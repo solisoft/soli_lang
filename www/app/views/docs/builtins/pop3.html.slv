@@ -39,15 +39,15 @@
         <section id="pop3-new-method" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#pop3-new-method" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Pop3.new(host, user, password, opts?)</code>
+                    <code class="text-lg font-mono text-amber-400">Pop3.new(host, user, password, opts?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Connects and authenticates, returning a client instance.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">host</code> : <code class="text-purple-400">String</code> &mdash; POP3 server hostname</div>
-                    <div><code class="text-amber-400">user</code> : <code class="text-purple-400">String</code> &mdash; Mailbox username</div>
-                    <div><code class="text-amber-400">password</code> : <code class="text-purple-400">String</code> &mdash; Password or app password</div>
-                    <div><code class="text-amber-400">opts</code> : <code class="text-purple-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>995</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>)</div>
+                    <div><code class="text-amber-400">host</code> : <code class="text-orange-400">String</code> &mdash; POP3 server hostname</div>
+                    <div><code class="text-amber-400">user</code> : <code class="text-orange-400">String</code> &mdash; Mailbox username</div>
+                    <div><code class="text-amber-400">password</code> : <code class="text-orange-400">String</code> &mdash; Password or app password</div>
+                    <div><code class="text-amber-400">opts</code> : <code class="text-orange-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>995</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>)</div>
                 </div>
                 <pre data-filename="Connect"><code class="language-soli text-sm">mail = Pop3.new("pop.gmail.com", "me@gmail.com", "app-password")
 
@@ -64,12 +64,12 @@ mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })</cod
     <section id="pop3-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Instance Methods</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 space-y-3 text-sm text-gray-400">
-            <div><code class="text-indigo-400">mail.stat()</code> &mdash; returns <code class="text-cyan-400">{ "count": Int, "size": Int }</code> (message count and total octets).</div>
-            <div><code class="text-indigo-400">mail.list()</code> &mdash; returns an array of <code class="text-cyan-400">{ "id": Int, "size": Int }</code>.</div>
-            <div><code class="text-indigo-400">mail.fetch(id)</code> &mdash; returns a parsed message hash (see below).</div>
-            <div><code class="text-indigo-400">mail.fetch_all()</code> &mdash; returns an array of parsed message hashes (capped at 200; raise via <code class="text-amber-400">SOLI_POP3_MAX_MESSAGES</code>).</div>
-            <div><code class="text-indigo-400">mail.delete(id)</code> &mdash; marks a message for deletion; returns <code class="text-cyan-400">true</code>.</div>
-            <div><code class="text-indigo-400">mail.quit()</code> &mdash; commits deletions and closes the connection; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.stat()</code> &mdash; returns <code class="text-cyan-400">{ "count": Int, "size": Int }</code> (message count and total octets).</div>
+            <div><code class="text-amber-400">mail.list()</code> &mdash; returns an array of <code class="text-cyan-400">{ "id": Int, "size": Int }</code>.</div>
+            <div><code class="text-amber-400">mail.fetch(id)</code> &mdash; returns a parsed message hash (see below).</div>
+            <div><code class="text-amber-400">mail.fetch_all()</code> &mdash; returns an array of parsed message hashes (capped at 200; raise via <code class="text-amber-400">SOLI_POP3_MAX_MESSAGES</code>).</div>
+            <div><code class="text-amber-400">mail.delete(id)</code> &mdash; marks a message for deletion; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.quit()</code> &mdash; commits deletions and closes the connection; returns <code class="text-cyan-400">true</code>.</div>
         </div>
     </section>
 
@@ -121,7 +121,7 @@ mail.quit()</code></pre>
             </svg>
             SOAP Class
         </a>
-        <a href="/docs/builtins/file" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/file" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             File Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

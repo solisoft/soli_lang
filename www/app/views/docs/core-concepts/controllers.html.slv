@@ -1,7 +1,7 @@
 <div>
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Controllers</span>
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Controllers</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Controllers are the heart of your application. They handle HTTP requests, process data, and determine the response.
@@ -39,15 +39,15 @@ end</code></pre>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">this.layout</code>
+            <code class="text-amber-300 font-bold">this.layout</code>
             <p class="text-sm text-gray-400 mt-1">Set the layout template for all actions</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">this.before_action</code>
+            <code class="text-amber-300 font-bold">this.before_action</code>
             <p class="text-sm text-gray-400 mt-1">Run code before action executes</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">this.after_action</code>
+            <code class="text-amber-300 font-bold">this.after_action</code>
             <p class="text-sm text-gray-400 mt-1">Run code after action executes</p>
         </div>
     </div>
@@ -80,8 +80,8 @@ end</code></pre>
   # ... actions ...
 end</code></pre>
 
-    <div class="my-8 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <p class="text-indigo-200/80 text-sm">
+    <div class="my-8 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/80 text-sm">
             <strong>No imports needed for models.</strong> Files under <code>app/models/</code> are auto-loaded by <code>soli serve</code> and the REPL, so classes like <code>User</code>, <code>Post</code>, etc. are available inside controller actions without <code>import</code>. (If you run a controller file standalone via <code>soli run</code>, add the imports back.) The linter warns via <code>style/redundant-model-import</code>.
         </p>
     </div>
@@ -211,9 +211,9 @@ get("/admin/merchants/:id", "admin/merchants#show")
 # Or with resources()
 resources("/admin/merchants", "admin/merchants")</code></pre>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-12">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2">Hot reload</h4>
-        <p class="text-indigo-200/80 text-sm">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2">Hot reload</h4>
+        <p class="text-amber-200/80 text-sm">
             Subdirectories are watched recursively in dev mode, so adding or editing a nested controller triggers reload like any top-level controller.
         </p>
     </div>
@@ -237,27 +237,27 @@ end</code></pre>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req.params</code>
+            <code class="text-amber-300 font-bold">req.params</code>
             <p class="text-sm text-gray-400 mt-1">Route parameters & query strings</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req.body</code>
+            <code class="text-amber-300 font-bold">req.body</code>
             <p class="text-sm text-gray-400 mt-1">Raw request body content</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req.headers</code>
+            <code class="text-amber-300 font-bold">req.headers</code>
             <p class="text-sm text-gray-400 mt-1">HTTP headers map</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req.session</code>
+            <code class="text-amber-300 font-bold">req.session</code>
             <p class="text-sm text-gray-400 mt-1">User session data storage</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req.cookies</code>
+            <code class="text-amber-300 font-bold">req.cookies</code>
             <p class="text-sm text-gray-400 mt-1">Parsed cookies from the <code>Cookie</code> header, available globally as <code>cookies</code></p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">req["remote_addr"]</code>
+            <code class="text-amber-300 font-bold">req["remote_addr"]</code>
             <p class="text-sm text-gray-400 mt-1">Actual TCP peer IP. Used by <code>rate_limit</code> for buckets; honored as the trusted client identifier when <code>enable_trust_proxy()</code> is off, otherwise the rightmost <code>X-Forwarded-For</code> entry wins.</p>
         </div>
     </div>
@@ -267,7 +267,7 @@ end</code></pre>
         <section id="fn-set_cookie" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-set_cookie" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">set_cookie(name, value)</code>
+                    <code class="text-lg font-mono text-amber-400">set_cookie(name, value)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -285,7 +285,7 @@ set_cookie("theme", "dark");</code></pre>
         <section id="fn-render" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-render" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">render(template, data?)</code>
+                    <code class="text-lg font-mono text-amber-400">render(template, data?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -298,12 +298,12 @@ set_cookie("theme", "dark");</code></pre>
         <section id="fn-render_json" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-render_json" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">render_json(data, status?)</code>
+                    <code class="text-lg font-mono text-amber-400">render_json(data, status?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-indigo-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
+                <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-amber-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">render_json({ "users": users })
 render_json({ "error": "Not found" }, 404)</code></pre>
                 <div class="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
@@ -333,12 +333,12 @@ render_json(user)
         <section id="fn-render_text" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-render_text" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">render_text(text, status?)</code>
+                    <code class="text-lg font-mono text-amber-400">render_text(text, status?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 text-sm mb-3">Render a plain text response with automatic <code class="text-indigo-400">Content-Type: text/plain</code> header.</p>
+                <p class="text-gray-400 text-sm mb-3">Render a plain text response with automatic <code class="text-amber-400">Content-Type: text/plain</code> header.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">render_text("pong")
 render_text("Not allowed", 403)</code></pre>
             </div>
@@ -347,7 +347,7 @@ render_text("Not allowed", 403)</code></pre>
         <section id="fn-redirect" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-redirect" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">redirect(url)</code>
+                    <code class="text-lg font-mono text-amber-400">redirect(url)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -355,9 +355,9 @@ render_text("Not allowed", 403)</code></pre>
                 <p class="text-gray-400 text-sm mb-3">Create a redirect response (302 Found) to a local absolute path. External URLs are rejected to prevent open redirects.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">redirect("/login")
 redirect("/posts/" + post["id"])</code></pre>
-                <p class="text-gray-400 text-sm mt-3 mb-3">Use <code class="text-indigo-400">redirect_external(url)</code> only for trusted external destinations such as OAuth providers.</p>
+                <p class="text-gray-400 text-sm mt-3 mb-3">Use <code class="text-amber-400">redirect_external(url)</code> only for trusted external destinations such as OAuth providers.</p>
                 <pre data-filename="External Redirect"><code class="language-soli text-sm">redirect_external("https://github.com/login/oauth/authorize")</code></pre>
-                <p class="text-gray-400 text-sm mt-3 mb-3">Pass <code class="text-indigo-400">:back</code> to send the user where they came from. The <code>Referer</code> header is honored only when its scheme and host match the current request; external or missing referers fall back to <code>/</code>.</p>
+                <p class="text-gray-400 text-sm mt-3 mb-3">Pass <code class="text-amber-400">:back</code> to send the user where they came from. The <code>Referer</code> header is honored only when its scheme and host match the current request; external or missing referers fall back to <code>/</code>.</p>
                 <pre data-filename="Redirect Back"><code class="language-soli text-sm">redirect(:back)</code></pre>
             </div>
         </section>
@@ -365,7 +365,7 @@ redirect("/posts/" + post["id"])</code></pre>
         <section id="fn-halt" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-halt" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">halt(status, message)</code>
+                    <code class="text-lg font-mono text-amber-400">halt(status, message)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -379,7 +379,7 @@ halt(403, "Forbidden")</code></pre>
         <section id="fn-respond_to" class="scroll-mt-20">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#fn-respond_to" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">respond_to(req, block)</code>
+                    <code class="text-lg font-mono text-amber-400">respond_to(req, block)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -434,15 +434,15 @@ end</code></pre>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_path()</code>
+            <code class="text-amber-300 font-bold">current_path()</code>
             <p class="text-sm text-gray-400 mt-1">Request pathname, e.g. <code>"/users"</code>. <code>null</code> outside a request.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_method()</code>
+            <code class="text-amber-300 font-bold">current_method()</code>
             <p class="text-sm text-gray-400 mt-1">HTTP method, e.g. <code>"GET"</code>. <code>null</code> outside a request.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-indigo-300 font-bold">current_path?(p)</code>
+            <code class="text-amber-300 font-bold">current_path?(p)</code>
             <p class="text-sm text-gray-400 mt-1"><code>true</code> if the current path equals <code>p</code> exactly. Use for active-link checks.</p>
         </div>
     </div>
@@ -458,14 +458,14 @@ end</code></pre>
         For prefix matches (e.g. any path under <code>/users</code>), compose with <code>current_path().starts_with("/users")</code>.
     </p>
 
-    <div class="my-8 p-6 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-        <h4 class="text-lg font-semibold text-indigo-400 mb-2 flex items-center gap-2">
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.854 1.5-2.269a6.002 6.002 0 00-2.25-10.428m0 0a6.002 6.002 0 012.25-10.428M14.25 18a6.002 6.002 0 01-2.25 10.428m2.25-10.428v-.192c0-.983-.658-1.854-1.5-2.269" />
             </svg>
             Pro Tip: Keep Controllers Thin
         </h4>
-        <p class="text-indigo-200/80">
+        <p class="text-amber-200/80">
             Delegate complex business logic to Models or Service objects.
             Controllers should primarily focus on handling the HTTP request and selecting the correct response.
         </p>
@@ -501,16 +501,16 @@ end</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <a href="/docs/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Views & Templates &rarr;</h3>
+        <a href="/docs/views" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Views & Templates &rarr;</h3>
             <p class="text-sm text-gray-400">Learn how to render dynamic HTML using ERB templates.</p>
         </a>
-        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Testing &rarr;</h3>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Testing &rarr;</h3>
             <p class="text-sm text-gray-400">Learn how to test controllers with HTTP integration tests.</p>
         </a>
-        <a href="/docs/middleware" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-indigo-500/50 transition-all">
-            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-indigo-400 transition-colors">Middleware &rarr;</h3>
+        <a href="/docs/middleware" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Middleware &rarr;</h3>
             <p class="text-sm text-gray-400">Intercept requests to handle auth, logging, and more.</p>
         </a>
     </div>

@@ -9,7 +9,7 @@
             <span class="text-white">VAPID</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-purple-400 to-violet-400 bg-clip-text text-transparent">VAPID / Web Push Functions</span>
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">VAPID / Web Push Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Send Web Push notifications natively &mdash; no <code>web-push</code> Node module required. Soli ships
@@ -21,8 +21,8 @@
     <!-- VAPID Functions -->
     <section id="section-vapid-functions" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-            <span class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
             </span>
@@ -32,7 +32,7 @@
         <section id="def-vapid-generate-keys" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-vapid-generate-keys" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">vapid_generate_keys()</code>
+                    <code class="text-lg font-mono text-amber-400">vapid_generate_keys()</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -40,7 +40,7 @@
                 <p class="text-gray-400 mb-3">Generate a fresh P-256 ECDH key pair to identify this application server to push services (RFC 8292). Run this <strong>once</strong>, save both values in <code>.env</code>, and reuse them across deploys &mdash; subscriptions are bound to the public key and rotate only when the key rotates.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> &mdash; <code>{"public_key": "&lt;base64url&gt;", "private_key": "&lt;base64url&gt;"}</code>. The public key is the 65-byte uncompressed point; the private key is the 32-byte scalar. Both are base64url without padding.
+                    <code class="text-orange-400">Hash</code> &mdash; <code>{"public_key": "&lt;base64url&gt;", "private_key": "&lt;base64url&gt;"}</code>. The public key is the 65-byte uncompressed point; the private key is the 32-byte scalar. Both are base64url without padding.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let keys = vapid_generate_keys()
 println(keys["public_key"])
@@ -53,7 +53,7 @@ println(keys["private_key"])
         <section id="def-vapid-sign" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-vapid-sign" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">vapid_sign(private_key, audience, subject, expiry_seconds?)</code>
+                    <code class="text-lg font-mono text-amber-400">vapid_sign(private_key, audience, subject, expiry_seconds?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -61,14 +61,14 @@ println(keys["private_key"])
                 <p class="text-gray-400 mb-3">Sign an ES256 VAPID JWT for the <code>Authorization: vapid t=&lt;jwt&gt;, k=&lt;public_key&gt;</code> header (RFC 8292 §2). <code>vapid_send</code> calls this internally &mdash; you only need it when you're talking to a push service yourself.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> &mdash; The base64url private key from <code>vapid_generate_keys</code>.</div>
-                    <div><code class="text-amber-400">audience</code> : <code class="text-purple-400">String</code> &mdash; The <code>scheme://host[:port]</code> origin of the push endpoint (e.g. <code>https://fcm.googleapis.com</code>). Must be an absolute http(s) URL &mdash; bare hosts are rejected.</div>
-                    <div><code class="text-amber-400">subject</code> : <code class="text-purple-400">String</code> &mdash; A <code>mailto:</code> URI or HTTPS URL the push service can use to contact you if your sends misbehave.</div>
-                    <div><code class="text-amber-400">expiry_seconds</code> : <code class="text-purple-400">Int?</code> &mdash; JWT lifetime. Defaults to 12 h; max 24 h per RFC 8292.</div>
+                    <div><code class="text-amber-400">private_key</code> : <code class="text-orange-400">String</code> &mdash; The base64url private key from <code>vapid_generate_keys</code>.</div>
+                    <div><code class="text-amber-400">audience</code> : <code class="text-orange-400">String</code> &mdash; The <code>scheme://host[:port]</code> origin of the push endpoint (e.g. <code>https://fcm.googleapis.com</code>). Must be an absolute http(s) URL &mdash; bare hosts are rejected.</div>
+                    <div><code class="text-amber-400">subject</code> : <code class="text-orange-400">String</code> &mdash; A <code>mailto:</code> URI or HTTPS URL the push service can use to contact you if your sends misbehave.</div>
+                    <div><code class="text-amber-400">expiry_seconds</code> : <code class="text-orange-400">Int?</code> &mdash; JWT lifetime. Defaults to 12 h; max 24 h per RFC 8292.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">String</code> &mdash; the three-segment JWT <code>header.payload.signature</code>.
+                    <code class="text-orange-400">String</code> &mdash; the three-segment JWT <code>header.payload.signature</code>.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let token = vapid_sign(
   getenv("VAPID_PRIVATE_KEY"),
@@ -82,7 +82,7 @@ println(keys["private_key"])
         <section id="def-vapid-encrypt" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-vapid-encrypt" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">vapid_encrypt(payload, subscription, public_key, private_key)</code>
+                    <code class="text-lg font-mono text-amber-400">vapid_encrypt(payload, subscription, public_key, private_key)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -90,14 +90,14 @@ println(keys["private_key"])
                 <p class="text-gray-400 mb-3">Encrypt a Web Push payload per RFC 8291 (<code>aes128gcm</code>). The function generates a fresh ephemeral P-256 keypair internally &mdash; your VAPID identity keys are never reused for ECDH. The <code>public_key</code> / <code>private_key</code> parameters are accepted for API symmetry with <code>vapid_send</code> and are not part of the encryption itself.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">payload</code> : <code class="text-purple-400">String</code> &mdash; The cleartext body to deliver (typically a JSON string the service worker decodes).</div>
-                    <div><code class="text-amber-400">subscription</code> : <code class="text-purple-400">Hash</code> &mdash; Browser-issued subscription with <code>endpoint</code> and <code>keys.p256dh</code> / <code>keys.auth</code> (the shape of <code>PushSubscription.toJSON()</code>).</div>
-                    <div><code class="text-amber-400">public_key</code> : <code class="text-purple-400">String</code> &mdash; VAPID public key (unused by encryption; kept for symmetry).</div>
-                    <div><code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> &mdash; VAPID private key (unused by encryption; kept for symmetry).</div>
+                    <div><code class="text-amber-400">payload</code> : <code class="text-orange-400">String</code> &mdash; The cleartext body to deliver (typically a JSON string the service worker decodes).</div>
+                    <div><code class="text-amber-400">subscription</code> : <code class="text-orange-400">Hash</code> &mdash; Browser-issued subscription with <code>endpoint</code> and <code>keys.p256dh</code> / <code>keys.auth</code> (the shape of <code>PushSubscription.toJSON()</code>).</div>
+                    <div><code class="text-amber-400">public_key</code> : <code class="text-orange-400">String</code> &mdash; VAPID public key (unused by encryption; kept for symmetry).</div>
+                    <div><code class="text-amber-400">private_key</code> : <code class="text-orange-400">String</code> &mdash; VAPID private key (unused by encryption; kept for symmetry).</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> &mdash; <code>{"ciphertext": "&lt;base64url&gt;", "salt": "&lt;base64url&gt;", "server_public_key": "&lt;base64url&gt;"}</code>. <code>ciphertext</code> is the full RFC 8291 record body (salt &Vert; rs &Vert; idlen &Vert; ephemeral pub &Vert; AES-GCM ciphertext) ready to POST verbatim.
+                    <code class="text-orange-400">Hash</code> &mdash; <code>{"ciphertext": "&lt;base64url&gt;", "salt": "&lt;base64url&gt;", "server_public_key": "&lt;base64url&gt;"}</code>. <code>ciphertext</code> is the full RFC 8291 record body (salt &Vert; rs &Vert; idlen &Vert; ephemeral pub &Vert; AES-GCM ciphertext) ready to POST verbatim.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = vapid_encrypt(
   "{\"title\":\"Hello\"}",
@@ -114,7 +114,7 @@ println(len(result["server_public_key"]))  # 87 (65 bytes base64url)</code></pre
         <section id="def-vapid-send" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-vapid-send" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">vapid_send(subscription, payload, private_key, public_key, subject, options?)</code>
+                    <code class="text-lg font-mono text-amber-400">vapid_send(subscription, payload, private_key, public_key, subject, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -122,23 +122,23 @@ println(len(result["server_public_key"]))  # 87 (65 bytes base64url)</code></pre
                 <p class="text-gray-400 mb-3">End-to-end Web Push delivery: signs the VAPID JWT, encrypts the payload, and POSTs the result to the subscription's <code>endpoint</code>. This is the function you call from a controller when a user-visible event needs to fan out to subscribers.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">subscription</code> : <code class="text-purple-400">Hash</code> &mdash; The browser-issued subscription (<code>{endpoint, keys: {p256dh, auth}}</code>).</div>
-                    <div><code class="text-amber-400">payload</code> : <code class="text-purple-400">String</code> &mdash; The body the service worker will receive.</div>
-                    <div><code class="text-amber-400">private_key</code> : <code class="text-purple-400">String</code> &mdash; VAPID private key (base64url).</div>
-                    <div><code class="text-amber-400">public_key</code> : <code class="text-purple-400">String</code> &mdash; VAPID public key (base64url) &mdash; sent as <code>k=</code> in the Authorization header.</div>
-                    <div><code class="text-amber-400">subject</code> : <code class="text-purple-400">String</code> &mdash; <code>mailto:</code> / https contact for the push service.</div>
-                    <div><code class="text-amber-400">options</code> : <code class="text-purple-400">Hash?</code> &mdash; Optional delivery hints.</div>
+                    <div><code class="text-amber-400">subscription</code> : <code class="text-orange-400">Hash</code> &mdash; The browser-issued subscription (<code>{endpoint, keys: {p256dh, auth}}</code>).</div>
+                    <div><code class="text-amber-400">payload</code> : <code class="text-orange-400">String</code> &mdash; The body the service worker will receive.</div>
+                    <div><code class="text-amber-400">private_key</code> : <code class="text-orange-400">String</code> &mdash; VAPID private key (base64url).</div>
+                    <div><code class="text-amber-400">public_key</code> : <code class="text-orange-400">String</code> &mdash; VAPID public key (base64url) &mdash; sent as <code>k=</code> in the Authorization header.</div>
+                    <div><code class="text-amber-400">subject</code> : <code class="text-orange-400">String</code> &mdash; <code>mailto:</code> / https contact for the push service.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; Optional delivery hints.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">ttl</code> : <code class="text-purple-400">Int</code> &mdash; Push service <code>TTL</code> header in seconds (default 60).</div>
-                    <div><code class="text-amber-400">urgency</code> : <code class="text-purple-400">String</code> &mdash; <code>very-low</code>, <code>low</code>, <code>normal</code>, or <code>high</code> (RFC 8030).</div>
-                    <div><code class="text-amber-400">topic</code> : <code class="text-purple-400">String</code> &mdash; Replaces a queued message with the same topic on the same subscription.</div>
-                    <div><code class="text-amber-400">expiry_seconds</code> : <code class="text-purple-400">Int</code> &mdash; VAPID JWT lifetime (default 12 h).</div>
+                    <div><code class="text-amber-400">ttl</code> : <code class="text-orange-400">Int</code> &mdash; Push service <code>TTL</code> header in seconds (default 60).</div>
+                    <div><code class="text-amber-400">urgency</code> : <code class="text-orange-400">String</code> &mdash; <code>very-low</code>, <code>low</code>, <code>normal</code>, or <code>high</code> (RFC 8030).</div>
+                    <div><code class="text-amber-400">topic</code> : <code class="text-orange-400">String</code> &mdash; Replaces a queued message with the same topic on the same subscription.</div>
+                    <div><code class="text-amber-400">expiry_seconds</code> : <code class="text-orange-400">Int</code> &mdash; VAPID JWT lifetime (default 12 h).</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-purple-400">Hash</code> &mdash; <code>{"status": Int, "body": String}</code>. A successful delivery is HTTP 201; a missing subscription returns 404 or 410 (delete it from your store).
+                    <code class="text-orange-400">Hash</code> &mdash; <code>{"status": Int, "body": String}</code>. A successful delivery is HTTP 201; a missing subscription returns 404 or 410 (delete it from your store).
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">let result = vapid_send(
   subscription,
@@ -193,7 +193,7 @@ end</code></pre>
             </svg>
             JWT Functions
         </a>
-        <a href="/docs/builtins/regex" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/builtins/regex" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Regex Functions
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

@@ -28,10 +28,10 @@
         </h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <ul class="list-disc list-inside text-gray-300 space-y-1 text-sm">
-                <li>Values are JSON-serialized on <code class="text-amber-400">set</code> and parsed back on <code class="text-amber-400">get</code> — works for any value <code class="text-purple-400">JSON.stringify</code> would handle.</li>
+                <li>Values are JSON-serialized on <code class="text-amber-400">set</code> and parsed back on <code class="text-amber-400">get</code> — works for any value <code class="text-orange-400">JSON.stringify</code> would handle.</li>
                 <li>Keys are transparently prefixed with <code class="text-amber-400">soli:cache:</code>; <code class="text-amber-400">Cache.keys</code> returns them with the prefix stripped.</li>
-                <li>TTL expiration is enforced by SoliKV — there is no Soli-side reaper. Default TTL is <code class="text-purple-400">3600s</code> (1 hour).</li>
-                <li>Misses return <code class="text-purple-400">null</code>. <code class="text-amber-400">Cache.fetch</code> turns the cache-aside pattern into one expression.</li>
+                <li>TTL expiration is enforced by SoliKV — there is no Soli-side reaper. Default TTL is <code class="text-orange-400">3600s</code> (1 hour).</li>
+                <li>Misses return <code class="text-orange-400">null</code>. <code class="text-amber-400">Cache.fetch</code> turns the cache-aside pattern into one expression.</li>
             </ul>
         </div>
     </section>
@@ -54,12 +54,12 @@
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_RESP_HOST</code></td>
                             <td class="py-3 pr-4">SoliKV host</td>
-                            <td class="py-3"><code class="text-purple-400">localhost</code></td>
+                            <td class="py-3"><code class="text-orange-400">localhost</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_RESP_PORT</code></td>
                             <td class="py-3 pr-4">RESP port</td>
-                            <td class="py-3"><code class="text-purple-400">6380</code></td>
+                            <td class="py-3"><code class="text-orange-400">6380</code></td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLIKV_TOKEN</code></td>
@@ -83,21 +83,21 @@ SOLIKV_TOKEN=my-secret-token</code></pre>
         <section id="def-set" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-set" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.set(key, value, ttl_seconds?)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.set(key, value, ttl_seconds?)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Store a value, JSON-serialized. <code class="text-amber-400">ttl_seconds</code> defaults to <code class="text-purple-400">3600</code>.</p>
+                <p class="text-gray-400 mb-3">Store a value, JSON-serialized. <code class="text-amber-400">ttl_seconds</code> defaults to <code class="text-orange-400">3600</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cache.set("user:123", { "name": "Alice" })
 Cache.set("session", data, 1800)   # 30 minute TTL</code></pre>
-                <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-purple-400">null</code></p>
+                <p class="text-gray-500 text-xs mt-3">Returns: <code class="text-orange-400">null</code></p>
             </div>
         </section>
 
         <section id="def-get" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-get" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.get(key)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.get(key)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Retrieve a value. Returns <code class="text-purple-400">null</code> if the key is missing or expired.</p>
+                <p class="text-gray-400 mb-3">Retrieve a value. Returns <code class="text-orange-400">null</code> if the key is missing or expired.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">user = Cache.get("user:123")
 if user != null
   println("Cached user: " + user["name"])
@@ -108,7 +108,7 @@ end</code></pre>
         <section id="def-fetch" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-fetch" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.fetch(key, ttl?) do ... end</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.fetch(key, ttl?) do ... end</code>
                     <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">cache-aside</span>
                 </a>
                 <p class="text-gray-400 mb-3">Returns the cached value on hit. On miss, runs the block, caches the result, and returns it. Without a block it behaves like <code class="text-amber-400">Cache.get</code>.</p>
@@ -122,18 +122,18 @@ end</code></pre>
         <section id="def-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-delete" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.delete(key)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.delete(key)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Remove a key. Returns <code class="text-purple-400">true</code> if it existed.</p>
+                <p class="text-gray-400 mb-3">Remove a key. Returns <code class="text-orange-400">true</code> if it existed.</p>
             </div>
         </section>
 
         <section id="def-has" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-has" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.has(key)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.has(key)</code>
                 </a>
-                <p class="text-gray-400">Check whether a key exists. Returns <code class="text-purple-400">Bool</code>.</p>
+                <p class="text-gray-400">Check whether a key exists. Returns <code class="text-orange-400">Bool</code>.</p>
             </div>
         </section>
     </section>
@@ -145,18 +145,18 @@ end</code></pre>
         <section id="def-ttl" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-ttl" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.ttl(key)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.ttl(key)</code>
                 </a>
-                <p class="text-gray-400">Seconds until expiration, or <code class="text-purple-400">null</code> if the key is missing or has no TTL.</p>
+                <p class="text-gray-400">Seconds until expiration, or <code class="text-orange-400">null</code> if the key is missing or has no TTL.</p>
             </div>
         </section>
 
         <section id="def-touch" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-touch" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.touch(key, ttl)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.touch(key, ttl)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Reset the TTL of an existing key. Returns <code class="text-purple-400">true</code> on success, <code class="text-purple-400">false</code> if the key does not exist.</p>
+                <p class="text-gray-400 mb-3">Reset the TTL of an existing key. Returns <code class="text-orange-400">true</code> on success, <code class="text-orange-400">false</code> if the key does not exist.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cache.touch("user:123", 3600)   # extend by 1 hour</code></pre>
             </div>
         </section>
@@ -178,11 +178,11 @@ end</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cache.keys</code></td>
-                            <td class="py-3">All cache keys with the <code class="text-purple-400">soli:cache:</code> prefix stripped. Returns <code class="text-purple-400">Array</code>.</td>
+                            <td class="py-3">All cache keys with the <code class="text-orange-400">soli:cache:</code> prefix stripped. Returns <code class="text-orange-400">Array</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cache.size</code></td>
-                            <td class="py-3">Number of cached entries. Returns <code class="text-purple-400">Int</code>.</td>
+                            <td class="py-3">Number of cached entries. Returns <code class="text-orange-400">Int</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cache.clear</code></td>
@@ -204,7 +204,7 @@ end</code></pre>
         <section id="def-configure" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-configure" class="flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-indigo-400">Cache.configure(host, token?)</code>
+                    <code class="text-lg font-mono text-amber-400">Cache.configure(host, token?)</code>
                 </a>
                 <p class="text-gray-400 mb-3">Override the SoliKV connection at runtime. Affects <a href="/docs/builtins/kv" class="text-amber-400 hover:underline">KV</a> too — both share one client.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">Cache.configure("kv.internal:6380", env("SOLIKV_TOKEN"))</code></pre>

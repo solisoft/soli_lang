@@ -38,9 +38,9 @@ soli lint src/
 soli lint app/main.sl</code></pre>
         </div>
 
-        <div class="my-6 p-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-            <h4 class="text-base font-semibold text-indigo-400 mb-2">Exit codes</h4>
-            <p class="text-indigo-200/80 text-sm">
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">Exit codes</h4>
+            <p class="text-amber-200/80 text-sm">
                 <code>0</code> &mdash; no issues found. <code>1</code> &mdash; one or more issues found.
             </p>
         </div>
@@ -50,7 +50,7 @@ soli lint app/main.sl</code></pre>
     <section id="section-output" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Output Format</h2>
         <p class="text-gray-400 mb-4">Each issue is reported on a single line with the file path, line, column, rule, and message:</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-text text-sm">app/main.sl:12:5 - [naming/snake-case] variable 'myVar' should use snake_case
 app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statement
@@ -76,8 +76,8 @@ found in 1 file(s)</code></pre>
         <h3 class="text-lg font-semibold text-white mb-3">Naming</h3>
         <div class="space-y-4 mb-8">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">naming/snake-case</code>
-                <p class="text-gray-400 mt-2">Variables, functions, methods, and parameters should use <code class="text-indigo-400">snake_case</code>.</p>
+                <code class="text-amber-400 font-mono text-sm">naming/snake-case</code>
+                <p class="text-gray-400 mt-2">Variables, functions, methods, and parameters should use <code class="text-amber-400">snake_case</code>.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
 let myVar = 10
 def processData end
@@ -88,8 +88,8 @@ def process_data end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">naming/pascal-case</code>
-                <p class="text-gray-400 mt-2">Classes and interfaces should use <code class="text-indigo-400">PascalCase</code>.</p>
+                <code class="text-amber-400 font-mono text-sm">naming/pascal-case</code>
+                <p class="text-gray-400 mt-2">Classes and interfaces should use <code class="text-amber-400">PascalCase</code>.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
 class my_class end
 interface data_store end
@@ -104,12 +104,12 @@ interface DataStore end</code></pre>
         <h3 class="text-lg font-semibold text-white mb-3">Style</h3>
         <div class="space-y-4 mb-8">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">style/empty-block</code>
+                <code class="text-amber-400 font-mono text-sm">style/empty-block</code>
                 <p class="text-gray-400 mt-2">Blocks should not be empty. Add a comment or remove the block.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">style/line-length</code>
+                <code class="text-amber-400 font-mono text-sm">style/line-length</code>
                 <p class="text-gray-400 mt-2">Lines should not exceed 120 characters.</p>
             </div>
         </div>
@@ -118,8 +118,8 @@ interface DataStore end</code></pre>
         <h3 class="text-lg font-semibold text-white mb-3">Code Smells</h3>
         <div class="space-y-4 mb-8">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">smell/unreachable-code</code>
-                <p class="text-gray-400 mt-2">Code after a <code class="text-indigo-400">return</code> statement is unreachable and will never execute.</p>
+                <code class="text-amber-400 font-mono text-sm">smell/unreachable-code</code>
+                <p class="text-gray-400 mt-2">Code after a <code class="text-amber-400">return</code> statement is unreachable and will never execute.</p>
                 <pre class="mt-3"><code class="language-soli text-sm">def example
   return 42
   print("never reached");  # Warning: unreachable code
@@ -127,7 +127,7 @@ end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">smell/empty-catch</code>
+                <code class="text-amber-400 font-mono text-sm">smell/empty-catch</code>
                 <p class="text-gray-400 mt-2">Catch blocks should not be empty. Silently swallowing errors hides bugs.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad - error silently ignored
 try
@@ -142,17 +142,17 @@ end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">smell/deep-nesting</code>
+                <code class="text-amber-400 font-mono text-sm">smell/deep-nesting</code>
                 <p class="text-gray-400 mt-2">Nesting depth should not exceed 4 levels. Consider extracting logic into separate functions.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">smell/duplicate-methods</code>
+                <code class="text-amber-400 font-mono text-sm">smell/duplicate-methods</code>
                 <p class="text-gray-400 mt-2">A class should not have two methods with the same name.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">smell/dangerous-server-builtin</code>
+                <code class="text-amber-400 font-mono text-sm">smell/dangerous-server-builtin</code>
                 <p class="text-gray-400 mt-2">Calls to <code>db_query_raw</code>, <code>Trusted.*</code>, <code>System.shell</code> / <code>System.shell_sync</code>, or backtick command substitution from <code>app/controllers/</code>, <code>app/middleware/</code>, or <code>app/views/</code>. These primitives are powerful but become injection / traversal sinks when fed request-controlled data. The diagnostic spells out the safe alternative for each:</p>
                 <ul class="text-gray-400 mt-2 list-disc list-inside">
                     <li><code>db_query_raw</code> &rarr; parameterised <code>@sdbql{ ... #{value} ... }</code> block, or <code>Model.where(&quot;x = #{v}&quot;, { &quot;v&quot;: v })</code>.</li>
@@ -168,8 +168,8 @@ end</code></pre>
         <p class="text-gray-400 mb-4">These flag code that is correct but un-idiomatic &mdash; the Soli-specific patterns that read better with a builtin.</p>
         <div class="space-y-4 mb-8">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">idiom/nil-comparison</code>
-                <p class="text-gray-400 mt-2">Prefer <code class="text-indigo-400">.nil?</code> / <code class="text-indigo-400">.present?</code> over comparing to <code>null</code>.</p>
+                <code class="text-amber-400 font-mono text-sm">idiom/nil-comparison</code>
+                <p class="text-gray-400 mt-2">Prefer <code class="text-amber-400">.nil?</code> / <code class="text-amber-400">.present?</code> over comparing to <code>null</code>.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
 if user == null end
 return user != null
@@ -180,8 +180,8 @@ return user.present?</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">idiom/prefer-blank</code>
-                <p class="text-gray-400 mt-2">Prefer <code class="text-indigo-400">.blank?</code> / <code class="text-indigo-400">.present?</code> over comparing to an empty string. <code>.blank?</code> also covers the nil case.</p>
+                <code class="text-amber-400 font-mono text-sm">idiom/prefer-blank</code>
+                <p class="text-gray-400 mt-2">Prefer <code class="text-amber-400">.blank?</code> / <code class="text-amber-400">.present?</code> over comparing to an empty string. <code>.blank?</code> also covers the nil case.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
 if name == "" end
 
@@ -190,8 +190,8 @@ if name.blank? end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">idiom/prefer-includes</code>
-                <p class="text-gray-400 mt-2">Replace a chain of 3+ comparisons of the same value with <code class="text-indigo-400">.includes?</code>.</p>
+                <code class="text-amber-400 font-mono text-sm">idiom/prefer-includes</code>
+                <p class="text-gray-400 mt-2">Replace a chain of 3+ comparisons of the same value with <code class="text-amber-400">.includes?</code>.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
 status == "up" || status == "late" || status == "overdue"
 
@@ -200,8 +200,8 @@ status == "up" || status == "late" || status == "overdue"
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-indigo-400 font-mono text-sm">idiom/manual-find-guard</code>
-                <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-indigo-400">find_by</code> / <code class="text-indigo-400">first_by</code> when you want a nil result.</p>
+                <code class="text-amber-400 font-mono text-sm">idiom/manual-find-guard</code>
+                <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-amber-400">find_by</code> / <code class="text-amber-400">first_by</code> when you want a nil result.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad - dead code: .find already raised
 post = Post.find(id)
 return not_found() if post.nil?
@@ -282,7 +282,7 @@ data   = Trusted.read(path)
         </div>
 
         <h3 class="text-lg font-semibold text-white mb-3">Installation</h3>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <pre data-filename="Terminal"><code class="language-bash text-sm">cd editors/vscode
 vsce package
 # Install the generated .vsix file in Cursor or VS Code</code></pre>
@@ -291,16 +291,16 @@ vsce package
         <h3 class="text-lg font-semibold text-white mb-3">Settings</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <ul class="list-disc list-inside text-gray-400 space-y-2">
-                <li><code class="text-indigo-400">soli.lsp.enable</code> &mdash; Enable/disable LSP server (default: <code>true</code>)</li>
-                <li><code class="text-indigo-400">soli.lsp.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
-                <li><code class="text-indigo-400">soli.lint.enable</code> &mdash; Enable/disable linting (default: <code>true</code>)</li>
-                <li><code class="text-indigo-400">soli.lint.onSave</code> &mdash; Run linter on file save (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lsp.enable</code> &mdash; Enable/disable LSP server (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lsp.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
+                <li><code class="text-amber-400">soli.lint.enable</code> &mdash; Enable/disable linting (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lint.onSave</code> &mdash; Run linter on file save (default: <code>true</code>)</li>
             </ul>
         </div>
 
         <h3 class="text-lg font-semibold text-white mb-3">Manual LSP Setup</h3>
         <p class="text-gray-400 mb-4">For editors that support custom LSP servers directly (Neovim, Emacs, etc.):</p>
-        <div class="rounded-xl bg-gray-950 ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <pre data-filename="Neovim (lspconfig)"><code class="language-lua text-sm">require('lspconfig').soli.setup({
  cmd = {"soli", "lsp"},
  filetypes = {"soli"},
@@ -308,17 +308,17 @@ vsce package
 })</code></pre>
         </div>
 
-        <div class="rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-5">
-            <h4 class="text-base font-semibold text-indigo-400 mb-2">Learn More</h4>
-            <p class="text-indigo-200/80 text-sm">
-                For full editor setup instructions and all available LSP features, see the <a href="/docs/development-tools/editor-integration" class="text-indigo-400 hover:text-indigo-300 underline">Editor Integration</a> guide.
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">Learn More</h4>
+            <p class="text-amber-200/80 text-sm">
+                For full editor setup instructions and all available LSP features, see the <a href="/docs/development-tools/editor-integration" class="text-amber-400 hover:text-amber-300 underline">Editor Integration</a> guide.
             </p>
         </div>
     </section>
 
     <!-- Type checking -->
     <section id="section-type-check" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Type checking with <code class="text-indigo-400">soli check</code></h2>
+        <h2 class="text-2xl font-bold text-white mb-4">Type checking with <code class="text-amber-400">soli check</code></h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">
                 Where <code class="text-cyan-400">soli lint</code> catches style and smells, <code class="text-cyan-400">soli check</code> runs Soli's optional type system over your code <strong class="text-white">without executing it</strong> &mdash; ideal for CI or a pre-commit hook. It resolves imports and reports every mismatch with a <code class="text-cyan-400">file:line:column</code> location, exiting non-zero when any are found.
@@ -344,7 +344,7 @@ soli check app/models/user.sl
             </svg>
             Block Syntax
         </a>
-        <a href="/docs/language" class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+        <a href="/docs/language" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Language Overview
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

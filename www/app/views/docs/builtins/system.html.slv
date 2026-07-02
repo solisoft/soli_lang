@@ -2,7 +2,7 @@
     <!-- Hero Section -->
     <div class="mb-16">
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-orange-400 via-red-400 to-pink-400 bg-clip-text text-transparent">System Functions</span>
+            <span class="bg-gradient-to-r from-orange-400 via-red-400 to-orange-400 bg-clip-text text-transparent">System Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Execute commands directly from Soli. <code>System.run</code> / <code>System.run_sync</code> exec the program directly with no shell. Use <code>System.shell</code> / <code>System.shell_sync</code> (or backticks) when you explicitly want shell features.
@@ -149,8 +149,8 @@ end</code></pre>
     <section>
         <h2 class="text-2xl font-bold text-white mb-6">See Also</h2>
         <ul class="space-y-2">
-            <li><a href="/docs/builtins/core" class="text-indigo-400 hover:text-indigo-300">Core Functions</a> - print, input, type conversions</li>
-            <li><a href="/docs/soli-language" class="text-indigo-400 hover:text-indigo-300">Soli Language</a> - Futures and async patterns</li>
+            <li><a href="/docs/builtins/core" class="text-amber-400 hover:text-amber-300">Core Functions</a> - print, input, type conversions</li>
+            <li><a href="/docs/soli-language" class="text-amber-400 hover:text-amber-300">Soli Language</a> - Futures and async patterns</li>
         </ul>
     </section>
 </div>
