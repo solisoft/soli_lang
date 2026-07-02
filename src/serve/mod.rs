@@ -841,6 +841,24 @@ fn run_hyper_server_worker_pool(
     // it room for every worker's outbound call plus inbound serving headroom,
     // with a sane floor.
     let tokio_worker_threads = (num_workers + 2).max(4);
+
+    // Bind address. `SOLI_HOST` restricts the listening interface (e.g.
+    // `127.0.0.1` to keep a dev server off the LAN); default is all
+    // interfaces, preserving prior behavior. An invalid value is a hard
+    // error rather than a silent fallback — quietly binding 0.0.0.0 when
+    // the operator asked for loopback would expose an interface they
+    // explicitly tried to close.
+    let bind_host: std::net::IpAddr = match std::env::var("SOLI_HOST") {
+        Ok(v) if !v.trim().is_empty() => v.trim().parse().unwrap_or_else(|_| {
+            eprintln!(
+                "Invalid SOLI_HOST '{}': expected an IP address like 127.0.0.1 or ::1",
+                v
+            );
+            std::process::exit(1);
+        }),
+        _ => std::net::IpAddr::from([0, 0, 0, 0]),
+    };
+
     thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(tokio_worker_threads)
@@ -857,7 +875,7 @@ fn run_hyper_server_worker_pool(
             // Try the requested port, then scan for a free one
             let mut try_port = port;
             let listener = loop {
-                let addr = SocketAddr::from(([0, 0, 0, 0], try_port));
+                let addr = SocketAddr::from((bind_host, try_port));
                 match TcpListener::bind(addr).await {
                     Ok(l) => break l,
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
@@ -1348,11 +1366,16 @@ fn run_hyper_server_worker_pool(
         .recv()
         .expect("Failed to receive bound port from tokio thread");
 
-    println!("\nServer listening on http://0.0.0.0:{}", actual_port);
-    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("8.8.8.8:80").is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                println!("  Local network:    http://{}:{}", addr.ip(), actual_port);
+    println!("\nServer listening on http://{}:{}", bind_host, actual_port);
+    // The LAN URL only exists when listening on all interfaces; when
+    // SOLI_HOST pins the server to loopback (or one address), advertising a
+    // LAN address that won't answer would be misleading.
+    if bind_host.is_unspecified() {
+        if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+            if socket.connect("8.8.8.8:80").is_ok() {
+                if let Ok(addr) = socket.local_addr() {
+                    println!("  Local network:    http://{}:{}", addr.ip(), actual_port);
+                }
             }
         }
     }

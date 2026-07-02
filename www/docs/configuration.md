@@ -22,6 +22,7 @@ Keys must match `[A-Za-z_][A-Za-z0-9_]*`. Values cannot contain `\0`, `\r`, or `
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `SOLI_HOST` | IP address the server binds to. Set `127.0.0.1` to keep a dev server off the LAN (only local processes can connect); the default listens on all interfaces. An invalid value is a startup error. | `0.0.0.0` |
 | `SOLI_REQUEST_LOG` | Enables per-request `[LOG] METHOD PATH - STATUS (Xms)` lines on stdout when set to `1` or `true`. Always on under `--dev`. Alias for `SOLI_LOG=access`. | `false` |
 | `SOLI_LOG` | Comma-separated production log channels: `access` (the request line), `query` (AQL queries with binds + duration), `http` (outgoing `HTTP.*` calls), `timing` (middleware/view/phase breakdown), or `all`. Each detail channel prints an indented block under the access line and implies `access`. Lets you see the rich per-request diagnostics — otherwise gated to `--dev` — without paying for full dev mode. | unset |
 | `SOLI_SLOW_REQUEST_MS` | Slow-request threshold in milliseconds. A request whose total time (queue wait + handler) reaches it prints a full `[SLOW]` detail block — every `SOLI_LOG` channel plus the queue-wait split — while faster requests stay silent. Composes with `SOLI_LOG`. | unset |
@@ -168,6 +169,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_DEFAULT_QUEUE` | Queue used when no queue is specified. | `default` |
 | `SOLI_JOBS_CALLBACK_URL` | Base URL SolidB calls when a job fires. | `http://127.0.0.1:3000/_jobs/run` |
 | `SOLI_JOBS_SECRET` | **Required.** HMAC-SHA256 key used to sign and verify job callbacks (`X-Job-Signature` header). If unset, `/_jobs/run/:name` is not registered — see [Jobs / Signed Callbacks](jobs.md#security-signed-callbacks). | unset |
+| `SOLI_JOB_WORKERS` | Size of the in-process pool that runs jobs marked `static background: Bool = true`. `0` disables backgrounding (all jobs run inline) — see [Jobs / Long-Running Jobs](jobs.md#long-running-jobs-background-pool). | `2` |
 
 ## Cache And KV
 
