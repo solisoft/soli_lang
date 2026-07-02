@@ -2,7 +2,10 @@
 //! XML into a PDF/A-3b electronic invoice.
 
 mod embed;
+mod pdfa;
 mod xmp;
+
+pub use pdfa::to_pdfa;
 
 use time::OffsetDateTime;
 

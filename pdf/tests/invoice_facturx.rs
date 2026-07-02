@@ -89,6 +89,41 @@ fn embed_consistency_check_against_caller_xml() {
     assert_eq!(find_embedded_file(&doc).unwrap(), xml.as_bytes());
 }
 
+#[test]
+fn enriched_invoice_embeds_adjusted_totals() {
+    // Enrich the fixture invoice with an allowance, a charge and payment terms;
+    // the embedded XML must carry the adjusted BT-109 chain.
+    let mut invoice: serde_json::Value = serde_json::from_slice(INVOICE).unwrap();
+    invoice["allowances"] = serde_json::json!([
+        { "reason": "Volume discount", "percent": 10, "vat_rate": 20.0 }
+    ]);
+    invoice["charges"] = serde_json::json!([
+        { "reason": "Shipping", "amount": "20.00", "vat_rate": 20.0 }
+    ]);
+    invoice["payment_terms"] = serde_json::json!("30 days net");
+    let invoice = Invoice::parse(&serde_json::to_vec(&invoice).unwrap()).expect("parse enriched");
+
+    let xml = invoice.to_cii_xml(Profile::En16931).expect("cii xml");
+    // Lines total 500; -10% +20 → 470 basis, 94 VAT, 564 due.
+    assert!(xml.contains("<ram:TaxBasisTotalAmount>470.00</ram:TaxBasisTotalAmount>"));
+    assert!(xml.contains("<ram:AllowanceTotalAmount>50.00</ram:AllowanceTotalAmount>"));
+    assert!(xml.contains("<ram:ChargeTotalAmount>20.00</ram:ChargeTotalAmount>"));
+    assert!(xml.contains("<ram:GrandTotalAmount>564.00</ram:GrandTotalAmount>"));
+    assert!(xml.contains("<ram:Description>30 days net</ram:Description>"));
+
+    let pdf = generate_facturx_from_invoice(
+        TEMPLATE,
+        &invoice,
+        Profile::En16931,
+        &FacturxMetadata::default(),
+        &offline_opts(),
+    )
+    .expect("generate enriched");
+    let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
+    let embedded = find_embedded_file(&doc).expect("embedded file present");
+    assert_eq!(embedded, xml.as_bytes(), "embedded XML matches generated XML");
+}
+
 fn find_embedded_file(doc: &lopdf::Document) -> Option<Vec<u8>> {
     for (_, obj) in doc.objects.iter() {
         if let Object::Stream(s) = obj {

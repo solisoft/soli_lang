@@ -58,9 +58,13 @@ pub struct Engine<'a> {
     /// raised to `H1..6` inside a heading paragraph). `None` means "not content"
     /// so it emits unwrapped (→ artifact).
     content_role: Option<StructRole>,
-    /// While true (header band), content ops emit unwrapped so headers/footers
-    /// become artifacts rather than tagged content.
+    /// While true (header/footer band), content ops emit unwrapped so
+    /// headers/footers become artifacts rather than tagged content, and
+    /// pagination is suppressed (a band must never trigger a page break).
     artifact_mode: bool,
+    /// The document-level data, for data-bound elements (`table`, `repeat`,
+    /// `chart`) in the header band. Set once by [`Engine::layout`].
+    data: Option<&'a DataDocument>,
 }
 
 /// Multi-column flow state. All coordinates are logical (top-left origin).
@@ -149,6 +153,7 @@ impl<'a> Engine<'a> {
             tagged: template.options.tagged,
             content_role: None,
             artifact_mode: false,
+            data: None,
         }
     }
 
@@ -207,6 +212,11 @@ impl<'a> Engine<'a> {
     /// restart an active column set at the top of the fresh page. Also the
     /// implementation of `page_break` (a column break inside a columns block).
     fn advance_region(&mut self, template: &Template, root: &Resolver) {
+        // Header/footer bands never paginate: their content just overflows the
+        // band (softly), instead of recursing begin_page → band → begin_page.
+        if self.artifact_mode {
+            return;
+        }
         if let Some(flow) = &mut self.columns {
             flow.max_y = flow.max_y.max(self.cursor.y);
             if flow.index + 1 < flow.count {
@@ -230,8 +240,9 @@ impl<'a> Engine<'a> {
     pub fn layout(
         mut self,
         template: &Template,
-        data: &DataDocument,
+        data: &'a DataDocument,
     ) -> Result<(LaidOutDoc, Vec<RenderWarning>)> {
+        self.data = Some(data);
         let root = data.resolver();
         // Intern a page background image up front so its decoded pixels are in
         // `self.images` before layout; the op itself is inserted per page in a
@@ -308,9 +319,14 @@ impl<'a> Engine<'a> {
             let saved_artifact = self.artifact_mode;
             self.artifact_mode = true;
             self.cursor = Cursor::new(self.page.content_left(), self.page.header_top());
+            // The real document data, so data-bound elements (table, repeat,
+            // chart) work in the header. Pagination is suppressed while
+            // `artifact_mode` is on, so header overflow can't recurse.
+            let empty = DataDocument::empty();
+            let data = self.data.unwrap_or(&empty);
             for el in &template.header {
                 // Header elements should not paginate; ignore errors softly.
-                let _ = self.element(el, &DataDocument::empty(), root, template);
+                let _ = self.element(el, data, root, template);
             }
             self.artifact_mode = saved_artifact;
             self.cursor = saved;
@@ -319,13 +335,91 @@ impl<'a> Engine<'a> {
     }
 
     fn finish_page(&mut self, template: &Template, root: &Resolver) {
-        // Footer band, stacked from footer_top.
+        // Footer band, stacked from footer_top with its own (fx, fy) cursor.
+        // Paragraphs, hrs and images advance fy; rect/line/ellipse draw at the
+        // cursor without advancing (position them with `move`), as in the body.
+        let saved_cursor = self.cursor;
+        let saved_artifact = self.artifact_mode;
+        self.artifact_mode = true;
+        let left = self.page.content_left();
+        let right = left + self.page.content_width();
+        let mut fx = left;
         let mut fy = self.page.footer_top() + FOOTER_PADDING / 2.0;
         for el in &template.footer {
-            if let Element::Paragraph(p) = el {
-                fy = self.footer_paragraph(p, root, fy);
+            match el {
+                Element::Paragraph(p) => {
+                    fy = self.footer_paragraph(p, root, fy);
+                    fx = left;
+                }
+                Element::Move(m) => {
+                    fx += m.x;
+                    fy += m.y;
+                }
+                // Not hr(): that one paginates via ensure_space and spans the
+                // *column* region — the footer band spans the page width.
+                Element::Hr(h) => {
+                    let thickness = h.thickness.max(0.0);
+                    let x2 = match h.width {
+                        Some(w) if w > 0.0 => fx + w,
+                        _ => right,
+                    };
+                    let y = fy + thickness / 2.0;
+                    self.current.push(DrawOp::Line {
+                        x1: fx,
+                        y1: y,
+                        x2,
+                        y2: y,
+                        width: thickness,
+                        color: color::parse_hex_or(h.color.as_deref(), Rgb::LIGHT_GREY),
+                        dash: dash_px(&h.dash),
+                    });
+                    fy += thickness + 2.0;
+                }
+                Element::Rect(r) => {
+                    self.cursor = Cursor::new(fx, fy);
+                    self.rect(r);
+                }
+                Element::Line(l) => {
+                    self.cursor = Cursor::new(fx, fy);
+                    self.line(l);
+                }
+                Element::Ellipse(e) => {
+                    self.cursor = Cursor::new(fx, fy);
+                    self.ellipse(e);
+                }
+                Element::Image(img) => {
+                    if let Some(idx) = self.intern_image(&img.value) {
+                        let src = &self.images[idx];
+                        let (w, h) = fit_image(
+                            src.width_px,
+                            src.height_px,
+                            img.width,
+                            img.height,
+                            src.width_px as f32,
+                        );
+                        self.push_tagged(
+                            DrawOp::Image {
+                                index: idx,
+                                x: fx,
+                                y: fy,
+                                w,
+                                h,
+                            },
+                            StructRole::Figure {
+                                alt: img.alt.clone(),
+                            },
+                        );
+                        fy += h;
+                    }
+                }
+                other => self.warnings.push(RenderWarning::ElementSkipped {
+                    kind: element_kind(other).to_string(),
+                    reason: "not supported in the footer band".to_string(),
+                }),
             }
         }
+        self.cursor = saved_cursor;
+        self.artifact_mode = saved_artifact;
         let page = std::mem::take(&mut self.current);
         self.pages.push(RenderedPage { ops: page });
     }
@@ -1278,13 +1372,6 @@ impl<'a> Engine<'a> {
         root: &Resolver,
         template: &Template,
     ) {
-        // Justify is a plain-`value` feature (v1): spans fall back to left.
-        if matches!(p.options.alignment, Alignment::Justify) {
-            self.warnings.push(RenderWarning::ElementSkipped {
-                kind: "justify".to_string(),
-                reason: "spans paragraphs fall back to left alignment".to_string(),
-            });
-        }
         let base_size = p.options.font_size;
         let base_weight = p.options.font_weight;
         let base_italic = p.options.italic;
@@ -1323,8 +1410,9 @@ impl<'a> Engine<'a> {
 
         let lh_factor = p.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
         let keep = p.options.min_space_below.unwrap_or(0.0);
+        let line_count = lines.len();
         let mut first = true;
-        for line in lines {
+        for (line_idx, line) in lines.into_iter().enumerate() {
             let max_size = line.iter().map(|c| c.size).fold(base_size, f32::max);
             let lh = max_size * lh_factor;
             self.ensure_space(if first { lh + keep } else { lh }, template, root);
@@ -1350,12 +1438,27 @@ impl<'a> Engine<'a> {
             let region_left = self.region_left() + indent;
             let x0 = align_x(region_left, region_width, width, p.options.alignment);
             let baseline = self.cursor.y + max_size * ascent_ratio;
+            // Justified spans: distribute the leftover width across the line's
+            // spaces, splitting the drawn text into segments repositioned at
+            // the stretched x. The paragraph's LAST line stays left-aligned.
+            let n_spaces = line.iter().filter(|c| c.ch == ' ').count();
+            let justify_this = matches!(p.options.alignment, Alignment::Justify)
+                && line_idx + 1 < line_count
+                && n_spaces > 0
+                && width < region_width;
+            let extra = if justify_this {
+                (region_width - width) / n_spaces as f32
+            } else {
+                0.0
+            };
 
             // Merge consecutive same-style chars into pieces; track x-ranges of
             // each linked span for the link annotations, and of each decorated
             // (underline/strike) stretch for the decoration strokes. A
             // decoration run breaks when the flag toggles or the color changes;
             // its stroke uses the largest char size seen in the run.
+            let mut segments: Vec<(f32, Vec<StyledPiece>)> = Vec::new();
+            let mut seg_x = x0;
             let mut pieces: Vec<StyledPiece> = Vec::new();
             let mut link_runs: Vec<(f32, f32, usize)> = Vec::new();
             let mut cur_link: Option<(usize, f32)> = None;
@@ -1399,6 +1502,13 @@ impl<'a> Engine<'a> {
                     }
                 }
                 cx += cw;
+                if justify_this && c.ch == ' ' {
+                    // Stretch the gap and start a new segment at the new x, so
+                    // the following glyphs draw at the justified position.
+                    cx += extra;
+                    segments.push((seg_x, std::mem::take(&mut pieces)));
+                    seg_x = cx;
+                }
             }
             if let Some((li, start)) = cur_link {
                 link_runs.push((start, cx, li));
@@ -1409,12 +1519,15 @@ impl<'a> Engine<'a> {
                 }
             }
 
-            if !pieces.is_empty() {
-                self.push_text(DrawOp::StyledText {
-                    x: x0,
-                    baseline,
-                    pieces,
-                });
+            segments.push((seg_x, pieces));
+            for (sx, seg_pieces) in segments {
+                if !seg_pieces.is_empty() {
+                    self.push_text(DrawOp::StyledText {
+                        x: sx,
+                        baseline,
+                        pieces: seg_pieces,
+                    });
+                }
             }
             let line_top = self.cursor.y;
             for (sx, ex, li) in link_runs {
@@ -1900,8 +2013,9 @@ impl<'a> Engine<'a> {
         let height = self.row_height(row, columns, pad_x, pad_y, scoped);
         // Page break: if the row (plus a pending footer band) doesn't fit,
         // stamp the footer as "carried forward", move to a new page, and
-        // repeat the table header there.
-        if self.cursor.y + height + footer_h > self.region_bottom() {
+        // repeat the table header there. Never from inside a header/footer
+        // band (`artifact_mode`) — a band table overflows instead of recursing.
+        if !self.artifact_mode && self.cursor.y + height + footer_h > self.region_bottom() {
             self.draw_footer_row(t, columns, pad_x, pad_y, footer_h, template, root);
             self.finish_page(template, root);
             self.begin_page(template, root);
@@ -2330,17 +2444,47 @@ fn ellipse_poly(cx: f32, cy: f32, rx: f32, ry: f32) -> Vec<PolyPoint> {
     ]
 }
 
+/// Vertical space the footer band reserves: the sum of its advancing elements
+/// (paragraph lines, hr rules, images, `move` y — which may be negative).
+/// Non-advancing elements (rect/line/ellipse) reserve space via `move`.
 fn footer_band_height(template: &Template, _fonts: &FontRegistry) -> f32 {
-    let mut h = 0.0;
+    let mut h: f32 = 0.0;
     for el in &template.footer {
-        if let Element::Paragraph(p) = el {
-            h += line_height(p.options.font_size);
+        match el {
+            Element::Paragraph(p) => h += line_height(p.options.font_size),
+            Element::Hr(hr) => h += hr.thickness.max(0.0) + 2.0,
+            Element::Image(img) => h += img.height.max(0.0),
+            Element::Move(m) => h += m.y,
+            _ => {}
         }
     }
     if h > 0.0 {
         h + FOOTER_PADDING
     } else {
         0.0
+    }
+}
+
+/// The JSON `type` name of an element, for warnings.
+fn element_kind(el: &Element) -> &'static str {
+    match el {
+        Element::Paragraph(_) => "paragraph",
+        Element::Move(_) => "move",
+        Element::Image(_) => "image",
+        Element::Table(_) => "table",
+        Element::Hr(_) => "hr",
+        Element::Rect(_) => "rect",
+        Element::Line(_) => "line",
+        Element::Qr(_) => "qr",
+        Element::Barcode(_) => "barcode",
+        Element::Ellipse(_) => "ellipse",
+        Element::List(_) => "list",
+        Element::Chart(_) => "chart",
+        Element::Repeat(_) => "repeat",
+        Element::If(_) => "if",
+        Element::Unless(_) => "unless",
+        Element::PageBreak => "page_break",
+        Element::Columns(_) => "columns",
     }
 }
 

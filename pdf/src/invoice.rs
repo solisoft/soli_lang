@@ -165,6 +165,38 @@ impl Line {
     }
 }
 
+/// A document-level allowance (discount, BG-20) or charge (fee/shipping,
+/// BG-21). Exactly one of `amount` / `percent` must be set; a percent resolves
+/// against the line-net total (BT-93 / BT-100 basis). The (category, rate)
+/// pair adjusts that group's VAT basis, creating the group when no line uses it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AllowanceCharge {
+    /// Reason text (BT-97 / BT-104).
+    pub reason: String,
+    /// Fixed amount (BT-92 / BT-99).
+    #[serde(default)]
+    pub amount: Option<Amount>,
+    /// Percentage (BT-94 / BT-101) of the line-net total.
+    #[serde(default)]
+    pub percent: Option<f64>,
+    /// VAT rate for this allowance/charge (BT-96 / BT-103).
+    #[serde(default)]
+    pub vat_rate: f64,
+    /// VAT category code (BT-95 / BT-102). Defaults to `S`.
+    #[serde(default = "default_category")]
+    pub vat_category: String,
+}
+
+impl AllowanceCharge {
+    /// Resolved amount in hundredths (percent entries resolve once, here).
+    fn resolve_hundredths(&self, line_total: i64) -> i64 {
+        match self.percent {
+            Some(p) => (line_total as f64 * p / 100.0).round() as i64,
+            None => self.amount.unwrap_or_default().hundredths(),
+        }
+    }
+}
+
 /// A complete invoice. Build it once; render both the PDF and the CII XML from
 /// it so the two representations are guaranteed consistent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +226,15 @@ pub struct Invoice {
     /// amount due. Defaults to zero.
     #[serde(default)]
     pub prepaid: Amount,
+    /// Document-level allowances/discounts (BG-20).
+    #[serde(default)]
+    pub allowances: Vec<AllowanceCharge>,
+    /// Document-level charges, e.g. shipping or fees (BG-21).
+    #[serde(default)]
+    pub charges: Vec<AllowanceCharge>,
+    /// Free-text payment terms (BT-20), e.g. `"30 days net"`.
+    #[serde(default)]
+    pub payment_terms: Option<String>,
 }
 
 /// One row of the VAT breakdown: all lines sharing a (category, rate) pair.
@@ -204,14 +245,41 @@ struct TaxGroup {
     tax: i64,
 }
 
-/// Derived monetary figures, all in hundredths, computed from the line items.
+/// Derived monetary figures, all in hundredths, computed from the line items
+/// and the document-level allowances/charges (the BT-106…BT-115 totals chain).
 struct Computed {
     line_nets: Vec<i64>,
+    /// Resolved amounts, aligned with `Invoice::allowances` / `::charges`.
+    allowance_amounts: Vec<i64>,
+    charge_amounts: Vec<i64>,
     groups: Vec<TaxGroup>,
-    line_total: i64,
-    tax_total: i64,
-    grand_total: i64,
-    due_payable: i64,
+    line_total: i64,      // BT-106
+    allowance_total: i64, // BT-107
+    charge_total: i64,    // BT-108
+    tax_basis_total: i64, // BT-109
+    tax_total: i64,       // BT-110
+    grand_total: i64,     // BT-112
+    due_payable: i64,     // BT-115
+}
+
+/// The breakdown row for a (category, rate) pair, created on first use.
+fn group_entry<'a>(groups: &'a mut Vec<TaxGroup>, category: &str, rate: f64) -> &'a mut TaxGroup {
+    let rate_key = (rate * 100.0).round() as i64;
+    match groups
+        .iter()
+        .position(|g| g.category == category && (g.rate * 100.0).round() as i64 == rate_key)
+    {
+        Some(i) => &mut groups[i],
+        None => {
+            groups.push(TaxGroup {
+                category: category.to_string(),
+                rate,
+                basis: 0,
+                tax: 0,
+            });
+            groups.last_mut().unwrap()
+        }
+    }
 }
 
 impl Invoice {
@@ -220,36 +288,55 @@ impl Invoice {
     /// from, shared by the PDF and the XML.
     fn compute(&self) -> Computed {
         let line_nets: Vec<i64> = self.lines.iter().map(Line::net_hundredths).collect();
+        let line_total: i64 = line_nets.iter().sum();
 
         // Group by (category, rate), preserving first-seen order.
         let mut groups: Vec<TaxGroup> = Vec::new();
         for (line, &net) in self.lines.iter().zip(&line_nets) {
-            let rate_key = (line.vat_rate * 100.0).round() as i64;
-            match groups.iter_mut().find(|g| {
-                g.category == line.vat_category && (g.rate * 100.0).round() as i64 == rate_key
-            }) {
-                Some(g) => g.basis += net,
-                None => groups.push(TaxGroup {
-                    category: line.vat_category.clone(),
-                    rate: line.vat_rate,
-                    basis: net,
-                    tax: 0,
-                }),
-            }
+            group_entry(&mut groups, &line.vat_category, line.vat_rate).basis += net;
         }
+
+        // Document-level allowances (BG-20) and charges (BG-21): resolve each
+        // once (in hundredths), then adjust its (category, rate) group's basis.
+        // A negative group basis (large allowance) is legal and kept as-is.
+        let allowance_amounts: Vec<i64> = self
+            .allowances
+            .iter()
+            .map(|ac| ac.resolve_hundredths(line_total))
+            .collect();
+        let charge_amounts: Vec<i64> = self
+            .charges
+            .iter()
+            .map(|ac| ac.resolve_hundredths(line_total))
+            .collect();
+        for (ac, &amt) in self.allowances.iter().zip(&allowance_amounts) {
+            group_entry(&mut groups, &ac.vat_category, ac.vat_rate).basis -= amt;
+        }
+        for (ac, &amt) in self.charges.iter().zip(&charge_amounts) {
+            group_entry(&mut groups, &ac.vat_category, ac.vat_rate).basis += amt;
+        }
+
+        // Tax per group rounds once, after all basis adjustments (BR-CO-17).
         for g in &mut groups {
             g.tax = (g.basis as f64 * g.rate / 100.0).round() as i64;
         }
 
-        let line_total: i64 = line_nets.iter().sum();
+        let allowance_total: i64 = allowance_amounts.iter().sum();
+        let charge_total: i64 = charge_amounts.iter().sum();
+        let tax_basis_total = line_total - allowance_total + charge_total;
         let tax_total: i64 = groups.iter().map(|g| g.tax).sum();
-        let grand_total = line_total + tax_total;
+        let grand_total = tax_basis_total + tax_total;
         let due_payable = grand_total - self.prepaid.hundredths();
 
         Computed {
             line_nets,
+            allowance_amounts,
+            charge_amounts,
             groups,
             line_total,
+            allowance_total,
+            charge_total,
+            tax_basis_total,
             tax_total,
             grand_total,
             due_payable,
@@ -293,6 +380,19 @@ impl Invoice {
             })
             .collect();
 
+        let discounts: Vec<Value> = self
+            .allowances
+            .iter()
+            .zip(&c.allowance_amounts)
+            .map(|(ac, &amt)| allowance_charge_json(ac, amt, &money))
+            .collect();
+        let charges: Vec<Value> = self
+            .charges
+            .iter()
+            .zip(&c.charge_amounts)
+            .map(|(ac, &amt)| allowance_charge_json(ac, amt, &money))
+            .collect();
+
         json!({
             "data": {
                 "invoice": {
@@ -300,12 +400,21 @@ impl Invoice {
                     "created_at": self.issue_date,
                     "due_date": self.due_date.clone().unwrap_or_default(),
                     "due_amount": money(c.due_payable),
+                    "payment_terms": self.payment_terms.clone().unwrap_or_default(),
+                    "type_code": self.type_code,
+                    // Ready-made label — templates interpolate, they don't branch.
+                    "type_label": if self.is_credit_note() { "Credit note" } else { "Invoice" },
                 },
                 "company": party_json(&self.seller, "name"),
                 "customer": party_json(&self.buyer, "company"),
                 "items": items,
+                "discounts": discounts,
+                "charges": charges,
                 "total": {
                     "amount": money(c.line_total),
+                    "discount": money(c.allowance_total),
+                    "charges": money(c.charge_total),
+                    "taxable": money(c.tax_basis_total),
                     "vat": money(c.tax_total),
                     "due_amount": money(c.due_payable),
                 },
@@ -328,8 +437,9 @@ impl Invoice {
     /// the `GuidelineSpecifiedDocumentContextParameter/ID` (BT-24); pass the same
     /// profile to the embed step.
     pub fn to_cii_xml(&self, profile: Profile) -> Result<String> {
+        self.validate()?;
         let c = self.compute();
-        let issue = cii_date(&self.issue_date)?;
+        let issue = cii_date("issue_date", &self.issue_date)?;
         let cur = &self.currency;
 
         let mut out = String::with_capacity(4096);
@@ -454,14 +564,60 @@ impl Invoice {
             ));
             out.push_str("      </ram:ApplicableTradeTax>\n");
         }
+
+        // Document-level allowances (BG-20) then charges (BG-21) — the CII
+        // schema requires them after the tax breakdown and before the payment
+        // terms / monetary summation.
+        for (ac, &amt) in self.allowances.iter().zip(&c.allowance_amounts) {
+            push_allowance_charge(&mut out, ac, amt, c.line_total, false);
+        }
+        for (ac, &amt) in self.charges.iter().zip(&c.charge_amounts) {
+            push_allowance_charge(&mut out, ac, amt, c.line_total, true);
+        }
+
+        // Payment terms (BT-20) / due date (BT-9). BR-CO-25: a positive amount
+        // due requires one of the two to be present.
+        if self.payment_terms.is_some() || self.due_date.is_some() {
+            out.push_str("      <ram:SpecifiedTradePaymentTerms>\n");
+            if let Some(terms) = &self.payment_terms {
+                out.push_str(&format!(
+                    "        <ram:Description>{}</ram:Description>\n",
+                    esc(terms)
+                ));
+            }
+            if let Some(due) = &self.due_date {
+                let due = cii_date("due_date", due)?;
+                out.push_str("        <ram:DueDateDateTime>\n");
+                out.push_str(&format!(
+                    "          <udt:DateTimeString format=\"102\">{due}</udt:DateTimeString>\n"
+                ));
+                out.push_str("        </ram:DueDateDateTime>\n");
+            }
+            out.push_str("      </ram:SpecifiedTradePaymentTerms>\n");
+        }
+
         out.push_str("      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>\n");
         out.push_str(&format!(
             "        <ram:LineTotalAmount>{}</ram:LineTotalAmount>\n",
             Amount::from_hundredths(c.line_total).format()
         ));
+        // CII order trap: ChargeTotalAmount comes BEFORE AllowanceTotalAmount
+        // (the opposite of UBL). Both are emitted only when used.
+        if !self.charges.is_empty() {
+            out.push_str(&format!(
+                "        <ram:ChargeTotalAmount>{}</ram:ChargeTotalAmount>\n",
+                Amount::from_hundredths(c.charge_total).format()
+            ));
+        }
+        if !self.allowances.is_empty() {
+            out.push_str(&format!(
+                "        <ram:AllowanceTotalAmount>{}</ram:AllowanceTotalAmount>\n",
+                Amount::from_hundredths(c.allowance_total).format()
+            ));
+        }
         out.push_str(&format!(
             "        <ram:TaxBasisTotalAmount>{}</ram:TaxBasisTotalAmount>\n",
-            Amount::from_hundredths(c.line_total).format()
+            Amount::from_hundredths(c.tax_basis_total).format()
         ));
         out.push_str(&format!(
             "        <ram:TaxTotalAmount currencyID=\"{}\">{}</ram:TaxTotalAmount>\n",
@@ -472,6 +628,14 @@ impl Invoice {
             "        <ram:GrandTotalAmount>{}</ram:GrandTotalAmount>\n",
             Amount::from_hundredths(c.grand_total).format()
         ));
+        // BR-CO-16: BT-115 = BT-112 − BT-113, so a non-zero prepaid amount
+        // must be spelled out.
+        if self.prepaid.hundredths() != 0 {
+            out.push_str(&format!(
+                "        <ram:TotalPrepaidAmount>{}</ram:TotalPrepaidAmount>\n",
+                self.prepaid.format()
+            ));
+        }
         out.push_str(&format!(
             "        <ram:DuePayableAmount>{}</ram:DuePayableAmount>\n",
             Amount::from_hundredths(c.due_payable).format()
@@ -486,8 +650,103 @@ impl Invoice {
 
     /// Parse an invoice from JSON bytes.
     pub fn parse(bytes: &[u8]) -> Result<Invoice> {
-        serde_json::from_slice(bytes).map_err(PdfError::from)
+        let invoice: Invoice = serde_json::from_slice(bytes).map_err(PdfError::from)?;
+        invoice.validate()?;
+        Ok(invoice)
     }
+
+    /// Check invariants serde can't express: the BT-3 type-code allowlist and
+    /// the amount-XOR-percent rule on allowances/charges. Called by [`parse`]
+    /// and by [`to_cii_xml`] (for directly constructed invoices).
+    ///
+    /// [`parse`]: Invoice::parse
+    /// [`to_cii_xml`]: Invoice::to_cii_xml
+    pub fn validate(&self) -> Result<()> {
+        if !TYPE_CODES.contains(&self.type_code.as_str()) {
+            return Err(PdfError::Invoice(format!(
+                "type_code {:?} is not a supported BT-3 code (accepted: {})",
+                self.type_code,
+                TYPE_CODES.join(", ")
+            )));
+        }
+        for (kind, list) in [("allowances", &self.allowances), ("charges", &self.charges)] {
+            for ac in list {
+                match (ac.amount, ac.percent) {
+                    (Some(_), Some(_)) | (None, None) => {
+                        return Err(PdfError::Invoice(format!(
+                            "{kind} entry {:?} must set exactly one of \"amount\" or \"percent\"",
+                            ac.reason
+                        )))
+                    }
+                    (None, Some(p)) if !p.is_finite() || p < 0.0 => {
+                        return Err(PdfError::Invoice(format!(
+                            "{kind} entry {:?} has an invalid percent: {p}",
+                            ac.reason
+                        )))
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether the document is a credit note (BT-3 = 381 or 261). CII has no
+    /// separate credit-note document type: amounts stay positive and the type
+    /// code carries the sign semantics.
+    pub fn is_credit_note(&self) -> bool {
+        matches!(self.type_code.as_str(), "381" | "261")
+    }
+}
+
+/// Document type codes accepted for BT-3 (the Factur-X 1.0 subset): 380
+/// commercial invoice, 381 credit note, 384 corrected invoice, 389
+/// self-billed invoice, 261 self-billed credit note, 386 prepayment invoice.
+const TYPE_CODES: [&str; 6] = ["380", "381", "384", "389", "261", "386"];
+
+/// Emit one `SpecifiedTradeAllowanceCharge` (BG-20 allowance / BG-21 charge)
+/// in CII child order: ChargeIndicator, CalculationPercent?, BasisAmount?,
+/// ActualAmount, Reason, CategoryTradeTax.
+fn push_allowance_charge(
+    out: &mut String,
+    ac: &AllowanceCharge,
+    resolved: i64,
+    basis: i64,
+    is_charge: bool,
+) {
+    out.push_str("      <ram:SpecifiedTradeAllowanceCharge>\n");
+    out.push_str(&format!(
+        "        <ram:ChargeIndicator><udt:Indicator>{is_charge}</udt:Indicator></ram:ChargeIndicator>\n"
+    ));
+    if let Some(p) = ac.percent {
+        out.push_str(&format!(
+            "        <ram:CalculationPercent>{p:.2}</ram:CalculationPercent>\n"
+        ));
+        out.push_str(&format!(
+            "        <ram:BasisAmount>{}</ram:BasisAmount>\n",
+            Amount::from_hundredths(basis).format()
+        ));
+    }
+    out.push_str(&format!(
+        "        <ram:ActualAmount>{}</ram:ActualAmount>\n",
+        Amount::from_hundredths(resolved).format()
+    ));
+    out.push_str(&format!(
+        "        <ram:Reason>{}</ram:Reason>\n",
+        esc(&ac.reason)
+    ));
+    out.push_str("        <ram:CategoryTradeTax>\n");
+    out.push_str("          <ram:TypeCode>VAT</ram:TypeCode>\n");
+    out.push_str(&format!(
+        "          <ram:CategoryCode>{}</ram:CategoryCode>\n",
+        esc(&ac.vat_category)
+    ));
+    out.push_str(&format!(
+        "          <ram:RateApplicablePercent>{:.2}</ram:RateApplicablePercent>\n",
+        ac.vat_rate
+    ));
+    out.push_str("        </ram:CategoryTradeTax>\n");
+    out.push_str("      </ram:SpecifiedTradeAllowanceCharge>\n");
 }
 
 /// Emit a `<ram:{tag}>` trade party block (Name, optional phone contact, postal
@@ -534,6 +793,16 @@ fn push_party(out: &mut String, tag: &str, p: &Party) {
     out.push_str(&format!("      </ram:{tag}>\n"));
 }
 
+/// One allowance/charge row for the template (`discounts[]` / `charges[]`):
+/// reason, formatted amount, and the percent when percent-based (else `""`).
+fn allowance_charge_json(ac: &AllowanceCharge, resolved: i64, money: &dyn Fn(i64) -> String) -> Value {
+    json!({
+        "reason": ac.reason,
+        "amount": money(resolved),
+        "percent": ac.percent.map(fmt_qty).unwrap_or_default(),
+    })
+}
+
 /// Build the per-party JSON the template expects. `name_key` is the field the
 /// template reads the party name from (`name` for seller, `company` for buyer).
 fn party_json(p: &Party, name_key: &str) -> Value {
@@ -558,10 +827,10 @@ fn fmt_qty(q: f64) -> String {
 }
 
 /// Convert a `YYYY-MM-DD` date into the CII `format="102"` form (`YYYYMMDD`),
-/// validating the shape.
-fn cii_date(s: &str) -> Result<String> {
+/// validating the shape. `field` names the offending field in the error.
+fn cii_date(field: &str, s: &str) -> Result<String> {
     let parts: Vec<&str> = s.trim().split('-').collect();
-    let bad = || PdfError::Invoice(format!("issue_date must be YYYY-MM-DD, got {s:?}"));
+    let bad = || PdfError::Invoice(format!("{field} must be YYYY-MM-DD, got {s:?}"));
     if parts.len() != 3 {
         return Err(bad());
     }
@@ -644,6 +913,19 @@ mod tests {
             ],
             note: Some("lorem ipsum".into()),
             prepaid: Amount::default(),
+            allowances: Vec::new(),
+            charges: Vec::new(),
+            payment_terms: None,
+        }
+    }
+
+    fn allowance(reason: &str, amount: Option<f64>, percent: Option<f64>) -> AllowanceCharge {
+        AllowanceCharge {
+            reason: reason.into(),
+            amount: amount.map(Amount::from_f64),
+            percent,
+            vat_rate: 20.0,
+            vat_category: "S".into(),
         }
     }
 
@@ -743,5 +1025,213 @@ mod tests {
         let mut inv = sample();
         inv.issue_date = "28/11/2025".into();
         assert!(inv.to_cii_xml(Profile::En16931).is_err());
+    }
+
+    #[test]
+    fn allowance_amount_adjusts_basis_and_totals() {
+        let mut inv = sample();
+        inv.allowances = vec![allowance("Loyalty discount", Some(50.0), None)];
+        let c = inv.compute();
+        assert_eq!(c.line_total, 50000); // BT-106 unchanged
+        assert_eq!(c.allowance_total, 5000); // BT-107 = 50.00
+        assert_eq!(c.tax_basis_total, 45000); // BT-109 = 450.00
+        assert_eq!(c.groups.len(), 1);
+        assert_eq!(c.groups[0].basis, 45000);
+        assert_eq!(c.tax_total, 9000); // 20% of 450
+        assert_eq!(c.grand_total, 54000); // BT-112 = 540.00
+        assert_eq!(c.due_payable, 54000);
+    }
+
+    #[test]
+    fn percent_allowance_resolves_from_line_total() {
+        let mut inv = sample();
+        inv.allowances = vec![allowance("Volume discount", None, Some(10.0))];
+        let c = inv.compute();
+        assert_eq!(c.allowance_total, 5000); // 10% of 500.00
+
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        assert!(xml.contains("<ram:CalculationPercent>10.00</ram:CalculationPercent>"));
+        assert!(xml.contains("<ram:BasisAmount>500.00</ram:BasisAmount>"));
+        assert!(xml.contains("<ram:ActualAmount>50.00</ram:ActualAmount>"));
+    }
+
+    #[test]
+    fn charge_creates_own_vat_group() {
+        let mut inv = sample();
+        inv.charges = vec![AllowanceCharge {
+            reason: "Shipping".into(),
+            amount: Some(Amount::from_f64(20.0)),
+            percent: None,
+            vat_rate: 10.0, // no line uses 10% — must create a group
+            vat_category: "S".into(),
+        }];
+        let c = inv.compute();
+        assert_eq!(c.groups.len(), 2);
+        assert_eq!(c.charge_total, 2000);
+        assert_eq!(c.tax_basis_total, 52000); // 500 + 20
+        assert_eq!(c.tax_total, 10200); // 20% of 500 + 10% of 20
+        assert_eq!(c.grand_total, 62200);
+    }
+
+    #[test]
+    fn allowance_requires_exactly_one_of_amount_or_percent() {
+        let mut inv = sample();
+        inv.allowances = vec![allowance("both", Some(10.0), Some(5.0))];
+        assert!(inv.validate().is_err());
+        inv.allowances = vec![allowance("neither", None, None)];
+        assert!(inv.validate().is_err());
+        inv.allowances = vec![allowance("negative", None, Some(-3.0))];
+        assert!(inv.validate().is_err());
+        inv.allowances = vec![allowance("ok", Some(10.0), None)];
+        assert!(inv.validate().is_ok());
+    }
+
+    #[test]
+    fn cii_xml_allowance_charge_order() {
+        let mut inv = sample();
+        inv.allowances = vec![allowance("Discount", Some(50.0), None)];
+        inv.charges = vec![allowance("Shipping", Some(20.0), None)];
+        inv.payment_terms = Some("30 days net".into());
+        inv.prepaid = Amount::from_f64(100.0);
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+
+        // Header-settlement sequence: tax breakdown < allowance/charge <
+        // payment terms < monetary summation.
+        let idx = |needle: &str| {
+            xml.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle}"))
+        };
+        // The line items also carry ApplicableTradeTax, so anchor on the
+        // header block explicitly.
+        let header = idx("<ram:ApplicableHeaderTradeSettlement>");
+        let tax = xml[header..].find("<ram:ApplicableTradeTax>").unwrap() + header;
+        assert!(tax < idx("<ram:SpecifiedTradeAllowanceCharge>"));
+        assert!(idx("<ram:SpecifiedTradeAllowanceCharge>") < idx("<ram:SpecifiedTradePaymentTerms>"));
+        assert!(
+            idx("<ram:SpecifiedTradePaymentTerms>")
+                < idx("<ram:SpecifiedTradeSettlementHeaderMonetarySummation>")
+        );
+
+        // Allowance/charge child order.
+        assert!(idx("<ram:ChargeIndicator>") < idx("<ram:ActualAmount>"));
+        assert!(idx("<ram:ActualAmount>") < idx("<ram:Reason>"));
+        assert!(idx("<ram:Reason>") < idx("<ram:CategoryTradeTax>"));
+
+        // Summation order: LineTotal < ChargeTotal < AllowanceTotal <
+        // TaxBasisTotal, and GrandTotal < TotalPrepaid < DuePayable.
+        assert!(idx("<ram:LineTotalAmount>") < idx("<ram:ChargeTotalAmount>"));
+        assert!(idx("<ram:ChargeTotalAmount>") < idx("<ram:AllowanceTotalAmount>"));
+        assert!(idx("<ram:AllowanceTotalAmount>") < idx("<ram:TaxBasisTotalAmount>"));
+        assert!(idx("<ram:GrandTotalAmount>") < idx("<ram:TotalPrepaidAmount>"));
+        assert!(idx("<ram:TotalPrepaidAmount>") < idx("<ram:DuePayableAmount>"));
+    }
+
+    #[test]
+    fn payment_terms_and_due_date_emit_block() {
+        let mut inv = sample();
+        inv.payment_terms = Some("30 days net".into());
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        assert!(xml.contains("<ram:Description>30 days net</ram:Description>"));
+        // due_date is set in sample() → BT-9 present, format 102.
+        assert!(xml.contains("<udt:DateTimeString format=\"102\">20251228</udt:DateTimeString>"));
+        let desc = xml.find("<ram:Description>").unwrap();
+        let due = xml.find("<ram:DueDateDateTime>").unwrap();
+        assert!(desc < due, "Description must precede DueDateDateTime");
+    }
+
+    #[test]
+    fn prepaid_emits_total_prepaid_amount() {
+        let mut inv = sample();
+        inv.prepaid = Amount::from_f64(100.0);
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        // BR-CO-16 regression: BT-113 must be spelled out when non-zero.
+        assert!(xml.contains("<ram:TotalPrepaidAmount>100.00</ram:TotalPrepaidAmount>"));
+        assert!(xml.contains("<ram:DuePayableAmount>500.00</ram:DuePayableAmount>"));
+    }
+
+    #[test]
+    fn credit_note_accepted_and_labeled() {
+        let mut inv = sample();
+        inv.type_code = "381".into();
+        assert!(inv.is_credit_note());
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        assert!(xml.contains("<ram:TypeCode>381</ram:TypeCode>"));
+        // Amounts stay positive — the type code carries the semantics.
+        assert!(xml.contains("<ram:GrandTotalAmount>600.00</ram:GrandTotalAmount>"));
+        let v = inv.to_render_data();
+        assert_eq!(v["data"]["invoice"]["type_label"], "Credit note");
+    }
+
+    #[test]
+    fn unknown_type_code_rejected() {
+        let mut inv = sample();
+        inv.type_code = "999".into();
+        assert!(inv.validate().is_err());
+        assert!(inv.to_cii_xml(Profile::En16931).is_err());
+    }
+
+    #[test]
+    fn render_data_exposes_discounts_and_charges() {
+        let mut inv = sample();
+        inv.allowances = vec![allowance("Volume discount", None, Some(10.0))];
+        inv.charges = vec![allowance("Shipping", Some(20.0), None)];
+        inv.payment_terms = Some("30 days net".into());
+        let v = inv.to_render_data();
+        let d = &v["data"];
+        assert_eq!(d["total"]["discount"], "€50.00");
+        assert_eq!(d["total"]["charges"], "€20.00");
+        assert_eq!(d["total"]["taxable"], "€470.00");
+        assert_eq!(d["discounts"][0]["reason"], "Volume discount");
+        assert_eq!(d["discounts"][0]["percent"], "10");
+        assert_eq!(d["charges"][0]["amount"], "€20.00");
+        assert_eq!(d["charges"][0]["percent"], "");
+        assert_eq!(d["invoice"]["payment_terms"], "30 days net");
+        assert_eq!(d["invoice"]["type_label"], "Invoice");
+    }
+
+    #[test]
+    fn no_new_fields_keeps_xml_free_of_new_elements() {
+        let mut inv = sample();
+        inv.due_date = None; // sample carries one; drop it to get the bare shape
+        let xml = inv.to_cii_xml(Profile::En16931).unwrap();
+        for absent in [
+            "SpecifiedTradeAllowanceCharge",
+            "SpecifiedTradePaymentTerms",
+            "ChargeTotalAmount",
+            "AllowanceTotalAmount",
+            "TotalPrepaidAmount",
+        ] {
+            assert!(!xml.contains(absent), "{absent} must not appear");
+        }
+    }
+
+    #[test]
+    fn parse_accepts_enriched_invoice_json() {
+        let json = r#"{
+            "number": "F-1", "issue_date": "2026-07-01", "currency": "EUR",
+            "seller": { "name": "ACME", "country": "FR" },
+            "buyer": { "name": "Bob", "country": "FR" },
+            "lines": [ { "name": "Widget", "unit_price": 100, "vat_rate": 20.0 } ],
+            "allowances": [ { "reason": "Discount", "percent": 10, "vat_rate": 20.0 } ],
+            "charges": [ { "reason": "Shipping", "amount": "20.00", "vat_rate": 20.0 } ],
+            "payment_terms": "30 days net"
+        }"#;
+        let inv = Invoice::parse(json.as_bytes()).unwrap();
+        assert_eq!(inv.allowances.len(), 1);
+        assert_eq!(inv.charges[0].amount, Some(Amount::from_f64(20.0)));
+        let c = inv.compute();
+        assert_eq!(c.tax_basis_total, 11000); // 100 - 10 + 20
+    }
+
+    #[test]
+    fn parse_rejects_invalid_allowance() {
+        let json = r#"{
+            "number": "F-1", "issue_date": "2026-07-01", "currency": "EUR",
+            "seller": { "name": "ACME", "country": "FR" },
+            "buyer": { "name": "Bob", "country": "FR" },
+            "lines": [ { "name": "Widget", "unit_price": 100 } ],
+            "allowances": [ { "reason": "broken" } ]
+        }"#;
+        assert!(Invoice::parse(json.as_bytes()).is_err());
     }
 }

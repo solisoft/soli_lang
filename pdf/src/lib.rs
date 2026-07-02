@@ -35,7 +35,7 @@ pub use attachments::Attachment;
 pub use encrypt::EncryptOptions;
 pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
-pub use invoice::{Amount, Invoice, Line, Party};
+pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
 
 /// Options controlling a render.
@@ -69,6 +69,11 @@ pub struct RenderOptions {
     /// Password-protect the output (AES-128). Applied last; incompatible with
     /// Factur-X/PDF-A (callers must not combine them).
     pub encrypt: Option<EncryptOptions>,
+    /// Produce PDF/A-3b output (archival conformance) without any Factur-X
+    /// payload. Incompatible with `encrypt` (PDF/A forbids encryption) and
+    /// with tagged templates (`options.tagged`). The Factur-X entry points
+    /// imply PDF/A and reject this flag.
+    pub pdfa: bool,
 }
 
 impl Default for RenderOptions {
@@ -83,6 +88,7 @@ impl Default for RenderOptions {
             stationery: None,
             attachments: Vec::new(),
             encrypt: None,
+            pdfa: false,
         }
     }
 }
@@ -98,8 +104,20 @@ pub fn generate_facturx(
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
     reject_tagged_for_pdfa(template_json)?;
+    reject_pdfa_option_for_facturx(opts)?;
     let pdf = render_to_bytes(template_json, data_json, opts)?;
     facturx::embed_facturx(&pdf, facturx_xml, profile, meta)
+}
+
+/// Factur-X output already IS PDF/A-3b; letting the standalone `pdfa` pass run
+/// too would write the metadata/OutputIntent twice with ambiguous results.
+fn reject_pdfa_option_for_facturx(opts: &RenderOptions) -> Result<()> {
+    if opts.pdfa {
+        return Err(PdfError::Facturx(
+            "PDF/A is implied by Factur-X; drop the `pdfa` option".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Factur-X is PDF/A-3b; our generic tagging pass writes a `StructTreeRoot`
@@ -129,6 +147,7 @@ pub fn generate_facturx_from_invoice(
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
     reject_tagged_for_pdfa(template_json)?;
+    reject_pdfa_option_for_facturx(opts)?;
     let data = serde_json::to_vec(&invoice.to_render_data()).map_err(PdfError::from)?;
     let pdf = render_to_bytes(template_json, &data, opts)?;
     let xml = invoice.to_cii_xml(profile)?;

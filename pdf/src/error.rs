@@ -32,6 +32,10 @@ pub enum PdfError {
     #[error("facturx error: {0}")]
     Facturx(String),
 
+    /// The standalone PDF/A conversion (shared PDF/A baseline pass) failed.
+    #[error("pdfa error: {0}")]
+    Pdfa(String),
+
     /// The typed invoice model was invalid (e.g. a malformed date).
     #[error("invoice error: {0}")]
     Invoice(String),

@@ -601,13 +601,24 @@ fn render_pie(
     let cx = area.x + pie_w / 2.0;
     let cy = area.y + area.h / 2.0;
     let white = color::parse_hex("ffffff").unwrap_or(Rgb::LIGHT_GREY);
+    // A donut is the same wedges with a ring cutout: annular segments, so
+    // whatever is behind the chart shows through the hole.
+    let inner = if chart.kind.trim().eq_ignore_ascii_case("donut") {
+        Some(radius * 0.55)
+    } else {
+        None
+    };
 
     let mut angle = -90.0_f32; // start at the top
     for (i, v) in series.values.iter().enumerate() {
         let sweep = (v.max(0.0) / total) as f32 * 360.0;
         let next = angle + sweep;
+        let points = match inner {
+            Some(r_in) => annular_wedge_points(cx, cy, radius, r_in, angle, next),
+            None => wedge_points(cx, cy, radius, angle, next),
+        };
         ops.push(DrawOp::Polygon {
-            points: wedge_points(cx, cy, radius, angle, next),
+            points,
             fill: Some(palette_color(&chart.colors, i)),
             stroke: Some(white),
             stroke_width: 1.0,
@@ -688,6 +699,20 @@ fn wedge_points(cx: f32, cy: f32, r: f32, start_deg: f32, end_deg: f32) -> Vec<P
         bezier: false,
     }];
     pts.extend(wedge_arc(cx, cy, r, start_deg, end_deg, true));
+    pts
+}
+
+/// An annular (donut) wedge: outer arc forward, then inner arc back, closed.
+fn annular_wedge_points(
+    cx: f32,
+    cy: f32,
+    r_outer: f32,
+    r_inner: f32,
+    start_deg: f32,
+    end_deg: f32,
+) -> Vec<PolyPoint> {
+    let mut pts = wedge_arc(cx, cy, r_outer, start_deg, end_deg, true);
+    pts.extend(wedge_arc(cx, cy, r_inner, end_deg, start_deg, true));
     pts
 }
 
@@ -807,6 +832,33 @@ mod tests {
             .iter()
             .filter(|op| matches!(op, DrawOp::Polygon { .. }))
             .count();
+        assert_eq!(slices, 3);
+    }
+
+    #[test]
+    fn donut_renders_annular_wedges() {
+        let chart: ChartEl = serde_json::from_str(r#"{"kind":"donut","legend":false}"#).unwrap();
+        let ops = render_chart(
+            &chart,
+            &cats(),
+            &one_series(),
+            area(),
+            &fonts(),
+            &mut Vec::new(),
+        );
+        // Area 300x180, no legend → center (150, 90). A true donut has a ring
+        // cutout: no wedge point may sit at (or near) the center, unlike a pie
+        // wedge whose first point IS the center.
+        let mut slices = 0;
+        for op in &ops {
+            if let DrawOp::Polygon { points, .. } = op {
+                slices += 1;
+                for p in points {
+                    let d = ((p.x - 150.0).powi(2) + (p.y - 90.0).powi(2)).sqrt();
+                    assert!(d > 10.0, "point ({}, {}) too close to the center", p.x, p.y);
+                }
+            }
+        }
         assert_eq!(slices, 3);
     }
 

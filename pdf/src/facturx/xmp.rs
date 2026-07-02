@@ -1,10 +1,11 @@
 //! XMP metadata packet construction for Factur-X / PDF-A-3b.
 //!
 //! The packet declares PDF/A-3b conformance (`pdfaid:part=3`,
-//! `pdfaid:conformance=B`), basic Dublin Core / PDF / XMP fields, the **Factur-X
-//! extension schema** description block (required so validators accept the
-//! custom `fx:` namespace), and the `fx:` values themselves. Validators are
-//! byte-fussy here, so the structure follows the PDFlib/akretion reference.
+//! `pdfaid:conformance=B`), basic Dublin Core / PDF / XMP fields, and — for
+//! Factur-X — the **Factur-X extension schema** description block (required so
+//! validators accept the custom `fx:` namespace) plus the `fx:` values
+//! themselves. Validators are byte-fussy here, so the structure follows the
+//! PDFlib/akretion reference.
 
 use time::OffsetDateTime;
 
@@ -36,11 +37,12 @@ fn xmp_date(dt: OffsetDateTime) -> String {
     )
 }
 
-/// Build the complete XMP packet for the given profile + metadata.
-pub fn build(profile: Profile, meta: &FacturxMetadata) -> String {
+/// Build the complete XMP packet. `Some(profile)` adds the Factur-X extension
+/// schema and `fx:` value blocks; `None` yields a plain PDF/A-3b packet (used
+/// by the standalone `pdfa` render option).
+pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata) -> String {
     let ts = xmp_date(meta.created);
-    let level = profile.xmp_level();
-    format!(
+    let prefix = format!(
         r#"<?xpacket begin="{bom}" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -61,7 +63,19 @@ pub fn build(profile: Profile, meta: &FacturxMetadata) -> String {
       <xmp:CreateDate>{ts}</xmp:CreateDate>
       <xmp:ModifyDate>{ts}</xmp:ModifyDate>
     </rdf:Description>
-    <rdf:Description xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#" xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#" rdf:about="">
+"#,
+        bom = '\u{feff}',
+        title = esc(&meta.title),
+        author = esc(&meta.author),
+        subject = esc(&meta.subject),
+        producer = esc(&meta.producer),
+        creator_tool = esc(&meta.creator_tool),
+        ts = ts,
+    );
+
+    let facturx_block = match facturx {
+        Some(profile) => format!(
+            r#"    <rdf:Description xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#" xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#" rdf:about="">
       <pdfaExtension:schemas>
         <rdf:Bag>
           <rdf:li rdf:parseType="Resource">
@@ -106,18 +120,13 @@ pub fn build(profile: Profile, meta: &FacturxMetadata) -> String {
       <fx:Version>1.0</fx:Version>
       <fx:ConformanceLevel>{level}</fx:ConformanceLevel>
     </rdf:Description>
-  </rdf:RDF>
-</x:xmpmeta>
-<?xpacket end="w"?>"#,
-        bom = '\u{feff}',
-        title = esc(&meta.title),
-        author = esc(&meta.author),
-        subject = esc(&meta.subject),
-        producer = esc(&meta.producer),
-        creator_tool = esc(&meta.creator_tool),
-        ts = ts,
-        level = level,
-    )
+"#,
+            level = profile.xmp_level(),
+        ),
+        None => String::new(),
+    };
+
+    format!("{prefix}{facturx_block}  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>")
 }
 
 #[cfg(test)]
@@ -127,12 +136,38 @@ mod tests {
     #[test]
     fn packet_has_required_markers() {
         let meta = FacturxMetadata::default();
-        let xmp = build(Profile::En16931, &meta);
+        let xmp = build(Some(Profile::En16931), &meta);
         assert!(xmp.contains("<pdfaid:part>3</pdfaid:part>"));
         assert!(xmp.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
         assert!(xmp.contains("urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#"));
         assert!(xmp.contains("<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>"));
         assert!(xmp.contains("<fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>"));
         assert!(xmp.starts_with("<?xpacket"));
+    }
+
+    #[test]
+    fn packet_without_facturx_extension() {
+        let meta = FacturxMetadata::default();
+        let xmp = build(None, &meta);
+        assert!(xmp.contains("<pdfaid:part>3</pdfaid:part>"));
+        assert!(xmp.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
+        assert!(!xmp.contains("fx:"));
+        assert!(!xmp.contains("pdfaExtension"));
+        assert!(!xmp.contains("urn:factur-x"));
+        assert!(xmp.starts_with("<?xpacket"));
+        assert!(xmp.ends_with(r#"<?xpacket end="w"?>"#));
+    }
+
+    #[test]
+    fn facturx_packet_matches_plain_packet_prefix() {
+        // The Factur-X packet must be the plain packet with the extension +
+        // fx blocks spliced in — same prefix, same suffix.
+        let meta = FacturxMetadata::default();
+        let plain = build(None, &meta);
+        let fx = build(Some(Profile::En16931), &meta);
+        let suffix = "  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>";
+        let plain_prefix = plain.strip_suffix(suffix).unwrap();
+        assert!(fx.starts_with(plain_prefix));
+        assert!(fx.ends_with(suffix));
     }
 }

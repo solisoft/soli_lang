@@ -39,13 +39,18 @@ fn find_close(s: &str, from: usize) -> Option<usize> {
 /// Whether a string still contains page tokens (so footer alignment must be
 /// recomputed in pass 2).
 pub fn has_page_tokens(s: &str) -> bool {
-    s.contains("#PAGE#") || s.contains("#TOTAL_PAGE#") || s.contains("#PAGE_OF:")
+    s.contains("#PAGE#")
+        || s.contains("#PAGES#")
+        || s.contains("#TOTAL_PAGE#")
+        || s.contains("#PAGE_OF:")
 }
 
-/// Substitute `#PAGE#` and `#TOTAL_PAGE#`. Order matters: replace the longer
-/// token first so `#PAGE#` doesn't clobber the `#...#` inside `#TOTAL_PAGE#`.
+/// Substitute `#PAGE#` and `#TOTAL_PAGE#` (alias `#PAGES#`). Order matters:
+/// replace the longer tokens first so `#PAGE#` doesn't clobber the `#...#`
+/// inside them.
 pub fn substitute_page_tokens(s: &str, page: usize, total: usize) -> String {
     s.replace("#TOTAL_PAGE#", &total.to_string())
+        .replace("#PAGES#", &total.to_string())
         .replace("#PAGE#", &page.to_string())
 }
 
@@ -127,7 +132,13 @@ mod tests {
             substitute_page_tokens("Page #PAGE# of #TOTAL_PAGE#", 2, 5),
             "Page 2 of 5"
         );
+        // #PAGES# is an alias of #TOTAL_PAGE#.
+        assert_eq!(
+            substitute_page_tokens("Page #PAGE# of #PAGES#", 2, 5),
+            "Page 2 of 5"
+        );
         assert!(has_page_tokens("x #PAGE#"));
+        assert!(has_page_tokens("x #PAGES#"));
         assert!(!has_page_tokens("plain"));
     }
 }

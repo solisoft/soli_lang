@@ -206,17 +206,103 @@ fn justify_stretches_lines_to_the_region_and_leaves_the_last_line() {
 }
 
 #[test]
-fn justify_on_spans_falls_back_with_a_warning() {
-    let tmpl = br#"{ "fonts": ["titillium"], "content": [
-        { "type": "paragraph", "options": { "alignment": "justify" },
-          "spans": [ { "text": "a b c d" } ] }
-    ] }"#;
-    let (_, warnings) = render(tmpl, b"{}");
+fn header_binds_document_data() {
+    // Data-bound elements (repeat here) must see the document data in the
+    // header band, not an empty document.
+    let tmpl = br#"{ "fonts": ["titillium"],
+        "options": { "headerHeight": 60 },
+        "header": [
+            { "type": "repeat", "data": "items", "content": [
+                { "type": "paragraph", "value": "${name}" }
+            ] }
+        ],
+        "content": [ { "type": "paragraph", "value": "body" } ] }"#;
+    let data = br#"{ "data": { "items": [ { "name": "AlphaRow" }, { "name": "BetaRow" } ] } }"#;
+    let (doc, _) = render(tmpl, data);
+    let mut all_text = String::new();
+    for op in &doc.pages[0].ops {
+        if let DrawOp::Text(td) = op {
+            for p in &td.pieces {
+                all_text.push_str(&p.text);
+            }
+        }
+    }
+    assert!(all_text.contains("AlphaRow"), "header repeat bound: {all_text:?}");
+    assert!(all_text.contains("BetaRow"));
+}
+
+#[test]
+fn footer_supports_static_elements() {
+    // hr advances the band cursor; rect draws at the (move-positioned) cursor.
+    let tmpl = br#"{ "fonts": ["titillium"],
+        "footer": [
+            { "type": "hr", "thickness": 1.0, "color": "cccccc" },
+            { "type": "rect", "width": 100, "height": 8, "fill": "eeeeee" },
+            { "type": "move", "y": 10 },
+            { "type": "paragraph", "value": "footer text", "options": { "fontSize": 8 } }
+        ],
+        "content": [ { "type": "paragraph", "value": "body" } ] }"#;
+    let (doc, warnings) = render(tmpl, b"{}");
     assert!(
-        warnings.iter().any(|w| matches!(
-            w,
-            RenderWarning::ElementSkipped { kind, .. } if kind == "justify"
-        )),
-        "spans + justify warns: {warnings:?}"
+        !warnings
+            .iter()
+            .any(|w| matches!(w, RenderWarning::ElementSkipped { reason, .. } if reason.contains("footer"))),
+        "static footer elements are supported: {warnings:?}"
     );
+    let ops = &doc.pages[0].ops;
+    assert!(
+        ops.iter().any(|op| matches!(op, DrawOp::Line { .. })),
+        "footer hr drawn"
+    );
+    assert!(
+        ops.iter().any(|op| matches!(op, DrawOp::FillRect { .. })),
+        "footer rect drawn"
+    );
+    let footer_text = ops.iter().any(|op| {
+        matches!(op, DrawOp::Text(td) if td.pieces.iter().any(|p| p.text.contains("footer")))
+    });
+    assert!(footer_text, "footer paragraph drawn after move");
+}
+
+#[test]
+fn justify_on_spans_stretches_lines() {
+    // Long rich text wraps into several lines; every non-last line must be
+    // split into multiple StyledText segments whose rightmost one is pushed
+    // toward the right edge (the justified gap distribution).
+    let words = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ".repeat(2);
+    let tmpl = format!(
+        r#"{{ "fonts": ["titillium"], "content": [
+            {{ "type": "paragraph", "options": {{ "fontSize": 11, "alignment": "justify" }},
+              "spans": [ {{ "text": "{words}" }}, {{ "text": "fin", "fontWeight": "bold" }} ] }}
+        ] }}"#
+    );
+    let (doc, warnings) = render(tmpl.as_bytes(), b"{}");
+    assert!(
+        !warnings
+            .iter()
+            .any(|w| matches!(w, RenderWarning::ElementSkipped { kind, .. } if kind == "justify")),
+        "justify on spans no longer warns: {warnings:?}"
+    );
+    // Group segment ops by baseline (one group per line).
+    let mut lines: std::collections::BTreeMap<i64, Vec<f32>> = Default::default();
+    for op in &doc.pages[0].ops {
+        if let DrawOp::StyledText { x, baseline, .. } = op {
+            lines.entry((baseline * 100.0) as i64).or_default().push(*x);
+        }
+    }
+    assert!(lines.len() >= 3, "several wrapped lines: {}", lines.len());
+    let line_vec: Vec<&Vec<f32>> = lines.values().collect();
+    for (i, xs) in line_vec.iter().enumerate() {
+        if i + 1 == line_vec.len() {
+            continue; // last line: single segment, left-aligned
+        }
+        assert!(xs.len() > 1, "justified line {i} split into segments");
+        let max_x = xs.iter().copied().fold(0.0f32, f32::max);
+        assert!(
+            max_x > 300.0,
+            "line {i}: last segment pushed toward the right edge (x {max_x})"
+        );
+    }
+    let last = line_vec.last().unwrap();
+    assert_eq!(last.len(), 1, "last line is not justified");
 }

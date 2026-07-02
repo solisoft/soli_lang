@@ -3,7 +3,8 @@
 
 use crate::data::DataDocument;
 use crate::draw::{DrawOp, LaidOutDoc, TextDraw, TextPiece};
-use crate::error::{RenderWarning, Result};
+use crate::error::{PdfError, RenderWarning, Result};
+use crate::facturx::FacturxMetadata;
 use crate::fonts::FontRegistry;
 use crate::interpolate::{substitute_anchor_tokens, substitute_page_tokens};
 use crate::layout::Engine;
@@ -26,6 +27,20 @@ pub fn render_with_warnings(
     opts: &RenderOptions,
 ) -> Result<RenderOutput> {
     let template = Template::parse(template_json)?;
+    if opts.pdfa {
+        if opts.encrypt.is_some() {
+            return Err(PdfError::Pdfa(
+                "encryption is incompatible with PDF/A; drop `password` or `pdfa`".to_string(),
+            ));
+        }
+        if template.options.tagged {
+            return Err(PdfError::Pdfa(
+                "tagged/accessible output (options.tagged) is not yet supported together with \
+                 the pdfa option"
+                    .to_string(),
+            ));
+        }
+    }
     let data = DataDocument::parse(data_json)?;
     let fonts = FontRegistry::cached(&opts.font_dirs, &template.fonts)?;
 
@@ -48,11 +63,36 @@ pub fn render_with_warnings(
     if !opts.attachments.is_empty() {
         pdf = crate::attachments::apply_attachments(&pdf, &opts.attachments)?;
     }
+    // PDF/A conversion runs after stationery/attachments so imported letterhead
+    // fonts and annotations get the conformance fixes too, and the attachments'
+    // /AF entries exist (PDF/A-3 associated-files requirement).
+    if opts.pdfa {
+        pdf = crate::facturx::to_pdfa(&pdf, &pdfa_metadata(opts))?;
+    }
     // Encryption must be the LAST pass — it must see every object added above.
     if let Some(enc) = &opts.encrypt {
         pdf = crate::encrypt::apply_encryption(&pdf, enc)?;
     }
     Ok(RenderOutput { pdf, warnings })
+}
+
+/// Document metadata for the standalone PDF/A pass, mirroring the Info-dict
+/// values the backend writes (`title` defaults to the historical `"invoice"`).
+/// `created` comes from the system clock via `SystemTime` (the `time` dep has
+/// no `clock` feature).
+fn pdfa_metadata(opts: &RenderOptions) -> FacturxMetadata {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    FacturxMetadata {
+        title: opts.title.clone().unwrap_or_else(|| "invoice".to_string()),
+        author: opts.author.clone().unwrap_or_default(),
+        subject: opts.subject.clone().unwrap_or_default(),
+        created: time::OffsetDateTime::from_unix_timestamp(secs)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH),
+        ..Default::default()
+    }
 }
 
 /// Render a template + data document to PDF bytes.
