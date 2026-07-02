@@ -334,6 +334,11 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
         <pre data-filename="Stamp over one table"><code class="language-json text-sm">{ "type": "table", "data": "items", "rows": [ ... ],
   "watermark": { "text": "PAID", "fontSize": 104, "color": "e8c4c4" } }</code></pre>
 
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">Accessible / tagged output <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>tagged</code></span></h3>
+        <p class="text-sm text-gray-400 mt-3">Set <code class="text-amber-400">options.tagged</code>: <code>true</code> (with an optional <code class="text-amber-400">options.lang</code>) to emit a <strong>tagged PDF</strong>. The renderer wraps each text run in marked content and adds the structure assistive tech relies on &mdash; a <code>StructTreeRoot</code>, <code>MarkInfo</code>, a <code>ParentTree</code>, per-page <code>StructParents</code>, logical tab order (<code>/Tabs /S</code>) and the document <code>/Lang</code>. Decorative marks (rules, watermarks, background art) are tagged as artifacts so screen readers skip them.</p>
+        <pre data-filename="Tagged output"><code class="language-json text-sm">"options": { "tagged": true, "lang": "fr-FR" }</code></pre>
+        <p class="text-sm text-gray-400 mt-3">This is the structural baseline that makes readers announce a sensible reading order. Full <strong>PDF/UA</strong> conformance additionally needs semantic roles (headings, lists, table <code>TH</code>/<code>TD</code>, figures with alt text) and a UA identifier &mdash; those are on the roadmap. Tagging is <strong>incompatible with Factur-X</strong> (<code>pdf_facturx*</code>): PDF/A-3b validation rejects the generic structure tree, so the combination is refused with an error.</p>
+
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Elements</h3>
         <p class="text-gray-400 mb-3">Each element in an array has a <code>type</code>. The cursor flows top-down; lengths are in points (A4 is 595&times;842&nbsp;pt, default margins 20&nbsp;mm).</p>
 

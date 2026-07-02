@@ -202,4 +202,8 @@ pub struct LaidOutDoc {
     pub bookmarks: Vec<(String, usize, u32)>,
     /// Named jump targets: `anchor → (0-based page index, logical y)`.
     pub anchors: HashMap<String, (usize, f32)>,
+    /// Emit a tagged (structured) PDF — see `TemplateOptions::tagged`.
+    pub tagged: bool,
+    /// Document language for `/Lang` (tagged output).
+    pub lang: Option<String>,
 }

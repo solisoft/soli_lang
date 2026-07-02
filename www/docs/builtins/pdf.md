@@ -199,6 +199,8 @@ A template has five top-level keys:
 | `background` | string | — | Page background fill (hex, no `#`) painted behind every page, beneath any watermark and content. Omit for white paper. |
 | `backgroundImage` | object | — | A full-page background image `{ "src": …, "pages"?: "all"/"first"/"last"/[…] }` — a cover photo or branded page. Drawn stretched to the page, above the `background` fill and below the watermark/content. `src` is any `image` source (URL/`file://`/`data:`). |
 | `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
+| `tagged` | bool | `false` | Emit a **tagged (accessible)** PDF — see [Accessible / tagged output](#accessible--tagged-output). Incompatible with Factur-X. |
+| `lang` | string | `en-US` | BCP-47 document language (e.g. `fr-FR`) written to the catalog. Used with `tagged`. |
 
 **`page`** is a preset name (`a4`, `letter`, `legal`, `a5`, `a3`) or a custom
 `{ "width": …, "height": … }` in points; **`orientation`: "landscape"** swaps the
@@ -240,6 +242,26 @@ and `pages` are ignored here — the stamp follows the table):
 { "type": "table", "data": "items", "rows": [ ... ],
   "watermark": { "text": "PAID", "fontSize": 104, "color": "e8c4c4" } }
 ```
+
+### Accessible / tagged output
+
+Set `"tagged": true` (with an optional `"lang"`) to emit a **tagged PDF**: the
+renderer wraps each text run in marked content and adds the document structure
+assistive tech relies on — a `StructTreeRoot`, `MarkInfo`, a `ParentTree`,
+per-page `StructParents`, logical tab order (`/Tabs /S`) and the document
+`/Lang`. Decorative marks (rules, watermarks, background art) are tagged as
+artifacts so screen readers skip them.
+
+```json
+"options": { "tagged": true, "lang": "fr-FR" }
+```
+
+This is the structural baseline that makes readers announce a sensible reading
+order. Full **PDF/UA** conformance additionally needs semantic roles
+(headings, lists, table `TH`/`TD`, figures with alt text) and a UA identifier —
+those are on the roadmap. Tagging is **incompatible with Factur-X**
+(`pdf_facturx*`): PDF/A-3b validation rejects the generic structure tree, so the
+combination is refused with an error.
 
 ### Elements
 

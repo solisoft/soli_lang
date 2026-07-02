@@ -197,8 +197,40 @@ pub fn emit(
 
     for page in &doc.pages {
         let mut ops: Vec<Op> = Vec::new();
-        for op in &page.ops {
-            emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+        if doc.tagged {
+            // Tagged output: wrap each text op in a `/P` marked-content
+            // sequence with a per-page MCID (the structure tree references
+            // these), and mark everything else as an `/Artifact` (decoration,
+            // ignored by assistive tech). The `accessibility` post-pass then
+            // builds the StructTreeRoot from the MCIDs in the stream.
+            let mut mcid = 0i64;
+            for op in &page.ops {
+                let is_text = matches!(
+                    op,
+                    DrawOp::Text(_) | DrawOp::StyledText { .. } | DrawOp::RotatedText { .. }
+                );
+                if is_text {
+                    let mut props = std::collections::BTreeMap::new();
+                    props.insert("MCID".to_string(), printpdf::DictItem::Int(mcid));
+                    ops.push(Op::BeginMarkedContentWithProperties {
+                        tag: "P".to_string(),
+                        properties: printpdf::DictItem::Dict { map: props },
+                    });
+                    emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+                    ops.push(Op::EndMarkedContent);
+                    mcid += 1;
+                } else {
+                    ops.push(Op::BeginMarkedContent {
+                        tag: "Artifact".to_string(),
+                    });
+                    emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+                    ops.push(Op::EndMarkedContent);
+                }
+            }
+        } else {
+            for op in &page.ops {
+                emit_op(op, doc, &font_ids, &image_ids, &mut ops);
+            }
         }
         pdf.pages.push(PdfPage::new(
             Mm(px_mm(doc.page.width)),

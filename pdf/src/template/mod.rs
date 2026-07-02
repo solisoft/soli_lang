@@ -88,6 +88,15 @@ pub struct TemplateOptions {
     /// watermark/content.
     #[serde(default, rename = "backgroundImage", alias = "background_image")]
     pub background_image: Option<BackgroundImage>,
+    /// Emit a **tagged** (structured) PDF: text is wrapped in marked content
+    /// with a `StructTreeRoot`, decorations marked as artifacts. The
+    /// accessibility baseline for screen readers / PDF/UA. Experimental.
+    #[serde(default)]
+    pub tagged: bool,
+    /// Document language (BCP-47, e.g. `"en-US"`) written to the catalog `/Lang`
+    /// — required for tagged/accessible output.
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 /// A page background image.

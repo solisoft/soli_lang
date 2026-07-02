@@ -35,6 +35,12 @@ pub fn render_with_warnings(
     resolve_page_tokens(&mut doc, &fonts, &mut warnings);
 
     let mut pdf = pdf_backend::emit(&doc, &fonts, opts)?;
+    // Tagged output: build the structure tree from the MCIDs the backend
+    // emitted. Before stationery/attachments/encryption so those post-passes
+    // (which don't touch structure) run on top.
+    if doc.tagged {
+        pdf = crate::accessibility::apply_tags(&pdf, doc.lang.as_deref())?;
+    }
     if let Some(letterhead) = &opts.stationery {
         pdf = crate::stationery::apply_stationery(&pdf, letterhead)?;
     }

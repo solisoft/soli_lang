@@ -12206,6 +12206,28 @@
         "link",
         "to_spans"
       ]
+    },
+    {
+      "title": "Tagged / accessible PDF",
+      "type": "option",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#accessible--tagged-output",
+      "signature": "options.tagged / options.lang",
+      "description": "Emit a tagged (accessible) PDF: StructTreeRoot, MarkInfo, ParentTree, per-page StructParents, /Tabs /S and document /Lang for screen readers. Structural PDF/UA baseline; incompatible with Factur-X.",
+      "keywords": [
+        "pdf",
+        "tagged",
+        "accessible",
+        "accessibility",
+        "pdf/ua",
+        "pdfua",
+        "struct tree",
+        "screen reader",
+        "lang",
+        "a11y",
+        "marked content",
+        "wcag"
+      ]
     }
   ]
 }

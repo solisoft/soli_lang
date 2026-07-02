@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub mod accessibility;
 pub mod attachments;
 pub mod barcode;
 pub mod chart;
@@ -96,8 +97,24 @@ pub fn generate_facturx(
     meta: &FacturxMetadata,
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
+    reject_tagged_for_pdfa(template_json)?;
     let pdf = render_to_bytes(template_json, data_json, opts)?;
     facturx::embed_facturx(&pdf, facturx_xml, profile, meta)
+}
+
+/// Factur-X is PDF/A-3b; our generic tagging pass writes a `StructTreeRoot`
+/// without the UA XMP identifier PDF/A validation expects, so the two must not
+/// combine. Reject early rather than emit a document that fails conformance.
+fn reject_tagged_for_pdfa(template_json: &[u8]) -> Result<()> {
+    let template = template::Template::parse(template_json)?;
+    if template.options.tagged {
+        return Err(PdfError::Facturx(
+            "tagged/accessible output (options.tagged) is incompatible with Factur-X (PDF/A-3b); \
+             remove options.tagged"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// End-to-end from a single source of truth: an [`Invoice`] drives both the
@@ -111,6 +128,7 @@ pub fn generate_facturx_from_invoice(
     meta: &FacturxMetadata,
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
+    reject_tagged_for_pdfa(template_json)?;
     let data = serde_json::to_vec(&invoice.to_render_data()).map_err(PdfError::from)?;
     let pdf = render_to_bytes(template_json, &data, opts)?;
     let xml = invoice.to_cii_xml(profile)?;

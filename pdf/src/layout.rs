@@ -221,6 +221,8 @@ impl<'a> Engine<'a> {
             images: self.images,
             bookmarks: self.bookmarks,
             anchors: self.anchors,
+            tagged: template.options.tagged,
+            lang: template.options.lang.clone(),
         };
         Ok((doc, self.warnings))
     }

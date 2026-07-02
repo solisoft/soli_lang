@@ -8,172 +8,936 @@
     "fonts": {
       "type": "array",
       "description": "Font families to load; the first is the primary text face, the rest are fallbacks.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
-    "options": { "$ref": "#/definitions/documentOptions" },
-    "header": { "type": "array", "description": "Elements drawn in the top band on every page.", "items": { "$ref": "#/definitions/element" } },
-    "footer": { "type": "array", "description": "Paragraphs drawn in the bottom band on every page.", "items": { "$ref": "#/definitions/element" } },
-    "content": { "type": "array", "description": "The page body, laid out top to bottom.", "items": { "$ref": "#/definitions/element" } }
+    "options": {
+      "$ref": "#/definitions/documentOptions"
+    },
+    "header": {
+      "type": "array",
+      "description": "Elements drawn in the top band on every page.",
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    },
+    "footer": {
+      "type": "array",
+      "description": "Paragraphs drawn in the bottom band on every page.",
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    },
+    "content": {
+      "type": "array",
+      "description": "The page body, laid out top to bottom.",
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    }
   },
   "definitions": {
-    "hex": { "type": "string", "description": "Hex color, no leading #.", "pattern": "^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$" },
+    "hex": {
+      "type": "string",
+      "description": "Hex color, no leading #.",
+      "pattern": "^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$"
+    },
     "pageFilter": {
       "description": "Which pages: \"all\"/\"first\"/\"last\", or a list of 1-based page numbers.",
       "oneOf": [
-        { "type": "string", "enum": ["all", "first", "last"] },
-        { "type": "array", "items": { "type": "integer" } }
+        {
+          "type": "string",
+          "enum": [
+            "all",
+            "first",
+            "last"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
       ]
     },
     "documentOptions": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "header_height": { "type": "number", "description": "Height (pt) of the reserved header band." },
+        "header_height": {
+          "type": "number",
+          "description": "Height (pt) of the reserved header band."
+        },
         "margins": {
           "description": "Page margins (pt): a single number for all sides, or per-side overrides.",
           "oneOf": [
-            { "type": "number" },
-            { "type": "object", "additionalProperties": false,
-              "properties": { "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" }, "left": { "type": "number" } } }
+            {
+              "type": "number"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "top": {
+                  "type": "number"
+                },
+                "right": {
+                  "type": "number"
+                },
+                "bottom": {
+                  "type": "number"
+                },
+                "left": {
+                  "type": "number"
+                }
+              }
+            }
           ]
         },
         "page": {
           "description": "Page size: a preset name or custom { width, height } in points.",
           "oneOf": [
-            { "type": "string", "enum": ["a4", "a3", "a5", "letter", "legal"] },
-            { "type": "object", "required": ["width", "height"], "properties": { "width": { "type": "number" }, "height": { "type": "number" } } }
+            {
+              "type": "string",
+              "enum": [
+                "a4",
+                "a3",
+                "a5",
+                "letter",
+                "legal"
+              ]
+            },
+            {
+              "type": "object",
+              "required": [
+                "width",
+                "height"
+              ],
+              "properties": {
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              }
+            }
           ]
         },
-        "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
-        "background": { "$ref": "#/definitions/hex" },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "portrait",
+            "landscape"
+          ]
+        },
+        "background": {
+          "$ref": "#/definitions/hex"
+        },
         "backgroundImage": {
           "type": "object",
           "description": "A full-page background image.",
-          "required": ["src"],
-          "properties": { "src": { "type": "string" }, "pages": { "$ref": "#/definitions/pageFilter" } }
+          "required": [
+            "src"
+          ],
+          "properties": {
+            "src": {
+              "type": "string"
+            },
+            "pages": {
+              "$ref": "#/definitions/pageFilter"
+            }
+          }
         },
         "watermark": {
           "type": "object",
-          "required": ["text"],
+          "required": [
+            "text"
+          ],
           "description": "A diagonal page watermark/stamp.",
           "properties": {
-            "text": { "type": "string" },
-            "angle": { "type": "number" },
-            "color": { "$ref": "#/definitions/hex" },
-            "fontSize": { "type": "number" },
-            "fontWeight": { "enum": ["normal", "bold"] },
-            "front": { "type": "boolean" },
-            "x": { "type": "number" }, "y": { "type": "number" },
-            "anchor": { "enum": ["top", "center", "bottom"] },
-            "pages": { "$ref": "#/definitions/pageFilter" }
+            "text": {
+              "type": "string"
+            },
+            "angle": {
+              "type": "number"
+            },
+            "color": {
+              "$ref": "#/definitions/hex"
+            },
+            "fontSize": {
+              "type": "number"
+            },
+            "fontWeight": {
+              "enum": [
+                "normal",
+                "bold"
+              ]
+            },
+            "front": {
+              "type": "boolean"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "anchor": {
+              "enum": [
+                "top",
+                "center",
+                "bottom"
+              ]
+            },
+            "pages": {
+              "$ref": "#/definitions/pageFilter"
+            }
           }
+        },
+        "tagged": {
+          "type": "boolean",
+          "description": "Emit a tagged (accessible) PDF: a StructTreeRoot, MarkInfo, per-page StructParents and document Lang so screen readers get a logical reading order. Incompatible with Factur-X (PDF/A-3b). Default false."
+        },
+        "lang": {
+          "type": "string",
+          "description": "BCP-47 language tag written to the document catalog (e.g. \"en-US\", \"fr-FR\"). Used with \"tagged\"; defaults to \"en-US\".",
+          "examples": [
+            "en-US",
+            "fr-FR"
+          ]
         }
       }
     },
-    "alignment": { "enum": ["left", "right", "center", "justify"] },
+    "alignment": {
+      "enum": [
+        "left",
+        "right",
+        "center",
+        "justify"
+      ]
+    },
     "textOptions": {
       "type": "object",
       "description": "Paragraph/list text styling.",
       "properties": {
-        "alignment": { "$ref": "#/definitions/alignment" },
-        "fontSize": { "type": "number" },
-        "fontWeight": { "enum": ["normal", "bold"] },
-        "italic": { "type": "boolean" },
-        "mono": { "type": "boolean" },
-        "color": { "$ref": "#/definitions/hex" },
-        "underline": { "type": "boolean" },
-        "strike": { "type": "boolean" },
-        "lineHeight": { "type": "number", "description": "Line-height multiplier (default 1.2)." },
-        "spacing": { "type": "number", "description": "Gap (pt) below the block." },
-        "minSpaceBelow": { "type": "number", "description": "Keep-together: min pt required below or the block moves to the next page." },
-        "link": { "type": "string", "description": "External URL." },
-        "linkTo": { "type": "string", "description": "Anchor name for an internal jump." },
-        "link_to": { "type": "string" },
-        "bookmark": { "type": "string", "description": "Adds a PDF outline entry." },
-        "bookmarkLevel": { "type": "integer", "description": "Outline depth (1 = top)." },
-        "anchor": { "type": "string", "description": "Names this paragraph as a jump target." }
+        "alignment": {
+          "$ref": "#/definitions/alignment"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "fontWeight": {
+          "enum": [
+            "normal",
+            "bold"
+          ]
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "mono": {
+          "type": "boolean"
+        },
+        "color": {
+          "$ref": "#/definitions/hex"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strike": {
+          "type": "boolean"
+        },
+        "lineHeight": {
+          "type": "number",
+          "description": "Line-height multiplier (default 1.2)."
+        },
+        "spacing": {
+          "type": "number",
+          "description": "Gap (pt) below the block."
+        },
+        "minSpaceBelow": {
+          "type": "number",
+          "description": "Keep-together: min pt required below or the block moves to the next page."
+        },
+        "link": {
+          "type": "string",
+          "description": "External URL."
+        },
+        "linkTo": {
+          "type": "string",
+          "description": "Anchor name for an internal jump."
+        },
+        "link_to": {
+          "type": "string"
+        },
+        "bookmark": {
+          "type": "string",
+          "description": "Adds a PDF outline entry."
+        },
+        "bookmarkLevel": {
+          "type": "integer",
+          "description": "Outline depth (1 = top)."
+        },
+        "anchor": {
+          "type": "string",
+          "description": "Names this paragraph as a jump target."
+        }
       }
     },
     "span": {
       "type": "object",
-      "required": ["text"],
+      "required": [
+        "text"
+      ],
       "properties": {
-        "text": { "type": "string" },
-        "fontSize": { "type": "number" },
-        "fontWeight": { "enum": ["normal", "bold"] },
-        "italic": { "type": "boolean" },
-        "mono": { "type": "boolean" },
-        "color": { "$ref": "#/definitions/hex" },
-        "underline": { "type": "boolean" },
-        "strike": { "type": "boolean" },
-        "link": { "type": "string" }
+        "text": {
+          "type": "string"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "fontWeight": {
+          "enum": [
+            "normal",
+            "bold"
+          ]
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "mono": {
+          "type": "boolean"
+        },
+        "color": {
+          "$ref": "#/definitions/hex"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "strike": {
+          "type": "boolean"
+        },
+        "link": {
+          "type": "string"
+        }
       }
     },
     "cell": {
       "type": "object",
       "description": "A text cell ({text,...}) or a rich cell ({content:[...]}).",
       "properties": {
-        "text": { "type": "string" },
-        "content": { "type": "array", "items": { "type": "object" } },
-        "width": { "type": "number" },
-        "fontSize": { "type": "number" },
-        "fontWeight": { "enum": ["normal", "bold"] },
-        "alignment": { "$ref": "#/definitions/alignment" },
-        "valign": { "enum": ["top", "middle", "bottom"] },
-        "colspan": { "type": "integer" },
-        "fill": { "$ref": "#/definitions/hex" },
-        "borderColor": { "$ref": "#/definitions/hex" },
-        "borderSides": { "type": "object" },
-        "link": { "type": "string" }
+        "text": {
+          "type": "string"
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "width": {
+          "type": "number"
+        },
+        "fontSize": {
+          "type": "number"
+        },
+        "fontWeight": {
+          "enum": [
+            "normal",
+            "bold"
+          ]
+        },
+        "alignment": {
+          "$ref": "#/definitions/alignment"
+        },
+        "valign": {
+          "enum": [
+            "top",
+            "middle",
+            "bottom"
+          ]
+        },
+        "colspan": {
+          "type": "integer"
+        },
+        "fill": {
+          "$ref": "#/definitions/hex"
+        },
+        "borderColor": {
+          "$ref": "#/definitions/hex"
+        },
+        "borderSides": {
+          "type": "object"
+        },
+        "link": {
+          "type": "string"
+        }
       }
     },
     "element": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
-          "enum": ["paragraph", "move", "image", "table", "hr", "rect", "line", "qr", "barcode", "ellipse", "list", "chart", "repeat", "if", "unless", "page_break", "columns"]
+          "enum": [
+            "paragraph",
+            "move",
+            "image",
+            "table",
+            "hr",
+            "rect",
+            "line",
+            "qr",
+            "barcode",
+            "ellipse",
+            "list",
+            "chart",
+            "repeat",
+            "if",
+            "unless",
+            "page_break",
+            "columns"
+          ]
         }
       },
       "allOf": [
-        { "if": { "properties": { "type": { "const": "paragraph" } } }, "then": {
-            "properties": { "value": { "type": "string" }, "spans": { "type": "array", "items": { "$ref": "#/definitions/span" } }, "options": { "$ref": "#/definitions/textOptions" } } } },
-        { "if": { "properties": { "type": { "const": "move" } } }, "then": {
-            "properties": { "x": { "type": "number" }, "y": { "type": "number" } } } },
-        { "if": { "properties": { "type": { "const": "image" } } }, "then": {
-            "required": ["value"], "properties": { "value": { "type": "string" }, "width": { "type": "number" }, "height": { "type": "number" } } } },
-        { "if": { "properties": { "type": { "const": "table" } } }, "then": {
+        {
+          "if": {
             "properties": {
-              "data": { "type": "string" },
-              "header_columns": { "type": "array", "items": { "$ref": "#/definitions/cell" } },
-              "footer_columns": { "type": "array", "items": { "$ref": "#/definitions/cell" } },
-              "rows": { "type": "array", "items": { "type": "array", "items": { "$ref": "#/definitions/cell" } } },
-              "watermark": { "type": "object" },
-              "options": { "type": "object", "properties": {
-                "header": { "type": "object", "properties": { "fillColor": { "$ref": "#/definitions/hex" }, "textColor": { "$ref": "#/definitions/hex" }, "borderColor": { "$ref": "#/definitions/hex" } } },
-                "stripe": { "$ref": "#/definitions/hex" }, "padding_x": { "type": "number" }, "padding_y": { "type": "number" } } } } } },
-        { "if": { "properties": { "type": { "const": "hr" } } }, "then": {
-            "properties": { "color": { "$ref": "#/definitions/hex" }, "thickness": { "type": "number" }, "width": { "type": "number" }, "dash": { "type": "array", "items": { "type": "number" } } } } },
-        { "if": { "properties": { "type": { "const": "rect" } } }, "then": {
-            "properties": { "width": { "type": "number" }, "height": { "type": "number" }, "fill": { "$ref": "#/definitions/hex" }, "border": { "$ref": "#/definitions/hex" }, "borderWidth": { "type": "number" }, "radius": { "type": "number" }, "dash": { "type": "array", "items": { "type": "number" } } } } },
-        { "if": { "properties": { "type": { "const": "line" } } }, "then": {
-            "properties": { "dx": { "type": "number" }, "dy": { "type": "number" }, "color": { "$ref": "#/definitions/hex" }, "width": { "type": "number" }, "dash": { "type": "array", "items": { "type": "number" } } } } },
-        { "if": { "properties": { "type": { "const": "ellipse" } } }, "then": {
-            "properties": { "rx": { "type": "number" }, "ry": { "type": "number" }, "fill": { "$ref": "#/definitions/hex" }, "border": { "$ref": "#/definitions/hex" }, "borderWidth": { "type": "number" }, "dash": { "type": "array", "items": { "type": "number" } } } } },
-        { "if": { "properties": { "type": { "const": "qr" } } }, "then": {
-            "properties": { "kind": { "enum": ["epc", "text"] }, "value": { "type": "string" }, "name": { "type": "string" }, "iban": { "type": "string" }, "bic": { "type": "string" }, "amount": { "type": "string" }, "currency": { "type": "string" }, "remittance": { "type": "string" }, "width": { "type": "number" } } } },
-        { "if": { "properties": { "type": { "const": "barcode" } } }, "then": {
-            "properties": { "symbology": { "enum": ["code128", "ean13", "ean8", "code39"] }, "value": { "type": "string" }, "width": { "type": "number" }, "height": { "type": "number" }, "humanReadable": { "type": "boolean" } } } },
-        { "if": { "properties": { "type": { "const": "list" } } }, "then": {
-            "properties": { "ordered": { "type": "boolean" }, "start": { "type": "integer" }, "marker": { "type": "string" }, "indent": { "type": "number" }, "spacing": { "type": "number" }, "options": { "$ref": "#/definitions/textOptions" }, "items": { "type": "array" } } } },
-        { "if": { "properties": { "type": { "const": "chart" } } }, "then": {
-            "properties": { "kind": { "enum": ["bar", "line", "pie", "donut"] }, "title": { "type": "string" }, "width": { "type": "number" }, "height": { "type": "number" }, "data": { "type": "string" }, "label": { "type": "string" }, "value": { "type": "string" }, "points": { "type": "array" }, "values": { "type": "array" }, "mode": { "enum": ["grouped", "stacked"] }, "colors": { "type": "array", "items": { "$ref": "#/definitions/hex" } }, "legend": { "type": "boolean" }, "axis": { "type": "boolean" }, "gridlines": { "type": "boolean" } } } },
-        { "if": { "properties": { "type": { "const": "repeat" } } }, "then": {
-            "required": ["data"], "properties": { "data": { "type": "string" }, "content": { "type": "array", "items": { "$ref": "#/definitions/element" } } } } },
-        { "if": { "properties": { "type": { "enum": ["if", "unless"] } } }, "then": {
-            "required": ["when"], "properties": { "when": { "type": "string" }, "equals": { "type": "string" }, "content": { "type": "array", "items": { "$ref": "#/definitions/element" } }, "else": { "type": "array", "items": { "$ref": "#/definitions/element" } } } } },
-        { "if": { "properties": { "type": { "const": "columns" } } }, "then": {
-            "properties": { "count": { "type": "integer", "minimum": 1, "maximum": 6 }, "gap": { "type": "number" }, "content": { "type": "array", "items": { "$ref": "#/definitions/element" } } } } }
+              "type": {
+                "const": "paragraph"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "spans": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/span"
+                }
+              },
+              "options": {
+                "$ref": "#/definitions/textOptions"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "move"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "image"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "table"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "header_columns": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/cell"
+                }
+              },
+              "footer_columns": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/cell"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/cell"
+                  }
+                }
+              },
+              "watermark": {
+                "type": "object"
+              },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "header": {
+                    "type": "object",
+                    "properties": {
+                      "fillColor": {
+                        "$ref": "#/definitions/hex"
+                      },
+                      "textColor": {
+                        "$ref": "#/definitions/hex"
+                      },
+                      "borderColor": {
+                        "$ref": "#/definitions/hex"
+                      }
+                    }
+                  },
+                  "stripe": {
+                    "$ref": "#/definitions/hex"
+                  },
+                  "padding_x": {
+                    "type": "number"
+                  },
+                  "padding_y": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "hr"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "color": {
+                "$ref": "#/definitions/hex"
+              },
+              "thickness": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number"
+              },
+              "dash": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "rect"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "fill": {
+                "$ref": "#/definitions/hex"
+              },
+              "border": {
+                "$ref": "#/definitions/hex"
+              },
+              "borderWidth": {
+                "type": "number"
+              },
+              "radius": {
+                "type": "number"
+              },
+              "dash": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "line"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "dx": {
+                "type": "number"
+              },
+              "dy": {
+                "type": "number"
+              },
+              "color": {
+                "$ref": "#/definitions/hex"
+              },
+              "width": {
+                "type": "number"
+              },
+              "dash": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ellipse"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rx": {
+                "type": "number"
+              },
+              "ry": {
+                "type": "number"
+              },
+              "fill": {
+                "$ref": "#/definitions/hex"
+              },
+              "border": {
+                "$ref": "#/definitions/hex"
+              },
+              "borderWidth": {
+                "type": "number"
+              },
+              "dash": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "qr"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "epc",
+                  "text"
+                ]
+              },
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "iban": {
+                "type": "string"
+              },
+              "bic": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "remittance": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "barcode"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "symbology": {
+                "enum": [
+                  "code128",
+                  "ean13",
+                  "ean8",
+                  "code39"
+                ]
+              },
+              "value": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "humanReadable": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "ordered": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "integer"
+              },
+              "marker": {
+                "type": "string"
+              },
+              "indent": {
+                "type": "number"
+              },
+              "spacing": {
+                "type": "number"
+              },
+              "options": {
+                "$ref": "#/definitions/textOptions"
+              },
+              "items": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "chart"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "bar",
+                  "line",
+                  "pie",
+                  "donut"
+                ]
+              },
+              "title": {
+                "type": "string"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "data": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "points": {
+                "type": "array"
+              },
+              "values": {
+                "type": "array"
+              },
+              "mode": {
+                "enum": [
+                  "grouped",
+                  "stacked"
+                ]
+              },
+              "colors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/hex"
+                }
+              },
+              "legend": {
+                "type": "boolean"
+              },
+              "axis": {
+                "type": "boolean"
+              },
+              "gridlines": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "repeat"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "if",
+                  "unless"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "when"
+            ],
+            "properties": {
+              "when": {
+                "type": "string"
+              },
+              "equals": {
+                "type": "string"
+              },
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              },
+              "else": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "columns"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6
+              },
+              "gap": {
+                "type": "number"
+              },
+              "content": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/element"
+                }
+              }
+            }
+          }
+        }
       ]
     }
   }
