@@ -230,14 +230,24 @@ proxy_url = "https://proxy.example.com"</code></pre>
         </table>
     </div>
 
-    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Build an encrypted bundle"><code class="language-bash text-sm"># The build reads the key from the same place serve does.
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="Build an encrypted bundle"><code class="language-bash text-sm"># The key is read from the environment — NOT passed as an argument.
 export SOLI_BUNDLE_KEY="a-long-random-secret"     # or point at your key server (below)
 
 soli build my_app --protect
 #   Building bundle from my_app...
 #   Encrypting bundle (key from SOLI_BUNDLE_KEY)
-#   ✓ Bundle written to my_app.soli (1.9 KB) (protected: binary AST, encrypted)</code></pre>
+#   ✓ Bundle written to my_app.soli (1.9 KB) (protected: binary AST, encrypted)
+
+# Then serve it — the key is resolved again the same way:
+export SOLI_BUNDLE_KEY="a-long-random-secret"     # (or a .env beside the bundle, below)
+soli serve my_app.soli --port 8080</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mb-6">
+        <p class="text-gray-400 text-sm">
+            <strong class="text-amber-300">Command form.</strong> <code>--encrypt</code> and <code>--protect</code> are on/off flags that take <strong>no value</strong>, and <code>--protect</code> already implies <code>--encrypt</code> (you never pass both). The folder and the flags may appear in any order (<code>soli build my_app --protect</code> or <code>soli build --protect my_app</code>). There is <strong>no <code>--key</code> argument</strong> — a key on the command line would leak into shell history and the process list, so it is always taken from the environment. <code>soli build --protect --encrypt abcd my_app</code> does <strong>not</strong> work; use <code>SOLI_BUNDLE_KEY=abcd soli build --protect my_app</code>.
+        </p>
     </div>
 
     <h3 class="text-lg font-semibold text-white mb-3">Where the key comes from</h3>
