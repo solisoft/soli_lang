@@ -77,7 +77,7 @@ Render the visual PDF, then embed the caller-provided CII `xml` and apply PDF/A-
 
 Render the visual PDF **and** generate the EN 16931 CII XML from a single typed [invoice document](#typed-invoice-document), then embed it (PDF/A-3b + Factur-X conformance). Line totals, the VAT breakdown, and the grand/amount-due totals are *computed* from the line items, so the human-readable PDF and the machine-readable XML can never disagree — which is the whole point of Factur-X.
 
-The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.*` (seller), `customer.*` (buyer), `items[]`, `total.*`, `infos.*`) — see [Typed invoice document](#typed-invoice-document) for the field list.
+The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.*` (seller), `customer.*` (buyer), `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.*`) — see [Typed invoice document](#typed-invoice-document) for the field list.
 
 **Parameters:**
 - `template` (String) — the layout template JSON, using the paths above.
@@ -98,6 +98,7 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 | `attachments` | Array | — | Files embedded into the reader's attachments panel: `[{ "path": "exports/data.csv", "name"?, "mime"? }]` (paths app-root relative; missing file = error; MIME guessed from the extension when omitted). Composes with Factur-X — `factur-x.xml` and your attachments coexist in the name tree and `/AF`. |
 | `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `pdf_facturx*`** — PDF/A forbids encryption. |
 | `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
+| `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption) and with tagged templates; `pdf_facturx*` reject it (they are already PDF/A). Attachments compose. |
 
 ---
 
@@ -177,8 +178,8 @@ A template has five top-level keys:
 |---|---|---|
 | `fonts` | `string[]` | Families to load; the first is the primary text face, the rest are fallbacks. |
 | `options` | object | Document options — see below. |
-| `header` | element[] | Drawn in the reserved top band on every page. Paragraphs interpolate `${...}` and may use `#PAGE#`/`#TOTAL_PAGE#`. |
-| `footer` | element[] | Drawn in the bottom band on every page (may use `#PAGE#`/`#TOTAL_PAGE#`). |
+| `header` | element[] | Drawn in the reserved top band on every page. Elements interpolate `${...}`, may use `#PAGE#`/`#PAGES#`, and **data-bound elements** (`table`, `repeat`, `chart`) see the document data. The band never paginates: content that overflows `header_height` just spills. |
+| `footer` | element[] | Drawn in the bottom band on every page (may use `#PAGE#`/`#PAGES#`). Supports `paragraph`, `hr`, `image` (all three advance the band cursor), `move`, and `rect`/`line`/`ellipse` (drawn at the cursor — position them with `move`, which also grows the reserved band height). |
 | `content` | element[] | The page body, laid out top to bottom. |
 
 ### Document options
@@ -285,7 +286,7 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 
 **paragraph** — wrapped, aligned text; advances the cursor down. `options` accepts `alignment` (`left`/`right`/`center`/`justify`), `fontSize`, `fontWeight`, `italic`, `mono`, `color` (hex, no `#` — applies to the whole paragraph), `underline`/`strike` (bool — drawn in the text color), `lineHeight` (multiplier, engine default 1.2), `spacing` (pt gap added below the block — replaces trailing `move` elements), `minSpaceBelow` (keep-together: the paragraph only starts on this page if that many points remain below it — put it on headings so they're never orphaned at a page bottom), `link`/`linkTo`, `bookmark` + `bookmarkLevel`, and `anchor`. For per-run styling (mixed colors/weights on one line) use `spans` instead of `value`.
 
-`justify` distributes the leftover width across word gaps; the paragraph's **last line stays left-aligned**, and `spans` paragraphs fall back to left with a warning.
+`justify` distributes the leftover width across word gaps; the paragraph's **last line stays left-aligned**. It works on both plain-`value` and `spans` paragraphs.
 
 ```json
 { "type": "paragraph", "value": "Invoice ${invoice.number}",
@@ -393,7 +394,7 @@ A colspan totals row (3 columns, the label spans the first 2):
 ] }
 ```
 
-**chart** — a bar, line, or pie chart drawn from the data. Occupies `width` × `height` pt at the cursor (plus an optional `title` above) and advances the cursor below it. `kind` is `bar`, `line`, or `pie`. Points come either from a **data binding** — `data` names an array in the data document and `label`/`value` name the fields read from each item — or from inline `points`. `colors` (hex, no `#`) are cycled across points; a built-in palette is used when omitted. For `pie`, `legend` adds a swatch + percentage list; for `bar`/`line`, `axis` draws axis lines and category labels, and `gridlines: true` adds horizontal value-axis gridlines with tick labels.
+**chart** — a bar, line, pie, or donut chart drawn from the data. Occupies `width` × `height` pt at the cursor (plus an optional `title` above) and advances the cursor below it. `kind` is `bar`, `line`, `pie`, or `donut` (a pie with a ring cutout — whatever is behind the chart shows through the hole). Points come either from a **data binding** — `data` names an array in the data document and `label`/`value` name the fields read from each item — or from inline `points`. `colors` (hex, no `#`) are cycled across points; a built-in palette is used when omitted. For `pie`/`donut`, `legend` adds a swatch + percentage list; for `bar`/`line`, `axis` draws axis lines and category labels, and `gridlines: true` adds horizontal value-axis gridlines with tick labels.
 
 **Multiple series.** Instead of a single `value`, give `values` — an array of `{ field, name?, color? }`. `data`/`label` still name the array and the category field, and each series reads its own `field` from every item. Bars render **grouped** side-by-side (or **stacked** with `mode: "stacked"`); `line` draws one line per series; both show a legend of the series `name`s.
 
@@ -455,7 +456,7 @@ A cell is a simple **text** cell, or a **rich** cell whose `content` stacks mult
 
 ### Styling & colours
 
-- `alignment` — `left` / `right` / `center` / `justify` (case-insensitive; `justify` is for plain-`value` paragraphs and leaves the last line left-aligned).
+- `alignment` — `left` / `right` / `center` / `justify` (case-insensitive; `justify` works on plain-`value` and `spans` paragraphs, and leaves the last line left-aligned).
 - `fontSize` (pt), `fontWeight` — `normal` / `bold`.
 - `link` — an external URL (on a paragraph's `options` or a text cell's style). The text becomes a clickable, borderless link annotation; the Factur-X output stays PDF/A-3b conformant (the Print flag is set automatically). Example: `{ "type": "paragraph", "value": "Pay online", "options": { "link": "https://pay.example/42" } }`.
 - `bookmark` / `anchor` / `linkTo` (paragraph `options`) — navigation. `bookmark` adds a PDF outline (sidebar) entry; **`bookmarkLevel`** nests it (1 = top; a level-2 entry nests under the last level-1, like headings); `anchor` names a jump target; `linkTo` makes the text a clickable internal jump to an `anchor`. Great for multi-page statements / a clickable table of contents. (`linkTo` also accepts `link_to`.)
@@ -472,7 +473,7 @@ A cell is a simple **text** cell, or a **rich** cell whose `content` stacks mult
 
 - `${a.b.c}` — dotted path into the data; missing paths render empty (with a warning).
 - Inside a data-bound table, `${field}` resolves against the row item first, then the root.
-- `#PAGE#` / `#TOTAL_PAGE#` — page tokens, substituted after pagination. They work in **footer, header, and body** paragraphs (`value` form; a `spans` paragraph renders them literally).
+- `#PAGE#` / `#PAGES#` (alias `#TOTAL_PAGE#`) — page tokens, substituted after pagination. They work in **footer, header, and body** paragraphs (`value` form; a `spans` paragraph renders them literally).
 - `#PAGE_OF:anchor#` — the 1-based page number of the paragraph carrying `"anchor": "…"`. Combine with `linkTo` for a **table of contents with real page numbers**: `{ "value": "Charts ..... p. #PAGE_OF:sec-charts#", "options": { "linkTo": "sec-charts" } }`. An unknown anchor renders empty with a warning.
 - Token lines defer to a second pass, so their link annotations cover the full line box and underline/strike are skipped (the substituted width isn't known yet).
 
@@ -592,21 +593,41 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf
   "lines": [
     { "name": "Item 1", "quantity": 1, "unit_price": 100, "vat_rate": 20.0 },
     { "name": "Item 2", "quantity": 2, "unit_price": 200, "vat_rate": 20.0 }
-  ]
+  ],
+  "allowances": [
+    { "reason": "Volume discount", "percent": 10, "vat_rate": 20.0 }
+  ],
+  "charges": [
+    { "reason": "Shipping", "amount": "20.00", "vat_rate": 20.0 }
+  ],
+  "payment_terms": "30 days net"
 }
 ```
 
 | Field | Notes |
 |---|---|
 | `number`, `issue_date`, `currency` | Required. `issue_date` is `YYYY-MM-DD`. |
-| `due_date`, `note`, `type_code` | Optional. `type_code` defaults to `380` (commercial invoice). |
+| `due_date`, `note`, `type_code` | Optional. `type_code` defaults to `380` (commercial invoice); accepted codes: `380`, `381` (credit note), `384`, `389`, `261`, `386`. |
 | `currency_symbol` | Optional; otherwise derived from the code (`EUR`→`€`, `USD`→`$`, …). |
-| `prepaid` | Optional amount already paid; subtracted to give the amount due. |
+| `prepaid` | Optional amount already paid; subtracted to give the amount due and emitted as `TotalPrepaidAmount` (BT-113). |
+| `allowances[]` | Optional document-level discounts (BG-20): `reason` + **exactly one** of `amount` / `percent` (of the line-net total), plus `vat_rate`/`vat_category` (default `S`). Reduce the tax basis of their VAT group. |
+| `charges[]` | Optional document-level charges — shipping, fees (BG-21). Same shape as `allowances`; they increase the tax basis. A charge/allowance with a rate no line uses gets its own VAT-breakdown row. |
+| `payment_terms` | Optional free-text payment terms (BT-20), e.g. `"30 days net"`. Emitted with `due_date` in the CII `SpecifiedTradePaymentTerms` block. |
 | `seller` / `buyer` | `name`, `address_line`, `postcode`, `city`, `country` (ISO-2), `country_name`, `phone`, `vat_id`. The seller's `vat_id` is required by EN 16931 when VAT is charged. |
 | `seller.iban` / `seller.bic` | Optional. When present, exposed as the `payment.*` render-data block for an EPC [scan-to-pay QR](#payment-qr-scan-to-pay). |
 | `lines[]` | `name`, `unit_price`, `quantity` (default `1`), `vat_rate` (percent), `unit_code` (default `C62`), `vat_category` (default `S`). |
 
 Amounts accept a number (`100`, `100.5`) or a numeric string (`"100.50"`) and are kept exact to the cent.
+
+**Credit notes.** Set `"type_code": "381"` (or `261` for self-billed): amounts stay **positive** — in CII the type code carries the semantics, there is no separate credit-note document. The render data exposes `invoice.type_code` and a ready-made `invoice.type_label` (`"Invoice"` / `"Credit note"`) for the template's title line.
+
+**Render-data paths.** Besides `items[]`, the computed figures land on `total.*`: `total.amount` (line total), `total.discount` (BT-107), `total.charges` (BT-108), `total.taxable` (the tax basis, BT-109 — differs from `total.amount` once allowances/charges exist), `total.vat`, `total.due_amount`. Each allowance/charge is also exposed for display in `discounts[]` / `charges[]` as `{ reason, amount, percent }` — bind them with a `repeat` or a data-bound `table` for the totals card:
+
+```json
+{ "type": "repeat", "data": "discounts", "content": [
+  { "type": "paragraph", "value": "${reason}  −${amount}", "options": { "alignment": "right" } }
+] }
+```
 
 ---
 

@@ -224,6 +224,7 @@ end</code></pre>
                         <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Files embedded into the reader's attachments panel: <code>[{ "path", "name"?, "mime"? }]</code> (app-root relative; missing file = error; MIME guessed from the extension). Composes with Factur-X &mdash; <code>factur-x.xml</code> and your attachments coexist.</td></tr>
                         <tr><td class="px-4 py-2"><code>password</code> / <code>owner_password</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Password-protect the PDF (<strong>AES-128</strong>). <code>password</code> opens the document; <code>owner_password</code> lifts restrictions (defaults to <code>password</code>). Incompatible with <code>pdf_facturx*</code> (PDF/A forbids encryption).</td></tr>
                         <tr><td class="px-4 py-2"><code>permissions</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">all</td><td class="px-4 py-2">With a password, the actions the user may take: any of <code>["print","copy","modify","annotate"]</code>. Empty = allow all (open-password only).</td></tr>
+                        <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>false</code></td><td class="px-4 py-2"><span class="text-gray-500">(pdf_render / pdf_response)</span> Emit <strong>PDF/A-3b</strong> (archival conformance: sRGB OutputIntent, XMP <code>pdfaid</code>, PDF 1.7) without a Factur-X payload &mdash; for legal-archiving mandates on non-invoice documents. Incompatible with <code>password</code> and tagged templates; <code>pdf_facturx*</code> reject it (already PDF/A). Attachments compose.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -308,7 +309,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
     "watermark": { "text": "PAID", "angle": 45, "color": "e8c4c4", "fontSize": 96 }
   },
   "header":  [ /* elements drawn at the top of every page */ ],
-  "footer":  [ /* elements drawn at the bottom; may use #PAGE# / #TOTAL_PAGE# */ ],
+  "footer":  [ /* elements drawn at the bottom; may use #PAGE# / #PAGES# */ ],
   "content": [ /* the document flow */ ]
 }</code></pre>
         <div class="overflow-x-auto rounded-xl border border-white/10 mt-3 mb-4">
@@ -317,8 +318,8 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
                 <tbody class="text-gray-400 divide-y divide-white/5">
                     <tr><td class="px-4 py-2"><code class="text-amber-400">fonts</code></td><td class="px-4 py-2">string[]</td><td class="px-4 py-2">Families to load. The <strong>first</strong> is the primary text face; the rest are <strong>fallbacks</strong> for characters it can't cover (e.g. a CJK font). Resolved from files in <code>font_dirs</code> &mdash; see <strong>Fonts</strong> below.</td></tr>
                     <tr><td class="px-4 py-2"><code class="text-amber-400">options</code></td><td class="px-4 py-2">object</td><td class="px-4 py-2">Document options: <code>header_height</code> (pt), <code>margins</code>, <code>watermark</code> &mdash; detailed below.</td></tr>
-                    <tr><td class="px-4 py-2"><code class="text-amber-400">header</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Elements drawn in the reserved top band on <strong>every</strong> page, from their own cursor at the top margin. Sized by <code>options.header_height</code>; they do not paginate. Paragraphs interpolate <code>${...}</code> and may use <code>#PAGE#</code> / <code>#TOTAL_PAGE#</code>.</td></tr>
-                    <tr><td class="px-4 py-2"><code class="text-amber-400">footer</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Paragraphs drawn in the bottom band on <strong>every</strong> page. May contain <code>#PAGE#</code> / <code>#TOTAL_PAGE#</code>, substituted after pagination. The band auto-sizes above the bottom margin.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">header</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Elements drawn in the reserved top band on <strong>every</strong> page, from their own cursor at the top margin. Sized by <code>options.header_height</code>; they never paginate (overflow just spills). Elements interpolate <code>${...}</code>, may use <code>#PAGE#</code> / <code>#PAGES#</code>, and <strong>data-bound elements</strong> (<code>table</code>, <code>repeat</code>, <code>chart</code>) see the document data.</td></tr>
+                    <tr><td class="px-4 py-2"><code class="text-amber-400">footer</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">Drawn in the bottom band on <strong>every</strong> page. Supports <code>paragraph</code>, <code>hr</code>, <code>image</code> (these advance the band cursor), <code>move</code>, and <code>rect</code>/<code>line</code>/<code>ellipse</code> (drawn at the cursor &mdash; position with <code>move</code>, which also grows the reserved band). May contain <code>#PAGE#</code> / <code>#PAGES#</code>, substituted after pagination. The band auto-sizes above the bottom margin.</td></tr>
                     <tr><td class="px-4 py-2"><code class="text-amber-400">content</code></td><td class="px-4 py-2">element[]</td><td class="px-4 py-2">The page body, laid out top-to-bottom; paginates automatically when it overflows.</td></tr>
                 </tbody>
             </table>
@@ -444,8 +445,8 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-teal-300 font-mono">chart</code> <span class="text-xs font-normal text-teal-300 align-middle">· bar · line · pie</span>
-                <p class="text-sm text-gray-400 mt-2 mb-2">A bar, line, or pie chart in a <code>width</code> × <code>height</code> box (plus an optional <code>title</code>); advances the cursor. Points come from a <strong>data binding</strong> (<code>data</code> names an array; <code>label</code>/<code>value</code> name the fields) or inline <code>points</code>. <code>colors</code> are cycled; <code>pie</code> shows a <code>legend</code>, <code>bar</code>/<code>line</code> draw an <code>axis</code> and (opt-in) <code>gridlines</code> with value-axis labels.</p>
+                <code class="text-teal-300 font-mono">chart</code> <span class="text-xs font-normal text-teal-300 align-middle">· bar · line · pie · donut</span>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A bar, line, pie, or donut chart in a <code>width</code> × <code>height</code> box (plus an optional <code>title</code>); advances the cursor. <code>donut</code> is a pie with a ring cutout (what's behind shows through the hole). Points come from a <strong>data binding</strong> (<code>data</code> names an array; <code>label</code>/<code>value</code> name the fields) or inline <code>points</code>. <code>colors</code> are cycled; <code>pie</code>/<code>donut</code> show a <code>legend</code>, <code>bar</code>/<code>line</code> draw an <code>axis</code> and (opt-in) <code>gridlines</code> with value-axis labels.</p>
                 <pre data-filename="chart (data-bound bar)"><code class="language-json text-sm">{ "type": "chart", "kind": "bar", "title": "Revenue by month",
   "data": "months", "label": "name", "value": "revenue", "width": 360, "height": 160 }</code></pre>
                 <p class="text-sm text-gray-400 mt-3 mb-2"><strong>Multiple series</strong> &mdash; replace <code>value</code> with <code>values</code>: an array of <code>{ field, name?, color? }</code>. Each series reads its own <code>field</code> from every item; bars render <strong>grouped</strong> (or <strong>stacked</strong> with <code>mode: "stacked"</code>), <code>line</code> draws one line per series, and both show a legend of the series names.</p>
@@ -503,7 +504,7 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Styling &amp; colours</h3>
         <div class="text-sm text-gray-400 space-y-1 mb-4">
-            <div><code class="text-amber-400">alignment</code> &mdash; <code>left</code> / <code>right</code> / <code>center</code> / <code>justify</code> (case-insensitive; justify is for plain-<code>value</code> paragraphs, last line stays left).</div>
+            <div><code class="text-amber-400">alignment</code> &mdash; <code>left</code> / <code>right</code> / <code>center</code> / <code>justify</code> (case-insensitive; justify works on plain-<code>value</code> and <code>spans</code> paragraphs, last line stays left).</div>
             <div><code class="text-amber-400">fontSize</code> &mdash; points. <code class="text-amber-400">fontWeight</code> &mdash; <code>normal</code> / <code>bold</code>.</div>
             <div><code class="text-amber-400">link</code> &mdash; an external URL on a paragraph's <code>options</code> or a text cell's style; the text becomes a clickable, borderless link annotation. The Factur-X output stays PDF/A-3b conformant (the Print flag is set for you).</div>
             <div><code class="text-amber-400">bookmark</code> / <code class="text-amber-400">bookmarkLevel</code> / <code class="text-amber-400">anchor</code> / <code class="text-amber-400">linkTo</code> (paragraph <code>options</code>) &mdash; navigation: <code>bookmark</code> adds a PDF outline entry (<code>bookmarkLevel</code> nests it &mdash; 1 = top, a level-2 nests under the last level-1, like headings), <code>anchor</code> names a jump target, and <code>linkTo</code> makes the text a clickable internal jump to an <code>anchor</code> (a clickable table of contents).</div>
@@ -521,7 +522,7 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
         <div class="text-sm text-gray-400 space-y-1 mb-2">
             <div><code class="text-amber-400">${a.b.c}</code> &mdash; dotted path into the data document. Missing paths render empty (with a warning).</div>
             <div>Inside a data-bound table, <code class="text-amber-400">${field}</code> resolves against the current row item first, then the root.</div>
-            <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#TOTAL_PAGE#</code> &mdash; page tokens, substituted after pagination (alignment is recomputed). They work in <strong>footer, header, and body</strong> paragraphs (<code>value</code> form; a <code>spans</code> paragraph renders them literally).</div>
+            <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#PAGES#</code> (alias <code class="text-amber-400">#TOTAL_PAGE#</code>) &mdash; page tokens, substituted after pagination (alignment is recomputed). They work in <strong>footer, header, and body</strong> paragraphs (<code>value</code> form; a <code>spans</code> paragraph renders them literally).</div>
             <div><code class="text-amber-400">#PAGE_OF:anchor#</code> &mdash; the 1-based page number of the paragraph carrying that <code>anchor</code>. Combine with <code>linkTo</code> for a <strong>table of contents with real page numbers</strong>. Unknown anchors render empty with a warning.</div>
             <div>Token lines defer to a second pass: their link annotations cover the full line box, and underline/strike are skipped (the substituted width isn't known yet).</div>
         </div>
@@ -591,7 +592,7 @@ verapdf -f 3b invoice.pdf            # → PASS, 146/146 rules
 java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
 
         <h3 id="section-typed-invoice" class="scroll-mt-20 text-lg font-semibold text-white mt-8 mb-3">Typed invoice document</h3>
-        <p class="text-gray-400 mb-3"><code class="text-teal-300">pdf_facturx_from_invoice</code> takes a <em>typed invoice</em> instead of separate data + XML. Totals and the VAT breakdown are computed from the lines, then mapped onto the template (<code>invoice.*</code>, <code>company.*</code> = seller, <code>customer.*</code> = buyer, <code>items[]</code>, <code>total.*</code>, <code>infos.text</code>) and emitted as CII XML.</p>
+        <p class="text-gray-400 mb-3"><code class="text-teal-300">pdf_facturx_from_invoice</code> takes a <em>typed invoice</em> instead of separate data + XML. Totals and the VAT breakdown are computed from the lines and the document-level allowances/charges, then mapped onto the template (<code>invoice.*</code>, <code>company.*</code> = seller, <code>customer.*</code> = buyer, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>) and emitted as CII XML.</p>
         <pre data-filename="pdf/invoice.json"><code class="language-json text-sm">{
   "number": "#12345",
   "issue_date": "2025-11-28",
@@ -612,16 +613,26 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
   "lines": [
     { "name": "Item 1", "quantity": 1, "unit_price": 100, "vat_rate": 20.0 },
     { "name": "Item 2", "quantity": 2, "unit_price": 200, "vat_rate": 20.0 }
-  ]
+  ],
+  "allowances": [
+    { "reason": "Volume discount", "percent": 10, "vat_rate": 20.0 }
+  ],
+  "charges": [
+    { "reason": "Shipping", "amount": "20.00", "vat_rate": 20.0 }
+  ],
+  "payment_terms": "30 days net"
 }</code></pre>
         <div class="overflow-x-auto rounded-xl border border-white/10 mt-3">
             <table class="w-full text-sm text-left">
                 <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">Field</th><th class="px-4 py-2">Notes</th></tr></thead>
                 <tbody class="text-gray-400 divide-y divide-white/5">
                     <tr><td class="px-4 py-2"><code>number</code>, <code>issue_date</code>, <code>currency</code></td><td class="px-4 py-2">Required. <code>issue_date</code> is <code>YYYY-MM-DD</code>.</td></tr>
-                    <tr><td class="px-4 py-2"><code>due_date</code>, <code>note</code>, <code>type_code</code></td><td class="px-4 py-2">Optional. <code>type_code</code> defaults to <code>380</code> (commercial invoice).</td></tr>
+                    <tr><td class="px-4 py-2"><code>due_date</code>, <code>note</code>, <code>type_code</code></td><td class="px-4 py-2">Optional. <code>type_code</code> defaults to <code>380</code> (commercial invoice); accepted codes: <code>380</code>, <code>381</code> (credit note), <code>384</code>, <code>389</code>, <code>261</code>, <code>386</code>.</td></tr>
                     <tr><td class="px-4 py-2"><code>currency_symbol</code></td><td class="px-4 py-2">Optional; otherwise derived from the code (<code>EUR</code>→<code>€</code>, <code>USD</code>→<code>$</code>, …).</td></tr>
-                    <tr><td class="px-4 py-2"><code>prepaid</code></td><td class="px-4 py-2">Optional amount already paid; subtracted to give the amount due.</td></tr>
+                    <tr><td class="px-4 py-2"><code>prepaid</code></td><td class="px-4 py-2">Optional amount already paid; subtracted to give the amount due and emitted as <code>TotalPrepaidAmount</code> (BT-113).</td></tr>
+                    <tr><td class="px-4 py-2"><code>allowances[]</code></td><td class="px-4 py-2">Optional document-level discounts (BG-20): <code>reason</code> + <strong>exactly one</strong> of <code>amount</code> / <code>percent</code> (of the line-net total), plus <code>vat_rate</code>/<code>vat_category</code> (default <code>S</code>). Reduce the tax basis of their VAT group.</td></tr>
+                    <tr><td class="px-4 py-2"><code>charges[]</code></td><td class="px-4 py-2">Optional document-level charges &mdash; shipping, fees (BG-21). Same shape as <code>allowances</code>; they increase the tax basis. A rate no line uses gets its own VAT-breakdown row.</td></tr>
+                    <tr><td class="px-4 py-2"><code>payment_terms</code></td><td class="px-4 py-2">Optional free-text payment terms (BT-20), e.g. <code>"30 days net"</code>. Emitted with <code>due_date</code> in the CII <code>SpecifiedTradePaymentTerms</code> block.</td></tr>
                     <tr><td class="px-4 py-2"><code>seller</code> / <code>buyer</code></td><td class="px-4 py-2"><code>name</code>, <code>address_line</code>, <code>postcode</code>, <code>city</code>, <code>country</code> (ISO-2), <code>country_name</code>, <code>phone</code>, <code>vat_id</code>. The seller's <code>vat_id</code> is required by EN 16931 when VAT is charged.</td></tr>
                     <tr><td class="px-4 py-2"><code>seller.iban</code> / <code>seller.bic</code></td><td class="px-4 py-2">Optional. When present, exposed as the <code>payment.*</code> render-data block for an EPC <a href="#section-qr" class="text-teal-300 hover:underline">scan-to-pay QR</a>.</td></tr>
                     <tr><td class="px-4 py-2"><code>lines[]</code></td><td class="px-4 py-2"><code>name</code>, <code>unit_price</code>, <code>quantity</code> (default <code>1</code>), <code>vat_rate</code> (percent), <code>unit_code</code> (default <code>C62</code>), <code>vat_category</code> (default <code>S</code>).</td></tr>
@@ -629,6 +640,8 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
             </table>
         </div>
         <p class="text-gray-400 mt-3">Amounts accept a number (<code>100</code>, <code>100.5</code>) or a numeric string (<code>"100.50"</code>) and are kept exact to the cent.</p>
+        <p class="text-gray-400 mt-3"><strong class="text-white">Credit notes.</strong> Set <code>"type_code": "381"</code> (or <code>261</code> for self-billed): amounts stay <strong>positive</strong> &mdash; in CII the type code carries the semantics, there is no separate credit-note document. The render data exposes <code>invoice.type_code</code> and a ready-made <code>invoice.type_label</code> (<code>"Invoice"</code> / <code>"Credit note"</code>) for the template's title line.</p>
+        <p class="text-gray-400 mt-3"><strong class="text-white">Render-data paths.</strong> Besides <code>items[]</code>, the computed figures land on <code>total.*</code>: <code>total.amount</code> (line total), <code>total.discount</code> (BT-107), <code>total.charges</code> (BT-108), <code>total.taxable</code> (the tax basis, BT-109 &mdash; differs from <code>total.amount</code> once allowances/charges exist), <code>total.vat</code>, <code>total.due_amount</code>. Each allowance/charge is also exposed in <code>discounts[]</code> / <code>charges[]</code> as <code>{ reason, amount, percent }</code> &mdash; bind them with a <code>repeat</code> or a data-bound <code>table</code> for the totals card.</p>
     </section>
 
     <!-- Performance -->

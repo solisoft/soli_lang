@@ -24,7 +24,7 @@
     },
     "footer": {
       "type": "array",
-      "description": "Paragraphs drawn in the bottom band on every page.",
+      "description": "Elements drawn in the bottom band on every page: paragraph, hr, image (advance the band cursor), move, and rect/line/ellipse (drawn at the cursor).",
       "items": {
         "$ref": "#/definitions/element"
       }

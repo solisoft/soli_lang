@@ -12228,6 +12228,64 @@
         "marked content",
         "wcag"
       ]
+    },
+    {
+      "title": "PDF/A archival output (pdfa option)",
+      "type": "option",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-options",
+      "signature": "pdf_render(tpl, data, { \"pdfa\": true })",
+      "description": "Emit PDF/A-3b archival output without a Factur-X payload: sRGB OutputIntent, XMP pdfaid metadata, PDF 1.7. For legal-archiving mandates on non-invoice documents; incompatible with password protection and tagged templates.",
+      "keywords": [
+        "pdf",
+        "pdfa",
+        "pdf/a",
+        "pdf/a-3b",
+        "archival",
+        "archiving",
+        "iso 19005",
+        "conformance",
+        "output intent"
+      ]
+    },
+    {
+      "title": "PDF invoice discounts, charges & payment terms",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-typed-invoice",
+      "description": "Typed invoice allowances (BG-20 discounts), charges (BG-21 shipping/fees, fixed or percent), payment_terms (BT-20) and credit notes (type_code 381) — computed into the VAT breakdown and the CII XML; exposed to templates as discounts[]/charges[] and total.discount/charges/taxable.",
+      "keywords": [
+        "pdf",
+        "invoice",
+        "discount",
+        "allowance",
+        "charge",
+        "shipping",
+        "fees",
+        "payment terms",
+        "credit note",
+        "avoir",
+        "remise",
+        "facturx",
+        "en 16931"
+      ]
+    },
+    {
+      "title": "PDF header/footer data binding & elements",
+      "type": "feature",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#section-template",
+      "description": "Data-bound elements (table, repeat, chart) work in the header band; the footer band supports hr, image, rect, line, ellipse and move alongside paragraphs. Page tokens gain the #PAGES# alias, charts a true donut kind, and justify works on spans paragraphs.",
+      "keywords": [
+        "pdf",
+        "header",
+        "footer",
+        "data binding",
+        "pages token",
+        "donut",
+        "justify",
+        "band"
+      ]
     }
   ]
 }

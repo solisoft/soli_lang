@@ -25,6 +25,9 @@
 //!   * `password` / `owner_password` / `permissions` — AES-128 protection.
 //!     `permissions` is a subset of `["print","copy","modify","annotate"]`
 //!     (empty = allow all). Incompatible with `pdf_facturx*` (PDF/A).
+//!   * `pdfa` — bool: emit PDF/A-3b (archival) output without a Factur-X
+//!     payload. Incompatible with `password` (PDF/A forbids encryption), with
+//!     tagged templates, and with `pdf_facturx*` (already PDF/A).
 //!   * `filename` (pdf_response) — sets `Content-Disposition: attachment`.
 //!
 //! `pdf_response(template, data, options?)` renders and returns a ready
@@ -56,6 +59,9 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             let template = arg_string(&args[0], "pdf_render", "template")?;
             let data = arg_string(&args[1], "pdf_render", "data")?;
             let opts = render_options(args.get(2))?;
+            if opts.pdfa && opts.encrypt.is_some() {
+                return Err("pdf_render(): `pdfa` is incompatible with password protection (PDF/A forbids encryption); drop `password`".to_string());
+            }
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_render() failed: {e}"))?;
             Ok(b64(pdf))
@@ -77,6 +83,9 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             let template = arg_string(&args[0], "pdf_response", "template")?;
             let data = arg_string(&args[1], "pdf_response", "data")?;
             let opts = render_options(args.get(2))?;
+            if opts.pdfa && opts.encrypt.is_some() {
+                return Err("pdf_response(): `pdfa` is incompatible with password protection (PDF/A forbids encryption); drop `password`".to_string());
+            }
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_response() failed: {e}"))?;
 
@@ -121,6 +130,9 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             if opts.encrypt.is_some() {
                 return Err("pdf_facturx(): encryption is incompatible with PDF/A-3b (Factur-X); drop `password`".to_string());
             }
+            if opts.pdfa {
+                return Err("pdf_facturx(): PDF/A is implied by Factur-X; drop the `pdfa` option".to_string());
+            }
             let profile = opt_str(args.get(3), "profile")
                 .and_then(|s| Profile::parse(&s))
                 .unwrap_or_default();
@@ -157,6 +169,9 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 let opts = render_options(args.get(2))?;
                 if opts.encrypt.is_some() {
                     return Err("pdf_facturx_from_invoice(): encryption is incompatible with PDF/A-3b (Factur-X); drop `password`".to_string());
+                }
+                if opts.pdfa {
+                    return Err("pdf_facturx_from_invoice(): PDF/A is implied by Factur-X; drop the `pdfa` option".to_string());
                 }
                 let profile = opt_str(args.get(2), "profile")
                     .and_then(|s| Profile::parse(&s))
@@ -212,10 +227,14 @@ fn resolve_font_dir(dir: PathBuf) -> PathBuf {
 fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
     let mut dirs = vec![PathBuf::from("font")];
     let mut fetch_images = true;
+    let mut pdfa = false;
     if let Some(Value::Hash(h)) = opts {
         let h = h.borrow();
         if let Some(Value::Bool(b)) = h.get(&HashKey::String("fetch_images".into())) {
             fetch_images = *b;
+        }
+        if let Some(Value::Bool(b)) = h.get(&HashKey::String("pdfa".into())) {
+            pdfa = *b;
         }
         if let Some(Value::Array(arr)) = h.get(&HashKey::String("font_dirs".into())) {
             let provided: Vec<PathBuf> = arr
@@ -289,6 +308,8 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
     // `permissions` (["print","copy","modify","annotate"]).
     let encrypt = build_encrypt_options(opts);
 
+    // `pdfa` is set explicitly (not via `..Default::default()`) so a future
+    // field reorder can't silently drop it.
     Ok(RenderOptions {
         font_dirs: dirs.into_iter().map(resolve_font_dir).collect(),
         fetch_images,
@@ -298,6 +319,7 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
         stationery,
         attachments,
         encrypt,
+        pdfa,
         ..Default::default()
     })
 }
