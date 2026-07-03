@@ -43,7 +43,7 @@ use sha2::{Digest, Sha256};
 use soli_pdf::{FacturxMetadata, Profile, RenderOptions, SignMeta};
 use time::OffsetDateTime;
 
-use crate::interpreter::builtins::pades;
+use crate::interpreter::builtins::{pades, pdf_markdown};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -70,6 +70,37 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             }
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_render() failed: {e}"))?;
+            let pdf = apply_signature(pdf, sign.as_ref())?;
+            Ok(b64(pdf))
+        })),
+    );
+
+    // Markdown → PDF: fold a Markdown document into the layout engine's
+    // template and render it. "Write prose, get a designed PDF." Accepts the
+    // same render options as `pdf_render` (font_dirs, sign, pdfa, …) plus theme
+    // overrides (fonts, fontSize, lineHeight, headingColor, textColor,
+    // linkColor, codeColor).
+    env.define(
+        "pdf_from_markdown".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_from_markdown", None, |args| {
+            if args.is_empty() || args.len() > 2 {
+                return Err(format!(
+                    "pdf_from_markdown() expects 1 or 2 arguments (markdown, options?), got {}",
+                    args.len()
+                ));
+            }
+            let md = arg_string(&args[0], "pdf_from_markdown", "markdown")?;
+            let opts = render_options(args.get(1))?;
+            let sign = build_sign_config(args.get(1))?;
+            if sign.is_some() && opts.encrypt.is_some() {
+                return Err("pdf_from_markdown(): `sign` is incompatible with password protection; drop `password`".to_string());
+            }
+            let theme = theme_from_options(args.get(1));
+            let template = pdf_markdown::markdown_to_template(&md, &theme);
+            let template_json = serde_json::to_vec(&template)
+                .map_err(|e| format!("pdf_from_markdown(): building template: {e}"))?;
+            let pdf = soli_pdf::render_to_bytes(&template_json, b"{}", &opts)
+                .map_err(|e| format!("pdf_from_markdown() failed: {e}"))?;
             let pdf = apply_signature(pdf, sign.as_ref())?;
             Ok(b64(pdf))
         })),
@@ -496,6 +527,58 @@ fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, St
     let cms = pades::build_cms(&digest, &cfg.material, cfg.signing_time, cfg.tsa.as_deref())
         .map_err(|e| format!("sign: {e}"))?;
     soli_pdf::embed_cms(prepared, &cms).map_err(|e| format!("sign: {e}"))
+}
+
+/// Build a Markdown [`pdf_markdown::Theme`] from the `options` hash, overriding
+/// only the keys that are present.
+fn theme_from_options(opts: Option<&Value>) -> pdf_markdown::Theme {
+    let mut t = pdf_markdown::Theme::default();
+    if let Some(s) = opt_str(opts, "headingColor") {
+        t.heading_color = Some(s);
+    }
+    if let Some(s) = opt_str(opts, "textColor") {
+        t.text_color = Some(s);
+    }
+    if let Some(s) = opt_str(opts, "linkColor") {
+        t.link_color = s;
+    }
+    if let Some(s) = opt_str(opts, "codeColor") {
+        t.code_color = s;
+    }
+    if let Some(Value::Hash(h)) = opts {
+        let h = h.borrow();
+        if let Some(n) = h.get(&HashKey::String("fontSize".into())).and_then(opt_num) {
+            t.body_size = n;
+        }
+        if let Some(n) = h
+            .get(&HashKey::String("lineHeight".into()))
+            .and_then(opt_num)
+        {
+            t.line_height = n;
+        }
+        if let Some(Value::Array(arr)) = h.get(&HashKey::String("fonts".into())) {
+            let fonts: Vec<String> = arr
+                .borrow()
+                .iter()
+                .filter_map(|v| match v {
+                    Value::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .collect();
+            if !fonts.is_empty() {
+                t.fonts = fonts;
+            }
+        }
+    }
+    t
+}
+
+fn opt_num(v: &Value) -> Option<f32> {
+    match v {
+        Value::Int(n) => Some(*n as f32),
+        Value::Float(f) => Some(*f as f32),
+        _ => None,
+    }
 }
 
 /// A minimal extension→MIME map for attachments without an explicit `mime`.

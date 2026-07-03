@@ -86,6 +86,26 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 
 **Returns:** String — base64-encoded PDF/A-3b bytes.
 
+### pdf_from_markdown(markdown, options?)
+
+Render a designed PDF straight from a **Markdown** string — *write prose, get a
+PDF*. Headings, paragraphs, **bold**/*italic*/`code`/[links](#)/~~strike~~,
+ordered & unordered (nested) lists, tables, fenced code blocks, blockquotes,
+rules and images all map onto the layout engine's elements. No template to
+author.
+
+```soli
+let md  = slurp("reports/quarterly.md")
+let pdf = pdf_from_markdown(md, { "font_dirs": ["font"] })
+file_write_base64("quarterly.pdf", pdf)
+```
+
+**Parameters:**
+- `markdown` (String) — the Markdown source (CommonMark + tables, strikethrough, task lists).
+- `options` (Hash, optional) — every [Option](#options) from the table below (`font_dirs`, `sign`, `pdfa`, `password`, …) **plus** theme overrides: `fonts` (Array — the font family, default `["titillium"]`), `fontSize` (body size, default 11), `lineHeight` (default 1.45), `headingColor`, `textColor`, `linkColor`, `codeColor` (all hex, no `#`).
+
+**Returns:** String — base64-encoded PDF bytes. Composes with everything else, so `pdf_from_markdown(md, { sign: {…} })` gives a **signed** document from Markdown.
+
 ### Options
 
 | Key | Type | Default | Meaning |

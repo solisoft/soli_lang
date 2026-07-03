@@ -530,6 +530,15 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_from_markdown(markdown, options?) -> String (base64 PDF)
+        self.functions.insert(
+            "pdf_from_markdown".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // String functions
         // split(String, String) -> Array
         self.functions.insert(

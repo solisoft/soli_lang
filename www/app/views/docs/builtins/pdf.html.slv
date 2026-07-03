@@ -208,6 +208,20 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-from-markdown" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_from_markdown(markdown, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render a designed PDF straight from a <strong>Markdown</strong> string &mdash; <em>write prose, get a PDF</em>. Headings, paragraphs, <strong>bold</strong>/<em>italic</em>/<code>code</code>/links/strike, ordered &amp; unordered (nested) lists, tables, fenced code blocks, blockquotes, rules and images map onto the layout engine's elements. No template to author. Composes with everything else &mdash; <code>pdf_from_markdown(md, { sign: {…} })</code> gives a <strong>signed</strong> document from Markdown.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">markdown</code> : <code class="text-orange-400">String</code> &mdash; the Markdown source (CommonMark + tables, strikethrough, task lists).</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; every render option below (<code>font_dirs</code>, <code>sign</code>, <code>pdfa</code>, <code>password</code>&hellip;) plus theme overrides: <code>fonts</code>, <code>fontSize</code>, <code>lineHeight</code>, <code>headingColor</code>, <code>textColor</code>, <code>linkColor</code>, <code>codeColor</code>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; base64-encoded PDF bytes.</div>
+            </div>
+        </section>
+
         <section id="section-options" class="scroll-mt-20 mb-2">
             <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">

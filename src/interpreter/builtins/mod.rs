@@ -75,6 +75,7 @@ pub mod nanoid;
 pub mod pades;
 pub mod pades_tsa;
 pub mod pdf;
+pub mod pdf_markdown;
 pub mod pop3;
 pub mod primitives;
 pub mod rate_limit;
