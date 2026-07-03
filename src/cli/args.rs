@@ -979,13 +979,11 @@ pub fn parse_args() -> Options {
             }
             "build" => {
                 i += 1;
-                if i >= args.len() {
-                    eprintln!("build command requires a folder argument");
-                    print_usage();
-                    process::exit(64);
-                }
-                let folder = args[i].clone();
-                i += 1;
+                // The folder is positional but may appear in any position
+                // relative to the flags (`soli build --protect app` and
+                // `soli build app --protect` both work). Collect the first
+                // non-flag token as the folder.
+                let mut folder: Option<String> = None;
                 let mut output = None;
                 let mut standalone = false;
                 let mut encrypt = false;
@@ -1011,14 +1009,30 @@ pub fn parse_args() -> Options {
                             protect = true;
                             encrypt = true;
                         }
-                        _ => {
-                            eprintln!("Unknown option for build: {}", args[i]);
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option for build: {}", other);
                             print_usage();
                             process::exit(64);
+                        }
+                        other => {
+                            if folder.is_some() {
+                                eprintln!(
+                                    "build takes a single folder argument (got an extra '{}')",
+                                    other
+                                );
+                                print_usage();
+                                process::exit(64);
+                            }
+                            folder = Some(other.to_string());
                         }
                     }
                     i += 1;
                 }
+                let folder = folder.unwrap_or_else(|| {
+                    eprintln!("build command requires a folder argument");
+                    print_usage();
+                    process::exit(64);
+                });
                 options.command = Command::Build {
                     folder,
                     output,
