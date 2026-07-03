@@ -114,10 +114,10 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
             <!-- Feature tour (every element) -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <div class="rounded-lg overflow-hidden border border-white/10 bg-white mb-4">
-                    <img src="/images/docs/pdf/features.png" alt="Four-page feature tour: rich text with underline and strikethrough, a clickable table of contents, graphics and codes, a data-bound table with a repeat block, and three charts" class="w-full h-auto" loading="lazy" />
+                    <img src="/images/docs/pdf/features.png" alt="Twelve-page feature tour: a hero cover with a clickable table of contents, then a chapter per topic — each feature shown as a card with its JSON sample beside the rendered result: paragraphs and spans, graphics and codes, data-bound tables, charts, and layout options" class="w-full h-auto" loading="lazy" />
                 </div>
-                <h3 class="text-lg font-semibold text-white mb-1">Template reference <span class="text-xs font-normal text-teal-300 align-middle">· 5 pages · self-documenting</span></h3>
-                <p class="text-sm text-gray-400">A PDF that documents itself: every block names the element or option that renders it, shows the JSON, and <em>is</em> the result. A branded <strong>hero cover</strong>, numbered section bands, self-labeling paragraph options (<strong>underline</strong>/<strong>strike</strong>/color/italic/mono), a clickable <strong>TOC</strong> (<code>anchor</code>/<code>linkTo</code> + <code>bookmark</code>s), <code>page_break</code>s, a running header with <code>${...}</code> data and <code>Page X/Y</code> tokens, dashed/rounded <code>rect</code>s, both <strong>QR kinds</strong> + two <strong>barcode symbologies</strong>, a <strong>zebra-striped</strong> table with <code>colspan</code>/<code>fill</code>, rich cells + per-table <strong>watermark</strong>, <code>repeat</code>, <code>if</code>/<code>unless</code>, and grouped/<strong>stacked</strong>/line/pie <strong>charts</strong>. Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
+                <h3 class="text-lg font-semibold text-white mb-1">Template reference <span class="text-xs font-normal text-teal-300 align-middle">· 12 pages · self-documenting</span></h3>
+                <p class="text-sm text-gray-400">A PDF that documents itself: a branded <strong>hero cover</strong> with a clickable <strong>table of contents</strong> (<code>anchor</code>/<code>linkTo</code> + <code>#PAGE_OF#</code> real page numbers), then five chapters. Every feature is a <strong>card</strong> — a heading, a one-line description, the <strong>JSON that declares it</strong>, and the result it renders to. Covers paragraph options (<strong>underline</strong>/<strong>strike</strong>/color/italic/mono/justify), <code>spans</code>, lists, dashed/rounded <code>rect</code>s, both <strong>QR kinds</strong> + two <strong>barcode symbologies</strong>, a <strong>zebra-striped</strong> table with <code>colspan</code>/<code>fill</code>, rich cells + per-table <strong>watermark</strong>, <code>repeat</code>, <code>if</code>/<code>unless</code>, grouped/<strong>stacked</strong>/line/pie/<strong>donut</strong> charts, <code>columns</code>, and the <code>${...}</code>/<code>#PAGE#</code> tokens (including the <code>$${</code> literal escape). Try it live in the <a href="/docs/builtins/pdf-playground" class="text-teal-300 hover:underline">playground</a>.</p>
             </div>
             <!-- Code -->
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -225,10 +225,49 @@ end</code></pre>
                         <tr><td class="px-4 py-2"><code>password</code> / <code>owner_password</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Password-protect the PDF (<strong>AES-128</strong>). <code>password</code> opens the document; <code>owner_password</code> lifts restrictions (defaults to <code>password</code>). Incompatible with <code>pdf_facturx*</code> (PDF/A forbids encryption).</td></tr>
                         <tr><td class="px-4 py-2"><code>permissions</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">all</td><td class="px-4 py-2">With a password, the actions the user may take: any of <code>["print","copy","modify","annotate"]</code>. Empty = allow all (open-password only).</td></tr>
                         <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>false</code></td><td class="px-4 py-2"><span class="text-gray-500">(pdf_render / pdf_response)</span> Emit <strong>PDF/A-3b</strong> (archival conformance: sRGB OutputIntent, XMP <code>pdfaid</code>, PDF 1.7) without a Factur-X payload &mdash; for legal-archiving mandates on non-invoice documents. Incompatible with <code>password</code> and tagged templates; <code>pdf_facturx*</code> reject it (already PDF/A). Attachments compose.</td></tr>
+                        <tr><td class="px-4 py-2"><code>sign</code></td><td class="px-4 py-2">Hash</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2"><strong>Digitally sign</strong> the PDF (PAdES) &mdash; see <a href="#section-signatures" class="text-teal-300 hover:underline">Digital signatures</a>. <code>{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }</code>. Works on every builtin, including signed Factur-X e&#8209;invoices. Incompatible with <code>password</code> (a signed PDF must not be encrypted).</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
+    </section>
+
+    <!-- Digital signatures (PAdES) -->
+    <section id="section-signatures" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">Digital signatures <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>sign</code> &middot; PAdES</span></h2>
+        <p class="text-gray-400 mb-4">Pass a <code class="text-amber-400">sign</code> option to <strong>cryptographically sign</strong> the PDF with a detached CMS signature (PAdES baseline, <code>ETSI.CAdES.detached</code>). A reader &mdash; Acrobat, Okular, <code>pdfsig</code> &mdash; can then confirm <em>who</em> issued the document and that it <strong>hasn't been modified since</strong>. Signing is in&#8209;process (no external service) and layers on top of everything else, including Factur-X: emit an invoice that is <strong>archival (PDF/A&#8209;3b), machine&#8209;readable (EN&nbsp;16931) and signed</strong> in one call.</p>
+        <pre data-filename="Sign a PDF"><code class="language-soli text-sm">let pdf = pdf_render(template, data, {
+  sign: {
+    cert: slurp("config/certs/signer.pem"),   # signer certificate (PEM or path)
+    key:  slurp("config/certs/signer.key"),   # private key (PEM or path)
+    reason:   "Invoice issued",
+    location: "Paris, FR",
+    name:     "ACME SARL"
+  }
+})
+
+# The flagship: archival + machine-readable + signed, in one call.
+let pdf = pdf_facturx_from_invoice(template, invoice, {
+  sign: { cert: signer_pem, key: signer_key }
+})</code></pre>
+        <div class="overflow-x-auto mt-4">
+            <table class="min-w-full text-sm text-left border border-stone-700/60 rounded-lg overflow-hidden">
+                <thead class="bg-stone-800/60 text-gray-300"><tr><th class="px-4 py-2">Key</th><th class="px-4 py-2">Required</th><th class="px-4 py-2">Meaning</th></tr></thead>
+                <tbody class="divide-y divide-stone-700/60 text-gray-400">
+                    <tr><td class="px-4 py-2"><code>cert</code></td><td class="px-4 py-2">&#10003;</td><td class="px-4 py-2">The signer's X.509 certificate &mdash; an inline PEM string or an app-root relative path to a PEM/DER file.</td></tr>
+                    <tr><td class="px-4 py-2"><code>key</code></td><td class="px-4 py-2">&#10003;</td><td class="px-4 py-2">The private key: <strong>RSA</strong> (PKCS#1 or PKCS#8) or <strong>EC P&#8209;256</strong> (PKCS#8), PEM/DER. Inline string or path.</td></tr>
+                    <tr><td class="px-4 py-2"><code>chain</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Array of intermediate-certificate PEMs to embed so verifiers can build the trust path.</td></tr>
+                    <tr><td class="px-4 py-2"><code>reason</code> / <code>location</code> / <code>name</code> / <code>contact</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Metadata shown in the reader's signature panel.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-sm text-gray-400 mt-4">Produces a <strong>PAdES-B-B</strong> signature: SHA-256 digest, RSA or ECDSA (P-256), with the standard signed attributes (content-type, message-digest, signing-time, and the ESS <code>signing-certificate-v2</code> that binds the signature to this exact certificate). It covers the whole document except its own signature value, so any later edit invalidates it.</p>
+        <p class="text-sm text-gray-400 mt-3"><strong>Key handling.</strong> Read the certificate and key from files or env &mdash; never from request data &mdash; and keep the private key out of source control. Soli reads the material you pass and never logs it.</p>
+        <ul class="text-sm text-gray-400 mt-3 list-disc list-inside space-y-1">
+            <li><strong>Incompatible with <code>password</code></strong> &mdash; a signed PDF must not be AES-encrypted; choose one.</li>
+            <li>The signer certificate must chain to a root the <em>verifier</em> trusts for a "trusted" badge; a self-signed cert still verifies as <em>valid + unmodified</em>, just untrusted.</li>
+            <li>Currently a single signature, no embedded timestamp (PAdES-B-T / TSA) or long-term-validation (LTV) data &mdash; planned follow-ups.</li>
+        </ul>
     </section>
 
     <!-- Saving / serving -->
@@ -327,7 +366,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
         <p class="text-gray-400 mb-3">All five keys are optional. Lengths are in points (A4 = 595&times;842&nbsp;pt; 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt).</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.page</code> &mdash; a preset (<code>a4</code>, <code>letter</code>, <code>legal</code>, <code>a5</code>, <code>a3</code>) or a custom <code>{ "width": …, "height": … }</code> in points; <code class="text-amber-400">options.orientation</code>: <code>"landscape"</code> swaps width/height. Defaults to A4 portrait.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.background</code> &mdash; a page background fill (hex, no <code>#</code>) painted behind every page, beneath any watermark and content. Omit for white paper.</p>
-        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.backgroundImage</code> &mdash; a full-page background image <code>{ "src", "pages"? }</code> (a cover photo / branded page). Drawn stretched to the page, above the <code>background</code> fill and below the watermark/content; <code>pages</code> filters like the watermark.</p>
+        <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.backgroundImage</code> &mdash; a full-page background image <code>{ "src", "pages"?, "opacity"? }</code> (a cover photo / branded page). Drawn stretched to the page, above the <code>background</code> fill and below the watermark/content; <code>pages</code> filters like the watermark. <code>opacity</code> (0&ndash;1, default 1) fades it into a soft wash &mdash; e.g. <code>0.15</code> for a faint stationery tint behind the content.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.margins</code> &mdash; page margins in points: a single number for all four sides, or an object overriding individual sides (unset sides keep the 20&nbsp;mm default). The <strong>top</strong> margin is the gap above the header, the <strong>bottom</strong> margin the gap below the footer; <code>header_height</code> reserves the header band below the top margin. 1&nbsp;mm&nbsp;&approx;&nbsp;2.835&nbsp;pt.</p>
         <p class="text-sm text-gray-400 mt-3"><code class="text-amber-400">options.watermark</code> draws a diagonal stamp (e.g. <code>PAID</code>, <code>DRAFT</code>) &mdash; centered behind the content of every page by default, with layering, position and page-scope all configurable. Fields: <code>text</code> (required), <code>angle</code> (deg, default&nbsp;45), <code>color</code> (hex, default light grey), <code>fontSize</code> (pt, default&nbsp;96), <code>fontWeight</code> (default&nbsp;bold), <code>front</code> (draw <strong>on top</strong> so panels/images can't hide it; default&nbsp;false), <code>x</code>/<code>y</code> (explicit center, pt; default page center), <code>anchor</code> (vertical hint when <code>y</code> is unset: <code>top</code>/<code>center</code>/<code>bottom</code>), and <code>pages</code> (<code>"all"</code>/<code>"first"</code>/<code>"last"</code> or a list like <code>[1, 3]</code>).</p>
         <pre data-filename="Overlay on the first page only" class="mt-2"><code class="language-json text-sm">"options": { "watermark": { "text": "PAID", "front": true, "anchor": "top", "pages": "first" } }</code></pre>
@@ -521,6 +560,7 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Interpolation</h3>
         <div class="text-sm text-gray-400 space-y-1 mb-2">
             <div><code class="text-amber-400">${a.b.c}</code> &mdash; dotted path into the data document. Missing paths render empty (with a warning).</div>
+            <div><code class="text-amber-400">$${...}</code> &mdash; a <strong>literal</strong> <code>${...}</code> (double the <code>$</code>): printed verbatim instead of interpolated. Use it to show template syntax in the output itself (a code sample, documentation), or wherever a <code>$</code> legitimately precedes a <code>{</code>. Works in both <code>value</code> and <code>spans</code> text.</div>
             <div>Inside a data-bound table, <code class="text-amber-400">${field}</code> resolves against the current row item first, then the root.</div>
             <div><code class="text-amber-400">#PAGE#</code> / <code class="text-amber-400">#PAGES#</code> (alias <code class="text-amber-400">#TOTAL_PAGE#</code>) &mdash; page tokens, substituted after pagination (alignment is recomputed). They work in <strong>footer, header, and body</strong> paragraphs (<code>value</code> form; a <code>spans</code> paragraph renders them literally).</div>
             <div><code class="text-amber-400">#PAGE_OF:anchor#</code> &mdash; the 1-based page number of the paragraph carrying that <code>anchor</code>. Combine with <code>linkTo</code> for a <strong>table of contents with real page numbers</strong>. Unknown anchors render empty with a warning.</div>

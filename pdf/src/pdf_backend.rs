@@ -454,8 +454,13 @@ fn emit_op(
                 out.push(Op::LinkAnnotation {
                     link: LinkAnnotation::new(
                         PpRect::from_xywh(Pt(*x), Pt(bottom), Pt(*w), Pt(*h)),
+                        // Anchor page indices are 0-based in the IR; printpdf's
+                        // Destination page is 1-based (it does page - 1 to index),
+                        // so add 1 — otherwise every internal jump past page 1
+                        // lands one page short (the displayed #PAGE_OF# number is
+                        // right, but the click went one page early).
                         Actions::go_to(Destination::Xyz {
-                            page: target_page,
+                            page: target_page + 1,
                             left: Some(0.0),
                             top: Some(page.to_pdf_y(anchor_y)),
                             zoom: None,

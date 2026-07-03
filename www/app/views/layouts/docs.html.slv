@@ -658,8 +658,14 @@
             block.classList.add('language-xml');
         });
 
+        // Reset the marker only on blocks whose content is actually fresh (a
+        // livereload morph re-injects plain text but can keep the attribute).
+        // A block still carrying hljs spans IS highlighted — re-running hljs on
+        // it nests the markup and fires its "unescaped HTML" security warning.
         document.querySelectorAll('code[data-highlighted]').forEach(function(block) {
-            block.removeAttribute('data-highlighted');
+            if (!block.querySelector('span[class*="hljs"]')) {
+                block.removeAttribute('data-highlighted');
+            }
         });
 
         hljs.highlightAll();
@@ -672,15 +678,31 @@
     // re-highlights code and re-selects the active menu item on every visit —
     // `DOMContentLoaded` only fires once per document and never again after a
     // swap, which was the original breakage.
-    initDocPage();
+    // Once-per-body guard: on a nav swap BOTH paths fire — this re-executed
+    // inline script AND the persistent `soli:load` listener below — which
+    // double-ran initDocPage (double highlight pass = hljs "unescaped HTML"
+    // warnings on every navigation). The swap replaces <body>, so stamping the
+    // body runs init exactly once per navigation while keeping `soli:load` as
+    // a real fallback for any swap path that doesn't re-run scripts.
+    function initDocPageOnce() {
+        if (document.body.hasAttribute('data-docs-init')) return;
+        document.body.setAttribute('data-docs-init', '');
+        initDocPage();
+    }
+
+    initDocPageOnce();
 
     // Bind document-level listeners once; the re-run would otherwise stack a new
     // one per visit. `soli:load` is a belt-and-suspenders for any swap path that
-    // doesn't re-run scripts; `livereload:update` covers dev hot reloads.
+    // doesn't re-run scripts; `livereload:update` covers dev hot reloads (the
+    // morph keeps the same <body>, so clear the stamp to force a re-init).
     if (!window.__soliDocsListenersBound) {
         window.__soliDocsListenersBound = true;
-        document.addEventListener('soli:load', initDocPage);
-        document.addEventListener('livereload:update', initDocPage);
+        document.addEventListener('soli:load', initDocPageOnce);
+        document.addEventListener('livereload:update', function () {
+            document.body.removeAttribute('data-docs-init');
+            initDocPageOnce();
+        });
     }
     </script>
 </body>

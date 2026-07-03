@@ -291,6 +291,43 @@ fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
     })
 }
 
+/// A copy of `img` with its alpha multiplied by `opacity` (clamped to 0.0–1.0),
+/// promoting Gray/RGB sources to RGBA so the backend composites them
+/// semi-transparently over whatever is behind. Used to fade a `backgroundImage`
+/// into a soft wash. `source_key` is dropped so the faded copy never shares the
+/// original's cached XObject.
+pub fn faded(img: &ImageData, opacity: f32) -> ImageData {
+    let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u16;
+    let scaled = |orig: u16| ((orig * alpha) / 255) as u8;
+    let n = img.width_px * img.height_px;
+    let src = &img.pixels;
+    let mut pixels = Vec::with_capacity(n * 4);
+    match img.format {
+        PixelFormat::Gray8 => {
+            for &g in src.iter().take(n) {
+                pixels.extend_from_slice(&[g, g, g, scaled(255)]);
+            }
+        }
+        PixelFormat::Rgb8 => {
+            for px in src.chunks_exact(3).take(n) {
+                pixels.extend_from_slice(&[px[0], px[1], px[2], scaled(255)]);
+            }
+        }
+        PixelFormat::Rgba8 => {
+            for px in src.chunks_exact(4).take(n) {
+                pixels.extend_from_slice(&[px[0], px[1], px[2], scaled(px[3] as u16)]);
+            }
+        }
+    }
+    ImageData {
+        width_px: img.width_px,
+        height_px: img.height_px,
+        format: PixelFormat::Rgba8,
+        pixels,
+        source_key: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,6 +371,36 @@ mod tests {
             &[],
         );
         assert!(e.is_err());
+    }
+
+    #[test]
+    fn faded_scales_alpha_and_promotes_to_rgba() {
+        // RGB source: colours kept, a fresh alpha = round(255 * opacity).
+        let rgb = ImageData {
+            width_px: 1,
+            height_px: 1,
+            format: PixelFormat::Rgb8,
+            pixels: vec![10, 20, 30],
+            source_key: Some(7),
+        };
+        let f = faded(&rgb, 0.5);
+        assert_eq!(f.format, PixelFormat::Rgba8);
+        assert_eq!(f.pixels, vec![10, 20, 30, 128]);
+        assert_eq!(f.source_key, None, "faded copy drops the cache key");
+
+        // RGBA source: existing alpha is multiplied by opacity.
+        let rgba = ImageData {
+            width_px: 1,
+            height_px: 1,
+            format: PixelFormat::Rgba8,
+            pixels: vec![10, 20, 30, 200],
+            source_key: None,
+        };
+        assert_eq!(faded(&rgba, 0.5).pixels, vec![10, 20, 30, 100]);
+
+        // Opacity is clamped to [0, 1].
+        assert_eq!(faded(&rgb, 2.0).pixels[3], 255);
+        assert_eq!(faded(&rgb, -1.0).pixels[3], 0);
     }
 
     #[test]

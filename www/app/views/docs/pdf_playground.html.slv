@@ -25,7 +25,7 @@
         <button id="pg-preset-report" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Report <span class="opacity-60">(annual · 5 pages)</span></button>
         <button id="pg-preset-graphics" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Graphics <span class="opacity-60">(SVG)</span></button>
         <button id="pg-preset-dynamic" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Dynamic <span class="opacity-60">(repeat · if)</span></button>
-        <button id="pg-preset-features" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Feature tour <span class="opacity-60">(everything · 5 pages)</span></button>
+        <button id="pg-preset-features" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Feature tour <span class="opacity-60">(everything · 12 pages)</span></button>
         <div class="flex-1"></div>
         <span id="pg-status" class="text-sm font-mono text-gray-400">Loading editor…</span>
         <button id="pg-render" type="button" style="background-color:#0F766E;color:#ffffff" class="px-4 py-1.5 text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity">Render <span class="opacity-70">⌘↵</span></button>
@@ -125,7 +125,21 @@
     clearTimeout(timer); setStatus("…"); timer = setTimeout(render, 650);
   }
 
+  // Remember the last-chosen sample so a reload (or instant-nav revisit) reopens
+  // it instead of snapping back to the default. Best-effort — private-mode
+  // localStorage throws.
+  var PRESET_KEY = "pg-sample";
+  function rememberPreset(name) { try { localStorage.setItem(PRESET_KEY, name); } catch (e) {} }
+  function initialPreset() {
+    try {
+      var saved = localStorage.getItem(PRESET_KEY);
+      if (PRESETS.indexOf(saved) >= 0) return saved;
+    } catch (e) {}
+    return "invoice";
+  }
+
   function loadPreset(name) {
+    rememberPreset(name);
     setActivePreset(name);
     setStatus("Loading " + name + "…");
     Promise.all([
@@ -147,10 +161,18 @@
     var el = document.getElementById(id);
     el.innerHTML = "";
     // A stable model URI lets the JSON schema bind to the template editor via
-    // fileMatch (see registerTemplateSchema).
-    var model = modelUri
-      ? monaco.editor.createModel(value || "", "json", monaco.Uri.parse(modelUri))
-      : null;
+    // fileMatch (see registerTemplateSchema). Monaco keeps models globally by
+    // URI, and instant-nav re-runs this script on every <body> swap while the
+    // previous visit's model is still registered — so createModel() would throw
+    // "model already exists" and abort startup (the editor never appeared until
+    // a full reload). Dispose any stale model for this URI, then create fresh.
+    var model = null;
+    if (modelUri) {
+      var uri = monaco.Uri.parse(modelUri);
+      var stale = monaco.editor.getModel(uri);
+      if (stale) { try { stale.dispose(); } catch (e) {} }
+      model = monaco.editor.createModel(value || "", "json", uri);
+    }
     return monaco.editor.create(el, {
       value: model ? undefined : (value || ""), model: model, language: "json", theme: "vs-dark",
       automaticLayout: true, minimap: { enabled: false }, fontSize: 12.5,
@@ -179,6 +201,60 @@
       .catch(function () {});
   }
 
+  // nav.js's head-merge strips stylesheets the incoming page doesn't declare —
+  // including the CSS Monaco injected on first load (the editor.main.css link
+  // and the generated .monaco-colors theme <style>). Monaco never re-injects
+  // them for an already-loaded module, so a revisit built structurally-correct
+  // but UNSTYLED (invisible) editors. Stash those elements after each build and
+  // re-attach any a later visit finds detached — same element objects, so
+  // Monaco's theme service keeps writing into them.
+  function restoreMonacoCss() {
+    (window.__monacoHeadEls || []).forEach(function (el) {
+      if (!el.isConnected) document.head.appendChild(el);
+    });
+  }
+  function stashMonacoCss() {
+    var els = Array.prototype.slice.call(
+      document.querySelectorAll('head link[href*="monaco-editor"], head style')
+    ).filter(function (el) {
+      return el.tagName === "LINK" ||
+        /monaco/.test(el.className || "") ||
+        (el.textContent || "").indexOf(".monaco") !== -1;
+    });
+    var stash = window.__monacoHeadEls || [];
+    els.forEach(function (el) { if (stash.indexOf(el) === -1) stash.push(el); });
+    window.__monacoHeadEls = stash;
+  }
+
+  // Create the editors, wire the buttons, load the initial sample. Called once
+  // Monaco is available — directly on a revisit, or from the require() callback
+  // on the first load.
+  function buildEditors() {
+    restoreMonacoCss();
+    registerTemplateSchema();
+    // Instant-nav re-runs this script per visit; dispose the previous visit's
+    // editors so they don't accumulate (their models are disposed+recreated by
+    // URI in makeEditor).
+    (window.__pgEditors || []).forEach(function (ed) { try { ed.dispose(); } catch (e) {} });
+    ED.template = makeEditor("pg-template-editor", "", "inmemory://model/pg-template.json");
+    ED.data = makeEditor("pg-data-editor", "", "inmemory://model/pg-data.json");
+    window.__pgEditors = [ED.template, ED.data];
+    ED.template.onDidChangeModelContent(schedule);
+    ED.data.onDidChangeModelContent(schedule);
+    PRESETS.forEach(function (n) {
+      var b = document.getElementById("pg-preset-" + n);
+      if (b) b.addEventListener("click", function () { loadPreset(n); });
+    });
+    var rb = document.getElementById("pg-render");
+    if (rb) rb.addEventListener("click", render);
+    ED.template.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
+    ED.data.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
+    // Editor creation just (re-)injected Monaco's dynamic styles — stash them
+    // for the next instant-nav revisit (see restoreMonacoCss).
+    stashMonacoCss();
+    loadPreset(initialPreset());
+  }
+
   function startMonaco() {
     window.MonacoEnvironment = {
       getWorkerUrl: function () {
@@ -187,23 +263,14 @@
         return "data:text/javascript;charset=utf-8," + encodeURIComponent(src);
       }
     };
+    // Monaco already loaded in this tab (a previous playground visit): build the
+    // editors directly. AMD require() does NOT reliably re-invoke its callback
+    // for an already-loaded module, so going through it again left the editors
+    // uncreated on the second visit ("works only once"). Only use require() the
+    // first time, to actually download editor.main.
+    if (window.monaco && window.monaco.editor) { buildEditors(); return; }
     window.require.config({ paths: { vs: MONACO_BASE + "vs" } });
-    window.require(["vs/editor/editor.main"], function () {
-      registerTemplateSchema();
-      ED.template = makeEditor("pg-template-editor", "", "inmemory://model/pg-template.json");
-      ED.data = makeEditor("pg-data-editor", "", "inmemory://model/pg-data.json");
-      ED.template.onDidChangeModelContent(schedule);
-      ED.data.onDidChangeModelContent(schedule);
-      PRESETS.forEach(function (n) {
-        var b = document.getElementById("pg-preset-" + n);
-        if (b) b.addEventListener("click", function () { loadPreset(n); });
-      });
-      var rb = document.getElementById("pg-render");
-      if (rb) rb.addEventListener("click", render);
-      ED.template.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
-      ED.data.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, render);
-      loadPreset("invoice");
-    });
+    window.require(["vs/editor/editor.main"], buildEditors);
   }
 
   function ensureMonaco() {

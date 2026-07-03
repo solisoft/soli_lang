@@ -99,6 +99,63 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 | `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `pdf_facturx*`** — PDF/A forbids encryption. |
 | `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
 | `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption) and with tagged templates; `pdf_facturx*` reject it (they are already PDF/A). Attachments compose. |
+| `sign` | Hash | — | **Digitally sign** the PDF (PAdES) — see [Digital signatures](#digital-signatures-pades). `{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }`. Works on `pdf_render`, `pdf_response`, and `pdf_facturx*` (signed e-invoices). Incompatible with `password` (a signed PDF must not be encrypted). |
+
+---
+
+## Digital signatures (PAdES)
+
+Pass a `sign` option to **cryptographically sign** the rendered PDF with a
+detached CMS signature (PAdES baseline, `ETSI.CAdES.detached`). A reader (Adobe
+Acrobat, Okular, `pdfsig`) can then confirm *who* issued the document and that it
+**hasn't been modified since**. The signature is built in-process — no external
+signing service — and layers on top of every other feature, including Factur-X,
+so you can emit an invoice that is **archival (PDF/A-3b), machine-readable
+(EN 16931 CII XML) and signed** in a single call.
+
+```soli
+# Sign a plain PDF.
+pdf = pdf_render(template, data, {
+  sign: {
+    cert: slurp("config/certs/signer.pem"),   # signer certificate (PEM or path)
+    key:  slurp("config/certs/signer.key"),   # private key (PEM or path)
+    reason:   "Invoice issued",
+    location: "Paris, FR",
+    name:     "ACME SARL",
+    contact:  "billing@acme.fr"
+  }
+})
+
+# Sign a Factur-X e-invoice — the flagship: archival + machine-readable + signed.
+pdf = pdf_facturx_from_invoice(template, invoice, {
+  sign: { cert: signer_pem, key: signer_key }
+})
+```
+
+**`sign` keys**
+
+| Key | Required | Meaning |
+|---|---|---|
+| `cert` | ✓ | The signer's X.509 certificate. An inline PEM string, or an app-root relative path to a PEM/DER file. |
+| `key` | ✓ | The private key. **RSA** (PKCS#1 or PKCS#8) or **EC P-256** (PKCS#8) PEM/DER. Inline string or path. |
+| `chain` | — | Array of intermediate-certificate PEMs to embed so verifiers can build the trust path. |
+| `reason` / `location` / `name` / `contact` | — | Human-facing metadata shown in the reader's signature panel. |
+
+**What it produces.** A **PAdES-B-B** signature: SHA-256 digest, RSA or ECDSA
+(P-256), with the standard signed attributes (content-type, message-digest,
+signing-time, and the ESS `signing-certificate-v2` that binds the signature to
+this exact certificate). The signature covers the whole document except its own
+signature value, so any later edit invalidates it.
+
+**Key handling.** Read the certificate and key from files or env — never from
+request data — and keep the private key out of source control. Soli reads the
+material you pass and never logs it.
+
+**Notes & limits.**
+
+- **Incompatible with `password`** — a signed PDF must not be AES-encrypted; set one or the other.
+- The signer certificate must chain to a root the *verifier* trusts for a "trusted" badge; a self-signed cert still verifies as *valid + unmodified*, just untrusted.
+- Currently a single signature, no embedded timestamp (PAdES-B-T / TSA) or long-term-validation (LTV) data — those are planned follow-ups.
 
 ---
 
@@ -198,7 +255,7 @@ A template has five top-level keys:
 | `page` | string \| object | `a4` | Page size: a preset (`a4`/`letter`/`legal`/`a5`/`a3`) or `{ width, height }` in pt. |
 | `orientation` | string | `portrait` | `landscape` swaps width/height. |
 | `background` | string | — | Page background fill (hex, no `#`) painted behind every page, beneath any watermark and content. Omit for white paper. |
-| `backgroundImage` | object | — | A full-page background image `{ "src": …, "pages"?: "all"/"first"/"last"/[…] }` — a cover photo or branded page. Drawn stretched to the page, above the `background` fill and below the watermark/content. `src` is any `image` source (URL/`file://`/`data:`). |
+| `backgroundImage` | object | — | A full-page background image `{ "src": …, "pages"?: "all"/"first"/"last"/[…], "opacity"?: 0–1 }` — a cover photo or branded page. Drawn stretched to the page, above the `background` fill and below the watermark/content. `src` is any `image` source (URL/`file://`/`data:`). `opacity` (default `1`) fades it into a soft wash — set e.g. `0.15` for a faint stationery tint behind the content (clamped to `0`–`1`). |
 | `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
 | `tagged` | bool | `false` | Emit a **tagged (accessible)** PDF — see [Accessible / tagged output](#accessible--tagged-output). Incompatible with Factur-X. |
 | `lang` | string | `en-US` | BCP-47 document language (e.g. `fr-FR`) written to the catalog. Used with `tagged`. |
@@ -472,6 +529,7 @@ A cell is a simple **text** cell, or a **rich** cell whose `content` stacks mult
 ### Interpolation
 
 - `${a.b.c}` — dotted path into the data; missing paths render empty (with a warning).
+- `$${...}` — a **literal** `${...}` (double the `$`): the token is printed verbatim instead of interpolated. Use it to show template syntax in the output itself (a code sample, documentation) or wherever a `$` legitimately precedes a `{`. Works in both `value` and `spans` text.
 - Inside a data-bound table, `${field}` resolves against the row item first, then the root.
 - `#PAGE#` / `#PAGES#` (alias `#TOTAL_PAGE#`) — page tokens, substituted after pagination. They work in **footer, header, and body** paragraphs (`value` form; a `spans` paragraph renders them literally).
 - `#PAGE_OF:anchor#` — the 1-based page number of the paragraph carrying `"anchor": "…"`. Combine with `linkTo` for a **table of contents with real page numbers**: `{ "value": "Charts ..... p. #PAGE_OF:sec-charts#", "options": { "linkTo": "sec-charts" } }`. An unknown anchor renders empty with a warning.

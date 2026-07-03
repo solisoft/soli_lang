@@ -148,6 +148,12 @@
             },
             "pages": {
               "$ref": "#/definitions/pageFilter"
+            },
+            "opacity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Image opacity, 0 (invisible) to 1 (opaque, default). Below 1 fades it into a faint wash."
             }
           }
         },

@@ -19,13 +19,38 @@ use crate::interpolate::{has_page_tokens, interpolate};
 use crate::template::{
     Alignment, BarcodeEl, Cell, CellContent, CellStyle, ChartEl, ColumnsEl, Conditional, Element,
     EllipseEl, FontWeight, HrEl, LineEl, ListEl, ListItem, PageFilter, PageSpec, Paragraph, QrEl,
-    RectEl, RepeatEl, StyledSpan, Table, TableHeaderStyle, Template, VAlign, Watermark,
+    RectEl, RepeatEl, StyledSpan, Table, TableHeaderStyle, Template, TextOptions, VAlign,
+    Watermark,
 };
 use crate::text::{align_x, layout_styled_lines, line_height, wrap, StyledSeg, LINE_HEIGHT_FACTOR};
 use crate::RenderOptions;
 
 const DEFAULT_CELL_FONT_SIZE: f32 = 10.0;
 const FOOTER_PADDING: f32 = 6.0;
+
+/// Merge a parent list's text styling into a child (nested) list: any styling
+/// field the child left at its default is inherited from the parent, so a
+/// sublist doesn't jump back to the 12 pt / black default when its parent set a
+/// different size or colour. Structural fields (bookmark, anchor, spacing, …)
+/// are never inherited — only the visual styling below.
+fn inherit_text_options(parent: &TextOptions, child: &TextOptions) -> TextOptions {
+    let default_size = TextOptions::default().font_size;
+    let mut out = child.clone();
+    if out.font_size == default_size {
+        out.font_size = parent.font_size;
+    }
+    if matches!(out.font_weight, FontWeight::Normal) {
+        out.font_weight = parent.font_weight;
+    }
+    if matches!(out.alignment, Alignment::Left) {
+        out.alignment = parent.alignment;
+    }
+    out.italic = out.italic || parent.italic;
+    out.mono = out.mono || parent.mono;
+    out.color = out.color.or_else(|| parent.color.clone());
+    out.line_height = out.line_height.or(parent.line_height);
+    out
+}
 
 /// A resolved table column.
 #[derive(Clone, Copy)]
@@ -248,8 +273,15 @@ impl<'a> Engine<'a> {
         // `self.images` before layout; the op itself is inserted per page in a
         // post-pass (the `pages` filter needs the final page count).
         let bg_image = template.options.background_image.as_ref().and_then(|bg| {
-            self.intern_image(&bg.src)
-                .map(|idx| (idx, bg.pages.clone()))
+            self.intern_image(&bg.src).map(|idx| {
+                // A sub-1.0 opacity bakes a faded copy (alpha × opacity) so the
+                // existing RGBA→SMask path composites it as a faint wash.
+                let idx = match bg.opacity {
+                    Some(o) if o < 1.0 => self.intern_faded_image(idx, o),
+                    _ => idx,
+                };
+                (idx, bg.pages.clone())
+            })
         });
 
         self.begin_page(template, &root);
@@ -905,7 +937,7 @@ impl<'a> Engine<'a> {
         // Region-relative indent, so restoring the left edge after a column hop
         // lands in the correct column rather than the original one.
         let left_off = left_base - self.region_left();
-        self.render_list(list, root, template, left_base);
+        self.render_list(list, root, template, left_base, &list.options);
         // Each item body advanced cursor.y; restore the left edge for siblings.
         self.cursor.x = self.region_left() + left_off;
         // Block spacing below the whole list (items use `ListEl::spacing`).
@@ -916,13 +948,24 @@ impl<'a> Engine<'a> {
     /// in a left gutter and its body in the column to the right (reusing the
     /// paragraph machinery via a temporary cursor shift); a nested sublist
     /// recurses one level deeper.
-    fn render_list(&mut self, list: &ListEl, root: &Resolver, template: &Template, left_base: f32) {
+    fn render_list(
+        &mut self,
+        list: &ListEl,
+        root: &Resolver,
+        template: &Template,
+        left_base: f32,
+        inherited: &TextOptions,
+    ) {
         if list.items.is_empty() {
             return;
         }
-        let size = list.options.font_size;
-        let weight = list.options.font_weight;
-        let lh = size * list.options.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
+        // A sublist inherits the parent list's text styling for anything it does
+        // not set itself, so a nested list stays at the parent's size/colour
+        // instead of snapping back to the 12 pt default.
+        let opts = inherit_text_options(inherited, &list.options);
+        let size = opts.font_size;
+        let weight = opts.font_weight;
+        let lh = size * opts.line_height.unwrap_or(LINE_HEIGHT_FACTOR);
         let indent = if list.indent > 0.0 { list.indent } else { 18.0 };
         let gutter = self.list_marker_gutter(list, size, weight);
         // Marker/body x are region-relative so a column hop mid-list keeps the
@@ -930,7 +973,7 @@ impl<'a> Engine<'a> {
         // from the region left).
         let base_off = left_base - self.region_left();
         // Markers follow the list's text color (default black), matching body.
-        let color = color::parse_hex_or(list.options.color.as_deref(), Rgb::BLACK);
+        let color = color::parse_hex_or(opts.color.as_deref(), Rgb::BLACK);
         let mut counter = list.start;
 
         for item in &list.items {
@@ -962,17 +1005,17 @@ impl<'a> Engine<'a> {
                     color,
                     None,
                     None,
-                    list.options.italic,
-                    list.options.mono,
+                    opts.italic,
+                    opts.mono,
                     false,
                     false,
                     false,
                 );
 
-                // Item bodies reuse the list's text options, but block `spacing`
-                // belongs to the whole list (applied once in `list()`), not to
-                // every item — items are spaced by `ListEl::spacing`.
-                let mut item_options = list.options.clone();
+                // Item bodies reuse the list's (inherited) text options, but block
+                // `spacing` belongs to the whole list (applied once in `list()`),
+                // not to every item — items are spaced by `ListEl::spacing`.
+                let mut item_options = opts.clone();
                 item_options.spacing = None;
                 let para = Paragraph {
                     value: text.unwrap_or_default(),
@@ -992,7 +1035,7 @@ impl<'a> Engine<'a> {
                 // Nested list indents from this level's body column, region-
                 // relative so it survives a column hop just like the markers.
                 let nested_left = self.region_left() + base_off + indent + gutter;
-                self.render_list(nested, root, template, nested_left);
+                self.render_list(nested, root, template, nested_left, &opts);
             }
             if list.spacing > 0.0 {
                 self.cursor.y += list.spacing;
@@ -1843,6 +1886,14 @@ impl<'a> Engine<'a> {
         };
         self.image_cache.insert(src.to_string(), idx);
         idx
+    }
+
+    /// Intern a faded (alpha × `opacity`) copy of an already-interned image and
+    /// return its index. Not cached — it is specific to one background element.
+    fn intern_faded_image(&mut self, idx: usize, opacity: f32) -> usize {
+        let faded = images::faded(&self.images[idx], opacity);
+        self.images.push(std::sync::Arc::new(faded));
+        self.images.len() - 1
     }
 
     // --- tables ---

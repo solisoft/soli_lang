@@ -4,7 +4,10 @@ use crate::data::Resolver;
 use crate::error::RenderWarning;
 
 /// Replace every `${path}` token in `input` with its resolved value. Unresolved
-/// paths are replaced with an empty string and recorded as a warning.
+/// paths are replaced with an empty string and recorded as a warning. A literal
+/// `${` is written `$${` (double the `$`) — the escape passes the `${` through
+/// verbatim instead of interpolating, so a template can show its own syntax
+/// (e.g. a code sample, or a `$` that legitimately precedes a `{`).
 pub fn interpolate(input: &str, resolver: &Resolver, warnings: &mut Vec<RenderWarning>) -> String {
     if !input.contains("${") {
         return input.to_string();
@@ -13,6 +16,13 @@ pub fn interpolate(input: &str, resolver: &Resolver, warnings: &mut Vec<RenderWa
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
+        // Escape: `$${` renders a literal `${` (checked before the token start
+        // so a doubled `$` always wins over interpolation).
+        if bytes[i] == b'$' && i + 2 < bytes.len() && bytes[i + 1] == b'$' && bytes[i + 2] == b'{' {
+            out.push_str("${");
+            i += 3;
+            continue;
+        }
         if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
             if let Some(end) = find_close(input, i + 2) {
                 let path = input[i + 2..end].trim();
@@ -113,6 +123,22 @@ mod tests {
         let mut w = Vec::new();
         assert_eq!(interpolate("[${gone}]", &r, &mut w), "[]");
         assert_eq!(w.len(), 1);
+    }
+
+    #[test]
+    fn double_dollar_escapes_to_literal() {
+        let d = DataDocument::parse(br#"{"data":{"name":"Ada"}}"#).unwrap();
+        let r = d.resolver();
+        let mut w = Vec::new();
+        // `$${name}` passes through as a literal `${name}` — no lookup, no warning.
+        assert_eq!(
+            interpolate(r#"text: "$${name}""#, &r, &mut w),
+            r#"text: "${name}""#
+        );
+        assert!(w.is_empty());
+        // A real token beside an escaped one still resolves.
+        assert_eq!(interpolate("$${a} and ${name}", &r, &mut w), "${a} and Ada");
+        assert!(w.is_empty());
     }
 
     #[test]

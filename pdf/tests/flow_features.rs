@@ -437,3 +437,103 @@ fn default_title_stays_invoice() {
         "unset metadata keeps the historical default title"
     );
 }
+
+// --- nested list inherits the parent's text styling -----------------------------------
+
+#[test]
+fn nested_list_inherits_parent_font_size() {
+    // A sublist with no options of its own must render at the parent list's
+    // size, not snap back to the 12 pt default (which made sub-items look
+    // bigger than their parents).
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "list", "options": { "fontSize": 10 }, "items": [
+            "Alpha",
+            { "text": "Beta", "list": { "items": ["Gamma"] } }
+        ] }
+    ] }"#;
+    let (doc, _) = render(tmpl, b"{}");
+    let sized: Vec<(String, f32)> = doc.pages[0]
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text(td) => {
+                let text: String = td.pieces.iter().map(|p| p.text.as_str()).collect();
+                Some((text, td.size))
+            }
+            _ => None,
+        })
+        .collect();
+    let size_of = |needle: &str| {
+        sized
+            .iter()
+            .find(|(t, _)| t.contains(needle))
+            .map(|(_, s)| *s)
+    };
+    let parent = size_of("Alpha").expect("parent item line");
+    let child = size_of("Gamma").expect("nested item line");
+    assert!(
+        (parent - 10.0).abs() < 0.01,
+        "parent item at 10 pt, got {parent}"
+    );
+    assert!(
+        (child - parent).abs() < 0.01,
+        "nested item inherits the parent's 10 pt (not the 12 pt default), got {child}"
+    );
+}
+
+// --- linkTo jumps to the anchor's page (printpdf Destination is 1-based) ---------------
+
+/// The bytes between the first `start` and the next `end` marker.
+fn slice_between<'a>(hay: &'a [u8], start: &[u8], end: &[u8]) -> Option<&'a [u8]> {
+    let s = hay.windows(start.len()).position(|w| w == start)? + start.len();
+    let rest = &hay[s..];
+    let e = rest.windows(end.len()).position(|w| w == end)?;
+    Some(&rest[..e])
+}
+
+/// The object ids `N` in each `N 0 R` indirect reference inside `bytes`.
+fn obj_refs(bytes: &[u8]) -> Vec<u32> {
+    let s = String::from_utf8_lossy(bytes);
+    let mut out = Vec::new();
+    for (i, _) in s.match_indices(" 0 R") {
+        let head = &s[..i];
+        let start = head
+            .rfind(|c: char| !c.is_ascii_digit())
+            .map(|p| p + 1)
+            .unwrap_or(0);
+        if let Ok(n) = head[start..].parse() {
+            out.push(n);
+        }
+    }
+    out
+}
+
+#[test]
+fn linkto_jumps_to_the_anchor_page() {
+    // A linkTo on page 1 points at an anchor on page 3. printpdf's Destination
+    // page is 1-based (it does page - 1 to index the page list), so passing the
+    // raw 0-based index landed the jump one page short — the #PAGE_OF# number
+    // said 3 but the click went to page 2. Regression guard.
+    let tmpl = br#"{ "fonts": ["titillium"], "content": [
+        { "type": "paragraph", "value": "Go", "options": { "linkTo": "c3" } },
+        { "type": "page_break" },
+        { "type": "paragraph", "value": "two" },
+        { "type": "page_break" },
+        { "type": "paragraph", "value": "three", "options": { "anchor": "c3" } }
+    ] }"#;
+    let pdf = render_to_bytes(tmpl, b"{}", &opts()).expect("render");
+
+    // Page objects in reading order, from the Pages tree /Kids array.
+    let kids = slice_between(&pdf, b"/Kids[", b"]").expect("kids array");
+    let pages = obj_refs(kids);
+    assert_eq!(pages.len(), 3, "three page objects");
+
+    // The GoTo link's destination object id.
+    let dest = slice_between(&pdf, b"/D[", b"/XYZ").expect("GoTo destination");
+    let target = obj_refs(dest).first().copied().expect("dest object id");
+
+    assert_eq!(
+        target, pages[2],
+        "linkTo lands on the 3rd page (the anchor's), not one page short"
+    );
+}

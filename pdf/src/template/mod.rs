@@ -110,6 +110,11 @@ pub struct BackgroundImage {
     /// explicit list of 1-based page numbers — like the watermark filter.
     #[serde(default = "default_page_filter")]
     pub pages: PageFilter,
+    /// Opacity of the image, `0.0` (invisible) to `1.0` (opaque, the default).
+    /// Values below 1 fade the image into a faint wash — a soft cover tint or
+    /// stationery behind the content. Out-of-range values are clamped.
+    #[serde(default)]
+    pub opacity: Option<f32>,
 }
 
 /// Page size: a preset name or explicit dimensions in points.
