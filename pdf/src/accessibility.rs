@@ -123,6 +123,16 @@ pub fn apply_tags(pdf: &[u8], lang: Option<&str>, leaves: &[StructLeaf]) -> Resu
         Object::String(lang.as_bytes().to_vec(), StringFormat::Literal),
     );
     catalog.set("Metadata", Object::Reference(metadata_id));
+    // PDF/UA (ISO 14289-1 7.1 t10): the reader must show the document title,
+    // not the file name.
+    let mut view_prefs = catalog
+        .get(b"ViewerPreferences")
+        .ok()
+        .and_then(|o| o.as_dict().ok())
+        .cloned()
+        .unwrap_or_default();
+    view_prefs.set("DisplayDocTitle", Object::Boolean(true));
+    catalog.set("ViewerPreferences", Object::Dictionary(view_prefs));
 
     // Tagged PDF is a 1.4+ feature; printpdf writes a 1.3 header.
     doc.version = "1.5".to_string();

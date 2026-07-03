@@ -232,3 +232,38 @@ fn tagged_output_carries_pdfua_xmp() {
         "XMP should declare pdfuaid:part = 1"
     );
 }
+
+#[test]
+fn tagged_pdfa_is_verapdf_conformant_structurally() {
+    // The structural prerequisites veraPDF checks for PDF/A-3b + PDF/UA-1 on a
+    // tagged archival document: DisplayDocTitle true, and a pdfaExtension schema
+    // describing the (non-predefined) pdfuaid namespace.
+    use soli_pdf::{render_to_bytes, RenderOptions};
+    use std::time::Duration;
+    let template = br#"{
+        "options": { "tagged": true, "lang": "en-US" },
+        "content": [ { "type": "paragraph", "value": "hi",
+                       "options": { "bookmark": "hi", "bookmarkLevel": 1 } } ]
+    }"#;
+    let opts = RenderOptions {
+        fetch_images: false,
+        http_timeout: Duration::from_secs(1),
+        font_dirs: vec!["fonts".into()],
+        pdfa: true,
+        title: Some("A Title".into()),
+        ..Default::default()
+    };
+    let pdf = render_to_bytes(template, b"{}", &opts).expect("render");
+    let doc = Document::load_mem(&pdf).expect("load");
+    let cat = catalog(&doc);
+    let vp = cat.get(b"ViewerPreferences").unwrap().as_dict().unwrap();
+    assert!(
+        vp.get(b"DisplayDocTitle").unwrap().as_bool().unwrap(),
+        "DisplayDocTitle true (PDF/UA 7.1 t10)"
+    );
+    let raw = String::from_utf8_lossy(&pdf);
+    assert!(
+        raw.contains("<pdfaSchema:prefix>pdfuaid</pdfaSchema:prefix>"),
+        "pdfuaid extension schema present (PDF/A 6.6.2.3.1)"
+    );
+}

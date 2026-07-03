@@ -75,12 +75,60 @@ pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata, ua: bool) -> Stri
         ts = ts,
     );
 
-    let facturx_block = match facturx {
-        Some(profile) => format!(
+    // Every non-predefined XMP namespace (fx, pdfuaid) needs a pdfaExtension
+    // schema description, or PDF/A validation (ISO 19005 6.6.2.3.1) fails.
+    // Collect the required schema <rdf:li> entries, then emit one shared block.
+    let mut schema_entries = String::new();
+    if facturx.is_some() {
+        schema_entries.push_str(FACTURX_SCHEMA_LI);
+    }
+    if ua {
+        schema_entries.push_str(PDFUAID_SCHEMA_LI);
+    }
+    let extension_block = if schema_entries.is_empty() {
+        String::new()
+    } else {
+        format!(
             r#"    <rdf:Description xmlns:pdfaExtension="http://www.aiim.org/pdfa/ns/extension/" xmlns:pdfaSchema="http://www.aiim.org/pdfa/ns/schema#" xmlns:pdfaProperty="http://www.aiim.org/pdfa/ns/property#" rdf:about="">
       <pdfaExtension:schemas>
         <rdf:Bag>
-          <rdf:li rdf:parseType="Resource">
+{schema_entries}        </rdf:Bag>
+      </pdfaExtension:schemas>
+    </rdf:Description>
+"#
+        )
+    };
+
+    let facturx_values = match facturx {
+        Some(profile) => format!(
+            r#"    <rdf:Description xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" rdf:about="">
+      <fx:DocumentType>INVOICE</fx:DocumentType>
+      <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
+      <fx:Version>1.0</fx:Version>
+      <fx:ConformanceLevel>{level}</fx:ConformanceLevel>
+    </rdf:Description>
+"#,
+            level = profile.xmp_level(),
+        ),
+        None => String::new(),
+    };
+
+    // PDF/UA-1 identifier for accessible (tagged) documents.
+    let ua_value = if ua {
+        "    <rdf:Description xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\" rdf:about=\"\">\n      \
+         <pdfuaid:part>1</pdfuaid:part>\n    </rdf:Description>\n"
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    format!(
+        "{prefix}{extension_block}{facturx_values}{ua_value}  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>"
+    )
+}
+
+/// The Factur-X extension-schema `<rdf:li>` (describes the `fx:` properties).
+const FACTURX_SCHEMA_LI: &str = r#"          <rdf:li rdf:parseType="Resource">
             <pdfaSchema:schema>Factur-X PDFA Extension Schema</pdfaSchema:schema>
             <pdfaSchema:namespaceURI>urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#</pdfaSchema:namespaceURI>
             <pdfaSchema:prefix>fx</pdfaSchema:prefix>
@@ -113,32 +161,25 @@ pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata, ua: bool) -> Stri
               </rdf:Seq>
             </pdfaSchema:property>
           </rdf:li>
-        </rdf:Bag>
-      </pdfaExtension:schemas>
-    </rdf:Description>
-    <rdf:Description xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" rdf:about="">
-      <fx:DocumentType>INVOICE</fx:DocumentType>
-      <fx:DocumentFileName>factur-x.xml</fx:DocumentFileName>
-      <fx:Version>1.0</fx:Version>
-      <fx:ConformanceLevel>{level}</fx:ConformanceLevel>
-    </rdf:Description>
-"#,
-            level = profile.xmp_level(),
-        ),
-        None => String::new(),
-    };
+"#;
 
-    // PDF/UA-1 identifier for accessible (tagged) documents.
-    let ua_block = if ua {
-        "    <rdf:Description xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\" rdf:about=\"\">\n      \
-         <pdfuaid:part>1</pdfuaid:part>\n    </rdf:Description>\n"
-            .to_string()
-    } else {
-        String::new()
-    };
-
-    format!("{prefix}{facturx_block}{ua_block}  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>")
-}
+/// The PDF/UA identification extension-schema `<rdf:li>` (describes `pdfuaid:part`).
+const PDFUAID_SCHEMA_LI: &str = r#"          <rdf:li rdf:parseType="Resource">
+            <pdfaSchema:schema>PDF/UA identification schema</pdfaSchema:schema>
+            <pdfaSchema:namespaceURI>http://www.aiim.org/pdfua/ns/id/</pdfaSchema:namespaceURI>
+            <pdfaSchema:prefix>pdfuaid</pdfaSchema:prefix>
+            <pdfaSchema:property>
+              <rdf:Seq>
+                <rdf:li rdf:parseType="Resource">
+                  <pdfaProperty:name>part</pdfaProperty:name>
+                  <pdfaProperty:valueType>Integer</pdfaProperty:valueType>
+                  <pdfaProperty:category>internal</pdfaProperty:category>
+                  <pdfaProperty:description>Indicates the type of PDF/UA conformance</pdfaProperty:description>
+                </rdf:li>
+              </rdf:Seq>
+            </pdfaSchema:property>
+          </rdf:li>
+"#;
 
 #[cfg(test)]
 mod tests {
