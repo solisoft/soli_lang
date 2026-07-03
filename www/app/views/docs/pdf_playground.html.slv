@@ -10,7 +10,7 @@
             <span class="bg-gradient-to-r from-teal-300 to-emerald-400 bg-clip-text text-transparent">PDF Playground</span>
         </h1>
         <p class="text-lg text-gray-300 leading-7">
-            Edit the layout <strong>template</strong> and the <strong>data</strong> on the left; the PDF re-renders on the right as you type. It's the real engine &mdash; the same <code class="text-teal-300">pdf_render</code> builtin running server-side.
+            Edit the layout <strong>template</strong> and the <strong>data</strong> on the left; the PDF re-renders on the right as you type. It's the real engine &mdash; the same <code class="text-teal-300">pdf_render</code> builtin running server-side. The <strong>Markdown</strong> sample runs <code class="text-teal-300">pdf_from_markdown</code> instead, and <strong>Accessible</strong> shows tagged output.
         </p>
     </div>
 
@@ -25,6 +25,8 @@
         <button id="pg-preset-report" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Report <span class="opacity-60">(annual · 5 pages)</span></button>
         <button id="pg-preset-graphics" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Graphics <span class="opacity-60">(SVG)</span></button>
         <button id="pg-preset-dynamic" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Dynamic <span class="opacity-60">(repeat · if)</span></button>
+        <button id="pg-preset-markdown" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Markdown <span class="opacity-60">(→ PDF)</span></button>
+        <button id="pg-preset-accessible" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Accessible <span class="opacity-60">(tagged)</span></button>
         <button id="pg-preset-features" type="button" class="px-3 py-1.5 text-sm rounded-lg bg-white/5 text-gray-200 border border-white/10 hover:bg-white/10 transition-colors">Feature tour <span class="opacity-60">(everything · 12 pages)</span></button>
         <div class="flex-1"></div>
         <span id="pg-status" class="text-sm font-mono text-gray-400">Loading editor…</span>
@@ -35,11 +37,11 @@
     <div class="grid gap-5 lg:grid-cols-2">
         <div class="space-y-4">
             <div>
-                <label class="block text-xs font-semibold text-gray-400 mb-1.5">template.json <span class="text-gray-600">— layout</span></label>
+                <label id="pg-template-label" class="block text-xs font-semibold text-gray-400 mb-1.5">template.json <span class="text-gray-600">— layout</span></label>
                 <div id="pg-template-editor" class="w-full h-[340px] rounded-lg border border-white/10 overflow-hidden"></div>
             </div>
             <div>
-                <label class="block text-xs font-semibold text-gray-400 mb-1.5">data.json <span class="text-gray-600">— values for placeholders</span></label>
+                <label id="pg-data-label" class="block text-xs font-semibold text-gray-400 mb-1.5">data.json <span class="text-gray-600">— values for placeholders</span></label>
                 <div id="pg-data-editor" class="w-full h-[240px] rounded-lg border border-white/10 overflow-hidden"></div>
             </div>
         </div>
@@ -66,7 +68,7 @@
 
   var RENDER_URL = "/docs/builtins/pdf-playground/render";
   var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/";
-  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics", "dynamic", "features"];
+  var PRESETS = ["invoice", "quote", "letter", "statement", "receipt", "report", "graphics", "dynamic", "markdown", "accessible", "features"];
   var ED = {}, lastUrl = null, timer = null, statusEl, frame, suspendAuto = false;
 
   function setStatus(text, kind) {
@@ -97,9 +99,18 @@
 
   function render() {
     if (!ED.template) return;
+    var tpl = val("template");
     var body = new URLSearchParams();
-    body.set("template", val("template"));
-    body.set("data", val("data"));
+    // The Markdown sample holds Markdown (not JSON) in the template editor —
+    // send it to the pdf_from_markdown path. Everything else is a JSON template.
+    var isJson = false;
+    try { JSON.parse(tpl); isJson = true; } catch (e) {}
+    if (isJson) {
+      body.set("template", tpl);
+      body.set("data", val("data"));
+    } else {
+      body.set("markdown", tpl);
+    }
     setStatus("Rendering…");
     var t0 = performance.now();
     fetch(RENDER_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
@@ -138,10 +149,39 @@
     return "invoice";
   }
 
+  // Switch the left editor between a JSON template and a Markdown document:
+  // set Monaco's language (so JSON schema squiggles don't fire on Markdown) and
+  // relabel the editors.
+  function setMode(markdown) {
+    var tl = document.getElementById("pg-template-label");
+    var dl = document.getElementById("pg-data-label");
+    if (ED.template && ED.template.getModel()) {
+      monaco.editor.setModelLanguage(ED.template.getModel(), markdown ? "markdown" : "json");
+    }
+    if (tl) {
+      tl.innerHTML = markdown
+        ? 'document.md <span class="text-gray-600">— Markdown → PDF</span>'
+        : 'template.json <span class="text-gray-600">— layout</span>';
+    }
+    if (dl) dl.style.opacity = markdown ? "0.35" : "1";
+  }
+
   function loadPreset(name) {
     rememberPreset(name);
     setActivePreset(name);
     setStatus("Loading " + name + "…");
+    // The Markdown sample is a single .md document, not a template + data pair.
+    if (name === "markdown") {
+      fetch("/pdf-samples/markdown.md").then(function (r) { return r.text(); }).then(function (md) {
+        suspendAuto = true;
+        setMode(true);
+        ED.template.setValue(md.trim());
+        ED.data.setValue("");
+        render();
+        setTimeout(function () { suspendAuto = false; }, 0);
+      });
+      return;
+    }
     Promise.all([
       fetch("/pdf-samples/" + name + ".template.json").then(function (r) { return r.text(); }),
       fetch("/pdf-samples/" + name + ".data.json").then(function (r) { return r.text(); })
@@ -150,6 +190,7 @@
       // render. Suspend that auto-render across both setValue calls (and until the
       // change events flush on the next tick) so a preset loads in exactly ONE render.
       suspendAuto = true;
+      setMode(false);
       ED.template.setValue(p[0].trim());
       ED.data.setValue(p[1].trim());
       render();

@@ -1,0 +1,71 @@
+{
+  "fonts": ["titillium"],
+  "options": { "tagged": true, "lang": "en-US", "margins": 52 },
+  "content": [
+    {
+      "type": "image",
+      "value": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><g stroke='#f59e0b' stroke-width='6' stroke-linecap='round'><line x1='50' y1='6' x2='50' y2='20'/><line x1='50' y1='80' x2='50' y2='94'/><line x1='6' y1='50' x2='20' y2='50'/><line x1='80' y1='50' x2='94' y2='50'/><line x1='19' y1='19' x2='29' y2='29'/><line x1='71' y1='71' x2='81' y2='81'/><line x1='81' y1='19' x2='71' y2='29'/><line x1='29' y1='71' x2='19' y2='81'/></g><circle cx='50' cy='50' r='20' fill='#f59e0b'/></svg>",
+      "width": 64,
+      "alt": "The Soli sun-disc logo"
+    },
+    { "type": "move", "y": 74 },
+    {
+      "type": "paragraph",
+      "value": "Accessibility Statement",
+      "options": {
+        "fontSize": 24,
+        "fontWeight": "bold",
+        "color": "0f766e",
+        "bookmark": "Accessibility Statement",
+        "bookmarkLevel": 1,
+        "spacing": 12,
+        "minSpaceBelow": 40
+      }
+    },
+    {
+      "type": "paragraph",
+      "value": "This is a tagged PDF. Every block below carries a semantic role — headings, paragraphs and figures — so a screen reader can announce the structure and navigate it in logical reading order. Turn on options.tagged in any template to get this.",
+      "options": { "lineHeight": 1.5, "spacing": 10 }
+    },
+    {
+      "type": "paragraph",
+      "value": "How roles are assigned",
+      "options": {
+        "fontSize": 16,
+        "fontWeight": "bold",
+        "bookmark": "How roles are assigned",
+        "bookmarkLevel": 2,
+        "spacing": 6,
+        "minSpaceBelow": 30
+      }
+    },
+    {
+      "type": "paragraph",
+      "value": "A bookmarked paragraph becomes an H1…H6 (level = bookmarkLevel); any other paragraph is a P; the logo above is a Figure carrying its alt text. Rules, watermarks and the running header are Artifacts that assistive tech skips.",
+      "options": { "lineHeight": 1.5, "spacing": 10 }
+    },
+    {
+      "type": "paragraph",
+      "value": "Accessible and archival at once",
+      "options": {
+        "fontSize": 16,
+        "fontWeight": "bold",
+        "bookmark": "Accessible and archival at once",
+        "bookmarkLevel": 2,
+        "spacing": 6,
+        "minSpaceBelow": 30
+      }
+    },
+    {
+      "type": "paragraph",
+      "value": "Combine options.tagged with the pdfa option (or render a Factur-X invoice) and the output declares BOTH PDF/UA-1 (accessible) and PDF/A-3b (archival) over one structure tree — a single file that is accessible, archival and, for invoices, machine-readable.",
+      "options": { "lineHeight": 1.5, "spacing": 10 }
+    },
+    { "type": "hr", "options": { "color": "e7e5e4" } },
+    {
+      "type": "paragraph",
+      "value": "Rendered by the Soli PDF engine · options.tagged",
+      "options": { "fontSize": 9, "color": "78716c", "alignment": "center" }
+    }
+  ]
+}

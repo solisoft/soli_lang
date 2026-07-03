@@ -418,11 +418,18 @@ fn pdf_playground
 end
 
 fn pdf_playground_render
-    let template = params["template"] ?? ""
-    let data = params["data"] ?? "{}"
+    let markdown = params["markdown"] ?? ""
     try
         let t0 = clock()
-        let pdf = pdf_render(template, data, { "fetch_images": false, "font_dirs": ["font"] })
+        let pdf = null
+        if markdown.blank?
+            let template = params["template"] ?? ""
+            let data = params["data"] ?? "{}"
+            pdf = pdf_render(template, data, { "fetch_images": false, "font_dirs": ["font"] })
+        else
+            # Markdown → PDF sample: fold the Markdown into the layout engine.
+            pdf = pdf_from_markdown(markdown, { "font_dirs": ["font"] })
+        end
         let engine_ms = ((clock() - t0) * 1000).round()
         let headers = { "Content-Type": "text/plain", "X-Render-Ms": str(engine_ms) }
         return { "status": 200, "headers": headers, "body": pdf }
