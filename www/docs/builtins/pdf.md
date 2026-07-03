@@ -229,6 +229,7 @@ pdf = pdf_facturx_from_invoice(template, invoice, {
 | `key` | ✓ | The private key. **RSA** (PKCS#1 or PKCS#8) or **EC P-256** (PKCS#8) PEM/DER. Inline string or path. |
 | `chain` | — | Array of intermediate-certificate PEMs to embed so verifiers can build the trust path. |
 | `tsa` | — | URL of an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) Time-Stamp Authority. When set, the signature is timestamped (PAdES-**B-T**) — see below. Requires network access at sign time. |
+| `appearance` | — | Draw a **visible** signature block (name, "Digitally signed", date, reason, location): `{ "page"?: 1, "x"?, "y"?, "width"?, "height"? }` in points from the page's bottom-left. Omit for an invisible-but-valid signature. |
 | `reason` / `location` / `name` / `contact` | — | Human-facing metadata shown in the reader's signature panel. |
 
 **What it produces.** A **PAdES-B-B** signature: SHA-256 digest, RSA or ECDSA

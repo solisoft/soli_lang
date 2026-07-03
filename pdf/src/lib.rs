@@ -43,7 +43,8 @@ pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use manipulate::{merge, select_pages, stamp, StampOptions};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
 pub use sign::{
-    embed_cms, prepare_signature, PreparedSignature, SignMeta, DEFAULT_PLACEHOLDER_LEN,
+    embed_cms, prepare_signature, PreparedSignature, SignAppearance, SignMeta,
+    DEFAULT_PLACEHOLDER_LEN,
 };
 
 /// Options controlling a render.

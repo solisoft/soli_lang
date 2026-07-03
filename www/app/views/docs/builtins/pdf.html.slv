@@ -317,6 +317,7 @@ let pdf = pdf_facturx_from_invoice(template, invoice, {
                     <tr><td class="px-4 py-2"><code>key</code></td><td class="px-4 py-2">&#10003;</td><td class="px-4 py-2">The private key: <strong>RSA</strong> (PKCS#1 or PKCS#8) or <strong>EC P&#8209;256</strong> (PKCS#8), PEM/DER. Inline string or path.</td></tr>
                     <tr><td class="px-4 py-2"><code>chain</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Array of intermediate-certificate PEMs to embed so verifiers can build the trust path.</td></tr>
                     <tr><td class="px-4 py-2"><code>tsa</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">URL of an <strong>RFC 3161</strong> Time-Stamp Authority. When set, the signature is timestamped (PAdES-<strong>B-T</strong>). Requires network access at sign time.</td></tr>
+                    <tr><td class="px-4 py-2"><code>appearance</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Draw a <strong>visible</strong> signature block (name, "Digitally signed", date, reason, location): <code>{ page?, x?, y?, width?, height? }</code> in points from the bottom-left. Omit for an invisible-but-valid signature.</td></tr>
                     <tr><td class="px-4 py-2"><code>reason</code> / <code>location</code> / <code>name</code> / <code>contact</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Metadata shown in the reader's signature panel.</td></tr>
                 </tbody>
             </table>

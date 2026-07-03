@@ -632,6 +632,7 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
         name: sign_str(&sb, "name"),
         contact: sign_str(&sb, "contact"),
         signing_time: Some(pdf_date(signing_time)),
+        appearance: parse_sign_appearance(&sb),
     };
     Ok(Some(SignConfig {
         material: pades::SignerMaterial {
@@ -643,6 +644,35 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
         signing_time,
         tsa: sign_str(&sb, "tsa"),
     }))
+}
+
+/// Parse the optional `sign.appearance` hash `{ page?, x?, y?, width?, height? }`
+/// into a visible signature block (defaults to a box in the bottom-left of
+/// page 1). Returns `None` when the key is absent — an invisible signature.
+fn parse_sign_appearance(sb: &HashPairs) -> Option<soli_pdf::SignAppearance> {
+    let Some(Value::Hash(h)) = sb.get(&HashKey::String("appearance".into())) else {
+        return None;
+    };
+    let a = h.borrow();
+    let num = |k: &str, d: f32| {
+        a.get(&HashKey::String(k.into()))
+            .and_then(opt_num)
+            .unwrap_or(d)
+    };
+    let page = a
+        .get(&HashKey::String("page".into()))
+        .and_then(|v| match v {
+            Value::Int(n) if *n >= 1 => Some(*n as u32),
+            _ => None,
+        })
+        .unwrap_or(1);
+    Some(soli_pdf::SignAppearance {
+        page,
+        x: num("x", 40.0),
+        y: num("y", 40.0),
+        width: num("width", 190.0),
+        height: num("height", 64.0),
+    })
 }
 
 /// Reserve a signature slot, digest the ByteRange, build the CMS, and splice it

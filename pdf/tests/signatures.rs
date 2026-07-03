@@ -139,3 +139,37 @@ fn oversize_cms_is_rejected() {
     let err = soli_pdf::embed_cms(prepared, &too_big).unwrap_err();
     assert!(err.to_string().contains("reserved"), "got: {err}");
 }
+
+#[test]
+fn visible_appearance_places_a_block() {
+    use soli_pdf::SignAppearance;
+    let pdf = simple_pdf();
+    let mut m = meta();
+    m.appearance = Some(SignAppearance {
+        page: 1,
+        x: 360.0,
+        y: 40.0,
+        width: 190.0,
+        height: 64.0,
+    });
+    let prepared = prepare_signature(&pdf, &m, 4096).expect("prepare");
+    let doc = Document::load_mem(&prepared.pdf).expect("reload");
+
+    // The AcroForm's single widget is now visible (non-zero Rect) and carries
+    // an /AP appearance stream.
+    let acro = doc
+        .catalog()
+        .unwrap()
+        .get(b"AcroForm")
+        .unwrap()
+        .as_dict()
+        .unwrap();
+    let field_ref = acro.get(b"Fields").unwrap().as_array().unwrap()[0]
+        .as_reference()
+        .unwrap();
+    let field = doc.get_object(field_ref).unwrap().as_dict().unwrap();
+    let rect = field.get(b"Rect").unwrap().as_array().unwrap();
+    let x1 = rect[2].as_float().unwrap();
+    assert!(x1 > 0.0, "widget has a visible rect");
+    assert!(field.get(b"AP").is_ok(), "widget has an appearance stream");
+}

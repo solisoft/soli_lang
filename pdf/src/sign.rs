@@ -21,7 +21,7 @@
 //! so no byte offset ever shifts. A second signature would need an incremental
 //! (append-only) update; that's out of scope.
 
-use lopdf::{Dictionary, Document, Object, StringFormat};
+use lopdf::{Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 
 use crate::error::{PdfError, Result};
 
@@ -35,6 +35,18 @@ pub const DEFAULT_PLACEHOLDER_LEN: usize = 16384;
 /// the real value always fits when we space-pad the patch.
 const BYTE_RANGE_SENTINEL: i64 = 9_999_999_999;
 
+/// Where to draw a *visible* signature block, in PDF points from the page's
+/// bottom-left. Without one, the signature is a valid but invisible field.
+#[derive(Debug, Clone)]
+pub struct SignAppearance {
+    /// 1-based page to place the block on.
+    pub page: u32,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
 /// Human-facing signature metadata written into the signature dictionary. All
 /// fields are optional; whatever is set shows in a reader's signature panel.
 #[derive(Debug, Clone, Default)]
@@ -46,6 +58,8 @@ pub struct SignMeta {
     /// PDF date string for `/M`, e.g. `"D:20260703120000+00'00'"`. The
     /// authoritative signing time also goes into the CMS signed attributes.
     pub signing_time: Option<String>,
+    /// When set, draw a visible signature block on the page.
+    pub appearance: Option<SignAppearance>,
 }
 
 /// A serialized PDF carrying a reserved, ByteRange-finalized signature slot,
@@ -71,6 +85,96 @@ impl PreparedSignature {
         out.extend_from_slice(&self.pdf[s2..s2 + l2]);
         out
     }
+}
+
+fn escape_appearance(s: &str) -> String {
+    let mut o = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '(' => o.push_str("\\("),
+            ')' => o.push_str("\\)"),
+            '\\' => o.push_str("\\\\"),
+            c => o.push(c),
+        }
+    }
+    o
+}
+
+/// Turn a PDF date `"D:20260703120000+00'00'"` into a readable `"2026-07-03 12:00"`.
+fn human_date(pdf: &str) -> String {
+    let d = pdf.strip_prefix("D:").unwrap_or(pdf);
+    if d.len() >= 12 && d[0..12].bytes().all(|b| b.is_ascii_digit()) {
+        format!(
+            "{}-{}-{} {}:{}",
+            &d[0..4],
+            &d[4..6],
+            &d[6..8],
+            &d[8..10],
+            &d[10..12]
+        )
+    } else {
+        pdf.to_string()
+    }
+}
+
+/// Build the visible signature block: a bordered box with the signer name,
+/// "Digitally signed", the date, and reason/location when present. Returns the
+/// `/AP /N` Form XObject's object id.
+fn build_appearance(doc: &mut Document, meta: &SignMeta, w: f32, h: f32) -> ObjectId {
+    let mut font_dict = Dictionary::new();
+    font_dict.set("Type", Object::Name(b"Font".to_vec()));
+    font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
+    font_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
+    let font = doc.add_object(Object::Dictionary(font_dict));
+
+    let mut lines: Vec<(f32, String)> = Vec::new();
+    if let Some(name) = &meta.name {
+        lines.push((10.0, name.clone()));
+    }
+    lines.push((7.5, "Digitally signed".to_string()));
+    if let Some(t) = &meta.signing_time {
+        lines.push((7.5, format!("Date: {}", human_date(t))));
+    }
+    if let Some(r) = &meta.reason {
+        lines.push((7.5, format!("Reason: {}", r)));
+    }
+    if let Some(l) = &meta.location {
+        lines.push((7.5, format!("Location: {}", l)));
+    }
+
+    let mut c = String::new();
+    c.push_str("q\n0.55 0.55 0.55 RG 0.7 w\n");
+    c.push_str(&format!("0.5 0.5 {:.2} {:.2} re S\n", w - 1.0, h - 1.0));
+    c.push_str("0.15 0.18 0.22 rg\n");
+    let mut y = h - 13.0;
+    for (size, text) in &lines {
+        c.push_str("BT\n");
+        c.push_str(&format!("/Helv {:.1} Tf\n", size));
+        c.push_str(&format!("6 {:.2} Td\n", y));
+        c.push_str(&format!("({}) Tj\nET\n", escape_appearance(text)));
+        y -= size + 3.0;
+    }
+    c.push('Q');
+
+    let mut fonts = Dictionary::new();
+    fonts.set("Helv", Object::Reference(font));
+    let mut res = Dictionary::new();
+    res.set("Font", Object::Dictionary(fonts));
+
+    let mut dict = Dictionary::new();
+    dict.set("Type", Object::Name(b"XObject".to_vec()));
+    dict.set("Subtype", Object::Name(b"Form".to_vec()));
+    dict.set(
+        "BBox",
+        Object::Array(vec![
+            Object::Real(0.0),
+            Object::Real(0.0),
+            Object::Real(w),
+            Object::Real(h),
+        ]),
+    );
+    dict.set("Resources", Object::Dictionary(res));
+    doc.add_object(Object::Stream(Stream::new(dict, c.into_bytes())))
 }
 
 fn lit(s: &str) -> Object {
@@ -132,13 +236,30 @@ pub fn prepare_signature(
     }
     let sig_id = doc.add_object(Object::Dictionary(sig));
 
-    // 2. A signature field that is also its own widget annotation on page 1.
-    //    Invisible (/Rect [0 0 0 0]); /F = Print(4) | Locked(128) = 132.
-    let page_id = *doc
-        .get_pages()
-        .values()
-        .next()
-        .ok_or_else(|| PdfError::Backend("sign: document has no pages".into()))?;
+    // 2. A signature field that is also its own widget annotation. Invisible
+    //    (/Rect [0 0 0 0]) unless a visible appearance was requested. /F =
+    //    Print(4) | Locked(128) = 132.
+    let pages = doc.get_pages();
+    let page_id = match &meta.appearance {
+        Some(a) => *pages
+            .get(&a.page.max(1))
+            .or_else(|| pages.values().next())
+            .ok_or_else(|| PdfError::Backend("sign: document has no pages".into()))?,
+        None => *pages
+            .values()
+            .next()
+            .ok_or_else(|| PdfError::Backend("sign: document has no pages".into()))?,
+    };
+
+    let rect = match &meta.appearance {
+        Some(a) => [a.x, a.y, a.x + a.width, a.y + a.height],
+        None => [0.0, 0.0, 0.0, 0.0],
+    };
+    // Build the visible appearance XObject first (it needs its own object ids).
+    let appearance = meta
+        .appearance
+        .as_ref()
+        .map(|a| build_appearance(&mut doc, meta, a.width, a.height));
 
     let mut field = Dictionary::new();
     field.set("Type", Object::Name(b"Annot".to_vec()));
@@ -146,17 +267,17 @@ pub fn prepare_signature(
     field.set("FT", Object::Name(b"Sig".to_vec()));
     field.set(
         "Rect",
-        Object::Array(vec![
-            Object::Integer(0),
-            Object::Integer(0),
-            Object::Integer(0),
-            Object::Integer(0),
-        ]),
+        Object::Array(rect.iter().map(|v| Object::Real(*v)).collect()),
     );
     field.set("T", lit("Signature1"));
     field.set("V", Object::Reference(sig_id));
     field.set("P", Object::Reference(page_id));
     field.set("F", Object::Integer(132));
+    if let Some(ap_id) = appearance {
+        let mut ap = Dictionary::new();
+        ap.set("N", Object::Reference(ap_id));
+        field.set("AP", Object::Dictionary(ap));
+    }
     let field_id = doc.add_object(Object::Dictionary(field));
 
     // Append the widget to the page's /Annots (creating it if absent).
