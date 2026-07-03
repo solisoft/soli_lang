@@ -372,6 +372,8 @@ struct SignConfig {
     material: pades::SignerMaterial,
     meta: SignMeta,
     signing_time: OffsetDateTime,
+    /// RFC 3161 TSA URL for a PAdES-B-T timestamp; `None` = B-B (no timestamp).
+    tsa: Option<String>,
 }
 
 /// Read a `sign` sub-key that is either an inline PEM string or an app-root
@@ -463,6 +465,7 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
         },
         meta,
         signing_time,
+        tsa: sign_str(&sb, "tsa"),
     }))
 }
 
@@ -480,12 +483,17 @@ fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, St
             .iter()
             .map(|c| c.len())
             .sum::<usize>();
-    let placeholder = (cert_bytes + 4096).max(8192);
+    let mut placeholder = (cert_bytes + 4096).max(8192);
+    // A PAdES-B-T timestamp token embeds the TSA's own certificate + CMS —
+    // reserve extra room so it fits the placeholder.
+    if cfg.tsa.is_some() {
+        placeholder += 8192;
+    }
 
     let prepared = soli_pdf::prepare_signature(&pdf, &cfg.meta, placeholder)
         .map_err(|e| format!("sign: {e}"))?;
     let digest = Sha256::digest(prepared.signed_bytes());
-    let cms = pades::build_cms(&digest, &cfg.material, cfg.signing_time)
+    let cms = pades::build_cms(&digest, &cfg.material, cfg.signing_time, cfg.tsa.as_deref())
         .map_err(|e| format!("sign: {e}"))?;
     soli_pdf::embed_cms(prepared, &cms).map_err(|e| format!("sign: {e}"))
 }

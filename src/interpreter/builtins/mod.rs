@@ -73,6 +73,7 @@ pub mod model;
 pub mod named_routes;
 pub mod nanoid;
 pub mod pades;
+pub mod pades_tsa;
 pub mod pdf;
 pub mod pop3;
 pub mod primitives;

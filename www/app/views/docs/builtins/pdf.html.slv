@@ -257,16 +257,18 @@ let pdf = pdf_facturx_from_invoice(template, invoice, {
                     <tr><td class="px-4 py-2"><code>cert</code></td><td class="px-4 py-2">&#10003;</td><td class="px-4 py-2">The signer's X.509 certificate &mdash; an inline PEM string or an app-root relative path to a PEM/DER file.</td></tr>
                     <tr><td class="px-4 py-2"><code>key</code></td><td class="px-4 py-2">&#10003;</td><td class="px-4 py-2">The private key: <strong>RSA</strong> (PKCS#1 or PKCS#8) or <strong>EC P&#8209;256</strong> (PKCS#8), PEM/DER. Inline string or path.</td></tr>
                     <tr><td class="px-4 py-2"><code>chain</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Array of intermediate-certificate PEMs to embed so verifiers can build the trust path.</td></tr>
+                    <tr><td class="px-4 py-2"><code>tsa</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">URL of an <strong>RFC 3161</strong> Time-Stamp Authority. When set, the signature is timestamped (PAdES-<strong>B-T</strong>). Requires network access at sign time.</td></tr>
                     <tr><td class="px-4 py-2"><code>reason</code> / <code>location</code> / <code>name</code> / <code>contact</code></td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Metadata shown in the reader's signature panel.</td></tr>
                 </tbody>
             </table>
         </div>
         <p class="text-sm text-gray-400 mt-4">Produces a <strong>PAdES-B-B</strong> signature: SHA-256 digest, RSA or ECDSA (P-256), with the standard signed attributes (content-type, message-digest, signing-time, and the ESS <code>signing-certificate-v2</code> that binds the signature to this exact certificate). It covers the whole document except its own signature value, so any later edit invalidates it.</p>
+        <p class="text-sm text-gray-400 mt-3"><strong>Trusted timestamp (PAdES-B-T).</strong> Add a <code class="text-amber-400">tsa</code> URL to have the signature timestamped by a Time-Stamp Authority: the signature value is hashed, sent to the TSA, and the returned RFC 3161 token is embedded as an unsigned attribute &mdash; independent proof the signature existed at a given time, resilient to the signer's certificate later expiring. <code>tsa: "http://timestamp.digicert.com"</code></p>
         <p class="text-sm text-gray-400 mt-3"><strong>Key handling.</strong> Read the certificate and key from files or env &mdash; never from request data &mdash; and keep the private key out of source control. Soli reads the material you pass and never logs it.</p>
         <ul class="text-sm text-gray-400 mt-3 list-disc list-inside space-y-1">
             <li><strong>Incompatible with <code>password</code></strong> &mdash; a signed PDF must not be AES-encrypted; choose one.</li>
             <li>The signer certificate must chain to a root the <em>verifier</em> trusts for a "trusted" badge; a self-signed cert still verifies as <em>valid + unmodified</em>, just untrusted.</li>
-            <li>Currently a single signature, no embedded timestamp (PAdES-B-T / TSA) or long-term-validation (LTV) data &mdash; planned follow-ups.</li>
+            <li>A single signature. Long-term-validation (LTV) data &mdash; embedded OCSP/CRL for offline verification years later &mdash; is a planned follow-up.</li>
         </ul>
     </section>
 

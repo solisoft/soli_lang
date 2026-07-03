@@ -39,7 +39,8 @@ const OID_MESSAGE_DIGEST: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.8
 const OID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
 const OID_SIGNING_CERT_V2: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.16.2.47");
-const OID_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
+pub(crate) const OID_SHA256: ObjectIdentifier =
+    ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
 const OID_RSA_ENCRYPTION: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
 const OID_ECDSA_WITH_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
 const OID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
@@ -201,10 +202,17 @@ fn signing_certificate_v2(cert_sha256: &[u8; 32]) -> Vec<u8> {
 
 /// Build a detached CMS SignedData (DER) over `message_digest` — the SHA-256 of
 /// the PDF's signed byte range.
+///
+/// When `tsa_url` is `Some`, the signature is additionally timestamped: the
+/// signature value is hashed and sent to that RFC 3161 Time-Stamp Authority, and
+/// the returned token is embedded as the `id-aa-timeStampToken` unsigned
+/// attribute — upgrading the result from PAdES-B-B to **PAdES-B-T**. This makes
+/// a network call at sign time.
 pub fn build_cms(
     message_digest: &[u8],
     signer: &SignerMaterial,
     signing_time: OffsetDateTime,
+    tsa_url: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     let cert =
         Certificate::from_der(&signer.cert_der).map_err(|e| format!("signer certificate: {e}"))?;
@@ -271,6 +279,22 @@ pub fn build_cms(
         }
     };
 
+    // PAdES-B-T: timestamp the signature value and carry the token as an
+    // unsigned attribute. Unsigned attrs are outside the signature, so adding
+    // this does not disturb the signature computed above.
+    let unsigned_attrs = match tsa_url {
+        Some(url) => {
+            let imprint = sha256(&signature);
+            let token = super::pades_tsa::fetch_timestamp_token(url, &imprint)?;
+            let ts_attr = attr(
+                super::pades_tsa::OID_TIMESTAMP_TOKEN,
+                Any::from_der(&token).map_err(|e| format!("timestamp token: {e}"))?,
+            )?;
+            Some(SetOfVec::try_from(vec![ts_attr]).map_err(|e| format!("unsigned attrs: {e}"))?)
+        }
+        None => None,
+    };
+
     let signer_info = SignerInfo {
         version: CmsVersion::V1,
         sid: SignerIdentifier::IssuerAndSerialNumber(IssuerAndSerialNumber {
@@ -281,7 +305,7 @@ pub fn build_cms(
         signed_attrs: Some(signed_attrs),
         signature_algorithm: sig_alg,
         signature: OctetString::new(signature).map_err(|e| format!("signature octets: {e}"))?,
-        unsigned_attrs: None,
+        unsigned_attrs,
     };
 
     // certificates: signer first, then any intermediates.
@@ -356,7 +380,7 @@ mod tests {
     fn rsa_cms_signature_verifies_against_the_cert() {
         let signer = material("rsa_cert.pem", "rsa_key.pem");
         let digest = [0x11u8; 32];
-        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH).expect("build");
+        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH, None).expect("build");
 
         let (attrs_der, signature, md) = dissect(&cms);
         // `Any::value()` already unwraps the OCTET STRING, so `md` is the digest.
@@ -387,7 +411,7 @@ mod tests {
 
         let signer = material("ec_cert.pem", "ec_key.pem");
         let digest = [0x22u8; 32];
-        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH).expect("build");
+        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH, None).expect("build");
 
         let (attrs_der, signature, md) = dissect(&cms);
         assert_eq!(md, digest);
@@ -406,7 +430,8 @@ mod tests {
     #[test]
     fn cms_parses_as_valid_der() {
         let signer = material("rsa_cert.pem", "rsa_key.pem");
-        let cms = build_cms(&[0x33u8; 32], &signer, OffsetDateTime::UNIX_EPOCH).expect("build");
+        let cms =
+            build_cms(&[0x33u8; 32], &signer, OffsetDateTime::UNIX_EPOCH, None).expect("build");
         // A second decode round-trips — structurally valid DER.
         ContentInfo::from_der(&cms).expect("re-decode");
     }
@@ -497,7 +522,7 @@ mod tests {
         let prepared = soli_pdf::prepare_signature(&pdf, &meta, signer.cert_der.len() + 4096)
             .expect("prepare");
         let digest = sha256(&prepared.signed_bytes());
-        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH).expect("cms");
+        let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH, None).expect("cms");
         let signed = soli_pdf::embed_cms(prepared, &cms).expect("embed");
 
         // Verify like a reader: digest the two /ByteRange spans of the FINAL

@@ -54,7 +54,8 @@ fn build_request(imprint: &[u8]) -> Result<Vec<u8>, String> {
         },
         cert_req: true,
     };
-    req.to_der().map_err(|e| format!("tsa: encode request: {e}"))
+    req.to_der()
+        .map_err(|e| format!("tsa: encode request: {e}"))
 }
 
 /// Request a timestamp token for `imprint` from the TSA at `url`. Returns the

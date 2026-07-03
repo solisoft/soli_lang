@@ -139,6 +139,7 @@ pdf = pdf_facturx_from_invoice(template, invoice, {
 | `cert` | ✓ | The signer's X.509 certificate. An inline PEM string, or an app-root relative path to a PEM/DER file. |
 | `key` | ✓ | The private key. **RSA** (PKCS#1 or PKCS#8) or **EC P-256** (PKCS#8) PEM/DER. Inline string or path. |
 | `chain` | — | Array of intermediate-certificate PEMs to embed so verifiers can build the trust path. |
+| `tsa` | — | URL of an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) Time-Stamp Authority. When set, the signature is timestamped (PAdES-**B-T**) — see below. Requires network access at sign time. |
 | `reason` / `location` / `name` / `contact` | — | Human-facing metadata shown in the reader's signature panel. |
 
 **What it produces.** A **PAdES-B-B** signature: SHA-256 digest, RSA or ECDSA
@@ -146,6 +147,21 @@ pdf = pdf_facturx_from_invoice(template, invoice, {
 signing-time, and the ESS `signing-certificate-v2` that binds the signature to
 this exact certificate). The signature covers the whole document except its own
 signature value, so any later edit invalidates it.
+
+**Trusted timestamp (PAdES-B-T).** Add a `tsa` URL to have the signature
+timestamped by a Time-Stamp Authority: the signature value is hashed and sent to
+the TSA (`application/timestamp-query`), and the returned RFC 3161 token is
+embedded as an unsigned attribute — independent proof the signature existed at a
+given time, resilient to the signer's certificate later expiring.
+
+```soli
+pdf = pdf_render(template, data, {
+  sign: {
+    cert: signer_pem, key: signer_key,
+    tsa: "http://timestamp.digicert.com"   # any RFC 3161 TSA
+  }
+})
+```
 
 **Key handling.** Read the certificate and key from files or env — never from
 request data — and keep the private key out of source control. Soli reads the
@@ -155,7 +171,7 @@ material you pass and never logs it.
 
 - **Incompatible with `password`** — a signed PDF must not be AES-encrypted; set one or the other.
 - The signer certificate must chain to a root the *verifier* trusts for a "trusted" badge; a self-signed cert still verifies as *valid + unmodified*, just untrusted.
-- Currently a single signature, no embedded timestamp (PAdES-B-T / TSA) or long-term-validation (LTV) data — those are planned follow-ups.
+- A single signature. Long-term-validation (LTV) data — embedded OCSP/CRL responses for offline verification years later — is a planned follow-up.
 
 ---
 
