@@ -539,6 +539,15 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_fill(pdf, data, options?) -> String (base64 filled PDF)
+        self.functions.insert(
+            "pdf_fill".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // String functions
         // split(String, String) -> Array
         self.functions.insert(

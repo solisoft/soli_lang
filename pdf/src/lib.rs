@@ -19,6 +19,7 @@ pub mod encrypt;
 pub mod error;
 pub mod facturx;
 pub mod fonts;
+pub mod forms;
 pub mod geometry;
 pub mod images;
 pub mod interpolate;
@@ -36,6 +37,7 @@ pub use attachments::Attachment;
 pub use encrypt::EncryptOptions;
 pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
+pub use forms::fill_form;
 pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
 pub use sign::{

@@ -222,6 +222,21 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-fill" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_fill(pdf, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3"><strong>Fill an existing PDF's form fields</strong> (AcroForm) from data &mdash; the "take a government/enterprise form and fill it programmatically" workflow the render builtins can't do (they <em>write</em> PDFs; this <em>reads</em> one). Sets text fields, checkboxes/radios and choice fields; <code>flatten</code> bakes the values into static, read-only appearances.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">pdf</code> : <code class="text-orange-400">String</code> &mdash; the source PDF: an app-root relative <strong>path</strong>, or <strong>base64</strong> PDF bytes.</div>
+                    <div><code class="text-amber-400">data</code> : <code class="text-orange-400">Hash</code> &mdash; <code>{ field_name =&gt; value }</code>. Values are stringified; a bool drives a checkbox/radio on/off.</div>
+                    <div><code class="text-amber-400">options</code> : <code class="text-orange-400">Hash?</code> &mdash; <code>flatten</code> (Bool, default <code>false</code>): bake the values in and lock the fields, or leave them editable with <code>NeedAppearances</code> on.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; base64-encoded filled PDF. Errors if the PDF has no AcroForm.</div>
+            </div>
+        </section>
+
         <section id="section-options" class="scroll-mt-20 mb-2">
             <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">

@@ -107,6 +107,35 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // Fill an existing PDF's AcroForm fields from a `{ field => value }` hash —
+    // the "take a government/enterprise form and fill it" workflow. `pdf` is an
+    // app-root relative path or base64 PDF bytes; `options.flatten` bakes the
+    // values in and locks the fields.
+    env.define(
+        "pdf_fill".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_fill", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_fill() expects 2 or 3 arguments (pdf, data, options?), got {}",
+                    args.len()
+                ));
+            }
+            let source = arg_string(&args[0], "pdf_fill", "pdf")?;
+            let pdf_bytes = load_pdf_source(&source)?;
+            let values = parse_field_values(&args[1])?;
+            let flatten = matches!(
+                args.get(2).and_then(|o| match o {
+                    Value::Hash(h) => h.borrow().get(&HashKey::String("flatten".into())).cloned(),
+                    _ => None,
+                }),
+                Some(Value::Bool(true))
+            );
+            let filled = soli_pdf::fill_form(&pdf_bytes, &values, flatten)
+                .map_err(|e| format!("pdf_fill() failed: {e}"))?;
+            Ok(b64(filled))
+        })),
+    );
+
     // Render + wrap as a ready HTTP response: return it straight from a
     // controller action. The binary body travels via the `body_base64`
     // response key (decoded server-side in `extract_response`).
@@ -528,6 +557,45 @@ fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, St
     let cms = pades::build_cms(&digest, &cfg.material, cfg.signing_time, cfg.tsa.as_deref())
         .map_err(|e| format!("sign: {e}"))?;
     soli_pdf::embed_cms(prepared, &cms).map_err(|e| format!("sign: {e}"))
+}
+
+/// Load a PDF source that is either an app-root relative path to an existing
+/// file, or base64-encoded PDF bytes (what `pdf_render` returns).
+fn load_pdf_source(s: &str) -> Result<Vec<u8>, String> {
+    let resolved = resolve_font_dir(PathBuf::from(s));
+    if resolved.is_file() {
+        return std::fs::read(&resolved).map_err(|e| {
+            format!(
+                "pdf_fill(): could not read '{s}' ({}): {e}",
+                resolved.display()
+            )
+        });
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim().as_bytes())
+        .map_err(|_| "pdf_fill(): `pdf` is neither a readable path nor valid base64".to_string())
+}
+
+/// Convert a `{ field => value }` hash into `(name, string)` pairs. Scalars are
+/// stringified; a bool becomes `"true"`/`"false"` (checkboxes read that).
+fn parse_field_values(v: &Value) -> Result<Vec<(String, String)>, String> {
+    let Value::Hash(h) = v else {
+        return Err("pdf_fill(): data must be a hash of field => value".to_string());
+    };
+    let mut out = Vec::new();
+    for (k, val) in h.borrow().iter() {
+        if let HashKey::String(key) = k {
+            let s = match val {
+                Value::String(s) => s.to_string(),
+                Value::Int(n) => n.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Bool(b) => b.to_string(),
+                _ => continue,
+            };
+            out.push((key.to_string(), s));
+        }
+    }
+    Ok(out)
 }
 
 /// Build a Markdown [`pdf_markdown::Theme`] from the `options` hash, overriding

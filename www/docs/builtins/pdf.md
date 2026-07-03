@@ -106,6 +106,30 @@ file_write_base64("quarterly.pdf", pdf)
 
 **Returns:** String — base64-encoded PDF bytes. Composes with everything else, so `pdf_from_markdown(md, { sign: {…} })` gives a **signed** document from Markdown.
 
+### pdf_fill(pdf, data, options?)
+
+**Fill an existing PDF's form fields** (AcroForm) from data — the "take a
+government/enterprise form and fill it programmatically" workflow that the render
+builtins (which *write* PDFs) can't do. Sets text fields, checkboxes/radios and
+choice fields.
+
+```soli
+# `pdf` is an app-root relative path, or base64 PDF bytes.
+let filled = pdf_fill("forms/w9.pdf", {
+  "full_name": "Ada Lovelace",
+  "email":     "ada@example.com",
+  "agree":     true          # checkbox: true/"yes"/"on"/"1" checks it
+}, { "flatten": true })
+file_write_base64("w9-filled.pdf", filled)
+```
+
+**Parameters:**
+- `pdf` (String) — the source PDF: an app-root relative **path** to an existing file, or **base64** PDF bytes.
+- `data` (Hash) — `{ field_name => value }`. Values are stringified; a bool drives a checkbox/radio's on/off state.
+- `options` (Hash, optional) — `flatten` (Bool, default `false`): when `true`, bakes the values into static appearances, marks the fields read-only, and turns off the interactive form (`NeedAppearances`). When `false`, values are set and `NeedAppearances` is on, so viewers render them but the fields stay editable.
+
+**Returns:** String — base64-encoded filled PDF. Errors if the PDF has no AcroForm (no fillable fields). Field names must match the form's own field names.
+
 ### Options
 
 | Key | Type | Default | Meaning |
