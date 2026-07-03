@@ -309,7 +309,7 @@ fn value_to_octets(value: &Value, what: &str) -> Result<Vec<u8>, String> {
 /// (`k = ceil(bits(modulus) / 8)`), matching the RSA convention where a
 /// signature / ciphertext is always `k` octets wide. This makes the output
 /// directly composable with the PKCS#1 padding helpers.
-fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, String> {
     let m = BigUint::from_bytes_be(modulus);
     if m == BigUint::from(0u32) {
         return Err("modulus must be non-zero".to_string());
@@ -335,7 +335,7 @@ fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, String>
 /// `block_type` 1 (signatures) fills `PS` with `0xFF`; block type 2
 /// (encryption) fills it with random non-zero octets. `PS` is always at least
 /// 8 octets, so `data` must be at most `k - 11` octets long.
-fn do_pkcs1_pad(data: &[u8], k: usize, block_type: u8) -> Result<Vec<u8>, String> {
+pub(crate) fn do_pkcs1_pad(data: &[u8], k: usize, block_type: u8) -> Result<Vec<u8>, String> {
     if k < 11 {
         return Err(format!(
             "key size {} too small for PKCS#1 v1.5 padding (need >= 11)",

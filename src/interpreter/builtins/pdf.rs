@@ -39,9 +39,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use base64::Engine as _;
-use soli_pdf::{FacturxMetadata, Profile, RenderOptions};
+use sha2::{Digest, Sha256};
+use soli_pdf::{FacturxMetadata, Profile, RenderOptions, SignMeta};
 use time::OffsetDateTime;
 
+use crate::interpreter::builtins::pades;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -62,8 +64,13 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             if opts.pdfa && opts.encrypt.is_some() {
                 return Err("pdf_render(): `pdfa` is incompatible with password protection (PDF/A forbids encryption); drop `password`".to_string());
             }
+            let sign = build_sign_config(args.get(2))?;
+            if sign.is_some() && opts.encrypt.is_some() {
+                return Err("pdf_render(): `sign` is incompatible with password protection (a signed PDF must not be encrypted); drop `password`".to_string());
+            }
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_render() failed: {e}"))?;
+            let pdf = apply_signature(pdf, sign.as_ref())?;
             Ok(b64(pdf))
         })),
     );
@@ -86,8 +93,13 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             if opts.pdfa && opts.encrypt.is_some() {
                 return Err("pdf_response(): `pdfa` is incompatible with password protection (PDF/A forbids encryption); drop `password`".to_string());
             }
+            let sign = build_sign_config(args.get(2))?;
+            if sign.is_some() && opts.encrypt.is_some() {
+                return Err("pdf_response(): `sign` is incompatible with password protection (a signed PDF must not be encrypted); drop `password`".to_string());
+            }
             let pdf = soli_pdf::render_to_bytes(template.as_bytes(), data.as_bytes(), &opts)
                 .map_err(|e| format!("pdf_response() failed: {e}"))?;
+            let pdf = apply_signature(pdf, sign.as_ref())?;
 
             let mut headers = HashPairs::default();
             headers.insert(
@@ -133,6 +145,7 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             if opts.pdfa {
                 return Err("pdf_facturx(): PDF/A is implied by Factur-X; drop the `pdfa` option".to_string());
             }
+            let sign = build_sign_config(args.get(3))?;
             let profile = opt_str(args.get(3), "profile")
                 .and_then(|s| Profile::parse(&s))
                 .unwrap_or_default();
@@ -146,6 +159,7 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 &opts,
             )
             .map_err(|e| format!("pdf_facturx() failed: {e}"))?;
+            let pdf = apply_signature(pdf, sign.as_ref())?;
             Ok(b64(pdf))
         })),
     );
@@ -173,6 +187,7 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 if opts.pdfa {
                     return Err("pdf_facturx_from_invoice(): PDF/A is implied by Factur-X; drop the `pdfa` option".to_string());
                 }
+                let sign = build_sign_config(args.get(2))?;
                 let profile = opt_str(args.get(2), "profile")
                     .and_then(|s| Profile::parse(&s))
                     .unwrap_or_default();
@@ -185,6 +200,7 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                     &opts,
                 )
                 .map_err(|e| format!("pdf_facturx_from_invoice() failed: {e}"))?;
+                let pdf = apply_signature(pdf, sign.as_ref())?;
                 Ok(b64(pdf))
             },
         )),
@@ -347,6 +363,131 @@ fn build_encrypt_options(opts: Option<&Value>) -> Option<soli_pdf::EncryptOption
         owner_password: owner,
         allow,
     })
+}
+
+/// A parsed `sign` option: the signer material, the human-facing signature
+/// dictionary metadata, and the signing time (shared by the `/M` entry and the
+/// CMS signing-time attribute so they can't drift).
+struct SignConfig {
+    material: pades::SignerMaterial,
+    meta: SignMeta,
+    signing_time: OffsetDateTime,
+}
+
+/// Read a `sign` sub-key that is either an inline PEM string or an app-root
+/// relative path to a PEM file. Keys/certs are read here (never from request
+/// data by convention) so the render itself stays IO-free.
+fn load_pem(value: &str, what: &str) -> Result<String, String> {
+    if value.contains("-----BEGIN") {
+        return Ok(value.to_string());
+    }
+    let resolved = resolve_font_dir(PathBuf::from(value));
+    std::fs::read_to_string(&resolved).map_err(|e| {
+        format!(
+            "sign: could not read {what} '{value}' ({}): {e}",
+            resolved.display()
+        )
+    })
+}
+
+fn sign_str(hash: &HashPairs, key: &str) -> Option<String> {
+    match hash.get(&HashKey::String(key.into())) {
+        Some(Value::String(s)) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Format an `OffsetDateTime` (UTC) as a PDF date string `D:YYYYMMDDHHmmSS+00'00'`.
+fn pdf_date(dt: OffsetDateTime) -> String {
+    let dt = dt.to_offset(time::UtcOffset::UTC);
+    format!(
+        "D:{:04}{:02}{:02}{:02}{:02}{:02}+00'00'",
+        dt.year(),
+        dt.month() as u8,
+        dt.day(),
+        dt.hour(),
+        dt.minute(),
+        dt.second()
+    )
+}
+
+/// Parse the optional `sign` hash into a [`SignConfig`]. Returns `Ok(None)` when
+/// no `sign` key is present. `cert` and `key` are required; `chain` (array),
+/// `reason`, `location`, `name`, `contact` are optional.
+fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String> {
+    let sign_val = match opts {
+        Some(Value::Hash(h)) => h.borrow().get(&HashKey::String("sign".into())).cloned(),
+        _ => None,
+    };
+    let sign = match sign_val {
+        None => return Ok(None),
+        Some(Value::Hash(s)) => s,
+        Some(_) => return Err("sign: option must be a hash".to_string()),
+    };
+    let sb = sign.borrow();
+
+    let cert_in =
+        sign_str(&sb, "cert").ok_or("sign: `cert` (PEM string or path) is required".to_string())?;
+    let key_in =
+        sign_str(&sb, "key").ok_or("sign: `key` (PEM string or path) is required".to_string())?;
+    let cert_der = pades::cert_to_der(&load_pem(&cert_in, "cert")?)
+        .map_err(|e| format!("sign: certificate: {e}"))?;
+    let key = pades::parse_private_key(&load_pem(&key_in, "key")?)
+        .map_err(|e| format!("sign: private key: {e}"))?;
+
+    let mut chain_der = Vec::new();
+    if let Some(Value::Array(arr)) = sb.get(&HashKey::String("chain".into())) {
+        for entry in arr.borrow().iter() {
+            if let Value::String(pem) = entry {
+                chain_der.push(
+                    pades::cert_to_der(&load_pem(pem, "chain")?)
+                        .map_err(|e| format!("sign: chain certificate: {e}"))?,
+                );
+            }
+        }
+    }
+
+    let signing_time = now_odt();
+    let meta = SignMeta {
+        reason: sign_str(&sb, "reason"),
+        location: sign_str(&sb, "location"),
+        name: sign_str(&sb, "name"),
+        contact: sign_str(&sb, "contact"),
+        signing_time: Some(pdf_date(signing_time)),
+    };
+    Ok(Some(SignConfig {
+        material: pades::SignerMaterial {
+            cert_der,
+            chain_der,
+            key,
+        },
+        meta,
+        signing_time,
+    }))
+}
+
+/// Reserve a signature slot, digest the ByteRange, build the CMS, and splice it
+/// in. No-op when `cfg` is `None`. The placeholder scales to the embedded
+/// certificates so a full chain never overflows it.
+fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, String> {
+    let Some(cfg) = cfg else {
+        return Ok(pdf);
+    };
+    let cert_bytes = cfg.material.cert_der.len()
+        + cfg
+            .material
+            .chain_der
+            .iter()
+            .map(|c| c.len())
+            .sum::<usize>();
+    let placeholder = (cert_bytes + 4096).max(8192);
+
+    let prepared = soli_pdf::prepare_signature(&pdf, &cfg.meta, placeholder)
+        .map_err(|e| format!("sign: {e}"))?;
+    let digest = Sha256::digest(prepared.signed_bytes());
+    let cms = pades::build_cms(&digest, &cfg.material, cfg.signing_time)
+        .map_err(|e| format!("sign: {e}"))?;
+    soli_pdf::embed_cms(prepared, &cms).map_err(|e| format!("sign: {e}"))
 }
 
 /// A minimal extension→MIME map for attachments without an explicit `mime`.

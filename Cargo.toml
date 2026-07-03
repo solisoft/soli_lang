@@ -130,7 +130,7 @@ multer = "3"
 jsonwebtoken = "9"
 
 # VAPID / Web Push (RFC 8291 / 8292): P-256 ECDH+ECDSA, HKDF, AES-128-GCM.
-p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
+p256 = { version = "0.13", features = ["ecdh", "ecdsa", "pkcs8"] }
 hkdf = "0.12"
 aes-gcm = "0.10"
 
@@ -231,6 +231,8 @@ mail-builder = "0.4"
 
 # JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
 soli-pdf = { path = "pdf" }
+cms = { version = "0.2", features = ["std"] }
+x509-cert = "0.2"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

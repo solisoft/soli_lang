@@ -27,6 +27,7 @@ pub mod layout;
 pub mod pdf_backend;
 pub mod qr;
 pub mod render;
+pub mod sign;
 pub mod stationery;
 pub mod template;
 pub mod text;
@@ -37,6 +38,7 @@ pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
 pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
+pub use sign::{embed_cms, prepare_signature, PreparedSignature, SignMeta, DEFAULT_PLACEHOLDER_LEN};
 
 /// Options controlling a render.
 #[derive(Debug, Clone)]
