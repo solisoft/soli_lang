@@ -267,3 +267,44 @@ fn tagged_pdfa_is_verapdf_conformant_structurally() {
         "pdfuaid extension schema present (PDF/A 6.6.2.3.1)"
     );
 }
+
+#[test]
+fn list_becomes_real_l_structure() {
+    let tpl = br#"{ "fonts": [], "options": { "tagged": true },
+      "content": [ { "type": "list", "items": ["one", "two", "three"] } ] }"#;
+    let pdf = render_to_bytes(tpl, b"{}", &opts()).expect("render");
+    let doc = Document::load_mem(&pdf).expect("load");
+    assert_eq!(count_role(&doc, b"L"), 1, "one list container");
+    assert_eq!(count_role(&doc, b"LI"), 3, "three list items");
+    assert_eq!(count_role(&doc, b"LBody"), 3, "three list bodies");
+}
+
+#[test]
+fn table_becomes_real_table_structure_with_header_scope() {
+    let tpl = br#"{ "fonts": [], "options": { "tagged": true },
+      "content": [ { "type": "table",
+        "header_columns": [ {"text":"A","width":100}, {"text":"B","width":100} ],
+        "rows": [ [ {"text":"1","width":100}, {"text":"2","width":100} ] ] } ] }"#;
+    let pdf = render_to_bytes(tpl, b"{}", &opts()).expect("render");
+    let doc = Document::load_mem(&pdf).expect("load");
+    assert_eq!(count_role(&doc, b"Table"), 1, "one table");
+    assert_eq!(count_role(&doc, b"TR"), 2, "header row + 1 body row");
+    assert_eq!(count_role(&doc, b"TH"), 2, "two header cells");
+    assert_eq!(count_role(&doc, b"TD"), 2, "two body cells");
+    // Header cells carry a Scope so UA-1 (7.5) is satisfied.
+    let th_with_scope = doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .filter(|d| d.get(b"S").ok().and_then(|s| s.as_name().ok()) == Some(b"TH"))
+        .filter(|d| {
+            d.get(b"A")
+                .ok()
+                .and_then(|a| a.as_dict().ok())
+                .and_then(|a| a.get(b"Scope").ok())
+                .and_then(|s| s.as_name().ok())
+                == Some(b"Column")
+        })
+        .count();
+    assert_eq!(th_with_scope, 2, "both TH cells have Scope /Column");
+}

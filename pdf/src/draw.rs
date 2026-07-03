@@ -35,6 +35,23 @@ impl StructRole {
     }
 }
 
+/// Container context for a tagged leaf: it belongs inside a list item or a
+/// table cell, so the `accessibility` pass can build real `L`/`Table` structure
+/// (instead of flat `P`s). `seq` distinguishes separate lists/tables in the
+/// stream; content with the same `seq` groups under one container.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StructGroup {
+    /// Inside `item` of list `seq` (→ `L` › `LI` › `LBody`).
+    ListItem { seq: usize, item: usize },
+    /// Inside cell (`row`, `col`) of table `seq` (→ `Table` › `TR` › `TD`/`TH`).
+    TableCell {
+        seq: usize,
+        row: usize,
+        col: usize,
+        header: bool,
+    },
+}
+
 /// One resolved marked-content leaf: the structure element the backend assigned
 /// an MCID to, ready for the `accessibility` pass to build the tree from.
 #[derive(Debug, Clone)]
@@ -44,6 +61,8 @@ pub struct StructLeaf {
     /// The marked-content id within that page (0-based, in stream order).
     pub mcid: u32,
     pub role: StructRole,
+    /// The list/table container this leaf sits in, if any.
+    pub group: Option<StructGroup>,
 }
 
 /// A point on a [`DrawOp::Polygon`] path. `bezier` marks a cubic control point.
@@ -185,6 +204,8 @@ pub enum DrawOp {
     /// artifact ops (watermarks, backgrounds) inserted around them.
     Tagged {
         role: StructRole,
+        /// List/table container the content sits in (drives `L`/`Table` tree).
+        group: Option<StructGroup>,
         inner: Box<DrawOp>,
     },
 }

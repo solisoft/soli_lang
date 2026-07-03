@@ -83,6 +83,14 @@ pub struct Engine<'a> {
     /// raised to `H1..6` inside a heading paragraph). `None` means "not content"
     /// so it emits unwrapped (→ artifact).
     content_role: Option<StructRole>,
+    /// The list/table container the current content sits in, tagged onto each
+    /// leaf so the accessibility pass can build `L`/`Table` structure.
+    content_group: Option<crate::draw::StructGroup>,
+    /// Monotonic ids distinguishing separate lists / tables in the op stream.
+    list_seq: usize,
+    table_seq: usize,
+    /// Row index within the table currently being drawn (for `TR` grouping).
+    table_row: usize,
     /// While true (header/footer band), content ops emit unwrapped so
     /// headers/footers become artifacts rather than tagged content, and
     /// pagination is suppressed (a band must never trigger a page break).
@@ -177,6 +185,10 @@ impl<'a> Engine<'a> {
             columns: None,
             tagged: template.options.tagged,
             content_role: None,
+            content_group: None,
+            list_seq: 0,
+            table_seq: 0,
+            table_row: 0,
             artifact_mode: false,
             data: None,
         }
@@ -193,6 +205,7 @@ impl<'a> Engine<'a> {
         ) {
             (true, Some(role)) => self.current.push(DrawOp::Tagged {
                 role,
+                group: self.content_group.clone(),
                 inner: Box::new(op),
             }),
             _ => self.current.push(op),
@@ -205,6 +218,7 @@ impl<'a> Engine<'a> {
         if self.tagged && !self.artifact_mode {
             self.current.push(DrawOp::Tagged {
                 role,
+                group: self.content_group.clone(),
                 inner: Box::new(op),
             });
         } else {
@@ -959,6 +973,9 @@ impl<'a> Engine<'a> {
         if list.items.is_empty() {
             return;
         }
+        // A fresh structure id for this list level (nested lists get their own).
+        self.list_seq += 1;
+        let list_seq = self.list_seq;
         // A sublist inherits the parent list's text styling for anything it does
         // not set itself, so a nested list stays at the parent's size/colour
         // instead of snapping back to the 12 pt default.
@@ -976,11 +993,17 @@ impl<'a> Engine<'a> {
         let color = color::parse_hex_or(opts.color.as_deref(), Rgb::BLACK);
         let mut counter = list.start;
 
-        for item in &list.items {
+        for (item_idx, item) in list.items.iter().enumerate() {
             let (text, spans, nested) = match item {
                 ListItem::Text(t) => (Some(t.clone()), None, None),
                 ListItem::Node(n) => (n.text.clone(), n.spans.clone(), n.list.as_deref()),
             };
+            // Tag this item's marker + body so they nest under L › LI › LBody.
+            let prev_group = self.content_group.clone();
+            self.content_group = Some(crate::draw::StructGroup::ListItem {
+                seq: list_seq,
+                item: item_idx,
+            });
 
             if text.is_some() || spans.is_some() {
                 // Reserve a line so the marker and the first body line never split
@@ -1037,6 +1060,7 @@ impl<'a> Engine<'a> {
                 let nested_left = self.region_left() + base_off + indent + gutter;
                 self.render_list(nested, root, template, nested_left, &opts);
             }
+            self.content_group = prev_group;
             if list.spacing > 0.0 {
                 self.cursor.y += list.spacing;
             }
@@ -1910,6 +1934,9 @@ impl<'a> Engine<'a> {
         let columns = compute_columns(t, available, table_left);
         let pad_x = t.options.padding_x;
         let pad_y = t.options.padding_y;
+        // A fresh structure id for this table; rows count up from 0.
+        self.table_seq += 1;
+        self.table_row = 0;
         // Remember where the table starts so a per-table watermark can be
         // centered over its box once the rows are laid out.
         let wm_y_start = self.cursor.y;
@@ -2174,7 +2201,14 @@ impl<'a> Engine<'a> {
         header_style: &TableHeaderStyle,
         resolver: &Resolver,
     ) {
-        for (cell, col) in zip_columns(row, columns) {
+        for (col_idx, (cell, col)) in zip_columns(row, columns).into_iter().enumerate() {
+            // Tag this cell so its content nests under Table › TR › TD/TH.
+            self.content_group = Some(crate::draw::StructGroup::TableCell {
+                seq: self.table_seq,
+                row: self.table_row,
+                col: col_idx,
+                header: is_header,
+            });
             self.draw_one_cell(
                 cell,
                 col,
@@ -2187,6 +2221,8 @@ impl<'a> Engine<'a> {
                 resolver,
             );
         }
+        self.content_group = None;
+        self.table_row += 1;
     }
 
     #[allow(clippy::too_many_arguments)]

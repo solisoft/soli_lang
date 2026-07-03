@@ -186,7 +186,7 @@ pub fn emit(
             let mut mcid = 0i64;
             for op in &page.ops {
                 match op {
-                    DrawOp::Tagged { role, inner } => {
+                    DrawOp::Tagged { role, inner, .. } => {
                         let mut props = std::collections::BTreeMap::new();
                         props.insert("MCID".to_string(), printpdf::DictItem::Int(mcid));
                         ops.push(Op::BeginMarkedContentWithProperties {
@@ -534,11 +534,12 @@ pub fn struct_leaves(doc: &LaidOutDoc) -> Vec<crate::draw::StructLeaf> {
     for (page_idx, page) in doc.pages.iter().enumerate() {
         let mut mcid = 0u32;
         for op in &page.ops {
-            if let DrawOp::Tagged { role, .. } = op {
+            if let DrawOp::Tagged { role, group, .. } = op {
                 leaves.push(crate::draw::StructLeaf {
                     page: page_idx,
                     mcid,
                     role: role.clone(),
+                    group: group.clone(),
                 });
                 mcid += 1;
             }

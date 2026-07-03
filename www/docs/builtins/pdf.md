@@ -435,11 +435,11 @@ PDF/UA, so a tagged render **warns** for each image missing one:
 { "type": "image", "value": "logo.png", "width": 120, "alt": "Acme logo" }
 ```
 
-Headings, paragraphs and figures are fully mapped. **Lists and tables are
-currently tagged as paragraphs** (readable, but not yet `L`/`Table`
-structured) — that mapping, plus alt text on decorative-vs-informative images,
-is the remaining PDF/UA work; full conformance also wants a semantic role for
-every element.
+Headings, paragraphs, figures, **lists** (`L › LI › LBody`) and **tables**
+(`Table › TR › TD/TH`, with a `/Scope` on header cells) are all mapped to real
+structure. A tagged document rendered with `pdfa` (or via `pdf_facturx*`)
+validates as **both PDF/A-3b and PDF/UA-1** — checked in CI with the
+[veraPDF](https://verapdf.org) reference validator.
 
 **Tagging composes with PDF/A and Factur-X.** Set `options.tagged` together with
 the `pdfa` option (or use `pdf_facturx*`) and the output carries **both** the

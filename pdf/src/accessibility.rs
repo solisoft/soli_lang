@@ -6,22 +6,209 @@
 //! pass doesn't have to re-scan the streams. From it we build:
 //!
 //! * `/MarkInfo <</Marked true>>` and `/Lang` on the catalog,
-//! * a `StructTreeRoot` with a `Document → {H1..6 | P | Figure}` tree whose `/K`
-//!   reference the page MCIDs (`/Pg` points at the page; figures carry `/Alt`),
+//! * a `StructTreeRoot` whose leaves (`H1..6 | P | Figure`) reference the page
+//!   MCIDs (`/Pg` points at the page; figures carry `/Alt`), grouped into real
+//!   `L › LI › LBody` and `Table › TR › TD/TH` subtrees when the leaf carries a
+//!   [`StructGroup`] (header cells get a `/Scope` for PDF/UA 7.5),
 //! * a `/ParentTree` number tree + per-page `/StructParents`,
 //! * `/Tabs /S` (logical tab order) on every page,
+//! * `/ViewerPreferences /DisplayDocTitle true` (PDF/UA 7.1),
 //! * an XMP metadata stream carrying the `pdfuaid:part=1` identifier,
 //! * a PDF version bump to 1.5.
 //!
-//! Scope: real heading/paragraph/figure semantics. Lists and tables are tagged
-//! as paragraphs for now (readable, but not `L`/`Table` structured) — that's the
-//! remaining PDF/UA mapping. Everything is derived from the leaf list the backend
-//! produced, so emit and this pass can't drift.
+//! Everything is derived from the leaf list the backend produced, so emit and
+//! this pass can't drift. A tagged + `pdfa` document validates as both PDF/A-3b
+//! and PDF/UA-1 (see the `verapdf` CI job).
 
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 
-use crate::draw::{StructLeaf, StructRole};
+use crate::draw::{StructGroup, StructLeaf, StructRole};
 use crate::error::{PdfError, Result};
+
+/// An in-memory structure node, assembled from the leaf stream before it is
+/// materialized into PDF `StructElem` objects.
+enum Node {
+    /// A content leaf owning an MCID (`P`/`H1..6`/`Figure`).
+    Leaf {
+        page: usize,
+        mcid: u32,
+        role: StructRole,
+    },
+    /// A grouping element (`L`/`LI`/`LBody`/`Table`/`TR`/`TD`/`TH`).
+    Elem { tag: &'static str, kids: Vec<Node> },
+}
+
+fn leaf_node(leaf: &StructLeaf) -> Node {
+    Node::Leaf {
+        page: leaf.page,
+        mcid: leaf.mcid,
+        role: leaf.role.clone(),
+    }
+}
+
+/// Fold the flat leaf stream into a forest: contiguous list/table runs (same
+/// `seq`) become nested subtrees, everything else stays a direct leaf.
+fn build_forest(leaves: &[StructLeaf]) -> Vec<Node> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < leaves.len() {
+        match &leaves[i].group {
+            None => {
+                out.push(leaf_node(&leaves[i]));
+                i += 1;
+            }
+            Some(StructGroup::ListItem { seq, .. }) => {
+                let seq = *seq;
+                let start = i;
+                while i < leaves.len()
+                    && matches!(&leaves[i].group, Some(StructGroup::ListItem { seq: s, .. }) if *s == seq)
+                {
+                    i += 1;
+                }
+                out.push(build_list(&leaves[start..i]));
+            }
+            Some(StructGroup::TableCell { seq, .. }) => {
+                let seq = *seq;
+                let start = i;
+                while i < leaves.len()
+                    && matches!(&leaves[i].group, Some(StructGroup::TableCell { seq: s, .. }) if *s == seq)
+                {
+                    i += 1;
+                }
+                out.push(build_table(&leaves[start..i]));
+            }
+        }
+    }
+    out
+}
+
+fn build_list(run: &[StructLeaf]) -> Node {
+    let item_of = |l: &StructLeaf| match &l.group {
+        Some(StructGroup::ListItem { item, .. }) => *item,
+        _ => 0,
+    };
+    let mut items = Vec::new();
+    let mut j = 0;
+    while j < run.len() {
+        let item = item_of(&run[j]);
+        let start = j;
+        while j < run.len() && item_of(&run[j]) == item {
+            j += 1;
+        }
+        let lbody = Node::Elem {
+            tag: "LBody",
+            kids: run[start..j].iter().map(leaf_node).collect(),
+        };
+        items.push(Node::Elem {
+            tag: "LI",
+            kids: vec![lbody],
+        });
+    }
+    Node::Elem {
+        tag: "L",
+        kids: items,
+    }
+}
+
+fn build_table(run: &[StructLeaf]) -> Node {
+    let row_of = |l: &StructLeaf| match &l.group {
+        Some(StructGroup::TableCell { row, .. }) => *row,
+        _ => 0,
+    };
+    let col_of = |l: &StructLeaf| match &l.group {
+        Some(StructGroup::TableCell { col, .. }) => *col,
+        _ => 0,
+    };
+    let is_header =
+        |l: &StructLeaf| matches!(&l.group, Some(StructGroup::TableCell { header: true, .. }));
+    let mut rows = Vec::new();
+    let mut j = 0;
+    while j < run.len() {
+        let row = row_of(&run[j]);
+        let row_start = j;
+        while j < run.len() && row_of(&run[j]) == row {
+            j += 1;
+        }
+        let mut cells = Vec::new();
+        let mut k = row_start;
+        while k < j {
+            let col = col_of(&run[k]);
+            let header = is_header(&run[k]);
+            let cell_start = k;
+            while k < j && col_of(&run[k]) == col {
+                k += 1;
+            }
+            cells.push(Node::Elem {
+                tag: if header { "TH" } else { "TD" },
+                kids: run[cell_start..k].iter().map(leaf_node).collect(),
+            });
+        }
+        rows.push(Node::Elem {
+            tag: "TR",
+            kids: cells,
+        });
+    }
+    Node::Elem {
+        tag: "Table",
+        kids: rows,
+    }
+}
+
+/// Recursively write a [`Node`] to a `StructElem` object, returning its id.
+/// Leaves are recorded in `leaf_elems` (page, mcid, id) for the ParentTree.
+fn materialize(
+    node: &Node,
+    parent: ObjectId,
+    pages: &[ObjectId],
+    doc: &mut Document,
+    leaf_elems: &mut Vec<(usize, u32, ObjectId)>,
+) -> Option<ObjectId> {
+    match node {
+        Node::Leaf { page, mcid, role } => {
+            let page_id = *pages.get(*page)?; // defensive: a leaf past the page count
+            let id = doc.new_object_id();
+            let mut d = Dictionary::new();
+            d.set("Type", Object::Name(b"StructElem".to_vec()));
+            d.set("S", Object::Name(role.tag().into_bytes()));
+            d.set("Pg", Object::Reference(page_id));
+            d.set("K", Object::Integer(*mcid as i64));
+            d.set("P", Object::Reference(parent));
+            if let StructRole::Figure { alt: Some(alt) } = role {
+                d.set(
+                    "Alt",
+                    Object::String(alt.as_bytes().to_vec(), StringFormat::Literal),
+                );
+            }
+            doc.set_object(id, d);
+            leaf_elems.push((*page, *mcid, id));
+            Some(id)
+        }
+        Node::Elem { tag, kids } => {
+            let id = doc.new_object_id();
+            let kid_ids: Vec<Object> = kids
+                .iter()
+                .filter_map(|k| materialize(k, id, pages, doc, leaf_elems))
+                .map(Object::Reference)
+                .collect();
+            let mut d = Dictionary::new();
+            d.set("Type", Object::Name(b"StructElem".to_vec()));
+            d.set("S", Object::Name(tag.as_bytes().to_vec()));
+            d.set("P", Object::Reference(parent));
+            d.set("K", Object::Array(kid_ids));
+            // PDF/UA (ISO 14289-1 7.5): a header cell needs a Scope so assistive
+            // tech can associate it with its column (all our headers are the
+            // top row → column headers).
+            if *tag == "TH" {
+                let mut attr = Dictionary::new();
+                attr.set("O", Object::Name(b"Table".to_vec()));
+                attr.set("Scope", Object::Name(b"Column".to_vec()));
+                d.set("A", Object::Dictionary(attr));
+            }
+            doc.set_object(id, d);
+            Some(id)
+        }
+    }
+}
 
 /// Add the tagging structure to an already-marked PDF, driven by the structure
 /// leaves the backend emitted.
@@ -32,60 +219,46 @@ pub fn apply_tags(pdf: &[u8], lang: Option<&str>, leaves: &[StructLeaf]) -> Resu
     let pages: Vec<ObjectId> = doc.page_iter().collect();
 
     let struct_root_id = doc.new_object_id();
+    let document_elem_id = doc.new_object_id();
 
-    // One StructElem per leaf, in the leaves' order (page, then MCID). The
-    // element's page is recorded so the ParentTree can be grouped per page.
-    let mut elems: Vec<(ObjectId, usize)> = Vec::with_capacity(leaves.len());
-    for leaf in leaves {
-        let page_id = match pages.get(leaf.page) {
-            Some(id) => *id,
-            None => continue, // defensive: a leaf past the page count
-        };
-        let elem_id = doc.new_object_id();
-        let mut d = Dictionary::new();
-        d.set("Type", Object::Name(b"StructElem".to_vec()));
-        d.set("S", Object::Name(leaf.role.tag().into_bytes()));
-        d.set("Pg", Object::Reference(page_id));
-        d.set("K", Object::Integer(leaf.mcid as i64));
-        // A figure's alt text is required for UA; carry it when present.
-        if let StructRole::Figure { alt: Some(alt) } = &leaf.role {
-            d.set(
-                "Alt",
-                Object::String(alt.as_bytes().to_vec(), StringFormat::Literal),
-            );
+    // Group the flat leaf stream into a nested forest: ungrouped leaves are
+    // direct children of /Document; runs of list/table leaves become real
+    // `L › LI › LBody` and `Table › TR › TD/TH` subtrees.
+    let forest = build_forest(leaves);
+
+    // Materialize the forest into StructElem objects under /Document, recording
+    // each MCID-owning leaf per page for the ParentTree.
+    let mut leaf_elems: Vec<(usize, u32, ObjectId)> = Vec::new();
+    let mut doc_kids: Vec<Object> = Vec::new();
+    for node in &forest {
+        if let Some(id) = materialize(node, document_elem_id, &pages, &mut doc, &mut leaf_elems) {
+            doc_kids.push(Object::Reference(id));
         }
-        doc.set_object(elem_id, d);
-        elems.push((elem_id, leaf.page));
     }
 
-    // The `/Document` element groups every leaf in reading order.
-    let document_elem_id = doc.new_object_id();
-    let kids: Vec<Object> = elems.iter().map(|(id, _)| Object::Reference(*id)).collect();
+    // The `/Document` element groups the forest roots in reading order.
     let mut document_elem = Dictionary::new();
     document_elem.set("Type", Object::Name(b"StructElem".to_vec()));
     document_elem.set("S", Object::Name(b"Document".to_vec()));
     document_elem.set("P", Object::Reference(struct_root_id));
-    document_elem.set("K", Object::Array(kids));
+    document_elem.set("K", Object::Array(doc_kids));
     doc.set_object(document_elem_id, document_elem);
 
-    // Parent every leaf under `/Document`.
-    for (elem_id, _) in &elems {
-        if let Ok(Object::Dictionary(d)) = doc.get_object_mut(*elem_id) {
-            d.set("P", Object::Reference(document_elem_id));
-        }
-    }
-
-    // ParentTree: map each page's StructParents key (its index) to the array of
-    // structure elements whose MCIDs live on that page. Every page gets a key
-    // and `/Tabs /S`, even if it holds only artifacts (empty array).
+    // ParentTree: per page, an array indexed by MCID → the leaf StructElem that
+    // owns it. Every page gets a key and `/Tabs /S`.
     let mut nums: Vec<Object> = Vec::new();
     for (page_idx, page_id) in pages.iter().enumerate() {
-        let page_elems: Vec<Object> = elems
+        let mut per_page: Vec<(u32, ObjectId)> = leaf_elems
             .iter()
-            .filter(|(_, p)| *p == page_idx)
-            .map(|(id, _)| Object::Reference(*id))
+            .filter(|(p, _, _)| *p == page_idx)
+            .map(|(_, mcid, id)| (*mcid, *id))
             .collect();
-        let arr_id = doc.add_object(Object::Array(page_elems));
+        per_page.sort_by_key(|(mcid, _)| *mcid);
+        let arr: Vec<Object> = per_page
+            .into_iter()
+            .map(|(_, id)| Object::Reference(id))
+            .collect();
+        let arr_id = doc.add_object(Object::Array(arr));
         nums.push(Object::Integer(page_idx as i64));
         nums.push(Object::Reference(arr_id));
         if let Ok(Object::Dictionary(page)) = doc.get_object_mut(*page_id) {
