@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- IzPack headless auto-install descriptor for the veraPDF greenfield CLI.
+     Used by the `verapdf` CI job to install veraPDF into /tmp/verapdf without
+     interactive prompts. -->
+<AutomatedInstallation langpack="eng">
+    <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+    <com.izforge.izpack.panels.target.TargetPanel id="install_dir">
+        <installpath>/tmp/verapdf</installpath>
+    </com.izforge.izpack.panels.target.TargetPanel>
+    <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select"/>
+    <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+    <com.izforge.izpack.panels.finish.SimpleFinishPanel id="finish"/>
+</AutomatedInstallation>

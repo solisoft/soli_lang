@@ -84,6 +84,55 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+  # Validate that the tagged + PDF/A output is genuinely conformant, using the
+  # veraPDF reference validator. Guards the "accessible + archival" claim: the
+  # sample must pass BOTH PDF/A-3b and PDF/UA-1 (veraPDF exits non-zero on a
+  # non-compliant file, failing the job).
+  verapdf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Java (for veraPDF)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install veraPDF
+        run: |
+          curl -fsSL -o /tmp/vera.zip https://software.verapdf.org/rel/verapdf-installer.zip
+          (cd /tmp && unzip -q vera.zip)
+          JAR=$(ls /tmp/verapdf-greenfield-*/verapdf-izpack-installer-*.jar | head -1)
+          java -jar "$JAR" scripts/verapdf-auto-install.xml
+
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            target/
+          key: ${{ runner.os }}-cargo-${{ github.sha }}
+
+      - name: Generate sample PDFs
+        run: cargo run --locked -- scripts/verapdf_samples.sl
+
+      - name: Validate PDF/A-3b
+        run: /tmp/verapdf/verapdf --flavour 3b /tmp/vp_tagged_pdfa.pdf
+
+      - name: Validate PDF/UA-1
+        run: /tmp/verapdf/verapdf --flavour ua1 /tmp/vp_tagged_pdfa.pdf
+
   # SEC-094: scan Cargo.lock for known RustSec advisories on every push
   # and PR. Default policy: cargo audit exits non-zero on a confirmed
   # vulnerability, making CI fail; informational notices (unmaintained /
