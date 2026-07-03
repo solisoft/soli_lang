@@ -24,14 +24,26 @@ impl DiskFS {
     }
 
     fn resolve(&self, path: &str) -> String {
-        let combined = if path.is_empty() || path == "." || path == "/" {
-            self.root.clone()
-        } else if path.starts_with('/') {
-            format!("{}{}", self.root, path)
-        } else {
-            format!("{}/{}", self.root, path)
-        };
-        combined
+        if path.is_empty() || path == "." || path == "/" {
+            return self.root.clone();
+        }
+        if path.starts_with('/') {
+            // An absolute path already inside the root must be used
+            // verbatim: serve-mode callers (the template engine, the
+            // static-file handler) build absolute paths by joining the
+            // serve folder — which IS this root — so re-prefixing would
+            // double it (`/tmp/soli_X/tmp/soli_X/app/views/...`).
+            let root = self.root.trim_end_matches('/');
+            if path == root
+                || path
+                    .strip_prefix(root)
+                    .is_some_and(|rest| rest.starts_with('/'))
+            {
+                return path.to_string();
+            }
+            return format!("{}{}", self.root, path);
+        }
+        format!("{}/{}", self.root, path)
     }
 }
 
@@ -283,5 +295,34 @@ mod tests {
     fn test_disk_fs_exists() {
         let fs = DiskFS::new("/tmp");
         assert!(fs.exists("."));
+    }
+
+    #[test]
+    fn test_disk_fs_absolute_path_under_root_not_reprefixed() {
+        // Regression: serve-mode callers (template engine, static files)
+        // pass absolute paths built from the serve folder — the DiskFS
+        // root itself. Re-prefixing doubled the root and every template
+        // lookup 404'd when serving a .soli bundle.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let views = dir.path().join("app/views/home");
+        std::fs::create_dir_all(&views).unwrap();
+        std::fs::write(views.join("index.html.erb"), b"<h1>hi</h1>").unwrap();
+
+        let fs = DiskFS::new(&root);
+        let absolute = format!("{}/app/views/home/index.html.erb", root);
+        assert!(fs.exists(&absolute), "absolute path under root must hit");
+        assert_eq!(fs.read_to_string(&absolute).unwrap(), "<h1>hi</h1>");
+        assert!(fs.exists(&root), "the root itself must hit");
+
+        // A sibling path that merely shares the root as a string prefix
+        // (`/tmp/xyzABC-other`) is NOT under the root: it must still be
+        // treated as VFS-relative and get prefixed (and thus miss).
+        let sibling = format!("{}-other/app/views/home/index.html.erb", root);
+        assert!(!fs.exists(&sibling));
+
+        // VFS-relative lookups keep working, with and without a leading /.
+        assert!(fs.exists("app/views/home/index.html.erb"));
+        assert!(fs.exists("/app/views/home/index.html.erb"));
     }
 }

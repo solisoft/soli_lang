@@ -209,6 +209,9 @@ proxy_url = "https://proxy.example.com"</code></pre>
         <p class="text-gray-400 text-sm">
             <code>soli build</code> collects all <code>.sl</code>, <code>.slv</code>, <code>.yml</code>, <code>.css</code>, <code>.js</code> files into a single <code>.soli</code> bundle. When you run <code>soli serve app.soli</code>, the bundle is extracted to <code>/tmp/soli_PID</code> and the server boots normally. On the proxy side, set <code>start_script = "soli serve /opt/myapp/my_app.soli --port $PORT --workers $WORKERS"</code> in the app's <code>app.infos</code>. Migrations should be run locally before bundling — auto-migration is not supported in bundle mode.
         </p>
+        <p class="text-gray-400 text-sm mt-3">
+            <strong class="text-amber-300">Secrets stay out of the bundle.</strong> Dotfiles are never bundled, so ship your <code>.env</code> separately and drop it <strong>next to the <code>.soli</code> file</strong> — <code>soli serve app.soli</code> loads <code>.env</code> (and <code>.env.{APP_ENV}</code>) from the bundle's directory before boot. Variables already set in the process environment take precedence. Note that binary assets (images, fonts) in <code>public/</code> are not bundled either — deploy those alongside or serve them from a CDN.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>

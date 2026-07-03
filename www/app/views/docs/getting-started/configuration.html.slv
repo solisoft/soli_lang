@@ -19,6 +19,9 @@ SOLIDB_DATABASE=myapp_development</code></pre>
         <p class="text-gray-400 mt-4">
             Keys must match <code>[A-Za-z_][A-Za-z0-9_]*</code>. Values cannot contain <code>\0</code>, <code>\r</code>, or <code>\n</code> &mdash; entries with control characters are skipped at load time with a warning on stderr. This avoids HTTP-header-split / log-injection vectors when an env value flows downstream into responses or structured logs.
         </p>
+        <p class="text-gray-400 mt-4">
+            The files are read from the app folder passed to <code>soli serve</code>. When serving a bundle (<code>soli serve app.soli</code>), they are read from the directory containing the <code>.soli</code> file &mdash; dotfiles are never included in a bundle, so ship the <code>.env</code> alongside it.
+        </p>
     </section>
 
     <section class="mb-12">

@@ -157,6 +157,18 @@ fn serve_from_bundle(
 
     let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
 
+    // Load `.env` (and `.env.{APP_ENV}`) from the directory containing the
+    // bundle file. Dotfiles are deliberately excluded from bundles (secrets
+    // don't belong in a distributable artifact), so the operator drops a
+    // `.env` next to the `.soli` — the extracted temp dir that
+    // `serve_folder` later scans never has one.
+    let bundle_dir = Path::new(bundle_path)
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    solilang::serve::env_loader::load_env_files(&bundle_dir);
+
     // Extract to a temp directory
     let tmp_dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp_dir);
