@@ -227,7 +227,10 @@ fn header_binds_document_data() {
             }
         }
     }
-    assert!(all_text.contains("AlphaRow"), "header repeat bound: {all_text:?}");
+    assert!(
+        all_text.contains("AlphaRow"),
+        "header repeat bound: {all_text:?}"
+    );
     assert!(all_text.contains("BetaRow"));
 }
 
@@ -258,9 +261,9 @@ fn footer_supports_static_elements() {
         ops.iter().any(|op| matches!(op, DrawOp::FillRect { .. })),
         "footer rect drawn"
     );
-    let footer_text = ops.iter().any(|op| {
-        matches!(op, DrawOp::Text(td) if td.pieces.iter().any(|p| p.text.contains("footer")))
-    });
+    let footer_text = ops.iter().any(
+        |op| matches!(op, DrawOp::Text(td) if td.pieces.iter().any(|p| p.text.contains("footer"))),
+    );
     assert!(footer_text, "footer paragraph drawn after move");
 }
 

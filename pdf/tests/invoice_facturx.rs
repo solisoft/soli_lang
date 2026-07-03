@@ -121,7 +121,11 @@ fn enriched_invoice_embeds_adjusted_totals() {
     .expect("generate enriched");
     let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
     let embedded = find_embedded_file(&doc).expect("embedded file present");
-    assert_eq!(embedded, xml.as_bytes(), "embedded XML matches generated XML");
+    assert_eq!(
+        embedded,
+        xml.as_bytes(),
+        "embedded XML matches generated XML"
+    );
 }
 
 fn find_embedded_file(doc: &lopdf::Document) -> Option<Vec<u8>> {

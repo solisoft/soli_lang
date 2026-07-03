@@ -795,7 +795,11 @@ fn push_party(out: &mut String, tag: &str, p: &Party) {
 
 /// One allowance/charge row for the template (`discounts[]` / `charges[]`):
 /// reason, formatted amount, and the percent when percent-based (else `""`).
-fn allowance_charge_json(ac: &AllowanceCharge, resolved: i64, money: &dyn Fn(i64) -> String) -> Value {
+fn allowance_charge_json(
+    ac: &AllowanceCharge,
+    resolved: i64,
+    money: &dyn Fn(i64) -> String,
+) -> Value {
     json!({
         "reason": ac.reason,
         "amount": money(resolved),
@@ -1106,7 +1110,9 @@ mod tests {
         let header = idx("<ram:ApplicableHeaderTradeSettlement>");
         let tax = xml[header..].find("<ram:ApplicableTradeTax>").unwrap() + header;
         assert!(tax < idx("<ram:SpecifiedTradeAllowanceCharge>"));
-        assert!(idx("<ram:SpecifiedTradeAllowanceCharge>") < idx("<ram:SpecifiedTradePaymentTerms>"));
+        assert!(
+            idx("<ram:SpecifiedTradeAllowanceCharge>") < idx("<ram:SpecifiedTradePaymentTerms>")
+        );
         assert!(
             idx("<ram:SpecifiedTradePaymentTerms>")
                 < idx("<ram:SpecifiedTradeSettlementHeaderMonetarySummation>")

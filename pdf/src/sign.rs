@@ -263,7 +263,9 @@ fn locate_contents(bytes: &[u8], placeholder_len: usize) -> Result<(usize, usize
     let open_lt = open
         .checked_sub(1)
         .filter(|&i| bytes[i] == b'<')
-        .ok_or_else(|| PdfError::Backend("sign: malformed /Contents placeholder (no '<')".into()))?;
+        .ok_or_else(|| {
+            PdfError::Backend("sign: malformed /Contents placeholder (no '<')".into())
+        })?;
     if close >= bytes.len() || bytes[close] != b'>' {
         return Err(PdfError::Backend(
             "sign: malformed /Contents placeholder (no '>')".into(),
@@ -283,7 +285,8 @@ fn patch_byte_range(bytes: &mut [u8], range: [usize; 4]) -> Result<()> {
     let key = b"/ByteRange";
     let key_at = find_subslice(bytes, key)
         .ok_or_else(|| PdfError::Backend("sign: /ByteRange key not found".into()))?;
-    let open = key_at + key.len()
+    let open = key_at
+        + key.len()
         + bytes[key_at + key.len()..]
             .iter()
             .position(|&b| b == b'[')
@@ -322,7 +325,5 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }

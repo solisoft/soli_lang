@@ -42,7 +42,12 @@ fn parse_byte_range(pdf: &[u8]) -> [usize; 4] {
         .windows(key.len())
         .position(|w| w == key)
         .expect("/ByteRange present");
-    let open = at + key.len() + pdf[at + key.len()..].iter().position(|&b| b == b'[').unwrap();
+    let open = at
+        + key.len()
+        + pdf[at + key.len()..]
+            .iter()
+            .position(|&b| b == b'[')
+            .unwrap();
     let close = open + pdf[open..].iter().position(|&b| b == b']').unwrap();
     let inner = std::str::from_utf8(&pdf[open + 1..close]).unwrap();
     let nums: Vec<usize> = inner
@@ -107,7 +112,11 @@ fn embed_cms_is_length_preserving_and_splices_hex() {
     let fake_cms: Vec<u8> = (0..300u32).map(|i| (i % 251) as u8).collect();
     let signed = soli_pdf::embed_cms(prepared, &fake_cms).expect("embed");
 
-    assert_eq!(signed.len(), before_len, "splice must not change file length");
+    assert_eq!(
+        signed.len(),
+        before_len,
+        "splice must not change file length"
+    );
     // ByteRange is untouched by the splice.
     assert_eq!(parse_byte_range(&signed), range_before);
     // The hex of the blob is present at the reserved offset, trailing zeros kept.
