@@ -1162,7 +1162,7 @@ fn run_hyper_server_worker_pool(
                     .into_iter()
                     .filter(|path| {
                         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            matches!(ext, "sl" | "erb" | "slv")
+                            matches!(ext, "sl" | "erb" | "slv" | "md")
                                 || server_constants::is_tracked_static_extension(ext)
                         } else {
                             false
@@ -1279,12 +1279,6 @@ fn run_hyper_server_worker_pool(
                     println!("   ✓ Signaled template cache clear to all workers");
                 }
 
-                // Recompile Tailwind CSS when source files change
-                // (views may introduce new classes, asset CSS may have new directives)
-                if views_changed || asset_css_changed || controllers_changed || helpers_changed {
-                    tailwind::compile_tailwind_css_once(&watch_folder);
-                }
-
                 if static_files_changed && !views_changed && !asset_css_changed {
                     // Only signal static file reload when no views/asset CSS changed.
                     // When views or asset CSS change, Tailwind rebuilds CSS into public/
@@ -1302,12 +1296,12 @@ fn run_hyper_server_worker_pool(
                     println!("   ✓ Signaled routes reload to all workers");
                 }
 
-                // Bump the generation LAST (Release) so a worker that
-                // observes it (Acquire) also observes every per-kind bump
-                // above. Workers only scan the individual counters when
-                // this one moved. A bump where no individual counter moved
-                // (e.g. the static_files special case) is harmless — the
-                // scan just finds nothing to do.
+                // Bump the generation after the per-kind counters (Release) so
+                // a worker that observes it (Acquire) also observes every
+                // per-kind bump above. Workers only scan the individual
+                // counters when this one moved. A bump where no individual
+                // counter moved (e.g. the static_files special case) is
+                // harmless — the scan just finds nothing to do.
                 if controllers_changed
                     || middleware_changed
                     || helpers_changed
@@ -1320,6 +1314,19 @@ fn run_hyper_server_worker_pool(
                     hot_reload_versions_for_watcher
                         .generation
                         .fetch_add(1, Ordering::Release);
+                }
+
+                // Recompile Tailwind CSS when source files change (views may
+                // introduce new classes, asset CSS may have new directives).
+                // This blocks the watcher thread — possibly for seconds on a
+                // cold run (binary download, first compile) — so it must run
+                // AFTER the version bumps above or workers keep serving stale
+                // cached bodies until Tailwind finishes. It still runs before
+                // the browser-reload send (the browser must refetch the new
+                // CSS) and before the debounce drain (which swallows the
+                // watcher events Tailwind's own writes generate).
+                if views_changed || asset_css_changed || controllers_changed || helpers_changed {
+                    tailwind::compile_tailwind_css_once(&watch_folder);
                 }
 
                 // Notify browser for live reload (with cooldown to prevent loops)
@@ -1891,6 +1898,15 @@ fn worker_loop(
             )
         };
 
+        // Any hot-reload signal invalidates cached rendered bodies: view edits
+        // change the AST, helper/route edits change output without changing the
+        // cache key, and static-asset changes alter public_path() version hashes
+        // embedded in cached HTML. The watcher only exists in dev mode, so this
+        // never fires in production; the LRU is 64 entries, trivial to rebuild.
+        if scan_versions {
+            crate::template::response_cache::clear_cache();
+        }
+
         if current_controllers != last_controllers_version {
             last_controllers_version = current_controllers;
             // Re-load all controllers
@@ -2155,12 +2171,17 @@ fn worker_loop(
                 let idx = oper.index();
                 if Some(idx) == work_idx {
                     if let Ok(mut data) = oper.recv(&work_rx) {
-                        // Check hot reload before handling
+                        // Check hot reload before handling: a parked worker
+                        // serves this request before the loop-top version scan
+                        // runs, so clear both the template AST cache and this
+                        // thread's rendered-body cache here — otherwise the
+                        // first request after a view edit gets the stale body.
                         if dev_mode {
                             let current_views = hot_reload_versions.views.load(Ordering::Acquire);
                             if current_views != last_views_version {
                                 last_views_version = current_views;
                                 clear_template_cache();
+                                crate::template::response_cache::clear_cache();
                             }
                         }
                         crate::interpreter::builtins::streaming::clear_pending_stream();
