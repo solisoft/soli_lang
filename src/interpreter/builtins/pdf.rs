@@ -26,8 +26,9 @@
 //!     `permissions` is a subset of `["print","copy","modify","annotate"]`
 //!     (empty = allow all). Incompatible with `pdf_facturx*` (PDF/A).
 //!   * `pdfa` — bool: emit PDF/A-3b (archival) output without a Factur-X
-//!     payload. Incompatible with `password` (PDF/A forbids encryption), with
-//!     tagged templates, and with `pdf_facturx*` (already PDF/A).
+//!     payload. Incompatible with `password` (PDF/A forbids encryption) and with
+//!     `pdf_facturx*` (already PDF/A). Composes with a tagged template — the
+//!     output then declares both PDF/A-3b and PDF/UA-1 (accessible + archival).
 //!   * `filename` (pdf_response) — sets `Content-Disposition: attachment`.
 //!
 //! `pdf_response(template, data, options?)` renders and returns a ready

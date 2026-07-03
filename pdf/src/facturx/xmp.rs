@@ -39,8 +39,10 @@ fn xmp_date(dt: OffsetDateTime) -> String {
 
 /// Build the complete XMP packet. `Some(profile)` adds the Factur-X extension
 /// schema and `fx:` value blocks; `None` yields a plain PDF/A-3b packet (used
-/// by the standalone `pdfa` render option).
-pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata) -> String {
+/// by the standalone `pdfa` render option). When `ua` is true, the PDF/UA-1
+/// identifier is spliced in too, so an accessible (tagged) document declares
+/// **both** PDF/A-3b and PDF/UA conformance in one packet.
+pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata, ua: bool) -> String {
     let ts = xmp_date(meta.created);
     let prefix = format!(
         r#"<?xpacket begin="{bom}" id="W5M0MpCehiHzreSzNTczkc9d"?>
@@ -126,7 +128,16 @@ pub fn build(facturx: Option<Profile>, meta: &FacturxMetadata) -> String {
         None => String::new(),
     };
 
-    format!("{prefix}{facturx_block}  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>")
+    // PDF/UA-1 identifier for accessible (tagged) documents.
+    let ua_block = if ua {
+        "    <rdf:Description xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\" rdf:about=\"\">\n      \
+         <pdfuaid:part>1</pdfuaid:part>\n    </rdf:Description>\n"
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    format!("{prefix}{facturx_block}{ua_block}  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>")
 }
 
 #[cfg(test)]
@@ -136,7 +147,7 @@ mod tests {
     #[test]
     fn packet_has_required_markers() {
         let meta = FacturxMetadata::default();
-        let xmp = build(Some(Profile::En16931), &meta);
+        let xmp = build(Some(Profile::En16931), &meta, false);
         assert!(xmp.contains("<pdfaid:part>3</pdfaid:part>"));
         assert!(xmp.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
         assert!(xmp.contains("urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#"));
@@ -148,14 +159,33 @@ mod tests {
     #[test]
     fn packet_without_facturx_extension() {
         let meta = FacturxMetadata::default();
-        let xmp = build(None, &meta);
+        let xmp = build(None, &meta, false);
         assert!(xmp.contains("<pdfaid:part>3</pdfaid:part>"));
         assert!(xmp.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
         assert!(!xmp.contains("fx:"));
         assert!(!xmp.contains("pdfaExtension"));
         assert!(!xmp.contains("urn:factur-x"));
+        assert!(!xmp.contains("pdfuaid"));
         assert!(xmp.starts_with("<?xpacket"));
         assert!(xmp.ends_with(r#"<?xpacket end="w"?>"#));
+    }
+
+    #[test]
+    fn ua_packet_declares_both_pdfa_and_pdfua() {
+        let meta = FacturxMetadata::default();
+        let xmp = build(None, &meta, true);
+        assert!(
+            xmp.contains("<pdfaid:part>3</pdfaid:part>"),
+            "still PDF/A-3"
+        );
+        assert!(
+            xmp.contains("<pdfuaid:part>1</pdfuaid:part>"),
+            "and PDF/UA-1"
+        );
+        // Factur-X + UA compose: extension schema AND the UA id together.
+        let fx = build(Some(Profile::En16931), &meta, true);
+        assert!(fx.contains("urn:factur-x"));
+        assert!(fx.contains("<pdfuaid:part>1</pdfuaid:part>"));
     }
 
     #[test]
@@ -163,8 +193,8 @@ mod tests {
         // The Factur-X packet must be the plain packet with the extension +
         // fx blocks spliced in — same prefix, same suffix.
         let meta = FacturxMetadata::default();
-        let plain = build(None, &meta);
-        let fx = build(Some(Profile::En16931), &meta);
+        let plain = build(None, &meta, false);
+        let fx = build(Some(Profile::En16931), &meta, false);
         let suffix = "  </rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>";
         let plain_prefix = plain.strip_suffix(suffix).unwrap();
         assert!(fx.starts_with(plain_prefix));

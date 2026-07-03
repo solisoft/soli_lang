@@ -14,23 +14,38 @@ use crate::error::{PdfError, Result};
 static SRGB_ICC: &[u8] = include_bytes!("../../assets/sRGB-v2-micro.icc");
 
 /// Convert rendered PDF bytes to PDF/A-3b bytes without any Factur-X payload.
+/// If the document is already tagged (accessible), the output declares PDF/UA-1
+/// as well — one archival **and** accessible file.
 pub fn to_pdfa(pdf: &[u8], meta: &FacturxMetadata) -> Result<Vec<u8>> {
     let mut doc = Document::load_mem(pdf)
         .map_err(|e| PdfError::Pdfa(format!("could not parse rendered PDF: {e}")))?;
-    apply_pdfa_base(&mut doc, xmp::build(None, meta), meta)?;
+    apply_pdfa_base(&mut doc, None, meta)?;
     let mut buf = Vec::new();
     doc.save_to(&mut buf)
         .map_err(|e| PdfError::Pdfa(format!("save: {e}")))?;
     Ok(buf)
 }
 
-/// Apply the PDF/A-3b baseline to a parsed document, with the caller-built XMP
-/// packet as the catalog metadata stream.
+/// True when the catalog already carries a structure tree — i.e. the tagging
+/// pass ran and the document is accessible. Used to add the PDF/UA identifier to
+/// the PDF/A metadata so the two conformance claims compose.
+fn is_tagged(doc: &Document) -> bool {
+    doc.catalog()
+        .ok()
+        .map(|c| c.get(b"StructTreeRoot").is_ok())
+        .unwrap_or(false)
+}
+
+/// Apply the PDF/A-3b baseline to a parsed document. The XMP packet is built
+/// here — `facturx` splices the Factur-X extension schema; a tagged document
+/// additionally gets the PDF/UA-1 identifier.
 pub(crate) fn apply_pdfa_base(
     doc: &mut Document,
-    xmp_packet: String,
+    facturx: Option<super::Profile>,
     meta: &FacturxMetadata,
 ) -> Result<()> {
+    let xmp_packet = xmp::build(facturx, meta, is_tagged(doc));
+
     // PDF/A-3 is PDF 1.7.
     doc.version = "1.7".to_string();
 
@@ -172,7 +187,19 @@ fn add_metadata_stream(doc: &mut Document, packet: String) -> lopdf::ObjectId {
     dict.set("Subtype", Object::Name(b"XML".to_vec()));
     // XMP must stay plaintext for PDF/A; never compress.
     let stream = Stream::new(dict, packet.into_bytes()).with_compression(false);
-    doc.add_object(Object::Stream(stream))
+    // Reuse the catalog's existing /Metadata object when present (the tagging
+    // pass writes a PDF/UA packet) so we replace it rather than orphan it.
+    if let Some(id) = doc
+        .catalog()
+        .ok()
+        .and_then(|c| c.get(b"Metadata").ok())
+        .and_then(|o| o.as_reference().ok())
+    {
+        doc.set_object(id, Object::Stream(stream));
+        id
+    } else {
+        doc.add_object(Object::Stream(stream))
+    }
 }
 
 /// Mirror key metadata into the Info dictionary and ensure a trailer `/ID`.

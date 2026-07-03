@@ -113,17 +113,24 @@ fn untagged_output_has_no_struct_tree() {
 }
 
 #[test]
-fn tagged_is_rejected_for_facturx() {
+fn tagged_facturx_is_accessible_and_archival() {
+    // A tagged Factur-X invoice is simultaneously accessible (PDF/UA-1),
+    // archival (PDF/A-3b) and machine-readable (embedded EN 16931 XML) — the
+    // whole point of unifying the tagging and PDF/A passes.
     use soli_pdf::{FacturxMetadata, Profile};
     let meta = FacturxMetadata::default();
     let xml = b"<xml/>";
-    let err = soli_pdf::generate_facturx(TAGGED, b"{}", xml, Profile::En16931, &meta, &opts())
-        .expect_err("tagged + facturx must be rejected");
-    let msg = format!("{err}");
+    let pdf = soli_pdf::generate_facturx(TAGGED, b"{}", xml, Profile::En16931, &meta, &opts())
+        .expect("tagged + facturx compose");
+    let doc = Document::load_mem(&pdf).expect("load");
     assert!(
-        msg.contains("incompatible with Factur-X"),
-        "unexpected error: {msg}"
+        catalog(&doc).get(b"StructTreeRoot").is_ok(),
+        "structure tree preserved through the Factur-X pass"
     );
+    let raw = String::from_utf8_lossy(&pdf);
+    assert!(raw.contains("<pdfaid:part>3</pdfaid:part>"), "PDF/A-3b");
+    assert!(raw.contains("<pdfuaid:part>1</pdfuaid:part>"), "PDF/UA-1");
+    assert!(raw.contains("urn:factur-x"), "Factur-X extension schema");
 }
 
 /// Count StructElems whose `/S` is the given structure type.

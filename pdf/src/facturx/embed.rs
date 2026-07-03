@@ -6,7 +6,6 @@ use lopdf::{Dictionary, Document, Object, Stream, StringFormat};
 use md5::{Digest, Md5};
 
 use super::pdfa::{apply_pdfa_base, pdf_date};
-use super::xmp;
 use super::{FacturxMetadata, Profile};
 use crate::error::{PdfError, Result};
 
@@ -19,7 +18,7 @@ pub fn embed(
     profile: Profile,
     meta: &FacturxMetadata,
 ) -> Result<Vec<u8>> {
-    apply_pdfa_base(&mut doc, xmp::build(Some(profile), meta), meta)?;
+    apply_pdfa_base(&mut doc, Some(profile), meta)?;
 
     let embedded_file = add_embedded_file(&mut doc, xml, meta);
     let filespec = add_filespec(&mut doc, embedded_file, profile);

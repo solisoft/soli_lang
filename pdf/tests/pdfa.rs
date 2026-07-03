@@ -51,7 +51,10 @@ fn pdfa_flag_produces_pdfa_without_facturx() {
     let catalog = doc.catalog().expect("catalog");
     assert!(catalog.has(b"OutputIntents"), "catalog has /OutputIntents");
     assert!(catalog.has(b"Metadata"), "catalog has /Metadata");
-    assert!(!catalog.has(b"AF"), "no associated files without attachments");
+    assert!(
+        !catalog.has(b"AF"),
+        "no associated files without attachments"
+    );
 
     let xmp = read_metadata(&doc).expect("xmp metadata");
     let xmp = String::from_utf8_lossy(&xmp);
@@ -77,7 +80,10 @@ fn pdfa_with_attachments_keeps_embedded_files() {
     let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
 
     let catalog = doc.catalog().expect("catalog");
-    assert!(catalog.has(b"AF"), "attachment /AF entry survives the pdfa pass");
+    assert!(
+        catalog.has(b"AF"),
+        "attachment /AF entry survives the pdfa pass"
+    );
     assert_eq!(embedded_file_count(&doc), 1, "the attachment is embedded");
 
     let xmp = read_metadata(&doc).expect("xmp metadata");
@@ -97,18 +103,38 @@ fn pdfa_rejects_encrypt() {
         ..offline_opts()
     };
     let err = render_to_bytes(TEMPLATE, DATA, &opts).expect_err("pdfa + encrypt must fail");
-    assert!(err.to_string().contains("encryption is incompatible with PDF/A"));
+    assert!(err
+        .to_string()
+        .contains("encryption is incompatible with PDF/A"));
 }
 
 #[test]
-fn pdfa_rejects_tagged_template() {
+fn pdfa_and_tagged_compose_into_one_file() {
+    // A tagged (accessible) + PDF/A (archival) render yields a single document
+    // declaring BOTH conformance identifiers, with the structure tree and the
+    // sRGB OutputIntent both present.
     let template = br#"{
-        "options": { "tagged": true },
+        "options": { "tagged": true, "lang": "en-US" },
         "content": [ { "type": "paragraph", "value": "hello" } ]
     }"#;
-    let err =
-        render_to_bytes(template, b"{}", &offline_opts()).expect_err("pdfa + tagged must fail");
-    assert!(err.to_string().contains("tagged"));
+    let pdf = render_to_bytes(template, b"{}", &offline_opts()).expect("pdfa + tagged compose");
+    let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
+
+    let catalog = doc.catalog().expect("catalog");
+    assert!(catalog.has(b"StructTreeRoot"), "structure tree preserved");
+    assert!(catalog.has(b"MarkInfo"), "marked-content flag preserved");
+    assert!(catalog.has(b"OutputIntents"), "sRGB OutputIntent present");
+
+    let xmp = read_metadata(&doc).expect("xmp metadata");
+    let xmp = String::from_utf8_lossy(&xmp);
+    assert!(
+        xmp.contains("<pdfaid:part>3</pdfaid:part>"),
+        "PDF/A-3 declared"
+    );
+    assert!(
+        xmp.contains("<pdfuaid:part>1</pdfuaid:part>"),
+        "PDF/UA-1 declared"
+    );
 }
 
 #[test]

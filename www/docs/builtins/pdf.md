@@ -118,7 +118,7 @@ file_write_base64("quarterly.pdf", pdf)
 | `attachments` | Array | — | Files embedded into the reader's attachments panel: `[{ "path": "exports/data.csv", "name"?, "mime"? }]` (paths app-root relative; missing file = error; MIME guessed from the extension when omitted). Composes with Factur-X — `factur-x.xml` and your attachments coexist in the name tree and `/AF`. |
 | `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `pdf_facturx*`** — PDF/A forbids encryption. |
 | `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
-| `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption) and with tagged templates; `pdf_facturx*` reject it (they are already PDF/A). Attachments compose. |
+| `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption); `pdf_facturx*` reject it (they are already PDF/A). **Composes with a `tagged` template** — the output then declares PDF/A-3b *and* PDF/UA-1 (accessible + archival). Attachments compose. |
 | `sign` | Hash | — | **Digitally sign** the PDF (PAdES) — see [Digital signatures](#digital-signatures-pades). `{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }`. Works on `pdf_render`, `pdf_response`, and `pdf_facturx*` (signed e-invoices). Incompatible with `password` (a signed PDF must not be encrypted). |
 
 ---
@@ -293,7 +293,7 @@ A template has five top-level keys:
 | `background` | string | — | Page background fill (hex, no `#`) painted behind every page, beneath any watermark and content. Omit for white paper. |
 | `backgroundImage` | object | — | A full-page background image `{ "src": …, "pages"?: "all"/"first"/"last"/[…], "opacity"?: 0–1 }` — a cover photo or branded page. Drawn stretched to the page, above the `background` fill and below the watermark/content. `src` is any `image` source (URL/`file://`/`data:`). `opacity` (default `1`) fades it into a soft wash — set e.g. `0.15` for a faint stationery tint behind the content (clamped to `0`–`1`). |
 | `watermark` | object | — | A diagonal stamp (e.g. `PAID`, `DRAFT`). Centered behind the content of every page by default; position, layering and page-scope are configurable. |
-| `tagged` | bool | `false` | Emit a **tagged (accessible)** PDF — see [Accessible / tagged output](#accessible--tagged-output). Incompatible with Factur-X. |
+| `tagged` | bool | `false` | Emit a **tagged (accessible)** PDF — see [Accessible / tagged output](#accessible--tagged-output). Composes with `pdfa` **and** Factur-X: a tagged archival/e-invoice document declares PDF/UA-1 too. |
 | `lang` | string | `en-US` | BCP-47 document language (e.g. `fr-FR`) written to the catalog. Used with `tagged`. |
 
 **`page`** is a preset name (`a4`, `letter`, `legal`, `a5`, `a3`) or a custom
@@ -369,9 +369,14 @@ Headings, paragraphs and figures are fully mapped. **Lists and tables are
 currently tagged as paragraphs** (readable, but not yet `L`/`Table`
 structured) — that mapping, plus alt text on decorative-vs-informative images,
 is the remaining PDF/UA work; full conformance also wants a semantic role for
-every element. Tagging is **incompatible with Factur-X** (`pdf_facturx*`):
-PDF/A-3b validation rejects the structure tree, so the combination is refused
-with an error.
+every element.
+
+**Tagging composes with PDF/A and Factur-X.** Set `options.tagged` together with
+the `pdfa` option (or use `pdf_facturx*`) and the output carries **both** the
+PDF/A-3b (`pdfaid`) and PDF/UA-1 (`pdfuaid`) identifiers over a single structure
+tree — one file that is accessible, archival and (for Factur-X) machine-readable
+at once. The tagging pass runs first; the PDF/A pass then merges the PDF/UA
+identifier into the conformance metadata.
 
 ### Elements
 

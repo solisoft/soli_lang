@@ -27,19 +27,10 @@ pub fn render_with_warnings(
     opts: &RenderOptions,
 ) -> Result<RenderOutput> {
     let template = Template::parse(template_json)?;
-    if opts.pdfa {
-        if opts.encrypt.is_some() {
-            return Err(PdfError::Pdfa(
-                "encryption is incompatible with PDF/A; drop `password` or `pdfa`".to_string(),
-            ));
-        }
-        if template.options.tagged {
-            return Err(PdfError::Pdfa(
-                "tagged/accessible output (options.tagged) is not yet supported together with \
-                 the pdfa option"
-                    .to_string(),
-            ));
-        }
+    if opts.pdfa && opts.encrypt.is_some() {
+        return Err(PdfError::Pdfa(
+            "encryption is incompatible with PDF/A; drop `password` or `pdfa`".to_string(),
+        ));
     }
     let data = DataDocument::parse(data_json)?;
     let fonts = FontRegistry::cached(&opts.font_dirs, &template.fonts)?;

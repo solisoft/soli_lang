@@ -38,7 +38,9 @@ pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
 pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
-pub use sign::{embed_cms, prepare_signature, PreparedSignature, SignMeta, DEFAULT_PLACEHOLDER_LEN};
+pub use sign::{
+    embed_cms, prepare_signature, PreparedSignature, SignMeta, DEFAULT_PLACEHOLDER_LEN,
+};
 
 /// Options controlling a render.
 #[derive(Debug, Clone)]
@@ -72,9 +74,10 @@ pub struct RenderOptions {
     /// Factur-X/PDF-A (callers must not combine them).
     pub encrypt: Option<EncryptOptions>,
     /// Produce PDF/A-3b output (archival conformance) without any Factur-X
-    /// payload. Incompatible with `encrypt` (PDF/A forbids encryption) and
-    /// with tagged templates (`options.tagged`). The Factur-X entry points
-    /// imply PDF/A and reject this flag.
+    /// payload. Incompatible with `encrypt` (PDF/A forbids encryption). When the
+    /// template is tagged (`options.tagged`), the output additionally declares
+    /// PDF/UA-1 — one file that is both accessible and archival. The Factur-X
+    /// entry points imply PDF/A and reject this flag.
     pub pdfa: bool,
 }
 
@@ -105,7 +108,6 @@ pub fn generate_facturx(
     meta: &FacturxMetadata,
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
-    reject_tagged_for_pdfa(template_json)?;
     reject_pdfa_option_for_facturx(opts)?;
     let pdf = render_to_bytes(template_json, data_json, opts)?;
     facturx::embed_facturx(&pdf, facturx_xml, profile, meta)
@@ -122,21 +124,6 @@ fn reject_pdfa_option_for_facturx(opts: &RenderOptions) -> Result<()> {
     Ok(())
 }
 
-/// Factur-X is PDF/A-3b; our generic tagging pass writes a `StructTreeRoot`
-/// without the UA XMP identifier PDF/A validation expects, so the two must not
-/// combine. Reject early rather than emit a document that fails conformance.
-fn reject_tagged_for_pdfa(template_json: &[u8]) -> Result<()> {
-    let template = template::Template::parse(template_json)?;
-    if template.options.tagged {
-        return Err(PdfError::Facturx(
-            "tagged/accessible output (options.tagged) is incompatible with Factur-X (PDF/A-3b); \
-             remove options.tagged"
-                .to_string(),
-        ));
-    }
-    Ok(())
-}
-
 /// End-to-end from a single source of truth: an [`Invoice`] drives both the
 /// visual PDF (its data maps onto the template's `${...}` paths) and the
 /// embedded EN 16931 CII XML (totals and the VAT breakdown computed from the
@@ -148,7 +135,6 @@ pub fn generate_facturx_from_invoice(
     meta: &FacturxMetadata,
     opts: &RenderOptions,
 ) -> Result<Vec<u8>> {
-    reject_tagged_for_pdfa(template_json)?;
     reject_pdfa_option_for_facturx(opts)?;
     let data = serde_json::to_vec(&invoice.to_render_data()).map_err(PdfError::from)?;
     let pdf = render_to_bytes(template_json, &data, opts)?;
