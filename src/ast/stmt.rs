@@ -7,7 +7,7 @@ use crate::ast::types::TypeAnnotation;
 use crate::span::Span;
 
 /// A statement in the AST.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stmt {
     pub kind: StmtKind,
     pub span: Span,
@@ -25,7 +25,7 @@ impl Stmt {
 }
 
 /// A single catch clause in a try/catch statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CatchClause {
     /// Optional type name to match (e.g., "NotFoundError"). None = catch-all.
     pub type_name: Option<String>,
@@ -36,7 +36,7 @@ pub struct CatchClause {
 }
 
 /// Statement variants.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum StmtKind {
     /// Expression statement: expr;
     Expression(Expr),
@@ -109,7 +109,7 @@ pub enum StmtKind {
 }
 
 /// An import specifier (what to import from a module).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ImportSpecifier {
     /// Import all exports: import "module.sl";
     All,
@@ -120,7 +120,7 @@ pub enum ImportSpecifier {
 }
 
 /// A single imported item with optional alias.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportItem {
     pub name: String,
     pub alias: Option<String>,
@@ -128,7 +128,7 @@ pub struct ImportItem {
 }
 
 /// Import declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportDecl {
     pub path: String,
     pub specifier: ImportSpecifier,
@@ -136,7 +136,7 @@ pub struct ImportDecl {
 }
 
 /// Function declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionDecl {
     pub name: String,
     pub params: Vec<Parameter>,
@@ -146,7 +146,7 @@ pub struct FunctionDecl {
 }
 
 /// Function parameter.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Parameter {
     pub name: String,
     pub type_annotation: TypeAnnotation,
@@ -156,7 +156,7 @@ pub struct Parameter {
 }
 
 /// Class declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClassDecl {
     pub name: String,
     pub superclass: Option<String>,
@@ -176,7 +176,7 @@ pub struct ClassDecl {
 }
 
 /// Enum declaration: `enum Name { Variant, Payload(field: Type), def method ... }`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumDecl {
     pub name: String,
     pub variants: Vec<EnumVariantDecl>,
@@ -187,7 +187,7 @@ pub struct EnumDecl {
 
 /// A single enum variant: a unit variant (`Active`) or one carrying a payload
 /// (`Pending(reason: String)`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumVariantDecl {
     pub name: String,
     /// Ordered payload fields. Empty for unit variants.
@@ -196,7 +196,7 @@ pub struct EnumVariantDecl {
 }
 
 /// A field carried by a payload variant: `reason: String` (type optional).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumPayloadField {
     pub name: String,
     pub type_annotation: Option<TypeAnnotation>,
@@ -405,7 +405,7 @@ impl EnumDecl {
 }
 
 /// Visibility modifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Visibility {
     #[default]
     Public,
@@ -414,7 +414,7 @@ pub enum Visibility {
 }
 
 /// Field declaration in a class.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldDecl {
     pub visibility: Visibility,
     pub is_static: bool,
@@ -426,7 +426,7 @@ pub struct FieldDecl {
 }
 
 /// Method declaration in a class.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodDecl {
     pub visibility: Visibility,
     pub is_static: bool,
@@ -438,7 +438,7 @@ pub struct MethodDecl {
 }
 
 /// Constructor declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConstructorDecl {
     pub params: Vec<Parameter>,
     pub body: Vec<Stmt>,
@@ -446,7 +446,7 @@ pub struct ConstructorDecl {
 }
 
 /// Interface declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceDecl {
     pub name: String,
     pub methods: Vec<InterfaceMethod>,
@@ -454,7 +454,7 @@ pub struct InterfaceDecl {
 }
 
 /// Method signature in an interface.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceMethod {
     pub name: String,
     pub params: Vec<Parameter>,
@@ -463,7 +463,7 @@ pub struct InterfaceMethod {
 }
 
 /// A complete program.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Program {
     pub statements: Vec<Stmt>,
 }

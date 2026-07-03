@@ -90,13 +90,25 @@ pub(crate) fn sort_controllers_by_dependency(controllers: &mut Vec<PathBuf>) {
     let metas: Vec<(PathBuf, Option<String>, Option<String>)> = controllers
         .drain(..)
         .map(|path| {
-            let (class_name, superclass) = std::fs::read_to_string(&path)
+            let (class_name, superclass) = std::fs::read(&path)
                 .ok()
-                .map(|source| {
-                    (
-                        extract_class_name_from_source(&source),
-                        extract_superclass_from_source(&source),
-                    )
+                .map(|bytes| {
+                    if crate::bundle::is_ast_blob(&bytes) {
+                        crate::bundle::deserialize_program(&bytes)
+                            .map(|p| {
+                                (
+                                    extract_class_name_from_program(&p),
+                                    extract_superclass_from_program(&p),
+                                )
+                            })
+                            .unwrap_or((None, None))
+                    } else {
+                        let source = String::from_utf8_lossy(&bytes);
+                        (
+                            extract_class_name_from_source(&source),
+                            extract_superclass_from_source(&source),
+                        )
+                    }
                 })
                 .unwrap_or((None, None));
             (path, class_name, superclass)
@@ -147,6 +159,46 @@ pub(crate) fn sort_controllers_by_dependency(controllers: &mut Vec<PathBuf>) {
     }
 
     *controllers = sorted;
+}
+
+/// Derive routes from a controller file that may be source text or a
+/// serialized AST (protected bundle).
+fn derive_routes_for_file(
+    path: &Path,
+    route_input: &str,
+) -> Result<Vec<crate::serve::router::ControllerRoute>, RuntimeError> {
+    let bytes = std::fs::read(path).map_err(|e| RuntimeError::General {
+        message: format!("Failed to read controller file: {}", e),
+        span: Span::default(),
+    })?;
+    if crate::bundle::is_ast_blob(&bytes) {
+        let program =
+            crate::bundle::deserialize_program(&bytes).map_err(|e| RuntimeError::General {
+                message: format!("Failed to load '{}': {}", path.display(), e),
+                span: Span::default(),
+            })?;
+        crate::serve::router::derive_routes_from_program(route_input, &program)
+    } else {
+        let source = String::from_utf8_lossy(&bytes);
+        derive_routes_from_controller(route_input, &source)
+    }
+}
+
+/// AST twin of `extract_class_name_from_source`, for protected bundles
+/// whose `.sl` files are serialized ASTs.
+fn extract_class_name_from_program(program: &crate::ast::Program) -> Option<String> {
+    program.statements.iter().find_map(|stmt| match &stmt.kind {
+        crate::ast::StmtKind::Class(decl) => Some(decl.name.clone()),
+        _ => None,
+    })
+}
+
+/// AST twin of `extract_superclass_from_source`.
+fn extract_superclass_from_program(program: &crate::ast::Program) -> Option<String> {
+    program.statements.iter().find_map(|stmt| match &stmt.kind {
+        crate::ast::StmtKind::Class(decl) => decl.superclass.clone(),
+        _ => None,
+    })
 }
 
 /// Extract the class name from source (e.g., "class PostsController ..." -> "PostsController").
@@ -456,14 +508,27 @@ pub(crate) fn load_middleware(
         // Track file for hot reload
         file_tracker.track(&middleware_path);
 
-        // Read source to extract function names and orders
-        let source =
-            std::fs::read_to_string(&middleware_path).map_err(|e| RuntimeError::General {
-                message: format!("Failed to read middleware file: {}", e),
-                span: Span::default(),
-            })?;
+        // Read source to extract function names and orders. The directives
+        // (`# order:`, `# global_only:`, `# scope_only:`) live in comments,
+        // which a protected bundle's serialized AST does not keep — for
+        // those, the directives were precomputed at build time into the
+        // bundle metadata, keyed by the entry path.
+        let bytes = std::fs::read(&middleware_path).map_err(|e| RuntimeError::General {
+            message: format!("Failed to read middleware file: {}", e),
+            span: Span::default(),
+        })?;
 
-        let functions = extract_middleware_functions(&source);
+        let functions = if crate::bundle::is_ast_blob(&bytes) {
+            let meta_key = middleware_path
+                .file_name()
+                .map(|n| format!("app/middleware/{}", n.to_string_lossy()))
+                .unwrap_or_default();
+            crate::bundle::bundle_meta()
+                .and_then(|meta| meta.middleware.get(&meta_key).cloned())
+                .unwrap_or_default()
+        } else {
+            extract_middleware_functions(&String::from_utf8_lossy(&bytes))
+        };
 
         // Execute the middleware file to define functions
         execute_file(interpreter, &middleware_path)?;
@@ -512,16 +577,10 @@ pub(crate) fn load_controller(
     // Track file for hot reload
     file_tracker.track(controller_path);
 
-    // Read and parse the controller to extract function names
-    let source = std::fs::read_to_string(controller_path).map_err(|e| RuntimeError::General {
-        message: format!("Failed to read controller file: {}", e),
-        span: Span::default(),
-    })?;
-
     // Derive routes from the controller (pass the full key so nested
     // controllers get a base path like `/admin/merchants`).
     let route_input = format!("{}_controller", controller_key);
-    let routes = derive_routes_from_controller(&route_input, &source)?;
+    let routes = derive_routes_for_file(controller_path, &route_input)?;
 
     // Execute the controller file to define functions
     execute_file(interpreter, controller_path)?;
@@ -600,27 +659,39 @@ pub(crate) fn load_controller(
 
 /// Execute a Soli file with the given interpreter.
 pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), RuntimeError> {
-    let source = std::fs::read_to_string(path).map_err(|e| RuntimeError::General {
+    let bytes = std::fs::read(path).map_err(|e| RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
         span: Span::default(),
     })?;
 
-    // Lex
-    let tokens = crate::lexer::Scanner::new(&source)
-        .scan_tokens()
-        .map_err(|e| RuntimeError::General {
-            message: format!("Lexer error in {}: {}", path.display(), e),
+    let mut program = if crate::bundle::is_ast_blob(&bytes) {
+        // Protected bundle: the `.sl` file is a serialized AST, not source.
+        crate::bundle::deserialize_program(&bytes).map_err(|e| RuntimeError::General {
+            message: format!("Failed to load '{}': {}", path.display(), e),
+            span: Span::default(),
+        })?
+    } else {
+        let source = String::from_utf8(bytes).map_err(|e| RuntimeError::General {
+            message: format!("File '{}' is not valid UTF-8: {}", path.display(), e),
             span: Span::default(),
         })?;
 
-    // Parse
-    let mut program =
+        // Lex
+        let tokens = crate::lexer::Scanner::new(&source)
+            .scan_tokens()
+            .map_err(|e| RuntimeError::General {
+                message: format!("Lexer error in {}: {}", path.display(), e),
+                span: Span::default(),
+            })?;
+
+        // Parse
         crate::parser::Parser::new(tokens)
             .parse()
             .map_err(|e| RuntimeError::General {
                 message: format!("Parser error in {}: {}", path.display(), e),
                 span: Span::default(),
-            })?;
+            })?
+    };
 
     // Module resolution (if the file has imports)
     if crate::has_imports(&program) {
@@ -764,9 +835,8 @@ pub(crate) fn load_controllers_in_worker(
         // Only register actions for function-based controllers
         // OOP controllers have their methods resolved at runtime
         if !is_oop_controller {
-            let source = std::fs::read_to_string(path).unwrap_or_default();
             let route_input = format!("{}_controller", controller_key);
-            let routes = derive_routes_from_controller(&route_input, &source).unwrap_or_default();
+            let routes = derive_routes_for_file(path, &route_input).unwrap_or_default();
             for route in routes {
                 if let Some(func_value) = interpreter.environment.borrow().get(&route.function_name)
                 {

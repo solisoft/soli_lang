@@ -92,6 +92,20 @@ impl ControllerRegistry {
 /// Scan controllers directory and register all controllers.
 /// After registration, inherits before/after actions and layout from parent controllers.
 pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
+    // Protected bundles ship binary ASTs — the source text this scan
+    // scrapes no longer exists. The registry info was precomputed at build
+    // time into the bundle metadata; register from there instead.
+    if let Some(meta) = crate::bundle::bundle_meta() {
+        if meta.protected {
+            let mut registry = CONTROLLER_REGISTRY.write().unwrap();
+            for info in &meta.controllers {
+                registry.register(info.clone());
+            }
+            resolve_controller_inheritance(&mut registry, &meta.controller_superclasses);
+            return Ok(());
+        }
+    }
+
     let mut registry = CONTROLLER_REGISTRY.write().unwrap();
 
     if !controllers_dir.exists() {
@@ -267,20 +281,30 @@ fn parse_controller_file(
     route_key: &str,
 ) -> Result<ControllerInfo, String> {
     let source = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    parse_controller_source(&source, file_name, route_key)
+}
 
+/// Source-text variant of `parse_controller_file`. Also used at BUILD time
+/// by `soli build --protect` (src/bundle.rs) to precompute the registry info
+/// that can no longer be scraped once sources ship as binary ASTs.
+pub(crate) fn parse_controller_source(
+    source: &str,
+    file_name: &str,
+    route_key: &str,
+) -> Result<ControllerInfo, String> {
     // Controller class name (e.g., "posts_controller" -> "PostsController")
     let class_name = to_class_name(file_name);
 
     // Extract class name from file (e.g., "class PostsController extends Controller")
-    let actual_class_name = extract_class_name(&source).unwrap_or_else(|| class_name.clone());
+    let actual_class_name = extract_class_name(source).unwrap_or_else(|| class_name.clone());
 
     let mut info = ControllerInfo::new(&actual_class_name, route_key);
 
     // Parse static block for configuration
-    parse_controller_static_block(&source, &mut info)?;
+    parse_controller_static_block(source, &mut info)?;
 
     // Extract public methods (actions)
-    extract_actions(&source, &actual_class_name, &mut info);
+    extract_actions(source, &actual_class_name, &mut info);
 
     Ok(info)
 }
@@ -345,7 +369,7 @@ fn extract_class_name(source: &str) -> Option<String> {
 }
 
 /// Extract the superclass name from "class X extends SuperClass"
-fn extract_superclass_name(source: &str) -> Option<String> {
+pub(crate) fn extract_superclass_name(source: &str) -> Option<String> {
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(after_class) = trimmed.strip_prefix("class ") {

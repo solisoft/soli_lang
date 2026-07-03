@@ -422,7 +422,7 @@ fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Normalize arbitrary key material to a 32-byte AES key by SHA-256. Accepts a
 /// hex/base64/raw high-entropy key or a passphrase.
-fn derive_aes_key(material: &[u8]) -> [u8; 32] {
+pub(crate) fn derive_aes_key(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(material);
     hasher.finalize().into()
@@ -440,7 +440,9 @@ fn resolve_aes_key(explicit: Option<&str>) -> Result<[u8; 32], String> {
     Ok(derive_aes_key(material.as_bytes()))
 }
 
-fn aes_encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
+/// Encrypt raw bytes: returns `nonce[12] ‖ ciphertext+tag`. Binary twin of
+/// `aes_encrypt`, shared with the encrypted-bundle container (`src/bundle.rs`).
+pub(crate) fn aes_encrypt_bytes(plaintext: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
     // Fully-qualified: `hmac::Mac` is also in scope and defines new_from_slice.
     let cipher = <Aes256Gcm as aes_gcm::aead::KeyInit>::new_from_slice(key)
         .map_err(|e| format!("bad key: {e}"))?;
@@ -449,18 +451,16 @@ fn aes_encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
     #[allow(deprecated)]
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
+        .encrypt(nonce, plaintext)
         .map_err(|e| format!("encryption failed: {e}"))?;
     let mut out = Vec::with_capacity(12 + ciphertext.len());
     out.extend_from_slice(&nonce_bytes);
     out.extend_from_slice(&ciphertext);
-    Ok(base64::engine::general_purpose::STANDARD.encode(out))
+    Ok(out)
 }
 
-fn aes_decrypt(encoded: &str, key: &[u8; 32]) -> Result<String, String> {
-    let data = base64::engine::general_purpose::STANDARD
-        .decode(encoded.trim())
-        .map_err(|e| format!("invalid base64: {e}"))?;
+/// Decrypt `nonce[12] ‖ ciphertext+tag`. Binary twin of `aes_decrypt`.
+pub(crate) fn aes_decrypt_bytes(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, String> {
     if data.len() < 12 {
         return Err("ciphertext too short".to_string());
     }
@@ -469,9 +469,21 @@ fn aes_decrypt(encoded: &str, key: &[u8; 32]) -> Result<String, String> {
         .map_err(|e| format!("bad key: {e}"))?;
     #[allow(deprecated)]
     let nonce = Nonce::from_slice(nonce_bytes);
-    let plaintext = cipher
+    cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| "decryption failed (wrong key or corrupt data)".to_string())?;
+        .map_err(|_| "decryption failed (wrong key or corrupt data)".to_string())
+}
+
+fn aes_encrypt(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
+    let out = aes_encrypt_bytes(plaintext.as_bytes(), key)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(out))
+}
+
+fn aes_decrypt(encoded: &str, key: &[u8; 32]) -> Result<String, String> {
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    let plaintext = aes_decrypt_bytes(&data, key)?;
     String::from_utf8(plaintext).map_err(|e| format!("decrypted data is not UTF-8: {e}"))
 }
 
@@ -1772,5 +1784,34 @@ mod tests {
     fn value_to_octets_treats_string_as_hex() {
         let v = Value::String("0x00ff10".into());
         assert_eq!(value_to_octets(&v, "test").unwrap(), vec![0x00, 0xff, 0x10]);
+    }
+
+    #[test]
+    fn aes_bytes_round_trip_non_utf8() {
+        let key = derive_aes_key(b"bundle-test-key");
+        // Deliberately invalid UTF-8 — the bytes API must not care.
+        let payload = vec![0u8, 159, 146, 150, 255, 0, 42];
+        let sealed = aes_encrypt_bytes(&payload, &key).unwrap();
+        assert_ne!(sealed[12..], payload[..]);
+        assert_eq!(aes_decrypt_bytes(&sealed, &key).unwrap(), payload);
+    }
+
+    #[test]
+    fn aes_bytes_wrong_key_fails() {
+        let sealed = aes_encrypt_bytes(b"secret", &derive_aes_key(b"key-a")).unwrap();
+        assert!(aes_decrypt_bytes(&sealed, &derive_aes_key(b"key-b")).is_err());
+    }
+
+    #[test]
+    fn aes_string_delegates_to_bytes_container() {
+        // The string API must still produce base64(nonce ‖ ct+tag) decodable
+        // by the bytes API — the refactor must not have changed the wire.
+        let key = derive_aes_key(b"shared");
+        let encoded = aes_encrypt("hello", &key).unwrap();
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .unwrap();
+        assert_eq!(aes_decrypt_bytes(&raw, &key).unwrap(), b"hello");
+        assert_eq!(aes_decrypt(&encoded, &key).unwrap(), "hello");
     }
 }

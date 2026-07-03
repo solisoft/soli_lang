@@ -80,6 +80,8 @@ pub fn run() {
             folder,
             output,
             standalone,
-        } => commands::run_build(folder, output.as_deref(), *standalone),
+            encrypt,
+            protect,
+        } => commands::run_build(folder, output.as_deref(), *standalone, *encrypt, *protect),
     }
 }

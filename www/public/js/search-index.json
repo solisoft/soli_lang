@@ -12286,6 +12286,33 @@
         "justify",
         "band"
       ]
+    },
+    {
+      "title": "Encrypted & protected bundles",
+      "type": "feature",
+      "category": "Deployment",
+      "path": "/docs/development-tools/deploy#encrypted-bundles",
+      "signature": "soli build my_app --protect",
+      "description": "Encrypt a .soli bundle with AES-256-GCM (soli build --encrypt) and fetch the decryption key at boot from a key server (SOLI_BUNDLE_AUTH_URL + SOLI_BUNDLE_API_KEY) so revoking it is a kill-switch. --protect additionally ships compiled binary ASTs instead of readable source. Decrypted files live in RAM-backed /dev/shm (0700), removed on shutdown.",
+      "keywords": [
+        "encrypt",
+        "encrypted bundle",
+        "protect",
+        "soli build --encrypt",
+        "soli build --protect",
+        "key server",
+        "kill switch",
+        "revoke",
+        "SOLI_BUNDLE_KEY",
+        "SOLI_BUNDLE_AUTH_URL",
+        "SOLI_BUNDLE_API_KEY",
+        "SOLI_BUNDLE_ALLOW_DISK",
+        "binary ast",
+        "source protection",
+        "deploy",
+        "aes-256-gcm",
+        "dev/shm"
+      ]
     }
   ]
 }

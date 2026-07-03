@@ -33,8 +33,38 @@ pub fn derive_routes_from_controller(
     controller_name: &str,
     source: &str,
 ) -> Result<Vec<ControllerRoute>, RuntimeError> {
-    let base_path = controller_base_path(controller_name);
     let functions = extract_function_names(source);
+    derive_routes_from_functions(controller_name, functions)
+}
+
+/// AST twin of `derive_routes_from_controller`, for protected bundles whose
+/// controller files are serialized ASTs instead of source text.
+pub fn derive_routes_from_program(
+    controller_name: &str,
+    program: &crate::ast::Program,
+) -> Result<Vec<ControllerRoute>, RuntimeError> {
+    let functions: Vec<(String, bool)> = program
+        .statements
+        .iter()
+        .filter_map(|stmt| match &stmt.kind {
+            crate::ast::StmtKind::Function(decl) => {
+                // Mirror the text scraper: the conventional `req` parameter
+                // alone does not count as an id param.
+                let has_id_param = !(decl.params.is_empty()
+                    || (decl.params.len() == 1 && decl.params[0].name == "req"));
+                Some((decl.name.clone(), has_id_param))
+            }
+            _ => None,
+        })
+        .collect();
+    derive_routes_from_functions(controller_name, functions)
+}
+
+fn derive_routes_from_functions(
+    controller_name: &str,
+    functions: Vec<(String, bool)>,
+) -> Result<Vec<ControllerRoute>, RuntimeError> {
+    let base_path = controller_base_path(controller_name);
 
     let mut routes = Vec::new();
 

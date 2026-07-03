@@ -1,7 +1,73 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::OnceLock;
+
+use crate::ast::Program;
 
 const BUNDLE_MAGIC: &[u8; 4] = b"SOLB";
+
+/// Magic of an encrypted bundle container: `SOLE` + version byte + nonce[12]
+/// + AES-256-GCM ciphertext (incl. 16-byte tag) of the plaintext SOLB bundle.
+pub const ENCRYPTED_BUNDLE_MAGIC: &[u8; 4] = b"SOLE";
+const ENCRYPTED_BUNDLE_VERSION: u8 = 1;
+/// magic(4) + version(1) + nonce(12) + GCM tag(16)
+const ENCRYPTED_BUNDLE_MIN_LEN: usize = 4 + 1 + 12 + 16;
+
+/// Message shown by the plain-bundle parsers when handed an encrypted bundle.
+pub const ENCRYPTED_BUNDLE_HINT: &str = "this bundle is encrypted — provide the decryption \
+     key via SOLI_BUNDLE_KEY, or SOLI_BUNDLE_AUTH_URL (+ SOLI_BUNDLE_API_KEY), in the \
+     environment or in a .env file next to the .soli bundle";
+
+/// True when the bytes look like an encrypted (`SOLE`) bundle container.
+pub fn is_encrypted_bundle(data: &[u8]) -> bool {
+    data.len() >= 4 && &data[..4] == ENCRYPTED_BUNDLE_MAGIC
+}
+
+/// Wrap plaintext SOLB bundle bytes in the encrypted container. The AES-256
+/// key is SHA-256 of the (opaque, UTF-8) key material — hex, base64 or a
+/// passphrase all work, as long as build and serve use the same string.
+pub fn encrypt_bundle(plain: &[u8], key_material: &str) -> Result<Vec<u8>, String> {
+    use crate::interpreter::builtins::crypto::{aes_encrypt_bytes, derive_aes_key};
+
+    if plain.len() < 4 || &plain[..4] != BUNDLE_MAGIC {
+        return Err("encrypt_bundle: input is not a SOLB bundle".to_string());
+    }
+    let key = derive_aes_key(key_material.as_bytes());
+    let sealed = aes_encrypt_bytes(plain, &key)?; // nonce[12] ‖ ct+tag
+    let mut out = Vec::with_capacity(5 + sealed.len());
+    out.extend_from_slice(ENCRYPTED_BUNDLE_MAGIC);
+    out.push(ENCRYPTED_BUNDLE_VERSION);
+    out.extend_from_slice(&sealed);
+    Ok(out)
+}
+
+/// Decrypt an encrypted (`SOLE`) container back to plaintext SOLB bytes.
+pub fn decrypt_bundle(data: &[u8], key_material: &str) -> Result<Vec<u8>, String> {
+    use crate::interpreter::builtins::crypto::{aes_decrypt_bytes, derive_aes_key};
+
+    if !is_encrypted_bundle(data) {
+        return Err("decrypt_bundle: not an encrypted bundle (bad magic)".to_string());
+    }
+    if data.len() < ENCRYPTED_BUNDLE_MIN_LEN {
+        return Err("invalid encrypted bundle: truncated".to_string());
+    }
+    let version = data[4];
+    if version != ENCRYPTED_BUNDLE_VERSION {
+        return Err(format!(
+            "unsupported encrypted bundle version {version} — upgrade soli"
+        ));
+    }
+    let key = derive_aes_key(key_material.as_bytes());
+    let plain = aes_decrypt_bytes(&data[5..], &key).map_err(|_| {
+        "bundle decryption failed: wrong or rotated key, or corrupted file".to_string()
+    })?;
+    if plain.len() < 4 || &plain[..4] != BUNDLE_MAGIC {
+        return Err(
+            "bundle decrypted but the payload is not a SOLB bundle — corrupted build?".to_string(),
+        );
+    }
+    Ok(plain)
+}
 
 const BUNDLE_EXTENSIONS: &[&str] = &[
     "sl", "slv", "yml", "yaml", "css", "js", "md", "erb", "toml", "json", "env",
@@ -13,6 +79,104 @@ pub struct BundleBuilder;
 
 impl BundleBuilder {
     pub fn build(source_dir: &Path) -> Result<Vec<u8>, String> {
+        let entries = Self::collect(source_dir)?;
+        Self::serialize(&entries)
+    }
+
+    /// Build a PROTECTED bundle: every `.sl` source is replaced by its
+    /// serialized binary AST (`SLAST` blob) so no readable source ships, and
+    /// the metadata the serve pipeline normally scrapes from source text
+    /// (middleware directives, controller registry info) is precomputed into
+    /// a `__soli_meta__` entry.
+    pub fn build_protected(source_dir: &Path) -> Result<Vec<u8>, String> {
+        let mut entries = Self::collect(source_dir)?;
+
+        if entries
+            .keys()
+            .any(|p| p.starts_with("engines/") && p.ends_with(".sl"))
+        {
+            return Err(
+                "--protect does not yet support apps with engines/ (their controller \
+                 metadata cannot be precomputed). Build without --protect, or move the \
+                 engine code into the app."
+                    .to_string(),
+            );
+        }
+
+        let mut meta = BundleMeta {
+            soli_version: env!("CARGO_PKG_VERSION").to_string(),
+            ast_format: AST_FORMAT_VERSION,
+            protected: true,
+            middleware: HashMap::new(),
+            controllers: Vec::new(),
+            controller_superclasses: HashMap::new(),
+        };
+
+        let sl_paths: Vec<String> = entries
+            .keys()
+            .filter(|p| p.ends_with(".sl"))
+            .cloned()
+            .collect();
+
+        for path in sl_paths {
+            let content = entries.get(&path).expect("key from entries").clone();
+            let source =
+                String::from_utf8(content).map_err(|_| format!("'{}' is not valid UTF-8", path))?;
+
+            let program = parse_source(&source).map_err(|e| format!("{}: {}", path, e))?;
+
+            // Middleware order/global_only/scope_only directives live in
+            // comments, which the AST does not keep — precompute them.
+            if path.starts_with("app/middleware/") {
+                let directives = crate::serve::middleware::extract_middleware_functions(&source);
+                if !directives.is_empty() {
+                    meta.middleware.insert(path.clone(), directives);
+                }
+            }
+
+            // The controller registry (actions, before/after hooks, layouts)
+            // is scraped from source text at boot — precompute it.
+            if let Some(rel) = path.strip_prefix("app/controllers/") {
+                let stem = rel.trim_end_matches(".sl");
+                let file_name = stem.rsplit('/').next().unwrap_or(stem);
+                if file_name.ends_with("_controller") {
+                    let route_key = {
+                        let mut segments: Vec<&str> = stem.split('/').collect();
+                        if let Some(last) = segments.last_mut() {
+                            *last = last.strip_suffix("_controller").unwrap_or(last);
+                        }
+                        segments.join("/")
+                    };
+                    let info =
+                        crate::interpreter::builtins::controller::registry::parse_controller_source(
+                            &source, file_name, &route_key,
+                        )
+                        .map_err(|e| format!("{}: {}", path, e))?;
+                    if let Some(parent) =
+                        crate::interpreter::builtins::controller::registry::extract_superclass_name(
+                            &source,
+                        )
+                    {
+                        if parent != "Controller" {
+                            meta.controller_superclasses
+                                .insert(info.name.clone(), parent);
+                        }
+                    }
+                    meta.controllers.push(info);
+                }
+            }
+
+            entries.insert(path, serialize_program(&program)?);
+        }
+
+        let meta_json = serde_json::to_vec(&meta)
+            .map_err(|e| format!("failed to serialize bundle meta: {}", e))?;
+        entries.insert(BUNDLE_META_ENTRY.to_string(), meta_json);
+
+        Self::serialize(&entries)
+    }
+
+    fn collect(source_dir: &Path) -> Result<HashMap<String, Vec<u8>>, String> {
         let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
         let source_dir = source_dir.canonicalize().map_err(|e| {
             format!(
@@ -34,7 +198,7 @@ impl BundleBuilder {
             }
         }
 
-        Self::serialize(&entries)
+        Ok(entries)
     }
 
     fn collect_entries(
@@ -114,6 +278,119 @@ impl BundleBuilder {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Binary AST blobs (`--protect`): a `.sl` entry whose content is
+// `SLAST` + format-version byte + MessagePack of the parsed `Program`.
+// ---------------------------------------------------------------------------
+
+pub const AST_BLOB_MAGIC: &[u8; 5] = b"SLAST";
+/// Bump on ANY change to the AST types: rmp of derived enums is not stable
+/// across variant/field reordering, so a mismatch must be a hard error.
+pub const AST_FORMAT_VERSION: u8 = 1;
+
+/// True when the bytes are a serialized-AST blob rather than source text.
+pub fn is_ast_blob(data: &[u8]) -> bool {
+    data.len() > 6 && &data[..5] == AST_BLOB_MAGIC
+}
+
+/// Lex + parse source text into a `Program` (build-time helper).
+pub fn parse_source(source: &str) -> Result<Program, String> {
+    let tokens = crate::lexer::Scanner::new(source)
+        .scan_tokens()
+        .map_err(|e| format!("lex error: {}", e))?;
+    crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| format!("parse error: {}", e))
+}
+
+/// Serialize a parsed program into an `SLAST` blob.
+pub fn serialize_program(program: &Program) -> Result<Vec<u8>, String> {
+    let body =
+        rmp_serde::to_vec(program).map_err(|e| format!("AST serialization failed: {}", e))?;
+    let mut out = Vec::with_capacity(6 + body.len());
+    out.extend_from_slice(AST_BLOB_MAGIC);
+    out.push(AST_FORMAT_VERSION);
+    out.extend_from_slice(&body);
+    Ok(out)
+}
+
+/// Deserialize an `SLAST` blob back into a `Program`.
+pub fn deserialize_program(data: &[u8]) -> Result<Program, String> {
+    if !is_ast_blob(data) {
+        return Err("not a serialized-AST blob".to_string());
+    }
+    let version = data[5];
+    if version != AST_FORMAT_VERSION {
+        return Err(format!(
+            "AST blob format v{} does not match this soli (v{}) — rebuild the bundle with the \
+             soli version that serves it",
+            version, AST_FORMAT_VERSION
+        ));
+    }
+    rmp_serde::from_slice(&data[6..])
+        .map_err(|e| format!("AST deserialization failed (rebuild the bundle): {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Bundle metadata (`__soli_meta__`): carries the soli version lock plus the
+// serve-pipeline facts that are normally scraped from source text and are
+// unavailable once sources are shipped as ASTs.
+// ---------------------------------------------------------------------------
+
+pub const BUNDLE_META_ENTRY: &str = "__soli_meta__";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BundleMeta {
+    pub soli_version: String,
+    pub ast_format: u8,
+    pub protected: bool,
+    /// Middleware entry path (`app/middleware/foo.sl`) → the
+    /// `(function, order, global_only, scope_only)` directives that live in
+    /// comments the AST does not keep.
+    #[serde(default)]
+    pub middleware: HashMap<String, Vec<(String, i32, bool, bool)>>,
+    /// Pre-scanned controller registry info (actions, before/after hooks,
+    /// layouts). NOTE: hook bodies ride along as small source snippets —
+    /// they are executed per-request from source (documented v1 limitation).
+    #[serde(default)]
+    pub controllers: Vec<crate::interpreter::builtins::controller::controller::ControllerInfo>,
+    /// Controller class → parent class, for hook/layout inheritance.
+    #[serde(default)]
+    pub controller_superclasses: HashMap<String, String>,
+}
+
+static BUNDLE_META: OnceLock<BundleMeta> = OnceLock::new();
+
+/// The metadata of the bundle being served, if any (set once at boot).
+pub fn bundle_meta() -> Option<&'static BundleMeta> {
+    BUNDLE_META.get()
+}
+
+/// Validate the `__soli_meta__` entry of a bundle (if present) and stash it
+/// for the serve pipeline. Protected bundles are locked to the exact soli
+/// version that built them: the AST wire format has no cross-version
+/// stability guarantee.
+pub fn check_bundle_meta(entries: &[(String, &[u8])]) -> Result<(), String> {
+    let Some((_, data)) = entries.iter().find(|(p, _)| p == BUNDLE_META_ENTRY) else {
+        return Ok(()); // plain bundle
+    };
+    let meta: BundleMeta = serde_json::from_slice(data)
+        .map_err(|e| format!("invalid {} entry: {}", BUNDLE_META_ENTRY, e))?;
+
+    let running = env!("CARGO_PKG_VERSION");
+    if meta.protected && (meta.soli_version != running || meta.ast_format != AST_FORMAT_VERSION) {
+        return Err(format!(
+            "this protected bundle was built with soli {} (AST format v{}) but the server runs \
+             soli {} (AST format v{}) — rebuild the bundle with `soli build --protect`, or \
+             install the matching soli version",
+            meta.soli_version, meta.ast_format, running, AST_FORMAT_VERSION
+        ));
+    }
+
+    let _ = BUNDLE_META.set(meta);
+    Ok(())
+}
+
 /// Read and iterate entries from a serialized bundle.
 pub struct BundleReader<'a> {
     _data: &'a [u8],
@@ -122,6 +399,9 @@ pub struct BundleReader<'a> {
 
 impl<'a> BundleReader<'a> {
     pub fn new(data: &'a [u8]) -> Result<Self, String> {
+        if is_encrypted_bundle(data) {
+            return Err(ENCRYPTED_BUNDLE_HINT.to_string());
+        }
         if data.len() < 8 || &data[..4] != BUNDLE_MAGIC {
             return Err("Invalid bundle: bad magic".to_string());
         }
@@ -226,5 +506,171 @@ mod tests {
         let vfs = crate::virtual_fs::BundleFS::new(bundle).unwrap();
         assert!(!vfs.exists(".hidden.sl"));
         assert!(vfs.exists("visible.sl"));
+    }
+
+    fn plain_fixture_bundle() -> Vec<u8> {
+        let dir = tempfile::tempdir().unwrap();
+        let controllers = dir.path().join("app/controllers");
+        fs::create_dir_all(&controllers).unwrap();
+        fs::write(
+            controllers.join("home_controller.sl"),
+            b"def index(req)\n  render(\"home/index\", {\"plans\": []})\nend\n",
+        )
+        .unwrap();
+        BundleBuilder::build(dir.path()).unwrap()
+    }
+
+    #[test]
+    fn encrypt_decrypt_round_trip() {
+        let plain = plain_fixture_bundle();
+        let sealed = encrypt_bundle(&plain, "round-trip-key").unwrap();
+        assert!(is_encrypted_bundle(&sealed));
+        assert_eq!(&sealed[..5], b"SOLE\x01");
+        let back = decrypt_bundle(&sealed, "round-trip-key").unwrap();
+        assert_eq!(back, plain);
+        assert!(BundleReader::new(&back).is_ok());
+    }
+
+    #[test]
+    fn decrypt_wrong_key_fails() {
+        let sealed = encrypt_bundle(&plain_fixture_bundle(), "key-a").unwrap();
+        let err = decrypt_bundle(&sealed, "key-b").unwrap_err();
+        assert!(err.contains("wrong or rotated key"), "got: {err}");
+    }
+
+    #[test]
+    fn decrypt_tampered_fails() {
+        let mut sealed = encrypt_bundle(&plain_fixture_bundle(), "key").unwrap();
+        let last = sealed.len() - 1;
+        sealed[last] ^= 0xFF;
+        assert!(decrypt_bundle(&sealed, "key").is_err());
+    }
+
+    #[test]
+    fn decrypt_truncated_and_bad_version() {
+        let err = decrypt_bundle(b"SOLE\x01short", "key").unwrap_err();
+        assert!(err.contains("truncated"), "got: {err}");
+
+        let mut sealed = encrypt_bundle(&plain_fixture_bundle(), "key").unwrap();
+        sealed[4] = 9;
+        let err = decrypt_bundle(&sealed, "key").unwrap_err();
+        assert!(
+            err.contains("unsupported encrypted bundle version"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn bundle_reader_rejects_encrypted_magic() {
+        let sealed = encrypt_bundle(&plain_fixture_bundle(), "key").unwrap();
+        let err = match BundleReader::new(&sealed) {
+            Ok(_) => panic!("expected an error on encrypted magic"),
+            Err(e) => e,
+        };
+        assert!(err.contains("encrypted"), "got: {err}");
+        assert!(err.contains("SOLI_BUNDLE_KEY"), "got: {err}");
+    }
+
+    #[test]
+    fn program_round_trips_through_slast_blob() {
+        let program = parse_source(
+            "class Greeter\n  def hello(name)\n    \"hi \" + name\n  end\nend\n\
+             def index(req)\n  render(\"home/index\", {\"n\": 42})\nend\n",
+        )
+        .unwrap();
+        let blob = serialize_program(&program).unwrap();
+        assert!(is_ast_blob(&blob));
+        let back = deserialize_program(&blob).unwrap();
+        assert_eq!(back, program);
+    }
+
+    #[test]
+    fn ast_blob_version_mismatch_rejected() {
+        let program = parse_source("x = 1\n").unwrap();
+        let mut blob = serialize_program(&program).unwrap();
+        blob[5] = AST_FORMAT_VERSION + 1;
+        let err = deserialize_program(&blob).unwrap_err();
+        assert!(err.contains("rebuild the bundle"), "got: {err}");
+    }
+
+    #[test]
+    fn build_protected_strips_source_and_adds_meta() {
+        let dir = tempfile::tempdir().unwrap();
+        let controllers = dir.path().join("app/controllers");
+        fs::create_dir_all(&controllers).unwrap();
+        fs::write(
+            controllers.join("plans_controller.sl"),
+            b"class PlansController < Controller\n  \
+              # SECRET-COMMENT-TOKEN explains the trick\n  \
+              def index(req)\n    render(\"plans/index\", {})\n  end\nend\n",
+        )
+        .unwrap();
+        let middleware = dir.path().join("app/middleware");
+        fs::create_dir_all(&middleware).unwrap();
+        fs::write(
+            middleware.join("auth.sl"),
+            b"# order: 10\n# global_only: true\ndef check_auth(req)\n  req\nend\n",
+        )
+        .unwrap();
+
+        let bundle = BundleBuilder::build_protected(dir.path()).unwrap();
+
+        // The AST keeps identifiers/literals (like .pyc), but comments and
+        // source syntax are gone: no comment text, no `def ` keyword text.
+        let haystack = String::from_utf8_lossy(&bundle);
+        assert!(!haystack.contains("SECRET-COMMENT-TOKEN"));
+        assert!(!haystack.contains("def index"));
+
+        let reader = BundleReader::new(&bundle).unwrap();
+        let entries = reader.entries();
+
+        let (_, controller) = entries
+            .iter()
+            .find(|(p, _)| p == "app/controllers/plans_controller.sl")
+            .expect("controller entry");
+        assert!(is_ast_blob(controller));
+        assert!(deserialize_program(controller).is_ok());
+
+        let (_, meta_bytes) = entries
+            .iter()
+            .find(|(p, _)| p == BUNDLE_META_ENTRY)
+            .expect("meta entry");
+        let meta: BundleMeta = serde_json::from_slice(meta_bytes).unwrap();
+        assert!(meta.protected);
+        assert_eq!(meta.soli_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(meta.ast_format, AST_FORMAT_VERSION);
+        // Middleware comment directives were precomputed.
+        let directives = meta.middleware.get("app/middleware/auth.sl").unwrap();
+        assert_eq!(
+            directives,
+            &vec![("check_auth".to_string(), 10, true, false)]
+        );
+        // Controller registry info was precomputed.
+        assert_eq!(meta.controllers.len(), 1);
+        assert_eq!(meta.controllers[0].name, "PlansController");
+        assert_eq!(
+            meta.controllers[0]
+                .actions
+                .iter()
+                .map(|a| a.action_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["index"]
+        );
+    }
+
+    #[test]
+    fn check_bundle_meta_rejects_version_mismatch() {
+        let meta = BundleMeta {
+            soli_version: "0.0.1-not-this".to_string(),
+            ast_format: AST_FORMAT_VERSION,
+            protected: true,
+            middleware: HashMap::new(),
+            controllers: Vec::new(),
+            controller_superclasses: HashMap::new(),
+        };
+        let json = serde_json::to_vec(&meta).unwrap();
+        let entries = vec![(BUNDLE_META_ENTRY.to_string(), json.as_slice())];
+        let err = check_bundle_meta(&entries).unwrap_err();
+        assert!(err.contains("rebuild the bundle"), "got: {err}");
     }
 }

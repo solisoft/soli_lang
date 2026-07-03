@@ -1,7 +1,7 @@
 //! Source location tracking for error reporting.
 
 /// A span represents a range in the source code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -41,7 +41,7 @@ impl std::fmt::Display for Span {
 }
 
 /// A wrapper that associates a value with a source span.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,

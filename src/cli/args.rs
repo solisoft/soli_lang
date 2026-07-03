@@ -117,6 +117,12 @@ pub enum Command {
         folder: String,
         output: Option<String>,
         standalone: bool,
+        /// Encrypt the bundle (AES-256-GCM, key from SOLI_BUNDLE_KEY or the
+        /// key server at SOLI_BUNDLE_AUTH_URL).
+        encrypt: bool,
+        /// Replace `.sl` sources with serialized binary ASTs (implies
+        /// `encrypt`) so no readable source ships in the bundle.
+        protect: bool,
     },
 }
 
@@ -169,7 +175,7 @@ pub fn print_usage() {
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
-    eprintln!("  soli build <folder> [-o <file>] [--standalone]");
+    eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli db:migrate <up|down|status> [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
@@ -195,6 +201,10 @@ pub fn print_usage() {
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
+    eprintln!("                       --encrypt      Encrypt the bundle (AES-256-GCM; key from");
+    eprintln!("                                      SOLI_BUNDLE_KEY or SOLI_BUNDLE_AUTH_URL)");
+    eprintln!("                       --protect      Ship binary ASTs instead of .sl sources");
+    eprintln!("                                      (implies --encrypt)");
     eprintln!("                       --standalone   Build standalone binary (experimental)");
     eprintln!("  serve <folder>       Start MVC server from a project folder");
     eprintln!("                       Supports .soli bundle files");
@@ -978,6 +988,8 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut output = None;
                 let mut standalone = false;
+                let mut encrypt = false;
+                let mut protect = false;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--output" | "-o" => {
@@ -992,6 +1004,13 @@ pub fn parse_args() -> Options {
                         "--standalone" => {
                             standalone = true;
                         }
+                        "--encrypt" => {
+                            encrypt = true;
+                        }
+                        "--protect" => {
+                            protect = true;
+                            encrypt = true;
+                        }
                         _ => {
                             eprintln!("Unknown option for build: {}", args[i]);
                             print_usage();
@@ -1004,6 +1023,8 @@ pub fn parse_args() -> Options {
                     folder,
                     output,
                     standalone,
+                    encrypt,
+                    protect,
                 };
                 return options;
             }

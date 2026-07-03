@@ -39,6 +39,17 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
 
+### Bundle protection
+
+Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Protected Bundles](/docs/development-tools/deploy#encrypted-bundles)). These are read at both `soli build --encrypt`/`--protect` and `soli serve app.soli`, and may live in the `.env` next to the bundle. Distinct from `SOLI_ENCRYPTION_KEY`, which encrypts model fields.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_BUNDLE_KEY` | The bundle AES key material itself. Simplest option; also handy for local testing. | unset |
+| `SOLI_BUNDLE_AUTH_URL` | URL of a key server. Soli issues a `GET`; the response body (≤ 4 KB, trimmed) is the key material. Revoke the entry to lock the app out. Used only when `SOLI_BUNDLE_KEY` is unset. | unset |
+| `SOLI_BUNDLE_API_KEY` | Sent as the `x-api-key` header on the `SOLI_BUNDLE_AUTH_URL` request — this host's identity to the key server. | unset |
+| `SOLI_BUNDLE_ALLOW_DISK` | Set to `1` to allow a decrypted bundle to extract to the temp dir when `/dev/shm` (RAM-backed tmpfs) is unavailable. Without it, such a boot is refused rather than writing plaintext to persistent disk. | unset |
+
 ### Production logging (`SOLI_LOG`)
 
 The AQL query log, the outgoing HTTP log, and the middleware/view/phase

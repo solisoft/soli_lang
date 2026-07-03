@@ -109,6 +109,9 @@ impl BundleFS {
     pub fn new(data: Vec<u8>) -> Result<Self, String> {
         let mut pos = 0usize;
 
+        if crate::bundle::is_encrypted_bundle(&data) {
+            return Err(crate::bundle::ENCRYPTED_BUNDLE_HINT.to_string());
+        }
         if data.len() < 8 {
             return Err("Bundle too short".to_string());
         }
@@ -289,6 +292,16 @@ mod tests {
     fn test_bundle_invalid_magic() {
         let data = vec![0, 0, 0, 0];
         assert!(BundleFS::new(data).is_err());
+    }
+
+    #[test]
+    fn test_bundle_fs_rejects_encrypted_magic() {
+        let err = match BundleFS::new(b"SOLE\x01whatever-follows".to_vec()) {
+            Ok(_) => panic!("expected an error on encrypted magic"),
+            Err(e) => e,
+        };
+        assert!(err.contains("encrypted"), "got: {err}");
+        assert!(err.contains("SOLI_BUNDLE_KEY"), "got: {err}");
     }
 
     #[test]

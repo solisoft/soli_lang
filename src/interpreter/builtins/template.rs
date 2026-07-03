@@ -211,18 +211,28 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
 
         if path.extension().is_some_and(|ext| ext == "sl") {
             let path_str = path.to_string_lossy().to_string();
-            let source = crate::serve::vfs_read_to_string(&path_str)
+            let bytes = crate::serve::vfs_read(&path_str)
                 .map_err(|e| format!("Failed to read helper file '{}': {}", path.display(), e))?;
 
-            // Lex
-            let tokens = crate::lexer::Scanner::new(&source)
-                .scan_tokens()
-                .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+            // In a protected bundle the helper file is a serialized AST.
+            let program = if crate::bundle::is_ast_blob(&bytes) {
+                crate::bundle::deserialize_program(&bytes)
+                    .map_err(|e| format!("Failed to load '{}': {}", path.display(), e))?
+            } else {
+                let source = String::from_utf8(bytes).map_err(|e| {
+                    format!("Helper '{}' is not valid UTF-8: {}", path.display(), e)
+                })?;
 
-            // Parse
-            let program = crate::parser::Parser::new(tokens)
-                .parse()
-                .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?;
+                // Lex
+                let tokens = crate::lexer::Scanner::new(&source)
+                    .scan_tokens()
+                    .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+
+                // Parse
+                crate::parser::Parser::new(tokens)
+                    .parse()
+                    .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?
+            };
 
             let source_path = path.to_string_lossy().to_string();
 

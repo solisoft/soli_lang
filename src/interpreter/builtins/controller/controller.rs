@@ -141,7 +141,7 @@ fn register_controller_class(env: &mut Environment) {
 }
 
 /// Controller action information for routing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ControllerAction {
     pub controller_name: String, // "posts"
     pub class_name: String,      // "PostsController"
@@ -150,7 +150,7 @@ pub struct ControllerAction {
 }
 
 /// Before action hook.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BeforeAction {
     pub actions: Vec<String>,   // Empty = all actions
     pub handler_source: String, // Soli function source code
@@ -163,7 +163,7 @@ pub struct BeforeAction {
 }
 
 /// After action hook.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AfterAction {
     pub actions: Vec<String>,   // Empty = all actions
     pub handler_source: String, // Soli function source code
@@ -177,7 +177,7 @@ pub struct AfterAction {
 /// "all actions"; `except` subtracts from that set. The default
 /// `this.layout = "..."` declaration is stored separately on
 /// `ControllerInfo.layout` and acts as the fallback when no rule matches.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayoutRule {
     pub layout: String,
     pub only: Vec<String>,   // Empty = all actions
@@ -194,7 +194,7 @@ impl LayoutRule {
 }
 
 /// Controller metadata for routing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ControllerInfo {
     pub name: String,       // "PostsController"
     pub class_name: String, // "posts"

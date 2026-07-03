@@ -8,6 +8,7 @@
 
 pub mod ast;
 pub mod bundle;
+pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
 pub mod embedding;

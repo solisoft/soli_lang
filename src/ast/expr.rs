@@ -5,7 +5,7 @@ use crate::ast::types::TypeAnnotation;
 use crate::span::Span;
 
 /// An expression in the AST.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
@@ -18,7 +18,7 @@ impl Expr {
 }
 
 /// A named argument in a function call: `name: value`
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamedArgument {
     pub name: String,
     pub value: Expr,
@@ -26,7 +26,7 @@ pub struct NamedArgument {
 }
 
 /// An argument in a function call (positional, named, or block)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Argument {
     Positional(Expr),
     Named(NamedArgument),
@@ -34,7 +34,7 @@ pub enum Argument {
 }
 
 /// All expression variants.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExprKind {
     /// Integer literal: 42
     IntLiteral(i64),
@@ -204,7 +204,7 @@ pub enum ExprKind {
 }
 
 /// Part of an interpolated string.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum InterpolatedPart {
     /// Literal text
     Literal(String),
@@ -213,7 +213,7 @@ pub enum InterpolatedPart {
 }
 
 /// Interpolation in SDBQL query block: #{expression}
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SdqlInterpolation {
     pub expr: String,
     pub start: usize,
@@ -221,7 +221,7 @@ pub struct SdqlInterpolation {
 }
 
 /// A single arm in a match expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchArm {
     pub pattern: MatchPattern,
     pub guard: Option<Expr>,
@@ -230,7 +230,7 @@ pub struct MatchArm {
 }
 
 /// Patterns for match expressions.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MatchPattern {
     /// Wildcard: _
     Wildcard,
@@ -269,7 +269,7 @@ pub enum MatchPattern {
 }
 
 /// Binary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -308,7 +308,7 @@ impl std::fmt::Display for BinaryOp {
 }
 
 /// Compound assignment operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompoundOp {
     Add,
     Subtract,
@@ -336,7 +336,7 @@ impl std::fmt::Display for CompoundOp {
 }
 
 /// Unary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UnaryOp {
     Negate,
     Not,

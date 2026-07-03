@@ -12,7 +12,7 @@ pub mod dev_store;
 mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
-mod middleware;
+pub(crate) mod middleware;
 pub mod middleware_log;
 pub mod nav;
 pub mod phase_log;
@@ -83,6 +83,15 @@ pub fn vfs_read_to_string(path: &str) -> Result<String, String> {
         vfs.read_to_string(path)
     } else {
         std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path, e))
+    }
+}
+
+/// Read a file's raw bytes, falling back to std::fs if no VFS is set.
+pub fn vfs_read(path: &str) -> Result<Vec<u8>, String> {
+    if let Some(vfs) = GLOBAL_VFS.get() {
+        vfs.read(path)
+    } else {
+        std::fs::read(path).map_err(|e| format!("Failed to read '{}': {}", path, e))
     }
 }
 

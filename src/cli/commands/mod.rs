@@ -17,7 +17,13 @@ use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
-pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
+pub fn run_build(
+    folder: &str,
+    output: Option<&str>,
+    standalone: bool,
+    encrypt: bool,
+    protect: bool,
+) {
     // Resolve "." to current directory so file_name() works properly
     let source_dir = if folder == "." {
         std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
@@ -40,14 +46,40 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
         process::exit(1);
     }
 
+    // The key comes from the same resolution chain as serve (SOLI_BUNDLE_KEY
+    // or the key server), and the vars may live in the app's .env — load it
+    // so `soli build --encrypt` works from a plain shell.
+    if encrypt {
+        solilang::serve::env_loader::load_env_files(&source_dir);
+    }
+
     println!("Building bundle from {}...", source_dir.display());
 
-    let bundle_data = match solilang::bundle::BundleBuilder::build(&source_dir) {
+    let bundle_data = if protect {
+        solilang::bundle::BundleBuilder::build_protected(&source_dir)
+    } else {
+        solilang::bundle::BundleBuilder::build(&source_dir)
+    };
+    let bundle_data = match bundle_data {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Error building bundle: {}", e);
             process::exit(1);
         }
+    };
+
+    let bundle_data = if encrypt {
+        let (key, source) = resolve_bundle_key().unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        });
+        println!("  Encrypting bundle ({})", source);
+        solilang::bundle::encrypt_bundle(&bundle_data, &key).unwrap_or_else(|e| {
+            eprintln!("Error encrypting bundle: {}", e);
+            process::exit(1);
+        })
+    } else {
+        bundle_data
     };
 
     let output_path = match output {
@@ -64,10 +96,16 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
     match std::fs::write(&output_path, &bundle_data) {
         Ok(_) => {
             let size_kb = bundle_data.len() as f64 / 1024.0;
+            let mode = match (protect, encrypt) {
+                (true, _) => " (protected: binary AST, encrypted)",
+                (false, true) => " (encrypted)",
+                _ => "",
+            };
             println!(
-                "  \x1b[32m\x1b[1m✓\x1b[0m Bundle written to {} ({:.1} KB)",
+                "  \x1b[32m\x1b[1m✓\x1b[0m Bundle written to {} ({:.1} KB){}",
                 output_path.display(),
-                size_kb
+                size_kb,
+                mode
             );
         }
         Err(e) => {
@@ -75,6 +113,83 @@ pub fn run_build(folder: &str, output: Option<&str>, standalone: bool) {
             process::exit(1);
         }
     }
+}
+
+/// Resolve the bundle encryption/decryption key. Order: `SOLI_BUNDLE_KEY`
+/// (the key itself), then `SOLI_BUNDLE_AUTH_URL` (a key server queried with
+/// an optional `SOLI_BUNDLE_API_KEY` sent as `x-api-key`). Returns the key
+/// material plus a human label of where it came from.
+fn resolve_bundle_key() -> Result<(String, String), String> {
+    if let Ok(key) = std::env::var("SOLI_BUNDLE_KEY") {
+        if !key.trim().is_empty() {
+            return Ok((
+                key.trim().to_string(),
+                "key from SOLI_BUNDLE_KEY".to_string(),
+            ));
+        }
+    }
+    if let Ok(url) = std::env::var("SOLI_BUNDLE_AUTH_URL") {
+        if !url.trim().is_empty() {
+            let api_key = std::env::var("SOLI_BUNDLE_API_KEY")
+                .ok()
+                .filter(|k| !k.trim().is_empty());
+            let key = fetch_bundle_key(url.trim(), api_key.as_deref())?;
+            return Ok((key, format!("key fetched from {}", url.trim())));
+        }
+    }
+    Err("no bundle key configured. Provide it via:\n  \
+         SOLI_BUNDLE_KEY        the key material itself, or\n  \
+         SOLI_BUNDLE_AUTH_URL   URL returning the key (optional SOLI_BUNDLE_API_KEY sent as x-api-key)\n\
+         Set them in the environment or in a .env file next to the .soli bundle."
+        .to_string())
+}
+
+/// GET the key material from the key server. The response body (≤ 4 KB,
+/// trimmed) is the key. Runs at single-threaded boot — blocking client, no
+/// tokio runtime involved.
+fn fetch_bundle_key(url: &str, api_key: Option<&str>) -> Result<String, String> {
+    use std::io::Read;
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("soli-lang-cli")
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let mut request = client.get(url);
+    if let Some(key) = api_key {
+        request = request.header("x-api-key", key);
+    }
+
+    let response = request
+        .send()
+        .map_err(|e| format!("key server request failed ({}): {}", url, e))?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(format!(
+            "key server rejected the API key (HTTP {}) — was the key revoked?",
+            status.as_u16()
+        ));
+    }
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err("key not found on key server (HTTP 404) — was it revoked?".to_string());
+    }
+    if !status.is_success() {
+        return Err(format!("key server returned HTTP {}", status.as_u16()));
+    }
+
+    let mut body = String::new();
+    response
+        .take(4096)
+        .read_to_string(&mut body)
+        .map_err(|e| format!("failed to read key server response: {}", e))?;
+    let key = body.trim().to_string();
+    if key.is_empty() {
+        return Err("key server returned an empty body".to_string());
+    }
+    Ok(key)
 }
 
 pub fn run_serve(folder: &str, port: u16, dev_mode: bool, workers: usize, daemonize: bool) {
@@ -155,13 +270,13 @@ fn serve_from_bundle(
     let bundle_data = std::fs::read(bundle_path)
         .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path, e))?;
 
-    let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
-
     // Load `.env` (and `.env.{APP_ENV}`) from the directory containing the
-    // bundle file. Dotfiles are deliberately excluded from bundles (secrets
-    // don't belong in a distributable artifact), so the operator drops a
-    // `.env` next to the `.soli` — the extracted temp dir that
-    // `serve_folder` later scans never has one.
+    // bundle file BEFORE anything else: the bundle key config
+    // (SOLI_BUNDLE_KEY / SOLI_BUNDLE_AUTH_URL) may live there. Dotfiles are
+    // deliberately excluded from bundles (secrets don't belong in a
+    // distributable artifact), so the operator drops a `.env` next to the
+    // `.soli` — the extracted temp dir that `serve_folder` later scans
+    // never has one.
     let bundle_dir = Path::new(bundle_path)
         .canonicalize()
         .ok()
@@ -169,10 +284,35 @@ fn serve_from_bundle(
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     solilang::serve::env_loader::load_env_files(&bundle_dir);
 
-    // Extract to a temp directory
-    let tmp_dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp_dir);
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let encrypted = solilang::bundle::is_encrypted_bundle(&bundle_data);
+    let bundle_data = if encrypted {
+        let (key, source) =
+            resolve_bundle_key().map_err(|e| format!("'{}' is encrypted — {}", bundle_path, e))?;
+        println!("Decrypting bundle ({})", source);
+        solilang::bundle::decrypt_bundle(&bundle_data, &key)?
+    } else {
+        bundle_data
+    };
+
+    let bundle = solilang::bundle::BundleReader::new(&bundle_data)?;
+    solilang::bundle::check_bundle_meta(bundle.entries())?;
+
+    // Extraction dir. Decrypted app trees go to RAM-backed tmpfs (/dev/shm)
+    // with 0700 perms so plaintext never lands on persistent disk; plain
+    // bundles keep the historical temp-dir behavior.
+    let tmp_dir = if encrypted {
+        encrypted_extraction_dir()?
+    } else {
+        let dir = std::env::temp_dir().join(format!("soli_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
+        dir
+    };
+
+    if encrypted {
+        // The decrypted tree must not outlive the server.
+        solilang::cleanup::register_cleanup_dir(&tmp_dir);
+    }
 
     for (path, content) in bundle.entries() {
         let full_path = tmp_dir.join(path);
@@ -184,7 +324,14 @@ fn serve_from_bundle(
             .map_err(|e| format!("Failed to write '{}': {}", full_path.display(), e))?;
     }
 
-    println!("Extracted bundle to {}", tmp_dir.display());
+    if encrypted {
+        println!(
+            "Extracted bundle to {} (RAM-backed, removed on shutdown)",
+            tmp_dir.display()
+        );
+    } else {
+        println!("Extracted bundle to {}", tmp_dir.display());
+    }
 
     // Serve from the extracted temp directory
     let folder_path = tmp_dir.to_string_lossy().to_string();
@@ -194,6 +341,85 @@ fn serve_from_bundle(
 
     solilang::serve::serve_folder_with_options(&tmp_dir, port, dev_mode, workers)
         .map_err(|e| e.to_string())
+}
+
+/// Pick the extraction directory for a DECRYPTED bundle: `/dev/shm/soli_<pid>`
+/// (RAM-backed tmpfs) with mode 0700. Without /dev/shm the boot is refused —
+/// silently writing decrypted source to persistent disk would defeat the
+/// encryption without the operator knowing. `SOLI_BUNDLE_ALLOW_DISK=1` is the
+/// explicit opt-out (temp dir, still 0700, loud warning).
+fn encrypted_extraction_dir() -> Result<std::path::PathBuf, String> {
+    let shm = Path::new("/dev/shm");
+    let base = if shm.is_dir() {
+        shm.to_path_buf()
+    } else if std::env::var("SOLI_BUNDLE_ALLOW_DISK").ok().as_deref() == Some("1") {
+        eprintln!(
+            "\x1b[33mWarning:\x1b[0m /dev/shm is not available — extracting the DECRYPTED \
+             bundle to the temp dir on persistent disk (SOLI_BUNDLE_ALLOW_DISK=1)."
+        );
+        std::env::temp_dir()
+    } else {
+        return Err(
+            "/dev/shm is not available on this system, so the decrypted bundle would be \
+             written to persistent disk. Refusing to start. Set SOLI_BUNDLE_ALLOW_DISK=1 \
+             to allow extraction to the temp dir anyway."
+                .to_string(),
+        );
+    };
+
+    sweep_stale_extractions(&base);
+
+    let dir = base.join(format!("soli_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    create_private_dir(&dir)?;
+    Ok(dir)
+}
+
+/// Create a directory with mode 0700 (owner-only) on unix.
+fn create_private_dir(dir: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(|e| format!("Failed to create private dir '{}': {}", dir.display(), e))
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("Failed to create dir '{}': {}", dir.display(), e))
+    }
+}
+
+/// Best-effort removal of `soli_<pid>` extraction dirs left behind by dead
+/// processes (`kill -9`, crash). Never touches a dir whose pid is alive.
+fn sweep_stale_extractions(base: &Path) {
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    let own_pid = std::process::id();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid_str) = name
+            .to_string_lossy()
+            .strip_prefix("soli_")
+            .map(String::from)
+        else {
+            continue;
+        };
+        let Ok(pid) = pid_str.parse::<i32>() else {
+            continue;
+        };
+        if pid as u32 == own_pid {
+            continue;
+        }
+        // Signal 0 = existence check; ESRCH means the process is gone.
+        if nix::sys::signal::kill(Pid::from_raw(pid), None).is_err() {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 pub fn run_new(name: &str, template: Option<&str>) {

@@ -183,20 +183,34 @@ impl ModuleResolver {
             return Ok(cached.clone());
         }
 
-        // Read and parse the module through VFS (or disk fallback)
+        // Read and parse the module through VFS (or disk fallback). In a
+        // protected bundle the imported file is a serialized AST, not source.
         let path_str = module_path.to_string_lossy().to_string();
-        let content = crate::serve::vfs_read_to_string(&path_str).map_err(std::io::Error::other)?;
-        let tokens = Scanner::new(&content).scan_tokens().map_err(|e| {
-            ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
-        })?;
-        let program = match Parser::new(tokens).parse() {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(ResolveError::ParseError(format!(
-                    "in {}: {}",
+        let bytes = crate::serve::vfs_read(&path_str).map_err(std::io::Error::other)?;
+        let program = if crate::bundle::is_ast_blob(&bytes) {
+            crate::bundle::deserialize_program(&bytes).map_err(|e| {
+                ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
+            })?
+        } else {
+            let content = String::from_utf8(bytes).map_err(|e| {
+                ResolveError::ParseError(format!(
+                    "in {}: not valid UTF-8: {}",
                     module_path.display(),
                     e
-                )))
+                ))
+            })?;
+            let tokens = Scanner::new(&content).scan_tokens().map_err(|e| {
+                ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
+            })?;
+            match Parser::new(tokens).parse() {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(ResolveError::ParseError(format!(
+                        "in {}: {}",
+                        module_path.display(),
+                        e
+                    )))
+                }
             }
         };
 

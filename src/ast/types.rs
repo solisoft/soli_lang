@@ -3,7 +3,7 @@
 use crate::span::Span;
 
 /// A type annotation in the source code.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeAnnotation {
     pub kind: TypeKind,
     pub span: Span,
@@ -16,7 +16,7 @@ impl TypeAnnotation {
 }
 
 /// The kinds of types that can be expressed in source.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TypeKind {
     /// Primitive types: Int, Float, Bool, String
     Named(String),

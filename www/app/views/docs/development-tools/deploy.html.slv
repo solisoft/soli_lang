@@ -214,6 +214,68 @@ proxy_url = "https://proxy.example.com"</code></pre>
         </p>
     </div>
 
+    <!-- Encrypted / protected bundles -->
+    <h2 id="encrypted-bundles" class="text-2xl font-bold text-white mb-6">Encrypted &amp; Protected Bundles</h2>
+    <p class="text-gray-400 mb-4">
+        When you deploy to servers you don't fully control, encrypt the bundle so the source can't be copied off disk, and fetch the decryption key from a key server you own — revoking it there is a remote kill-switch.
+    </p>
+
+    <div class="overflow-x-auto rounded-xl border border-white/10 mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2">Flag</th><th class="px-4 py-2">What it does</th></tr></thead>
+            <tbody class="text-gray-400 divide-y divide-white/5">
+                <tr><td class="px-4 py-2"><code class="text-amber-400">--encrypt</code></td><td class="px-4 py-2">Wraps the whole bundle in <strong>AES-256-GCM</strong>. The <code>.soli</code> file on disk is ciphertext; the key is needed to boot.</td></tr>
+                <tr><td class="px-4 py-2"><code class="text-amber-400">--protect</code></td><td class="px-4 py-2">Implies <code>--encrypt</code>, and additionally replaces every <code>.sl</code> source with its <strong>compiled binary AST</strong> — so even after decryption there is no readable source (comments and formatting are gone; identifiers and string literals remain, as in any bytecode).</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Build an encrypted bundle"><code class="language-bash text-sm"># The build reads the key from the same place serve does.
+export SOLI_BUNDLE_KEY="a-long-random-secret"     # or point at your key server (below)
+
+soli build my_app --protect
+#   Building bundle from my_app...
+#   Encrypting bundle (key from SOLI_BUNDLE_KEY)
+#   ✓ Bundle written to my_app.soli (1.9 KB) (protected: binary AST, encrypted)</code></pre>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-3">Where the key comes from</h3>
+    <p class="text-gray-400 mb-4">
+        At both build and serve time the key is resolved in this order:
+    </p>
+    <ol class="list-decimal list-inside text-gray-400 mb-4 space-y-1">
+        <li><code class="text-amber-400">SOLI_BUNDLE_KEY</code> — the key material itself (handy for local testing).</li>
+        <li><code class="text-amber-400">SOLI_BUNDLE_AUTH_URL</code> — a URL your server exposes. Soli issues a <code>GET</code>, sending <code>SOLI_BUNDLE_API_KEY</code> (if set) as an <code>x-api-key</code> header; the response body is the key material (any encoding — it's hashed to a 256-bit key). This is the revocable path.</li>
+    </ol>
+    <p class="text-gray-400 mb-4">
+        These can live in the <code>.env</code> next to the <code>.soli</code> file (loaded before decryption), so the deployed server only carries its API key, never the decryption key:
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename=".env (next to my_app.soli)"><code class="language-bash text-sm">SOLI_BUNDLE_AUTH_URL=https://keys.example.com/my_app
+SOLI_BUNDLE_API_KEY=srv-7f3c...           # this host's identity; revoke it to lock the app out</code></pre>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Delete or disable that entry on your key server and the next boot fails with a clear error — a decommissioned or stolen host stops working. A wrong or rotated key fails the same way.
+    </p>
+
+    <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-6 mb-6">
+        <h3 class="text-lg font-semibold text-amber-300 mb-2">What this protects — and what it doesn't</h3>
+        <p class="text-gray-400 text-sm">
+            Encryption protects your source against <em>casual copying</em>: a hosting provider's backup, a leaked <code>.soli</code>, or a co-tenant browsing the disk sees only ciphertext, and decrypted files live in a private RAM-backed directory (<code>/dev/shm</code>, mode <code>0700</code>), removed on shutdown — never on persistent disk. <code>--protect</code> raises the cost of reconstructing the source (like shipping <code>.pyc</code>/<code>.class</code> instead of source). Because the key is fetched at boot, revoking it is a kill-switch. It does <strong>not</strong> protect against an attacker with <strong>root on the running server</strong> — they can read the key from the process environment or the decrypted files from RAM. If your threat model includes a hostile host, don't deploy the source there at all.
+        </p>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <h3 class="text-lg font-semibold text-white mb-2">Operational notes</h3>
+        <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
+            <li>Decrypted bundles extract to <code>/dev/shm</code>. On a system without it (e.g. macOS) the boot is <strong>refused</strong> rather than silently writing plaintext to disk; set <code>SOLI_BUNDLE_ALLOW_DISK=1</code> to override (temp dir, still <code>0700</code>).</li>
+            <li>A <code>--protect</code> bundle is locked to the <strong>exact Soli version</strong> that built it — the binary AST has no cross-version format guarantee. Serving it with a different <code>soli</code> fails with a "rebuild the bundle" error.</li>
+            <li><code>--protect</code> does not yet support apps with an <code>engines/</code> directory.</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a href="/docs/core-concepts/routing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
