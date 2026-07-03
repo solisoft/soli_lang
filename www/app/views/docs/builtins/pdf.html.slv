@@ -237,6 +237,21 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-manipulate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_merge(pdfs) &middot; pdf_pages(pdf, selection) &middot; pdf_stamp(pdf, text, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Operate on <strong>existing</strong> PDFs &mdash; the toolkit half of the engine. Each takes a <strong>path or base64</strong> and returns base64.</p>
+                <div class="text-sm text-gray-400 space-y-2">
+                    <div><code class="text-amber-400">pdf_merge(pdfs)</code> &mdash; concatenate an array of PDF sources (paths or base64) into one, in order. Inherited page attributes are inlined so pages keep their look.</div>
+                    <div><code class="text-amber-400">pdf_pages(pdf, selection)</code> &mdash; keep a subset: a range string <code>"1-3,7,9-11"</code> or an array <code>[1,3,7]</code> (1-based), in original order.</div>
+                    <div><code class="text-amber-400">pdf_stamp(pdf, text, options?)</code> &mdash; draw <code>text</code> onto pages. Options: <code>pages</code> (default all), <code>x</code>/<code>y</code> (default centered), <code>size</code> (48), <code>color</code> (hex), <code>rotation</code> (45), <code>opacity</code> (0.25). For <code>DRAFT</code>/<code>PAID</code>/<code>CONFIDENTIAL</code> watermarks.</div>
+                </div>
+                <pre class="mt-3" data-filename="Manipulate existing PDFs"><code class="language-soli text-sm">let doc     = pdf_merge([ "cover.pdf", report, "terms.pdf" ])
+let excerpt = pdf_pages(doc, "1-3")
+let draft   = pdf_stamp(doc, "DRAFT", { opacity: 0.2, color: "cc2222", rotation: 45 })</code></pre>
+            </div>
+        </section>
+
         <section id="section-options" class="scroll-mt-20 mb-2">
             <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">

@@ -548,6 +548,33 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_merge(pdfs) -> String (base64 merged PDF)
+        self.functions.insert(
+            "pdf_merge".to_string(),
+            Type::Function {
+                params: vec![Type::Array(Box::new(Type::String))],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_pages(pdf, selection) -> String (base64 page subset)
+        self.functions.insert(
+            "pdf_pages".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_stamp(pdf, text, options?) -> String (base64 stamped PDF)
+        self.functions.insert(
+            "pdf_stamp".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // String functions
         // split(String, String) -> Array
         self.functions.insert(

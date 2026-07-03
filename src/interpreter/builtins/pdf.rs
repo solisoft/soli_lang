@@ -136,6 +136,64 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // Merge several PDFs into one (each source is a path or base64 bytes).
+    env.define(
+        "pdf_merge".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_merge", Some(1), |args| {
+            let Value::Array(arr) = &args[0] else {
+                return Err("pdf_merge() expects an array of PDFs (paths or base64)".to_string());
+            };
+            let mut pdfs = Vec::new();
+            for v in arr.borrow().iter() {
+                let s = match v {
+                    Value::String(s) => s.to_string(),
+                    other => {
+                        return Err(format!(
+                            "pdf_merge(): each entry must be a string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                pdfs.push(load_pdf_source(&s).map_err(|e| format!("pdf_merge(): {e}"))?);
+            }
+            let merged = soli_pdf::merge(&pdfs).map_err(|e| format!("pdf_merge() failed: {e}"))?;
+            Ok(b64(merged))
+        })),
+    );
+
+    // Keep a subset of pages: `pdf_pages(pdf, "1-3,7")` or `pdf_pages(pdf, [1,3])`.
+    env.define(
+        "pdf_pages".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_pages", Some(2), |args| {
+            let source = arg_string(&args[0], "pdf_pages", "pdf")?;
+            let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_pages(): {e}"))?;
+            let pages = parse_page_selection(&args[1]).map_err(|e| format!("pdf_pages(): {e}"))?;
+            let out = soli_pdf::select_pages(&pdf, &pages)
+                .map_err(|e| format!("pdf_pages() failed: {e}"))?;
+            Ok(b64(out))
+        })),
+    );
+
+    // Stamp text (label / diagonal watermark) onto an existing PDF's pages.
+    env.define(
+        "pdf_stamp".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_stamp", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_stamp() expects 2 or 3 arguments (pdf, text, options?), got {}",
+                    args.len()
+                ));
+            }
+            let source = arg_string(&args[0], "pdf_stamp", "pdf")?;
+            let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_stamp(): {e}"))?;
+            let text = arg_string(&args[1], "pdf_stamp", "text")?;
+            let opts = build_stamp_options(text, args.get(2));
+            let out =
+                soli_pdf::stamp(&pdf, &opts).map_err(|e| format!("pdf_stamp() failed: {e}"))?;
+            Ok(b64(out))
+        })),
+    );
+
     // Render + wrap as a ready HTTP response: return it straight from a
     // controller action. The binary body travels via the `body_base64`
     // response key (decoded server-side in `extract_response`).
@@ -564,16 +622,105 @@ fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, St
 fn load_pdf_source(s: &str) -> Result<Vec<u8>, String> {
     let resolved = resolve_font_dir(PathBuf::from(s));
     if resolved.is_file() {
-        return std::fs::read(&resolved).map_err(|e| {
-            format!(
-                "pdf_fill(): could not read '{s}' ({}): {e}",
-                resolved.display()
-            )
-        });
+        return std::fs::read(&resolved)
+            .map_err(|e| format!("could not read PDF '{s}' ({}): {e}", resolved.display()));
     }
     base64::engine::general_purpose::STANDARD
         .decode(s.trim().as_bytes())
-        .map_err(|_| "pdf_fill(): `pdf` is neither a readable path nor valid base64".to_string())
+        .map_err(|_| "a PDF source is neither a readable path nor valid base64".to_string())
+}
+
+/// Parse a page selection: a range string like `"1-3,7,9-11"` or an array of
+/// integers, into a list of 1-based page numbers.
+fn parse_page_selection(v: &Value) -> Result<Vec<u32>, String> {
+    match v {
+        Value::String(s) => {
+            let mut out = Vec::new();
+            for part in s.split(',') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                if let Some((a, b)) = part.split_once('-') {
+                    match (a.trim().parse::<u32>(), b.trim().parse::<u32>()) {
+                        (Ok(a), Ok(b)) if a >= 1 && b >= a => out.extend(a..=b),
+                        _ => return Err(format!("invalid page range '{part}'")),
+                    }
+                } else {
+                    out.push(
+                        part.parse::<u32>()
+                            .map_err(|_| format!("invalid page number '{part}'"))?,
+                    );
+                }
+            }
+            Ok(out)
+        }
+        Value::Array(arr) => Ok(arr
+            .borrow()
+            .iter()
+            .filter_map(|v| match v {
+                Value::Int(n) if *n >= 1 => Some(*n as u32),
+                _ => None,
+            })
+            .collect()),
+        other => Err(format!(
+            "pages must be a range string or an array of ints, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// Parse a hex color (`"888888"`, optional leading `#`) into `(r, g, b)` in 0..1.
+fn hex_rgb(s: &str) -> (f32, f32, f32) {
+    let h = s.trim_start_matches('#');
+    let byte = |i: usize| u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0);
+    if h.len() >= 6 {
+        (
+            byte(0) as f32 / 255.0,
+            byte(2) as f32 / 255.0,
+            byte(4) as f32 / 255.0,
+        )
+    } else {
+        (0.6, 0.6, 0.6)
+    }
+}
+
+/// Build [`soli_pdf::StampOptions`] from the stamp text and an options hash.
+fn build_stamp_options(text: String, opts: Option<&Value>) -> soli_pdf::StampOptions {
+    let mut s = soli_pdf::StampOptions {
+        text,
+        ..Default::default()
+    };
+    let Some(Value::Hash(h)) = opts else {
+        return s;
+    };
+    let h = h.borrow();
+    if let Some(n) = h.get(&HashKey::String("size".into())).and_then(opt_num) {
+        s.size = n;
+    }
+    if let Some(n) = h.get(&HashKey::String("rotation".into())).and_then(opt_num) {
+        s.rotation = n;
+    }
+    if let Some(n) = h.get(&HashKey::String("opacity".into())).and_then(opt_num) {
+        s.opacity = n;
+    }
+    if let Some(n) = h.get(&HashKey::String("x".into())).and_then(opt_num) {
+        s.x = Some(n);
+    }
+    if let Some(n) = h.get(&HashKey::String("y".into())).and_then(opt_num) {
+        s.y = Some(n);
+    }
+    if let Some(Value::String(c)) = h.get(&HashKey::String("color".into())) {
+        s.color = hex_rgb(c);
+    }
+    if let Some(pages) = h.get(&HashKey::String("pages".into())) {
+        if let Ok(list) = parse_page_selection(pages) {
+            if !list.is_empty() {
+                s.pages = Some(list);
+            }
+        }
+    }
+    s
 }
 
 /// Convert a `{ field => value }` hash into `(name, string)` pairs. Scalars are

@@ -130,6 +130,29 @@ file_write_base64("w9-filled.pdf", filled)
 
 **Returns:** String — base64-encoded filled PDF. Errors if the PDF has no AcroForm (no fillable fields). Field names must match the form's own field names.
 
+### pdf_merge(pdfs) · pdf_pages(pdf, selection) · pdf_stamp(pdf, text, options?)
+
+Operate on **existing** PDFs — the toolkit half of the engine.
+
+```soli
+# Concatenate a cover + generated report + terms into one document.
+let doc = pdf_merge([ "cover.pdf", report_b64, "terms.pdf" ])
+
+# Keep a subset of pages ("1-3,7" range string, or [1,3,7]).
+let excerpt = pdf_pages(doc, "1-3")
+
+# Stamp a diagonal watermark on every page (or a subset).
+let draft = pdf_stamp(doc, "DRAFT", {
+  "opacity": 0.2, "color": "cc2222", "rotation": 45, "size": 60
+})
+```
+
+- **`pdf_merge(pdfs)`** — `pdfs` is an array of PDF sources (each a **path** or **base64** bytes); returns them concatenated in order. Inherited page attributes (size, resources) are inlined so pages keep their look.
+- **`pdf_pages(pdf, selection)`** — keep a subset: a range string `"1-3,7,9-11"` or an array `[1,3,7]` (1-based). Kept pages stay in their original order.
+- **`pdf_stamp(pdf, text, options?)`** — draw `text` onto pages. Options: `pages` (range string / array; default all), `x`/`y` (points from bottom-left; default centered), `size` (default 48), `color` (hex, default grey), `rotation` (degrees, default 45), `opacity` (0–1, default 0.25). Ideal for `DRAFT`/`PAID`/`CONFIDENTIAL` watermarks.
+
+All three take `pdf` as a **path or base64** and return base64.
+
 ### Options
 
 | Key | Type | Default | Meaning |

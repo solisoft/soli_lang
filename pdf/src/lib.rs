@@ -25,6 +25,7 @@ pub mod images;
 pub mod interpolate;
 pub mod invoice;
 pub mod layout;
+pub mod manipulate;
 pub mod pdf_backend;
 pub mod qr;
 pub mod render;
@@ -39,6 +40,7 @@ pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};
 pub use forms::fill_form;
 pub use invoice::{AllowanceCharge, Amount, Invoice, Line, Party};
+pub use manipulate::{merge, select_pages, stamp, StampOptions};
 pub use render::{render_to_bytes, render_with_warnings, RenderOutput};
 pub use sign::{
     embed_cms, prepare_signature, PreparedSignature, SignMeta, DEFAULT_PLACEHOLDER_LEN,
