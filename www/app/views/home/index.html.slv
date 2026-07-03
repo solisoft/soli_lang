@@ -158,7 +158,6 @@
       <span class="text-stone-300">.where(</span><span class="text-stone-100">"doc.status == @s"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"s"</span><span class="text-stone-300">: </span><span class="text-stone-100">"published"</span><span class="text-stone-300"> })</span>
       <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
       <span class="text-stone-300">.limit(</span><span class="text-amber-300">10</span><span class="text-stone-300">).all</span>
-    <span class="text-stone-300">render(</span><span class="text-stone-100">"posts/index"</span><span class="text-stone-300">)</span>
   <span class="text-orange-300">end</span>
 <span class="text-orange-300">end</span></code></pre>
                     </div>
