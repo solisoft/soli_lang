@@ -34,7 +34,7 @@ pub mod stationery;
 pub mod template;
 pub mod text;
 
-pub use attachments::Attachment;
+pub use attachments::{extract_attachments, extract_facturx, Attachment};
 pub use encrypt::EncryptOptions;
 pub use error::{PdfError, RenderWarning, Result};
 pub use facturx::{FacturxMetadata, Profile};

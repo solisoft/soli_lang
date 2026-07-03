@@ -575,6 +575,24 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_extract_facturx(pdf) -> String | Null (embedded invoice XML)
+        self.functions.insert(
+            "pdf_extract_facturx".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_attachments(pdf) -> Array (embedded files: name/mime/size/base64)
+        self.functions.insert(
+            "pdf_attachments".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            },
+        );
+
         // String functions
         // split(String, String) -> Array
         self.functions.insert(

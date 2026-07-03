@@ -8,7 +8,7 @@
 //! `AFRelationship /Unspecified` and is appended to the catalog's `/AF` array
 //! so PDF/A-3 outputs keep every embedded file associated.
 
-use lopdf::{Dictionary, Document, Object, Stream, StringFormat};
+use lopdf::{Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use md5::{Digest, Md5};
 
 use crate::error::{PdfError, Result};
@@ -21,6 +21,122 @@ pub struct Attachment {
     /// MIME type (written as the EmbeddedFile `/Subtype`).
     pub mime: String,
     pub bytes: Vec<u8>,
+}
+
+/// Read every embedded file out of `pdf` — the reverse of [`apply_attachments`].
+/// Used to process an *incoming* document (e.g. a received Factur-X invoice).
+pub fn extract_attachments(pdf: &[u8]) -> Result<Vec<Attachment>> {
+    let doc = Document::load_mem(pdf)
+        .map_err(|e| PdfError::Backend(format!("attachments: could not parse the PDF: {e}")))?;
+    let Ok(catalog) = doc.catalog() else {
+        return Ok(Vec::new());
+    };
+
+    let mut filespec_ids: Vec<ObjectId> = Vec::new();
+    // Primary source: the `/Names /EmbeddedFiles` name tree.
+    if let Some(ef) = catalog
+        .get(b"Names")
+        .ok()
+        .and_then(|o| deref_dict(&doc, o))
+        .and_then(|names| names.get(b"EmbeddedFiles").ok())
+        .and_then(|o| deref_dict(&doc, o))
+    {
+        collect_filespecs(&doc, ef, &mut filespec_ids);
+    }
+    // Fallback: the `/AF` associated-files array (some producers omit the tree).
+    if filespec_ids.is_empty() {
+        if let Ok(af) = catalog.get(b"AF").and_then(|o| o.as_array()) {
+            filespec_ids.extend(af.iter().filter_map(|o| o.as_reference().ok()));
+        }
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for fid in filespec_ids {
+        if seen.insert(fid) {
+            if let Some(att) = read_filespec(&doc, fid) {
+                out.push(att);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The embedded Factur-X / ZUGFeRD / XRechnung invoice XML, if present, so a
+/// received e-invoice can be parsed. Matches the standard attachment names.
+pub fn extract_facturx(pdf: &[u8]) -> Result<Option<Vec<u8>>> {
+    const NAMES: [&str; 5] = [
+        "factur-x.xml",
+        "zugferd-invoice.xml",
+        "xrechnung.xml",
+        "cii.xml",
+        "factur-x.cii.xml",
+    ];
+    for att in extract_attachments(pdf)? {
+        let lower = att.name.to_ascii_lowercase();
+        if NAMES.contains(&lower.as_str()) || lower.ends_with("factur-x.xml") {
+            return Ok(Some(att.bytes));
+        }
+    }
+    Ok(None)
+}
+
+fn deref_dict<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
+    match obj {
+        Object::Dictionary(d) => Some(d),
+        Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_dict().ok()),
+        _ => None,
+    }
+}
+
+/// Recurse an EmbeddedFiles name tree, collecting filespec object ids.
+fn collect_filespecs(doc: &Document, node: &Dictionary, out: &mut Vec<ObjectId>) {
+    if let Ok(names) = node.get(b"Names").and_then(|o| o.as_array()) {
+        for pair in names.chunks(2) {
+            if let Some(Ok(id)) = pair.get(1).map(|v| v.as_reference()) {
+                out.push(id);
+            }
+        }
+    }
+    if let Ok(kids) = node.get(b"Kids").and_then(|o| o.as_array()) {
+        for kid in kids {
+            if let Some(kd) = deref_dict(doc, kid) {
+                collect_filespecs(doc, kd, out);
+            }
+        }
+    }
+}
+
+fn read_filespec(doc: &Document, fid: ObjectId) -> Option<Attachment> {
+    let fs = doc.get_object(fid).ok()?.as_dict().ok()?;
+    let name = fs
+        .get(b"UF")
+        .or_else(|_| fs.get(b"F"))
+        .ok()
+        .and_then(|o| o.as_str().ok())
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .unwrap_or_else(|| "attachment".to_string());
+    let ef = deref_dict(doc, fs.get(b"EF").ok()?)?;
+    let stream_ref = ef
+        .get(b"F")
+        .or_else(|_| ef.get(b"UF"))
+        .ok()?
+        .as_reference()
+        .ok()?;
+    let Ok(Object::Stream(stream)) = doc.get_object(stream_ref) else {
+        return None;
+    };
+    let bytes = stream
+        .decompressed_content()
+        .unwrap_or_else(|_| stream.content.clone());
+    let mime = stream
+        .dict
+        .get(b"Subtype")
+        .ok()
+        .and_then(|o| o.as_name().ok())
+        .map(|n| String::from_utf8_lossy(n).into_owned())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    Some(Attachment { name, mime, bytes })
 }
 
 /// Embed `attachments` into `pdf`, merging with any existing name-tree entries.
@@ -150,4 +266,77 @@ fn add_filespec(
     dict.set("AFRelationship", Object::Name(b"Unspecified".to_vec()));
     dict.set("EF", Object::Dictionary(ef));
     doc.add_object(Object::Dictionary(dict))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::dictionary;
+
+    /// A minimal one-page PDF with a catalog, so `apply_attachments` has
+    /// something to attach to.
+    fn blank_pdf() -> Vec<u8> {
+        let mut doc = Document::with_version("1.5");
+        let pages = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => Object::Name(b"Page".to_vec()),
+            "Parent" => Object::Reference(pages),
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        });
+        doc.set_object(
+            pages,
+            dictionary! {
+                "Type" => Object::Name(b"Pages".to_vec()),
+                "Kids" => vec![Object::Reference(page)], "Count" => 1,
+            },
+        );
+        let cat = doc.add_object(dictionary! {
+            "Type" => Object::Name(b"Catalog".to_vec()), "Pages" => Object::Reference(pages),
+        });
+        doc.trailer.set("Root", Object::Reference(cat));
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn embed_then_extract_round_trips() {
+        let pdf = blank_pdf();
+        let xml = b"<CrossIndustryInvoice/>".to_vec();
+        let with = apply_attachments(
+            &pdf,
+            &[
+                Attachment {
+                    name: "factur-x.xml".into(),
+                    mime: "text/xml".into(),
+                    bytes: xml.clone(),
+                },
+                Attachment {
+                    name: "notes.txt".into(),
+                    mime: "text/plain".into(),
+                    bytes: b"hello".to_vec(),
+                },
+            ],
+        )
+        .expect("embed");
+
+        let all = extract_attachments(&with).expect("extract");
+        assert_eq!(all.len(), 2, "both attachments read back");
+        assert!(all
+            .iter()
+            .any(|a| a.name == "notes.txt" && a.bytes == b"hello"));
+
+        let facturx = extract_facturx(&with).expect("extract facturx");
+        assert_eq!(
+            facturx.as_deref(),
+            Some(xml.as_slice()),
+            "invoice XML found by name"
+        );
+    }
+
+    #[test]
+    fn extract_facturx_none_without_invoice() {
+        let pdf = blank_pdf();
+        assert!(extract_facturx(&pdf).unwrap().is_none());
+    }
 }

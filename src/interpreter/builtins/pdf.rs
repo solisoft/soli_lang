@@ -194,6 +194,63 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // Read the embedded Factur-X / ZUGFeRD / XRechnung invoice XML out of a
+    // *received* PDF — the reverse of pdf_facturx. Returns the XML string, or
+    // null when the PDF carries no e-invoice payload.
+    env.define(
+        "pdf_extract_facturx".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "pdf_extract_facturx",
+            Some(1),
+            |args| {
+                let source = arg_string(&args[0], "pdf_extract_facturx", "pdf")?;
+                let pdf =
+                    load_pdf_source(&source).map_err(|e| format!("pdf_extract_facturx(): {e}"))?;
+                match soli_pdf::extract_facturx(&pdf)
+                    .map_err(|e| format!("pdf_extract_facturx() failed: {e}"))?
+                {
+                    Some(xml) => Ok(Value::String(
+                        String::from_utf8_lossy(&xml).into_owned().into(),
+                    )),
+                    None => Ok(Value::Null),
+                }
+            },
+        )),
+    );
+
+    // List every embedded file in a PDF: `[{ name, mime, size, base64 }]`.
+    env.define(
+        "pdf_attachments".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_attachments", Some(1), |args| {
+            let source = arg_string(&args[0], "pdf_attachments", "pdf")?;
+            let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_attachments(): {e}"))?;
+            let atts = soli_pdf::extract_attachments(&pdf)
+                .map_err(|e| format!("pdf_attachments() failed: {e}"))?;
+            let items: Vec<Value> = atts
+                .into_iter()
+                .map(|a| {
+                    let mut h = HashPairs::default();
+                    h.insert(HashKey::String("name".into()), Value::String(a.name.into()));
+                    h.insert(HashKey::String("mime".into()), Value::String(a.mime.into()));
+                    h.insert(
+                        HashKey::String("size".into()),
+                        Value::Int(a.bytes.len() as i64),
+                    );
+                    h.insert(
+                        HashKey::String("base64".into()),
+                        Value::String(
+                            base64::engine::general_purpose::STANDARD
+                                .encode(&a.bytes)
+                                .into(),
+                        ),
+                    );
+                    Value::Hash(Rc::new(RefCell::new(h)))
+                })
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
+        })),
+    );
+
     // Render + wrap as a ready HTTP response: return it straight from a
     // controller action. The binary body travels via the `body_base64`
     // response key (decoded server-side in `extract_response`).

@@ -252,6 +252,21 @@ let draft   = pdf_stamp(doc, "DRAFT", { opacity: 0.2, color: "cc2222", rotation:
             </div>
         </section>
 
+        <section id="def-pdf-read-einvoice" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_extract_facturx(pdf) &middot; pdf_attachments(pdf)</code>
+                <p class="text-gray-400 mt-3 mb-3">Read a <strong>received</strong> e-invoice &mdash; the inverse of <code>pdf_facturx*</code>. You can now <em>process</em> incoming Factur-X / ZUGFeRD / XRechnung invoices, not just emit them.</p>
+                <div class="text-sm text-gray-400 space-y-2">
+                    <div><code class="text-amber-400">pdf_extract_facturx(pdf)</code> &mdash; the embedded EN&nbsp;16931 invoice XML as a <strong>String</strong>, or <strong>null</strong> if none. Matches the standard attachment names.</div>
+                    <div><code class="text-amber-400">pdf_attachments(pdf)</code> &mdash; an array of <code>{ name, mime, size, base64 }</code>, one per embedded file (reads the <code>/EmbeddedFiles</code> tree, falling back to <code>/AF</code>).</div>
+                </div>
+                <pre class="mt-3" data-filename="Process a received invoice"><code class="language-soli text-sm">let xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
+if xml.present?
+  let invoice = Xml.parse(xml)   # read totals, VAT, line items…
+end</code></pre>
+            </div>
+        </section>
+
         <section id="section-options" class="scroll-mt-20 mb-2">
             <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">

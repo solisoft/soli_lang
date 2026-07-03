@@ -153,6 +153,28 @@ let draft = pdf_stamp(doc, "DRAFT", {
 
 All three take `pdf` as a **path or base64** and return base64.
 
+### pdf_extract_facturx(pdf) · pdf_attachments(pdf)
+
+Read a **received** e-invoice — the inverse of `pdf_facturx*`. Closes the loop:
+you can now *process* incoming Factur-X / ZUGFeRD / XRechnung invoices, not just
+emit them.
+
+```soli
+# Pull the embedded EN 16931 XML out of an invoice you received.
+let xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
+if xml.present?
+  let invoice = Xml.parse(xml)   # then read totals, VAT, line items…
+end
+
+# Or list every embedded file.
+for file in pdf_attachments(pdf)
+  print("#{file["name"]} — #{file["mime"]} (#{file["size"]} bytes)")
+end
+```
+
+- **`pdf_extract_facturx(pdf)`** — returns the embedded invoice XML as a **String**, or **null** if the PDF carries none. Matches the standard attachment names (`factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml`, …).
+- **`pdf_attachments(pdf)`** — returns an array of `{ "name", "mime", "size", "base64" }`, one per embedded file (decode `base64` for the bytes). Reads the `/EmbeddedFiles` name tree, falling back to `/AF`.
+
 ### Options
 
 | Key | Type | Default | Meaning |
