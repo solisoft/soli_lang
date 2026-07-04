@@ -545,13 +545,7 @@ impl<'a> Engine<'a> {
                     }
                 }
             }
-            Element::Table(t) => {
-                if self.columns.is_some() {
-                    self.skip_in_columns("table");
-                } else {
-                    self.table(t, data, root, template)?;
-                }
-            }
+            Element::Table(t) => self.table(t, data, root, template)?,
             Element::Hr(h) => self.hr(h, template, root),
             Element::Rect(r) => self.rect(r),
             Element::Line(l) => self.line(l),
@@ -559,13 +553,7 @@ impl<'a> Engine<'a> {
             Element::Barcode(b) => self.barcode(b, root),
             Element::Ellipse(e) => self.ellipse(e),
             Element::List(l) => self.list(l, root, template),
-            Element::Chart(c) => {
-                if self.columns.is_some() {
-                    self.skip_in_columns("chart");
-                } else {
-                    self.chart(c, data, root, template);
-                }
-            }
+            Element::Chart(c) => self.chart(c, data, root, template),
             Element::Repeat(r) => self.repeat(r, data, root, template)?,
             Element::If(c) => self.conditional(c, false, data, root, template)?,
             Element::Unless(c) => self.conditional(c, true, data, root, template)?,
@@ -573,13 +561,6 @@ impl<'a> Engine<'a> {
             Element::Columns(c) => self.columns_el(c, data, root, template)?,
         }
         Ok(())
-    }
-
-    fn skip_in_columns(&mut self, kind: &str) {
-        self.warnings.push(RenderWarning::ElementSkipped {
-            kind: kind.to_string(),
-            reason: "not supported inside columns (v1)".to_string(),
-        });
     }
 
     /// Lay out a `columns` block: install a column flow, run `content` (which
@@ -1931,7 +1912,9 @@ impl<'a> Engine<'a> {
     ) -> Result<()> {
         let table_left = self.cursor.x;
         let available = (self.region_right() - table_left).max(1.0);
-        let columns = compute_columns(t, available, table_left);
+        // Mutable: an intra-table break inside a multi-column block re-bases the
+        // cell x-positions to the next column (see draw_body_row).
+        let mut columns = compute_columns(t, available, table_left);
         let pad_x = t.options.padding_x;
         let pad_y = t.options.padding_y;
         // A fresh structure id for this table; rows count up from 0.
@@ -1970,7 +1953,7 @@ impl<'a> Engine<'a> {
                     let scoped = root.with_scope(item);
                     self.draw_body_row(
                         template_row,
-                        &columns,
+                        &mut columns,
                         pad_x,
                         pad_y,
                         &scoped,
@@ -1985,7 +1968,16 @@ impl<'a> Engine<'a> {
         } else {
             for (row_index, row) in t.rows.iter().enumerate() {
                 self.draw_body_row(
-                    row, &columns, pad_x, pad_y, root, t, template, root, row_index, footer_h,
+                    row,
+                    &mut columns,
+                    pad_x,
+                    pad_y,
+                    root,
+                    t,
+                    template,
+                    root,
+                    row_index,
+                    footer_h,
                 )?;
             }
         }
@@ -1996,7 +1988,9 @@ impl<'a> Engine<'a> {
         // Per-table watermark: stamp it centered over the table's box, on top.
         if let Some(wm) = &t.watermark {
             let table_width: f32 = columns.iter().map(|col| col.width).sum();
-            let cx = table_left + table_width / 2.0;
+            // Center over the table's *current* left (columns may have re-based
+            // to a later column of a multi-column block).
+            let cx = columns.first().map_or(table_left, |c| c.x) + table_width / 2.0;
             if self.pages.len() == wm_pages_before {
                 // Table fit on one page: center between its top and the cursor.
                 let cy = (wm_y_start + self.cursor.y) / 2.0;
@@ -2078,7 +2072,7 @@ impl<'a> Engine<'a> {
     fn draw_body_row(
         &mut self,
         row: &[Cell],
-        columns: &[Column],
+        columns: &mut [Column],
         pad_x: f32,
         pad_y: f32,
         scoped: &Resolver,
@@ -2089,14 +2083,23 @@ impl<'a> Engine<'a> {
         footer_h: f32,
     ) -> Result<()> {
         let height = self.row_height(row, columns, pad_x, pad_y, scoped);
-        // Page break: if the row (plus a pending footer band) doesn't fit,
-        // stamp the footer as "carried forward", move to a new page, and
-        // repeat the table header there. Never from inside a header/footer
+        // Region break: if the row (plus a pending footer band) doesn't fit,
+        // stamp the footer as "carried forward", advance to the next region — the
+        // next column inside a `columns` block, else a new page — and repeat the
+        // header. When advancing to another column, the region's left edge moves,
+        // so re-base every cell x by that delta (0 for a plain page break, so an
+        // indented table keeps its column). Never from inside a header/footer
         // band (`artifact_mode`) — a band table overflows instead of recursing.
         if !self.artifact_mode && self.cursor.y + height + footer_h > self.region_bottom() {
             self.draw_footer_row(t, columns, pad_x, pad_y, footer_h, template, root);
-            self.finish_page(template, root);
-            self.begin_page(template, root);
+            let old_left = self.region_left();
+            self.advance_region(template, root);
+            let delta = self.region_left() - old_left;
+            if delta != 0.0 {
+                for col in columns.iter_mut() {
+                    col.x += delta;
+                }
+            }
             self.draw_header_row(t, columns, pad_x, pad_y, template, root);
         }
         // Zebra stripe: fill every second body row (2nd, 4th, …) across the

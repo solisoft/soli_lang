@@ -489,7 +489,7 @@ Each element has a `type`. Lengths are in points (A4 = 595×842 pt).
 { "type": "move", "x": 0, "y": 24 }
 ```
 
-**columns** — a multi-column flow block. Children fill column 1 to the bottom of the content region, then column 2, and so on (**sequential fill**); full-width flow resumes below. `count` (1–6, default 2) and `gap` (pt, default 12). A `page_break` inside is a **column break**; overflowing the last column starts a new page and restarts the set (the running header repeats). Paragraphs, lists and images flow inside; **tables and charts are skipped** (v1, with a warning), and nested `columns` are flattened.
+**columns** — a multi-column flow block. Children fill column 1 to the bottom of the content region, then column 2, and so on (**sequential fill**); full-width flow resumes below. `count` (1–6, default 2) and `gap` (pt, default 12). A `page_break` inside is a **column break**; overflowing the last column starts a new page and restarts the set (the running header repeats). Paragraphs, lists, images, **tables and charts** all flow inside — a table that overflows a column continues in the next one with its header repeated. Nested `columns` are flattened.
 
 ```json
 { "type": "columns", "count": 2, "gap": 22, "content": [

@@ -477,7 +477,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-teal-300 font-mono">columns</code> <span class="text-xs font-normal text-teal-300 align-middle">&middot; multi-column flow</span>
-                <p class="text-sm text-gray-400 mt-2 mb-2">A multi-column block. Children fill column 1 to the bottom, then column 2, and so on (<strong>sequential fill</strong>); full-width flow resumes below. <code>count</code> (1&ndash;6, default 2), <code>gap</code> (pt). A <code>page_break</code> inside is a <strong>column break</strong>; overflowing the last column starts a new page and restarts the set. Paragraphs/lists/images flow inside; tables and charts are skipped (v1), nested <code>columns</code> flattened.</p>
+                <p class="text-sm text-gray-400 mt-2 mb-2">A multi-column block. Children fill column 1 to the bottom, then column 2, and so on (<strong>sequential fill</strong>); full-width flow resumes below. <code>count</code> (1&ndash;6, default 2), <code>gap</code> (pt). A <code>page_break</code> inside is a <strong>column break</strong>; overflowing the last column starts a new page and restarts the set. Paragraphs, lists, images, <strong>tables and charts</strong> all flow inside &mdash; a table overflowing a column continues in the next with its header repeated; nested <code>columns</code> flattened.</p>
                 <pre data-filename="columns"><code class="language-json text-sm">{ "type": "columns", "count": 2, "gap": 22, "content": [
   { "type": "paragraph", "value": "flows down column 1, then into column 2\u2026" },
   { "type": "list", "items": ["lists flow too"] }

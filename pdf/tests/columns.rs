@@ -205,29 +205,64 @@ fn count_is_clamped_and_warns() {
 }
 
 #[test]
-fn tables_and_charts_inside_columns_are_skipped_with_warnings() {
+fn tables_and_charts_render_inside_columns() {
     let tmpl = r#"{ "fonts": ["titillium"], "content": [
         { "type": "columns", "count": 2, "content": [
-            { "type": "table", "rows": [ [ { "text": "x" } ] ] },
+            { "type": "table", "rows": [ [ { "text": "cellcontent" } ] ] },
             { "type": "chart", "kind": "pie", "points": [ { "label": "a", "value": 1 } ] }
         ] }
     ] }"#;
     let (doc, warnings) = render(tmpl.as_bytes(), b"{}");
-    let skipped: Vec<&str> = warnings
-        .iter()
-        .filter_map(|w| match w {
-            RenderWarning::ElementSkipped { kind, reason } if reason.contains("inside columns") => {
-                Some(kind.as_str())
-            }
-            _ => None,
-        })
-        .collect();
+    // Tables and charts are no longer skipped inside a columns block.
     assert!(
-        skipped.contains(&"table") && skipped.contains(&"chart"),
-        "{skipped:?}"
+        !warnings.iter().any(|w| matches!(
+            w,
+            RenderWarning::ElementSkipped { reason, .. } if reason.contains("inside columns")
+        )),
+        "no skip warning: {warnings:?}"
     );
-    // No table/chart draw ops leaked.
-    assert!(texts(&doc).is_empty());
+    // The table cell renders in a column.
+    assert!(
+        texts(&doc).iter().any(|t| t.3.contains("cellcontent")),
+        "table content present: {:?}",
+        texts(&doc)
+    );
+}
+
+#[test]
+fn table_flows_from_one_column_into_the_next() {
+    // A tall table overflows column 1 and continues in column 2 (same page),
+    // with its header repeated.
+    let rows: String = (1..=60)
+        .map(|i| format!(r#"[ {{ "text": "Row {i}", "width": 120 }} ]"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let tmpl = format!(
+        r#"{{ "fonts": ["titillium"], "content": [
+            {{ "type": "columns", "count": 2, "gap": 20, "content": [
+                {{ "type": "table",
+                   "header_columns": [ {{ "text": "H", "width": 120 }} ],
+                   "rows": [ {rows} ] }}
+            ] }}
+        ] }}"#
+    );
+    let (doc, _warnings) = render(tmpl.as_bytes(), b"{}");
+    // First and last rows both rendered on the single page (they'd otherwise
+    // need a 2nd page, or be lost, without column flow).
+    let all = texts(&doc);
+    assert!(
+        all.iter().any(|t| t.3.contains("Row 1")),
+        "first row present"
+    );
+    assert!(
+        all.iter().any(|t| t.3.contains("Row 60")),
+        "last row present"
+    );
+    assert_eq!(
+        doc.pages.len(),
+        1,
+        "60 short rows fit two columns of one page"
+    );
 }
 
 #[test]
