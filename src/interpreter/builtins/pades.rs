@@ -340,6 +340,139 @@ pub fn build_cms(
         .map_err(|e| format!("encode CMS: {e}"))
 }
 
+// --- CMS verification (the read side, for `pdf_verify`) --------------------
+
+const OID_SHA256_WITH_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
+const OID_COMMON_NAME: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.4.3");
+
+/// The result of verifying one detached CMS signature.
+pub struct VerifyOutcome {
+    /// The CMS signature verifies against the embedded certificate AND the
+    /// signed content's digest matches the signature's message-digest attribute.
+    pub valid: bool,
+    /// The signer certificate's Common Name, if present.
+    pub signer: Option<String>,
+}
+
+/// Verify a detached CMS `SignedData` over `signed_content`: check the
+/// message-digest attribute equals `SHA-256(signed_content)`, then verify the
+/// signature over the signed attributes with the embedded signer certificate's
+/// public key (RSA PKCS#1 v1.5 or ECDSA P-256). Does **not** assert certificate
+/// trust — only cryptographic integrity + authenticity against the embedded cert.
+pub fn verify_cms(cms_der: &[u8], signed_content: &[u8]) -> Result<VerifyOutcome, String> {
+    let ci = ContentInfo::from_der(cms_der).map_err(|e| format!("CMS parse: {e}"))?;
+    if ci.content_type != OID_SIGNED_DATA {
+        return Err("not a CMS SignedData".to_string());
+    }
+    let sd: SignedData = ci
+        .content
+        .decode_as()
+        .map_err(|e| format!("SignedData: {e}"))?;
+    let si = sd
+        .signer_infos
+        .0
+        .as_slice()
+        .first()
+        .ok_or("no signer info")?;
+    let attrs = si.signed_attrs.as_ref().ok_or("no signed attributes")?;
+    let attrs_der = attrs.to_der().map_err(|e| format!("attrs der: {e}"))?;
+
+    // 1. The message-digest attribute must equal SHA-256 of the signed content.
+    let md = attrs
+        .as_slice()
+        .iter()
+        .find(|a| a.oid == OID_MESSAGE_DIGEST)
+        .and_then(|a| a.values.as_slice().first())
+        .map(|v| v.value().to_vec())
+        .ok_or("no message-digest attribute")?;
+    let digest_ok = md == sha256(signed_content);
+
+    // 2. The signer certificate (embedded), matched by issuer + serial.
+    let cert = find_signer_cert(&sd, si).ok_or("signer certificate not embedded")?;
+    let signer = cert_common_name(&cert);
+
+    // 3. Verify the signature over the signed attributes.
+    let sig = si.signature.as_bytes();
+    let alg = si.signature_algorithm.oid;
+    let sig_ok = if alg == OID_RSA_ENCRYPTION || alg == OID_SHA256_WITH_RSA {
+        verify_rsa(&cert, &attrs_der, sig)
+    } else if alg == OID_ECDSA_WITH_SHA256 {
+        verify_ecdsa(&cert, &attrs_der, sig)
+    } else {
+        false
+    };
+
+    Ok(VerifyOutcome {
+        valid: digest_ok && sig_ok,
+        signer,
+    })
+}
+
+fn spki_bytes(cert: &Certificate) -> &[u8] {
+    cert.tbs_certificate
+        .subject_public_key_info
+        .subject_public_key
+        .raw_bytes()
+}
+
+fn verify_rsa(cert: &Certificate, attrs_der: &[u8], sig: &[u8]) -> bool {
+    let Ok(pubkey) = pkcs1::RsaPublicKey::from_der(spki_bytes(cert)) else {
+        return false;
+    };
+    let n = strip_leading_zeros(pubkey.modulus.as_bytes());
+    let e = pubkey.public_exponent.as_bytes().to_vec();
+    let Ok(em) = do_modexp(sig, &e, &n) else {
+        return false;
+    };
+    // The recovered EM must end with the SHA-256 DigestInfo of the signed attrs.
+    let mut expected = SHA256_DIGESTINFO_PREFIX.to_vec();
+    expected.extend_from_slice(&sha256(attrs_der));
+    em.ends_with(&expected)
+}
+
+fn verify_ecdsa(cert: &Certificate, attrs_der: &[u8], sig: &[u8]) -> bool {
+    use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+    let Ok(vk) = VerifyingKey::from_sec1_bytes(spki_bytes(cert)) else {
+        return false;
+    };
+    let Ok(s) = Signature::from_der(sig) else {
+        return false;
+    };
+    vk.verify(attrs_der, &s).is_ok()
+}
+
+/// Find the embedded certificate matching the signer's issuer + serial (falling
+/// back to the first certificate).
+fn find_signer_cert(sd: &SignedData, si: &SignerInfo) -> Option<Certificate> {
+    let certs = sd.certificates.as_ref()?;
+    let cert_iter = || {
+        certs.0.iter().filter_map(|c| match c {
+            CertificateChoices::Certificate(cert) => Some(cert),
+            _ => None,
+        })
+    };
+    if let SignerIdentifier::IssuerAndSerialNumber(ias) = &si.sid {
+        if let Some(c) = cert_iter().find(|c| {
+            c.tbs_certificate.serial_number == ias.serial_number
+                && c.tbs_certificate.issuer == ias.issuer
+        }) {
+            return Some(c.clone());
+        }
+    }
+    cert_iter().next().cloned()
+}
+
+/// Extract the Common Name from a certificate's subject.
+fn cert_common_name(cert: &Certificate) -> Option<String> {
+    cert.tbs_certificate
+        .subject
+        .0
+        .iter()
+        .flat_map(|rdn| rdn.0.iter())
+        .find(|atv| atv.oid == OID_COMMON_NAME)
+        .map(|atv| String::from_utf8_lossy(atv.value.value()).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +558,31 @@ mod tests {
         let vk = VerifyingKey::from_sec1_bytes(point).expect("ec pubkey");
         let sig = Signature::from_der(&signature).expect("ecdsa sig");
         vk.verify(&attrs_der, &sig).expect("ecdsa verify");
+    }
+
+    #[test]
+    fn verify_cms_accepts_valid_and_rejects_tampering() {
+        for (cert, key, cn) in [
+            ("rsa_cert.pem", "rsa_key.pem", "Soli Test Signer"),
+            ("ec_cert.pem", "ec_key.pem", "Soli EC Signer"),
+        ] {
+            let signer = material(cert, key);
+            let content = b"the exact bytes that were signed";
+            let digest = sha256(content);
+            let cms = build_cms(&digest, &signer, OffsetDateTime::UNIX_EPOCH, None).expect("build");
+
+            let ok = verify_cms(&cms, content).expect("verify");
+            assert!(ok.valid, "{cert}: a valid signature verifies");
+            assert_eq!(
+                ok.signer.as_deref(),
+                Some(cn),
+                "{cert}: signer CN from cert"
+            );
+
+            // Tampered content → message-digest mismatch → invalid.
+            let bad = verify_cms(&cms, b"different bytes entirely").expect("verify");
+            assert!(!bad.valid, "{cert}: tampered content fails");
+        }
     }
 
     #[test]

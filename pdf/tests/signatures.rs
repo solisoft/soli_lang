@@ -173,3 +173,27 @@ fn visible_appearance_places_a_block() {
     assert!(x1 > 0.0, "widget has a visible rect");
     assert!(field.get(b"AP").is_ok(), "widget has an appearance stream");
 }
+
+#[test]
+fn extract_signatures_reads_back_the_signed_bytes() {
+    // Sign a rendered PDF, then extract the signature the way pdf_verify does.
+    let pdf = simple_pdf();
+    let prepared = prepare_signature(&pdf, &meta(), 4096).expect("prepare");
+    // A throwaway CMS blob (verification of the crypto lives in the solilang
+    // pades tests); here we only exercise the byte extraction.
+    let signed = soli_pdf::embed_cms(prepared, &[0x30, 0x03, 0x02, 0x01, 0x2a]).expect("embed");
+
+    let sigs = soli_pdf::extract_signatures(&signed).expect("extract");
+    assert_eq!(sigs.len(), 1, "one signature field");
+    let s = &sigs[0];
+    assert_eq!(s.field, "Signature1");
+    assert!(s.covers_document, "ByteRange reaches EOF");
+    assert!(s.cms_der.starts_with(&[0x30]), "CMS is a DER SEQUENCE");
+    assert!(!s.signed_bytes.is_empty());
+}
+
+#[test]
+fn extract_signatures_empty_on_unsigned_pdf() {
+    let pdf = simple_pdf();
+    assert!(soli_pdf::extract_signatures(&pdf).unwrap().is_empty());
+}

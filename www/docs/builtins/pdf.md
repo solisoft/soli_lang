@@ -175,6 +175,28 @@ end
 - **`pdf_extract_facturx(pdf)`** — returns the embedded invoice XML as a **String**, or **null** if the PDF carries none. Matches the standard attachment names (`factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml`, …).
 - **`pdf_attachments(pdf)`** — returns an array of `{ "name", "mime", "size", "base64" }`, one per embedded file (decode `base64` for the bytes). Reads the `/EmbeddedFiles` name tree, falling back to `/AF`.
 
+### pdf_sign(pdf, options) · pdf_verify(pdf)
+
+Sign an **existing** PDF, and verify signatures on one you received.
+
+```soli
+# Sign a PDF you already have (a merged pack, a filled form, a received doc).
+let signed = pdf_sign("contract.pdf", {
+  cert: slurp("certs/signer.pem"),
+  key:  slurp("certs/signer.key"),
+  reason: "Approved",
+  appearance: { page: 1, x: 360, y: 40, width: 190, height: 64 }   # optional visible block
+})
+
+# Verify the signatures on an incoming PDF.
+for sig in pdf_verify(received_pdf)
+  print("#{sig["field"]}: valid=#{sig["valid"]} covers_document=#{sig["covers_document"]} by #{sig["signer"]}")
+end
+```
+
+- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`.
+- **`pdf_verify(pdf)`** — returns an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`, one per signature. **`valid`** means the CMS signature verifies against its embedded certificate **and** the document's ByteRange digest matches — i.e. the content is authentic and unmodified. It does **not** assert certificate *trust* (whether the issuer is a trusted CA). `covers_document` is true when the signature spans the whole file.
+
 ### Options
 
 | Key | Type | Default | Meaning |

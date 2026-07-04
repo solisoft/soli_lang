@@ -575,6 +575,24 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_sign(pdf, options) -> String (base64 signed PDF)
+        self.functions.insert(
+            "pdf_sign".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_verify(pdf) -> Array (one hash per embedded signature)
+        self.functions.insert(
+            "pdf_verify".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Array(Box::new(Type::Any))),
+            },
+        );
+
         // pdf_extract_facturx(pdf) -> String | Null (embedded invoice XML)
         self.functions.insert(
             "pdf_extract_facturx".to_string(),

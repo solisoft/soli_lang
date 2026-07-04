@@ -194,6 +194,81 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // Digitally sign an EXISTING PDF (path or base64) — the standalone sibling
+    // of the `sign` render option. Options are the sign config directly
+    // (`{ cert, key, chain?, reason?, tsa?, appearance? }`). Composes with the
+    // toolkit: merge → sign, fill → sign.
+    env.define(
+        "pdf_sign".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_sign", Some(2), |args| {
+            let source = arg_string(&args[0], "pdf_sign", "pdf")?;
+            let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_sign(): {e}"))?;
+            let Value::Hash(opts) = &args[1] else {
+                return Err(
+                    "pdf_sign() expects an options hash { cert, key, … } as the 2nd argument"
+                        .to_string(),
+                );
+            };
+            let cfg = sign_config_from_hash(&opts.borrow())?;
+            let signed = apply_signature(pdf, Some(&cfg))?;
+            Ok(b64(signed))
+        })),
+    );
+
+    // Verify the digital signatures embedded in a PDF (path or base64). Returns
+    // an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`
+    // — the reverse of pdf_sign. `valid` = the CMS verifies AND the ByteRange
+    // digest matches; it does not assert certificate trust.
+    env.define(
+        "pdf_verify".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_verify", Some(1), |args| {
+            let source = arg_string(&args[0], "pdf_verify", "pdf")?;
+            let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_verify(): {e}"))?;
+            let sigs =
+                soli_pdf::extract_signatures(&pdf).map_err(|e| format!("pdf_verify(): {e}"))?;
+            let items: Vec<Value> = sigs
+                .into_iter()
+                .map(|s| {
+                    let outcome = pades::verify_cms(&s.cms_der, &s.signed_bytes);
+                    let mut h = HashPairs::default();
+                    h.insert(
+                        HashKey::String("field".into()),
+                        Value::String(s.field.into()),
+                    );
+                    h.insert(
+                        HashKey::String("valid".into()),
+                        Value::Bool(outcome.as_ref().map(|o| o.valid).unwrap_or(false)),
+                    );
+                    h.insert(
+                        HashKey::String("covers_document".into()),
+                        Value::Bool(s.covers_document),
+                    );
+                    let signer = outcome.as_ref().ok().and_then(|o| o.signer.clone());
+                    h.insert(
+                        HashKey::String("signer".into()),
+                        signer
+                            .map(|c| Value::String(c.into()))
+                            .unwrap_or(Value::Null),
+                    );
+                    if let Some(r) = s.reason {
+                        h.insert(HashKey::String("reason".into()), Value::String(r.into()));
+                    }
+                    if let Some(t) = s.signing_time {
+                        h.insert(HashKey::String("signed_at".into()), Value::String(t.into()));
+                    }
+                    if let Err(e) = &outcome {
+                        h.insert(
+                            HashKey::String("error".into()),
+                            Value::String(e.clone().into()),
+                        );
+                    }
+                    Value::Hash(Rc::new(RefCell::new(h)))
+                })
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
+        })),
+    );
+
     // Read the embedded Factur-X / ZUGFeRD / XRechnung invoice XML out of a
     // *received* PDF — the reverse of pdf_facturx. Returns the XML string, or
     // null when the PDF carries no e-invoice payload.
@@ -603,11 +678,16 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
         Some(_) => return Err("sign: option must be a hash".to_string()),
     };
     let sb = sign.borrow();
+    Ok(Some(sign_config_from_hash(&sb)?))
+}
 
+/// Parse a `{ cert, key, chain?, reason?, …, tsa?, appearance? }` hash into a
+/// [`SignConfig`]. Shared by the `sign` render option and the `pdf_sign` builtin.
+fn sign_config_from_hash(sb: &HashPairs) -> Result<SignConfig, String> {
     let cert_in =
-        sign_str(&sb, "cert").ok_or("sign: `cert` (PEM string or path) is required".to_string())?;
+        sign_str(sb, "cert").ok_or("sign: `cert` (PEM string or path) is required".to_string())?;
     let key_in =
-        sign_str(&sb, "key").ok_or("sign: `key` (PEM string or path) is required".to_string())?;
+        sign_str(sb, "key").ok_or("sign: `key` (PEM string or path) is required".to_string())?;
     let cert_der = pades::cert_to_der(&load_pem(&cert_in, "cert")?)
         .map_err(|e| format!("sign: certificate: {e}"))?;
     let key = pades::parse_private_key(&load_pem(&key_in, "key")?)
@@ -627,14 +707,14 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
 
     let signing_time = now_odt();
     let meta = SignMeta {
-        reason: sign_str(&sb, "reason"),
-        location: sign_str(&sb, "location"),
-        name: sign_str(&sb, "name"),
-        contact: sign_str(&sb, "contact"),
+        reason: sign_str(sb, "reason"),
+        location: sign_str(sb, "location"),
+        name: sign_str(sb, "name"),
+        contact: sign_str(sb, "contact"),
         signing_time: Some(pdf_date(signing_time)),
-        appearance: parse_sign_appearance(&sb),
+        appearance: parse_sign_appearance(sb),
     };
-    Ok(Some(SignConfig {
+    Ok(SignConfig {
         material: pades::SignerMaterial {
             cert_der,
             chain_der,
@@ -642,8 +722,8 @@ fn build_sign_config(opts: Option<&Value>) -> Result<Option<SignConfig>, String>
         },
         meta,
         signing_time,
-        tsa: sign_str(&sb, "tsa"),
-    }))
+        tsa: sign_str(sb, "tsa"),
+    })
 }
 
 /// Parse the optional `sign.appearance` hash `{ page?, x?, y?, width?, height? }`

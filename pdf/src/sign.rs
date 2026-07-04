@@ -362,6 +362,126 @@ pub fn embed_cms(mut prepared: PreparedSignature, cms_der: &[u8]) -> Result<Vec<
     Ok(prepared.pdf)
 }
 
+/// A signature read back out of an existing PDF, ready for CMS verification.
+/// The `signed_bytes` are the two `/ByteRange` spans concatenated (what the
+/// signature covers); `cms_der` is the detached CMS from `/Contents`.
+pub struct ExtractedSignature {
+    pub field: String,
+    pub signed_bytes: Vec<u8>,
+    pub cms_der: Vec<u8>,
+    /// True when the `/ByteRange` reaches EOF (the whole document is signed).
+    pub covers_document: bool,
+    pub reason: Option<String>,
+    /// The `/M` signing-time PDF date string, if present.
+    pub signing_time: Option<String>,
+}
+
+fn deref_dict<'a>(doc: &'a Document, obj: &'a Object) -> Option<&'a Dictionary> {
+    match obj {
+        Object::Dictionary(d) => Some(d),
+        Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_dict().ok()),
+        _ => None,
+    }
+}
+
+/// Trim a hex-decoded `/Contents` blob (CMS + zero padding) to the DER object's
+/// own declared length.
+fn trim_der(bytes: &[u8]) -> Vec<u8> {
+    if bytes.len() < 2 {
+        return bytes.to_vec();
+    }
+    let len_byte = bytes[1];
+    let total = if len_byte < 0x80 {
+        2 + len_byte as usize
+    } else {
+        let n = (len_byte & 0x7f) as usize;
+        if 2 + n > bytes.len() {
+            return bytes.to_vec();
+        }
+        let l = bytes[2..2 + n]
+            .iter()
+            .fold(0usize, |a, &b| (a << 8) | b as usize);
+        2 + n + l
+    };
+    bytes[..total.min(bytes.len())].to_vec()
+}
+
+/// Extract every signature field's covered bytes + CMS from an existing PDF, so
+/// the CMS can be cryptographically verified (crypto lives in the caller).
+pub fn extract_signatures(pdf: &[u8]) -> Result<Vec<ExtractedSignature>> {
+    let doc = Document::load_mem(pdf)
+        .map_err(|e| PdfError::Backend(format!("verify: could not parse the PDF: {e}")))?;
+    let mut out = Vec::new();
+    let Ok(catalog) = doc.catalog() else {
+        return Ok(out);
+    };
+    let Some(acro) = catalog
+        .get(b"AcroForm")
+        .ok()
+        .and_then(|o| deref_dict(&doc, o))
+    else {
+        return Ok(out);
+    };
+    let Ok(fields) = acro.get(b"Fields").and_then(|o| o.as_array()) else {
+        return Ok(out);
+    };
+
+    for fref in fields {
+        let Some(f) = deref_dict(&doc, fref) else {
+            continue;
+        };
+        if f.get(b"FT").ok().and_then(|o| o.as_name().ok()) != Some(b"Sig") {
+            continue;
+        }
+        let name = f
+            .get(b"T")
+            .ok()
+            .and_then(|o| o.as_str().ok())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .unwrap_or_else(|| "Signature".to_string());
+        let Some(sig) = f.get(b"V").ok().and_then(|o| deref_dict(&doc, o)) else {
+            continue;
+        };
+        let Some(br) = sig.get(b"ByteRange").ok().and_then(|o| o.as_array().ok()) else {
+            continue;
+        };
+        let nums: Vec<i64> = br.iter().filter_map(|o| o.as_i64().ok()).collect();
+        if nums.len() != 4 {
+            continue;
+        }
+        let (s1, l1, s2, l2) = (
+            nums[0] as usize,
+            nums[1] as usize,
+            nums[2] as usize,
+            nums[3] as usize,
+        );
+        if s1 + l1 > pdf.len() || s2 + l2 > pdf.len() {
+            continue;
+        }
+        let mut signed = Vec::with_capacity(l1 + l2);
+        signed.extend_from_slice(&pdf[s1..s1 + l1]);
+        signed.extend_from_slice(&pdf[s2..s2 + l2]);
+        let Some(contents) = sig.get(b"Contents").ok().and_then(|o| o.as_str().ok()) else {
+            continue;
+        };
+        let read_str = |key: &[u8]| {
+            sig.get(key)
+                .ok()
+                .and_then(|o| o.as_str().ok())
+                .map(|s| String::from_utf8_lossy(s).into_owned())
+        };
+        out.push(ExtractedSignature {
+            field: name,
+            signed_bytes: signed,
+            cms_der: trim_der(contents),
+            covers_document: s2 + l2 == pdf.len(),
+            reason: read_str(b"Reason"),
+            signing_time: read_str(b"M"),
+        });
+    }
+    Ok(out)
+}
+
 /// Find the `<` … `>` delimiting the zeroed `/Contents` hex string by matching
 /// its unique long run of ASCII `'0'`s (there is no other kilobyte-scale run of
 /// zeros in a rendered PDF). Returns the byte indices of `<` and `>`.

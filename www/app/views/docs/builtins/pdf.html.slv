@@ -267,6 +267,21 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-sign-verify" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_sign(pdf, options) &middot; pdf_verify(pdf)</code>
+                <p class="text-gray-400 mt-3 mb-3">Sign an <strong>existing</strong> PDF, and verify signatures on one you received. Both take a <strong>path or base64</strong>.</p>
+                <div class="text-sm text-gray-400 space-y-2">
+                    <div><code class="text-amber-400">pdf_sign(pdf, options)</code> &mdash; the standalone sibling of the <a href="#section-signatures" class="text-teal-300 hover:underline">sign</a> render option; <code>options</code> is the sign config directly (<code>cert</code>, <code>key</code>, <code>chain?</code>, <code>reason?</code>, <code>tsa?</code>, <code>appearance?</code>). Composes with the toolkit: <code>merge → sign</code>, <code>fill → sign</code>.</div>
+                    <div><code class="text-amber-400">pdf_verify(pdf)</code> &mdash; an array of <code>{ field, valid, covers_document, signer, reason?, signed_at? }</code>. <code>valid</code> = the CMS verifies against its embedded cert AND the ByteRange digest matches (authentic + unmodified); it does not assert certificate <em>trust</em>.</div>
+                </div>
+                <pre class="mt-3" data-filename="Sign & verify existing PDFs"><code class="language-soli text-sm">let signed = pdf_sign("contract.pdf", { cert: signer_pem, key: signer_key, reason: "Approved" })
+for sig in pdf_verify(received_pdf)
+  print("#{sig["field"]}: valid=#{sig["valid"]} by #{sig["signer"]}")
+end</code></pre>
+            </div>
+        </section>
+
         <section id="section-options" class="scroll-mt-20 mb-2">
             <h3 class="text-lg font-semibold text-white mb-3">Options hash</h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">

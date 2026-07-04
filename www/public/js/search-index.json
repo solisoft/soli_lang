@@ -11944,6 +11944,43 @@
       ]
     },
     {
+      "title": "pdf_sign",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-sign-verify",
+      "signature": "pdf_sign(pdf, options)",
+      "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature — the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
+      "keywords": [
+        "pdf",
+        "sign",
+        "signature",
+        "pades",
+        "cms",
+        "digital signature",
+        "certificate",
+        "seal"
+      ]
+    },
+    {
+      "title": "pdf_verify",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-sign-verify",
+      "signature": "pdf_verify(pdf)",
+      "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } — valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
+      "keywords": [
+        "pdf",
+        "verify",
+        "signature",
+        "validate",
+        "pades",
+        "cms",
+        "authenticity",
+        "tamper",
+        "check signature"
+      ]
+    },
+    {
       "title": "PDF SVG images",
       "type": "feature",
       "category": "PDF",
