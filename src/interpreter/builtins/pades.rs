@@ -478,8 +478,10 @@ mod tests {
     use super::*;
 
     fn load(name: &str) -> String {
-        std::fs::read_to_string(format!("tests/fixtures/pades/{name}"))
-            .unwrap_or_else(|e| panic!("read fixture {name}: {e}"))
+        // Absolute (compile-time crate dir) so the read survives another
+        // parallel test changing the working directory.
+        let path = format!("{}/tests/fixtures/pades/{name}", env!("CARGO_MANIFEST_DIR"));
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read fixture {name}: {e}"))
     }
 
     fn material(cert: &str, key: &str) -> SignerMaterial {
@@ -662,7 +664,7 @@ mod tests {
     fn end_to_end_signed_pdf_byte_range_matches_cms() {
         let opts = soli_pdf::RenderOptions {
             fetch_images: false,
-            font_dirs: vec!["font".into()],
+            font_dirs: vec![format!("{}/font", env!("CARGO_MANIFEST_DIR")).into()],
             ..Default::default()
         };
         let tmpl = br#"{ "fonts": ["titillium"], "content": [
