@@ -16,6 +16,31 @@ pub struct Scanner<'a> {
     start_pos: usize,
     start_line: usize,
     start_column: usize,
+    /// Whether the previously emitted token can end a value expression. A `:`
+    /// starts a symbol only when it can't (prefix position) — otherwise `:` is a
+    /// separator (hash `"k":v`, named arg, type annotation, ternary), so
+    /// `"key":false` no longer mis-lexes `:false` as the symbol `:false`.
+    prev_ends_value: bool,
+}
+
+/// True when `kind` can end a value expression, so a following `:` is infix
+/// (separator/ternary) rather than the start of a `:symbol`.
+fn ends_value(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::IntLiteral(_)
+            | TokenKind::FloatLiteral(_)
+            | TokenKind::StringLiteral(_)
+            | TokenKind::BoolLiteral(_)
+            | TokenKind::SymbolLiteral(_)
+            | TokenKind::Identifier(_)
+            | TokenKind::This
+            | TokenKind::SelfKeyword
+            | TokenKind::Null
+            | TokenKind::RightParen
+            | TokenKind::RightBracket
+            | TokenKind::RightBrace
+    )
 }
 
 impl<'a> Scanner<'a> {
@@ -29,6 +54,7 @@ impl<'a> Scanner<'a> {
             start_pos: 0,
             start_line: 1,
             start_column: 1,
+            prev_ends_value: false,
         }
     }
 
@@ -52,9 +78,23 @@ impl<'a> Scanner<'a> {
         Ok(tokens)
     }
 
-    /// Scan the next token.
+    /// Scan the next token, tracking whether it can end a value (so the next
+    /// `:` disambiguates between a separator and a `:symbol`).
     pub fn scan_token(&mut self) -> Result<Token, LexerError> {
+        let token = self.scan_token_inner()?;
+        if token.kind != TokenKind::Eof {
+            self.prev_ends_value = ends_value(&token.kind);
+        }
+        Ok(token)
+    }
+
+    fn scan_token_inner(&mut self) -> Result<Token, LexerError> {
+        let before_ws = self.current_pos;
         self.skip_whitespace_and_comments();
+        // A `:` glued to the preceding value (no space) is a separator
+        // (`"k":v`, `x:Int`); one with a leading space keeps symbol semantics
+        // (`cmd :sym`, `x = :sym`).
+        let had_leading_space = self.current_pos != before_ws;
         self.mark_start();
 
         let Some((_, c)) = self.advance() else {
@@ -106,7 +146,12 @@ impl<'a> Scanner<'a> {
             ':' => {
                 if self.match_char(':') {
                     Ok(self.make_token(TokenKind::DoubleColon))
-                } else if self.peek().is_some_and(|c| c.is_alphabetic() || c == '_') {
+                } else if (!self.prev_ends_value || had_leading_space)
+                    && self.peek().is_some_and(|c| c.is_alphabetic() || c == '_')
+                {
+                    // A `:` starts a symbol in prefix position, or when it has a
+                    // leading space (`cmd :sym`). A `:` glued to a value
+                    // (`"key":false`, `x:Int`) is a separator, not `:false`.
                     self.scan_symbol()
                 } else {
                     Ok(self.make_token(TokenKind::Colon))
@@ -1183,6 +1228,62 @@ mod tests {
             .into_iter()
             .map(|t| t.kind)
             .collect()
+    }
+
+    #[test]
+    fn colon_after_a_value_is_a_separator_not_a_symbol() {
+        // Regression: `"key":false` (no space) used to lex `:false` as the
+        // symbol `:false`, breaking hash literals. A `:` right after a value
+        // (string / ident / `}` / literal) is a separator now.
+        use TokenKind::*;
+        assert_eq!(
+            scan(r#"{ "k":false }"#),
+            vec![
+                LeftBrace,
+                StringLiteral("k".into()),
+                Colon,
+                BoolLiteral(false),
+                RightBrace,
+                Eof,
+            ]
+        );
+        // Colon after an identifier key, and a nested hash closing `}` then `:`.
+        assert_eq!(
+            scan("a:b"),
+            vec![Identifier("a".into()), Colon, Identifier("b".into()), Eof]
+        );
+
+        // But a `:` in prefix position still starts a symbol.
+        assert_eq!(
+            scan("x = :foo"),
+            vec![
+                Identifier("x".into()),
+                Equal,
+                SymbolLiteral("foo".into()),
+                Eof,
+            ]
+        );
+        assert_eq!(
+            scan("[:a, :b]"),
+            vec![
+                LeftBracket,
+                SymbolLiteral("a".into()),
+                Comma,
+                SymbolLiteral("b".into()),
+                RightBracket,
+                Eof,
+            ]
+        );
+        // A command call passes a symbol arg — the space before `:` keeps it a
+        // symbol even though the preceding identifier ends a value.
+        assert_eq!(
+            scan("notify :event"),
+            vec![
+                Identifier("notify".into()),
+                SymbolLiteral("event".into()),
+                Eof,
+            ]
+        );
     }
 
     #[test]
