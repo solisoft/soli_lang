@@ -759,24 +759,33 @@ def chapter_layout():
     out += card(
         "columns — multi-column flow", None,
         "Children fill column 1 to the bottom, then column 2 (sequential fill); a "
-        "page_break inside is a column break. Paragraphs, lists and images flow; tables "
-        "and charts do not.",
+        "page_break inside is a column break. Everything flows — paragraphs, lists, "
+        "images, tables and charts. A table that overflows a column continues in the "
+        "next one with its header repeated.",
         ['{ "type": "columns", "count": 2, "gap": 22, "content": [',
          '  { "type": "paragraph", "value": "flows down column 1..." },',
-         '  { "type": "paragraph", "value": "...then into column 2." } ] }'],
+         '  { "type": "table", "header_columns": [...], "rows": [...] } ] }'],
         [{"type": "columns", "count": 2, "gap": 22, "content": [
             {"type": "paragraph", "value":
-                "Column one begins here and fills top to bottom. When it reaches the "
-                "bottom of the region the flow hops into column two automatically — "
-                "sequential fill.", "options": {"fontSize": 9, "alignment": "justify",
-                                                "color": SLATE_600, "spacing": 6}},
+                "Column one fills top to bottom, then the flow hops into column two "
+                "automatically — sequential fill. A table renders inline too:",
+                "options": {"fontSize": 9, "alignment": "justify",
+                            "color": SLATE_600, "spacing": 6}},
+            {"type": "table",
+             "options": {"padding_x": 4, "padding_y": 2, "stripe": "f1f5f9",
+                         "header": {"fillColor": TEAL, "textColor": "ffffff"}},
+             "header_columns": [{"text": "Item", "width": 92, "fontWeight": "bold"},
+                                {"text": "Qty", "width": 48, "fontWeight": "bold"}],
+             "rows": [[{"text": "Widgets", "width": 92}, {"text": "12", "width": 48}],
+                      [{"text": "Gadgets", "width": 92}, {"text": "5", "width": 48}],
+                      [{"text": "Sprockets", "width": 92}, {"text": "9", "width": 48}]]},
             {"type": "paragraph", "value":
-                "This sentence has spilled into the second column, which is how you can "
-                "tell the block is genuinely two columns filled left to right.",
+                "…and the paragraph after the table keeps flowing, spilling into the "
+                "second column to show the block is genuinely two columns.",
                 "options": {"fontSize": 9, "alignment": "justify", "color": TEAL,
-                            "fontWeight": "bold"}},
+                            "fontWeight": "bold", "spacing": 6}},
         ]}, move(0, 6)],
-        result_keep=90,
+        result_keep=110,
     )
 
     out += card(
