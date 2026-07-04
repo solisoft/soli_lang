@@ -11822,6 +11822,128 @@
       ]
     },
     {
+      "title": "pdf_from_markdown",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-from-markdown",
+      "signature": "pdf_from_markdown(markdown, options?)",
+      "description": "Render a designed PDF straight from a Markdown string — headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
+      "keywords": [
+        "pdf",
+        "markdown",
+        "md",
+        "document",
+        "report",
+        "commonmark",
+        "prose"
+      ]
+    },
+    {
+      "title": "pdf_fill",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-fill",
+      "signature": "pdf_fill(pdf, data, options?)",
+      "description": "Fill an existing PDF's AcroForm fields (text, checkboxes, radios) from a data hash; optionally flatten to bake the values in and lock the fields. Returns base64.",
+      "keywords": [
+        "pdf",
+        "form",
+        "acroform",
+        "fill",
+        "flatten",
+        "fields",
+        "checkbox",
+        "government form"
+      ]
+    },
+    {
+      "title": "pdf_merge",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-manipulate",
+      "signature": "pdf_merge(pdfs)",
+      "description": "Merge several PDFs (each a path or base64 bytes) into one document, in order. Returns base64.",
+      "keywords": [
+        "pdf",
+        "merge",
+        "combine",
+        "concatenate",
+        "join",
+        "append"
+      ]
+    },
+    {
+      "title": "pdf_pages",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-manipulate",
+      "signature": "pdf_pages(pdf, selection)",
+      "description": "Keep a subset of pages from a PDF — a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
+      "keywords": [
+        "pdf",
+        "pages",
+        "split",
+        "subset",
+        "extract pages",
+        "range",
+        "select"
+      ]
+    },
+    {
+      "title": "pdf_stamp",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-manipulate",
+      "signature": "pdf_stamp(pdf, text, options?)",
+      "description": "Stamp text — a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) — onto an existing PDF's pages. Returns base64.",
+      "keywords": [
+        "pdf",
+        "stamp",
+        "watermark",
+        "draft",
+        "paid",
+        "confidential",
+        "overlay",
+        "label"
+      ]
+    },
+    {
+      "title": "pdf_extract_facturx",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-read-einvoice",
+      "signature": "pdf_extract_facturx(pdf)",
+      "description": "Read the embedded Factur-X / ZUGFeRD / XRechnung invoice XML out of a received PDF. Returns the XML string, or null when there is none.",
+      "keywords": [
+        "pdf",
+        "facturx",
+        "factur-x",
+        "zugferd",
+        "xrechnung",
+        "extract",
+        "read invoice",
+        "e-invoice",
+        "cii",
+        "xml"
+      ]
+    },
+    {
+      "title": "pdf_attachments",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-read-einvoice",
+      "signature": "pdf_attachments(pdf)",
+      "description": "List every embedded file in a PDF as { name, mime, size, base64 }. Reads the EmbeddedFiles name tree, falling back to AF.",
+      "keywords": [
+        "pdf",
+        "attachments",
+        "embedded files",
+        "extract",
+        "read",
+        "filespec"
+      ]
+    },
+    {
       "title": "PDF SVG images",
       "type": "feature",
       "category": "PDF",
