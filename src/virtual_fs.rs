@@ -137,12 +137,13 @@ impl BundleFS {
             let path_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
             pos += 4;
 
-            if pos + path_len > data.len() {
+            if pos.checked_add(path_len).is_none_or(|end| end > data.len()) {
                 return Err("Truncated bundle: path".to_string());
             }
             let path_bytes = &data[pos..pos + path_len];
             let path_str =
                 String::from_utf8(path_bytes.to_vec()).map_err(|_| "Invalid UTF-8 path")?;
+            crate::bundle::validate_entry_path(&path_str)?;
             pos += path_len;
 
             if pos + 8 > data.len() {
@@ -151,7 +152,10 @@ impl BundleFS {
             let content_len = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap()) as usize;
             pos += 8;
 
-            if pos + content_len > data.len() {
+            if pos
+                .checked_add(content_len)
+                .is_none_or(|end| end > data.len())
+            {
                 return Err("Truncated bundle: content".to_string());
             }
             let content = data[pos..pos + content_len].to_vec();

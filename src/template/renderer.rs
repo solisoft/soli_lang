@@ -316,7 +316,16 @@ fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
         }
         Value::Hash(_) => output.push_str("[Hash]"),
         _ => {
-            let _ = write!(output, "{}", value);
+            // Any other value type (Decimal, DateTime, Instance, ...) renders via
+            // Display. Honor the escape flag here too: an Instance's Display can
+            // embed user-controlled field data, so emitting it raw in an escaped
+            // (`<%= %>`) context would be an XSS hole. html_escape is a no-op
+            // (borrowed, zero-copy) for the common HTML-free cases (numbers/dates).
+            if escaped {
+                output.push_str(&html_escape(&value.to_string()));
+            } else {
+                let _ = write!(output, "{}", value);
+            }
         }
     }
 }

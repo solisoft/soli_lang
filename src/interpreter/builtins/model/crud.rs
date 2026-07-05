@@ -286,6 +286,18 @@ pub fn normalize_key(key: &str) -> &str {
     key.rsplit('/').next().unwrap_or(key)
 }
 
+/// Percent-encode a document key for safe interpolation as a single URL path
+/// segment. `normalize_key` strips `/`-delimited segments (so a full `_id`
+/// resolves to its last component and can't traverse to another collection),
+/// but a key can still contain URL-significant characters (`?`, `#`, `%`,
+/// spaces, control bytes). Without encoding, an attacker-controlled key —
+/// e.g. from a request param passed to `Model.find` — could inject a query
+/// string/fragment or otherwise reshape the SoliDB request URL. Encoding to
+/// the unreserved set neutralizes that.
+pub fn encode_key_for_url(key: &str) -> String {
+    urlencoding::encode(normalize_key(key)).into_owned()
+}
+
 /// Extract class name from _id field: "default:organisations/UUID" → "Organisation"
 fn class_name_from_id(id: &str) -> String {
     let parts: Vec<&str> = id.split('/').collect();
@@ -907,7 +919,11 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     if get_current_tx_id().is_some() {
         return exec_get_tx(collection, key);
     }
-    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
+    let url = format!(
+        "{}/{}",
+        document_base_url(collection),
+        encode_key_for_url(key)
+    );
     let result = exec_document_request(reqwest::Method::GET, url.clone(), None);
 
     if let Err(ref e) = result {
@@ -931,7 +947,11 @@ pub fn exec_update(
     if get_current_tx_id().is_some() {
         return exec_update_tx(collection, key, document);
     }
-    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
+    let url = format!(
+        "{}/{}",
+        document_base_url(collection),
+        encode_key_for_url(key)
+    );
     let result = exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone()));
 
     if let Err(ref e) = result {
@@ -952,7 +972,11 @@ pub fn exec_update_if_match(
     document: serde_json::Value,
     expected_rev: &str,
 ) -> Result<serde_json::Value, String> {
-    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
+    let url = format!(
+        "{}/{}",
+        document_base_url(collection),
+        encode_key_for_url(key)
+    );
     let headers = [("If-Match", expected_rev.to_string())];
     exec_document_request_with_headers(reqwest::Method::PUT, url, Some(document), &headers)
 }
@@ -1019,7 +1043,11 @@ pub fn exec_delete(collection: &str, key: &str) -> Result<serde_json::Value, Str
     if get_current_tx_id().is_some() {
         return exec_delete_tx(collection, key);
     }
-    let url = format!("{}/{}", document_base_url(collection), normalize_key(key));
+    let url = format!(
+        "{}/{}",
+        document_base_url(collection),
+        encode_key_for_url(key)
+    );
     let result = exec_document_request(reqwest::Method::DELETE, url.clone(), None);
 
     if let Err(ref e) = result {
@@ -1073,7 +1101,7 @@ pub fn exec_get_tx(collection: &str, key: &str) -> Result<serde_json::Value, Str
             database,
             tx_id,
             collection,
-            normalize_key(key)
+            encode_key_for_url(key)
         ));
         exec_document_request(reqwest::Method::GET, url, None)
     } else {
@@ -1096,7 +1124,7 @@ pub fn exec_update_tx(
             database,
             tx_id,
             collection,
-            normalize_key(key)
+            encode_key_for_url(key)
         ));
         exec_document_request(reqwest::Method::PUT, url, Some(document))
     } else {
@@ -1115,7 +1143,7 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
             database,
             tx_id,
             collection,
-            normalize_key(key)
+            encode_key_for_url(key)
         ));
         exec_document_request(reqwest::Method::DELETE, url, None)
     } else {

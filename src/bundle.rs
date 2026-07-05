@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::OnceLock;
 
 use crate::ast::Program;
@@ -17,6 +17,28 @@ const ENCRYPTED_BUNDLE_MIN_LEN: usize = 4 + 1 + 12 + 16;
 pub const ENCRYPTED_BUNDLE_HINT: &str = "this bundle is encrypted — provide the decryption \
      key via SOLI_BUNDLE_KEY, or SOLI_BUNDLE_AUTH_URL (+ SOLI_BUNDLE_API_KEY), in the \
      environment or in a .env file next to the .soli bundle";
+
+/// Reject a bundle entry path that could escape the extraction root: absolute
+/// paths, `..` traversal, or Windows prefixes/roots (Zip-Slip). Bundle entries
+/// are always relative in-app paths, so anything else is malicious — a crafted
+/// `.soli` could otherwise make `serve_from_bundle` write outside the temp dir
+/// (e.g. `../../.ssh/authorized_keys`) during extraction, before any code runs.
+/// Mirrors the hardened tar extractor (SEC-075).
+pub fn validate_entry_path(path: &str) -> Result<(), String> {
+    let mut saw_component = false;
+    for component in Path::new(path).components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => saw_component = true,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("Invalid bundle: unsafe entry path '{}'", path));
+            }
+        }
+    }
+    if !saw_component {
+        return Err("Invalid bundle: empty entry path".to_string());
+    }
+    Ok(())
+}
 
 /// True when the bytes look like an encrypted (`SOLE`) bundle container.
 pub fn is_encrypted_bundle(data: &[u8]) -> bool {
@@ -422,11 +444,15 @@ impl<'a> BundleReader<'a> {
             ]) as usize;
             offset += 4;
 
-            if offset + path_len > data.len() {
+            if offset
+                .checked_add(path_len)
+                .is_none_or(|end| end > data.len())
+            {
                 return Err("Invalid bundle: truncated path".to_string());
             }
             let path = std::str::from_utf8(&data[offset..offset + path_len])
                 .map_err(|_| "Invalid bundle: non-UTF-8 path".to_string())?;
+            validate_entry_path(path)?;
             offset += path_len;
 
             if offset + 8 > data.len() {
@@ -444,7 +470,10 @@ impl<'a> BundleReader<'a> {
             ]) as usize;
             offset += 8;
 
-            if offset + content_len > data.len() {
+            if offset
+                .checked_add(content_len)
+                .is_none_or(|end| end > data.len())
+            {
                 return Err("Invalid bundle: truncated content".to_string());
             }
             entries.push((path.to_string(), &data[offset..offset + content_len]));

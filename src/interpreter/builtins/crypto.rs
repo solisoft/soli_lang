@@ -383,6 +383,16 @@ pub(crate) fn do_pkcs1_pad(data: &[u8], k: usize, block_type: u8) -> Result<Vec<
 /// Strip PKCS#1 v1.5 padding, returning the embedded data octets. Validates the
 /// `0x00 || BT` prefix, the minimum 8-octet padding string, and (for block
 /// type 1) that every padding octet is `0xFF`.
+///
+/// SECURITY: this validation is intentionally simple and is NOT constant-time —
+/// distinct error messages and early returns reveal where the padding failed.
+/// That is safe for its primary use (block type 1, RSA *signature*
+/// verification, where the input is public). It is NOT safe as an RSA
+/// *decryption* unpadding step (block type 2): exposing the pass/fail (or
+/// distinct errors) to a remote party is a Bleichenbacher padding oracle.
+/// If you build PKCS#1 v1.5 decryption on top of this, do not surface the
+/// result — treat any failure as a generic decryption error and prefer
+/// RSA-OAEP.
 fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
     if em.len() < 11 {
         return Err("encoded message too short (need >= 11 octets)".to_string());
@@ -420,8 +430,16 @@ fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
 // encryption (see model `encrypts`). Output is base64(nonce ‖ ciphertext+tag).
 // ---------------------------------------------------------------------------
 
-/// Normalize arbitrary key material to a 32-byte AES key by SHA-256. Accepts a
-/// hex/base64/raw high-entropy key or a passphrase.
+/// Normalize arbitrary key material to a 32-byte AES key by SHA-256.
+///
+/// SECURITY: SHA-256 is a fast, unsalted hash — it is a KEY *normalizer*, not a
+/// password KDF. `SOLI_ENCRYPTION_KEY` (and any explicit key) MUST therefore be
+/// high-entropy material (e.g. 32 random bytes, hex/base64-encoded), NOT a
+/// human-memorable passphrase: a low-entropy passphrase here is brute-forceable.
+/// We deliberately do NOT switch to Argon2/PBKDF2: this hash defines the
+/// at-rest key, so changing it would make every previously-encrypted value
+/// (model `encrypts` fields, sealed bundles) permanently undecryptable. Enforce
+/// key entropy operationally instead. See the docs for key-generation guidance.
 pub(crate) fn derive_aes_key(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(material);

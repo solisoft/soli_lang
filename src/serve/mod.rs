@@ -355,6 +355,41 @@ fn box_full(resp: Response<Full<Bytes>>) -> Response<ResponseBody> {
     resp.map(|b| b.map_err(|never| match never {}).boxed())
 }
 
+/// Add a response header only if its name and value are valid per HTTP rules.
+///
+/// Controller- and cookie-supplied header strings can carry CR/LF/NUL (header-
+/// injection attempts). Passing those to `Builder::header` silently poisons the
+/// builder so a later `.body(...)` returns `Err` — and with `panic = "abort"`
+/// that turns a single crafted request into a whole-process crash. Validating
+/// up-front lets us drop the malformed header and keep serving instead of
+/// aborting, and hyper's own byte rejection means CRLF can never reach the wire
+/// (so this is a DoS fix, not response-splitting mitigation).
+fn add_header_checked(
+    builder: hyper::http::response::Builder,
+    key: &str,
+    value: &str,
+) -> hyper::http::response::Builder {
+    match (
+        hyper::header::HeaderName::try_from(key),
+        hyper::header::HeaderValue::try_from(value),
+    ) {
+        (Ok(name), Ok(val)) => builder.header(name, val),
+        _ => builder,
+    }
+}
+
+/// Finish a response, falling back to a static 500 if the builder is somehow in
+/// an error state. Prevents the `panic = "abort"` whole-process crash that a
+/// bare `.body(..).unwrap()` would cause on a poisoned builder.
+fn finish_response(builder: hyper::http::response::Builder, body: Bytes) -> Response<ResponseBody> {
+    builder.body(full(body)).unwrap_or_else(|_| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(full(Bytes::from_static(b"Internal Server Error")))
+            .expect("static 500 response is always valid")
+    })
+}
+
 // File tracking functions (used by app_loader for initial file tracking in workers)
 // The watcher thread now uses notify crate for event-driven file watching.
 
@@ -3158,10 +3193,10 @@ async fn handle_hyper_request(
                                     || key.eq_ignore_ascii_case("cache-control")
                                     || key.eq_ignore_ascii_case("vary")
                                 {
-                                    b304 = b304.header(key.as_str(), value.as_str());
+                                    b304 = add_header_checked(b304, key.as_str(), value.as_str());
                                 }
                             }
-                            return Ok(b304.body(full(Bytes::new())).unwrap());
+                            return Ok(finish_response(b304, Bytes::new()));
                         }
                     }
                 }
@@ -3191,11 +3226,11 @@ async fn handle_hyper_request(
             for (key, value) in &resp_data.headers {
                 if let Some(ref cache_control) = prefetch_cache_control {
                     if key.eq_ignore_ascii_case("cache-control") {
-                        builder = builder.header(key.as_str(), cache_control.as_str());
+                        builder = add_header_checked(builder, key.as_str(), cache_control.as_str());
                         continue;
                     }
                 }
-                builder = builder.header(key.as_str(), value.as_str());
+                builder = add_header_checked(builder, key.as_str(), value.as_str());
             }
 
             // Inject live reload script for HTML responses (only in dev mode).
@@ -3217,7 +3252,7 @@ async fn handle_hyper_request(
                 resp_data.body
             };
 
-            Ok(builder.body(full(Bytes::from(body))).unwrap())
+            Ok(finish_response(builder, Bytes::from(body)))
         }
         Ok(Err(_)) => Ok(Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -6602,25 +6637,27 @@ async fn handle_dev_repl(
         .unwrap())
 }
 
-/// A peer is "trusted" for the dev REPL when it's on the host itself
-/// (loopback) or somewhere on a private LAN (RFC 1918). The dev workflow
-/// of running `soli serve --dev` and hitting it from a phone/laptop on
-/// the same Wi-Fi is common enough that we don't want to force users to
-/// flip on `SOLI_DEV_REPL_ALLOW_REMOTE` (which also turns on token
-/// blanking + body redaction) just to get a working REPL on the LAN.
-/// Public/internet peers still require ALLOW_REMOTE + a stable secret.
+/// A peer is "trusted" for the dev REPL only when it's on the host itself
+/// (loopback). The dev REPL is arbitrary server-side code execution, so
+/// trusting the whole private LAN meant any co-resident host (office/café
+/// Wi-Fi, shared container network) could scrape the auto-generated token
+/// from a dev error page and POST code — a LAN-wide RCE whenever `--dev`
+/// is bound to a non-loopback address (e.g. `0.0.0.0`, common for "test
+/// from my phone"). Accessing the REPL from another device is now an
+/// explicit opt-in: set `SOLI_DEV_REPL_ALLOW_REMOTE=1` *and* a stable
+/// `SOLI_DEV_REPL_SECRET` (the startup check enforces the pairing).
 pub(super) fn is_trusted_dev_peer(ip: std::net::IpAddr) -> bool {
     match ip {
-        std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private(),
+        std::net::IpAddr::V4(v4) => v4.is_loopback(),
         std::net::IpAddr::V6(v6) => {
             if v6.is_loopback() {
                 return true;
             }
-            // IPv4-mapped IPv6 (`::ffff:a.b.c.d`) is the same peer as the
-            // wrapped v4 — apply the v4 rules so a dual-stack listener
-            // doesn't downgrade a LAN client to "untrusted".
+            // IPv4-mapped IPv6 (`::ffff:127.0.0.1`) is the same peer as the
+            // wrapped v4 — apply the v4 loopback rule so a dual-stack
+            // listener still recognizes the local host.
             if let Some(v4) = v6.to_ipv4_mapped() {
-                return v4.is_loopback() || v4.is_private();
+                return v4.is_loopback();
             }
             false
         }
@@ -7220,10 +7257,13 @@ mod tests {
     }
 
     #[test]
-    fn dev_repl_auth_accepts_rfc1918_peer_without_allow_remote() {
-        // LAN browser hitting the dev server directly (e.g. phone on
-        // the same Wi-Fi) should succeed with just the embedded token —
-        // no need to flip on ALLOW_REMOTE.
+    fn dev_repl_auth_rejects_rfc1918_peer_without_allow_remote() {
+        // SEC-051: a LAN peer (e.g. a phone on the same Wi-Fi, but also any
+        // co-resident host on a shared office/café network or container LAN)
+        // must NOT be able to drive the REPL just because it can scrape the
+        // token — that is a LAN-wide RCE whenever the dev server binds a
+        // non-loopback address. Only loopback is trusted by default; LAN access
+        // is an explicit SOLI_DEV_REPL_ALLOW_REMOTE (+ SECRET) opt-in.
         let _guard = ENV_TEST_LOCK.lock().unwrap();
         std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
         let mut headers = hyper::HeaderMap::new();
@@ -7232,8 +7272,8 @@ mod tests {
         for ip in ["192.168.1.30", "10.0.0.5", "172.16.0.1"] {
             let peer_addr: SocketAddr = format!("{}:5011", ip).parse().unwrap();
             assert!(
-                is_authorized_dev_repl_request(&headers, peer_addr),
-                "expected {} (RFC 1918) to be accepted without ALLOW_REMOTE",
+                !is_authorized_dev_repl_request(&headers, peer_addr),
+                "expected {} (RFC 1918) to be REJECTED without ALLOW_REMOTE",
                 ip
             );
         }
@@ -7242,18 +7282,18 @@ mod tests {
     #[test]
     fn is_trusted_dev_peer_classifies_known_ranges() {
         use std::net::IpAddr;
-        let trusted: &[&str] = &[
-            "127.0.0.1",
-            "127.0.0.2",
-            "::1",
+        // SEC-051: only loopback is trusted. Private/LAN ranges are NOT
+        // trusted — a dev server on a shared network must not hand the REPL
+        // execution credential to every peer (LAN-RCE). LAN access requires
+        // the explicit SOLI_DEV_REPL_ALLOW_REMOTE opt-in.
+        let trusted: &[&str] = &["127.0.0.1", "127.0.0.2", "::1", "::ffff:127.0.0.1"];
+        let untrusted: &[&str] = &[
             "10.0.0.1",
             "172.16.0.1",
             "172.31.255.255",
             "192.168.0.1",
             "192.168.255.255",
             "::ffff:192.168.1.1",
-        ];
-        let untrusted: &[&str] = &[
             "8.8.8.8",
             "192.0.2.10",
             "172.32.0.1",

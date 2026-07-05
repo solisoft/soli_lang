@@ -148,6 +148,23 @@ fn as_string(v: &Value) -> Option<String> {
     }
 }
 
+/// Reject any header/address/subject value carrying CR, LF, or NUL. Without
+/// this, a `\r\n` inside a user-controlled field (recipient, subject, from)
+/// injects extra MIME headers (e.g. a hidden `Bcc:`) or raw SMTP commands into
+/// the envelope dialogue — classic email header / SMTP command injection. The
+/// POP3 client applies the same guard (see `pop3.rs`).
+fn ensure_no_crlf(field: &str, value: &str) -> Result<(), String> {
+    if value
+        .bytes()
+        .any(|b| b == b'\r' || b == b'\n' || b == b'\0')
+    {
+        return Err(format!(
+            "mail `{field}` contains a forbidden control character (CR, LF, or NUL)"
+        ));
+    }
+    Ok(())
+}
+
 /// Normalize a recipient field — a single string, an array of strings, or
 /// absent — into a list of address strings.
 fn as_address_list(v: Option<&Value>) -> Vec<String> {
@@ -208,6 +225,13 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
         .and_then(|v| as_string(&v))
         .unwrap_or_default();
 
+    // Reject header injection before any field reaches the MIME writer.
+    ensure_no_crlf("from", &from)?;
+    ensure_no_crlf("subject", &subject)?;
+    for addr in to.iter().chain(cc.iter()) {
+        ensure_no_crlf("recipient", addr)?;
+    }
+
     let mut builder = MessageBuilder::new()
         .from(make_address(&from))
         .to(to)
@@ -220,6 +244,7 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
     // Bcc is intentionally NOT added as a header; bcc recipients are only in
     // the SMTP envelope (see deliver_smtp).
     if let Some(reply_to) = hash_get(mail, "reply_to").and_then(|v| as_string(&v)) {
+        ensure_no_crlf("reply_to", &reply_to)?;
         builder = builder.reply_to(make_address(&reply_to));
     }
     if let Some(text) = hash_get(mail, "text").and_then(|v| as_string(&v)) {
@@ -434,12 +459,16 @@ fn deliver_smtp(cfg: &MailerConfig, rcpts: &[String], data: &str) -> Result<(), 
     }
 
     let envelope_from = envelope_from_address(cfg, data);
+    // Defense in depth: the envelope (incl. bcc, which never appears in the MIME
+    // headers) must not carry CR/LF that would inject SMTP commands.
+    ensure_no_crlf("envelope from", &envelope_from)?;
     expect_command(
         &mut stream,
         &format!("MAIL FROM:<{}>", envelope_from),
         &[250],
     )?;
     for rcpt in rcpts {
+        ensure_no_crlf("recipient", rcpt)?;
         expect_command(&mut stream, &format!("RCPT TO:<{}>", rcpt), &[250, 251])?;
     }
     expect_command(&mut stream, "DATA", &[354])?;

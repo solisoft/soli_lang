@@ -80,12 +80,36 @@ fn do_deflate(data: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("deflate error: {}", e))
 }
 
+/// Default cap on `inflate` output. A raw-DEFLATE stream is unauthenticated
+/// network input (SAML `SAMLRequest`/`SAMLResponse` from the HTTP-Redirect
+/// binding), and a few-KB highly-repetitive payload can inflate to many GB — a
+/// decompression bomb. Cap the output and fail closed; raise via
+/// `SOLI_DEFLATE_MAX_BYTES` for legitimately large payloads.
+const DEFAULT_INFLATE_MAX_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+
+fn inflate_max_bytes() -> u64 {
+    std::env::var("SOLI_DEFLATE_MAX_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_INFLATE_MAX_BYTES)
+}
+
 fn do_inflate(data: &[u8]) -> Result<Vec<u8>, String> {
-    let mut decoder = DeflateDecoder::new(data);
+    let max = inflate_max_bytes();
+    // Read at most `max + 1` bytes so we can distinguish "exactly at the limit"
+    // from "the stream wanted to keep going" and reject the latter.
+    let mut decoder = DeflateDecoder::new(data).take(max + 1);
     let mut out = Vec::new();
     decoder
         .read_to_end(&mut out)
         .map_err(|e| format!("inflate error: {}", e))?;
+    if out.len() as u64 > max {
+        return Err(format!(
+            "inflate error: decompressed output exceeds the {max}-byte limit \
+             (raise SOLI_DEFLATE_MAX_BYTES if this is expected)"
+        ));
+    }
     Ok(out)
 }
 

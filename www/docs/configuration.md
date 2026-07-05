@@ -39,6 +39,12 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
 
+### Parsing And Security Limits
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_DEFLATE_MAX_BYTES` | Maximum decompressed output (in bytes) that `Deflate.inflate` produces before it fails closed. A few-KB highly-repetitive raw-DEFLATE stream can inflate to many GB — a decompression bomb — and the SAML HTTP-Redirect binding feeds `Deflate.inflate` unauthenticated `SAMLRequest`/`SAMLResponse` payloads. Raise it only for legitimately large payloads. | `67108864` (64 MiB) |
+
 ### Bundle protection
 
 Used when serving an encrypted / protected `.soli` bundle (see [Encrypted & Protected Bundles](/docs/development-tools/deploy#encrypted-bundles)). These are read at both `soli build --encrypt`/`--protect` and `soli serve app.soli`, and may live in the `.env` next to the bundle. Distinct from `SOLI_ENCRYPTION_KEY`, which encrypts model fields.

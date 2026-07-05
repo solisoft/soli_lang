@@ -283,6 +283,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // Configure validation pinned to the (now-trusted) algorithm.
             let mut validation = Validation::new(token_alg);
             validation.validate_exp = true;
+            // SEC: also reject tokens presented before their `nbf` (not-before)
+            // instant. Without this a token minted for future use is accepted
+            // early.
+            validation.validate_nbf = true;
 
             // Try to decode and verify the token.
             let decoding_key = build_decoding_key(&token_alg, &secret, pem_key.as_deref())?;
@@ -310,7 +314,12 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
                 }
                 Err(e) => {
-                    // Return error hash instead of throwing
+                    // Return error hash instead of throwing (deliberate, tested,
+                    // documented contract). CALLERS MUST branch on
+                    // `result["error"]` — do NOT write `if jwt_verify(...)`: the
+                    // returned hash is truthy on failure too, so a bare truthiness
+                    // check would treat a *failed* verification as authenticated.
+                    // See www/docs/authentication.md for the correct pattern.
                     let mut error_pairs: HashPairs = HashPairs::default();
                     error_pairs.insert(HashKey::String("error".into()), Value::Bool(true));
                     error_pairs.insert(

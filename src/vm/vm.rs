@@ -2483,7 +2483,10 @@ impl Vm {
 
     #[inline(always)]
     pub fn pop(&mut self) -> Value {
-        // Safety: VM maintains stack invariants — pop is only called when stack is non-empty
+        // Safety: VM maintains stack invariants — pop is only called when stack is non-empty.
+        // The debug_assert catches any compiler/bytecode bug that breaks that invariant in
+        // debug/test builds (a controlled panic) before it becomes silent UB in release.
+        debug_assert!(!self.stack.is_empty(), "VM stack underflow in pop()");
         unsafe {
             let new_len = self.stack.len() - 1;
             self.stack.set_len(new_len);
@@ -2493,12 +2496,17 @@ impl Vm {
 
     #[inline(always)]
     pub fn peek(&self, distance: usize) -> &Value {
+        debug_assert!(
+            self.stack.len() > distance,
+            "VM stack underflow in peek({distance})"
+        );
         unsafe { self.stack.get_unchecked(self.stack.len() - 1 - distance) }
     }
 
     /// Pop two values from the stack (b first, then a).
     #[inline(always)]
     fn pop2(&mut self) -> (Value, Value) {
+        debug_assert!(self.stack.len() >= 2, "VM stack underflow in pop2()");
         unsafe {
             let new_len = self.stack.len() - 2;
             let ptr = self.stack.as_ptr();

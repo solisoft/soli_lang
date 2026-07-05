@@ -23,7 +23,11 @@ pub fn register_markdown_builtins(env: &mut Environment) {
     let mut static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
     // Markdown.to_html(string) -> string
-    // Converts Markdown source text to HTML.
+    // Converts Markdown source text to HTML, passing raw HTML and link URLs
+    // through verbatim. SAFE ONLY FOR TRUSTED INPUT — rendering user-supplied
+    // markdown with this (e.g. via a raw `<%- %>` tag) is stored XSS. For
+    // untrusted content use `Markdown.to_safe_html`, which escapes raw HTML and
+    // neutralizes `javascript:`/`data:` URLs.
     static_methods.insert(
         "to_html".to_string(),
         Rc::new(NativeFunction::new("Markdown.to_html", Some(1), |args| {

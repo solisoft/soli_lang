@@ -177,9 +177,12 @@ impl TemplateCache {
             Some(&template_path_str),
         )?;
 
-        // If the template is a markdown file, convert to HTML
+        // If the template is a markdown file, convert to HTML. Use the
+        // URL-neutralizing converter: the ERB pass above already escaped
+        // interpolated data, so this only needs to stop markdown link/image
+        // syntax from smuggling a `javascript:` URL past that escaping.
         let content = if is_markdown_template(template_path) {
-            markdown_to_html(&content)
+            markdown_to_html_safe_urls(&content)
         } else {
             content
         };
@@ -275,9 +278,11 @@ impl TemplateCache {
             Some(&template_path_str),
         )?;
 
-        // If the partial is a markdown file, convert to HTML
+        // If the partial is a markdown file, convert to HTML. URL-neutralizing
+        // converter — the ERB pass already escaped interpolated data (see the
+        // matching note in `render`).
         let result = if is_markdown_template(&template_path) {
-            markdown_to_html(&content)
+            markdown_to_html_safe_urls(&content)
         } else {
             content
         };
@@ -804,6 +809,54 @@ pub fn markdown_to_safe_html(markdown: &str) -> String {
 
     let events = Parser::new_ext(markdown, options).map(|event| match event {
         Event::Html(html) | Event::InlineHtml(html) => Event::Text(html),
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Link {
+            link_type,
+            dest_url: safe_markdown_url(dest_url),
+            title,
+            id,
+        }),
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Image {
+            link_type,
+            dest_url: safe_markdown_url(dest_url),
+            title,
+            id,
+        }),
+        other => other,
+    });
+
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, events);
+    html_output
+}
+
+/// Convert markdown to HTML, neutralizing unsafe link/image URLs (`javascript:`,
+/// `data:`, protocol-relative, etc.) while preserving raw-HTML passthrough.
+///
+/// This is the converter used for `.md` view templates. By the time this runs,
+/// the ERB pass has already HTML-escaped every `<%= %>` interpolation, so raw
+/// `<script>` cannot arrive from interpolated data — but markdown link/image
+/// syntax (`[x](javascript:…)`, `![x](…)`) survives ERB escaping and would
+/// otherwise render as a live `javascript:` sink. Neutralizing the URL closes
+/// that while still letting a developer's own inline HTML in the `.md` file
+/// render (which full `markdown_to_safe_html` would escape).
+pub fn markdown_to_html_safe_urls(markdown: &str) -> String {
+    use pulldown_cmark::{html, Event, Options, Parser, Tag};
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let events = Parser::new_ext(markdown, options).map(|event| match event {
         Event::Start(Tag::Link {
             link_type,
             dest_url,

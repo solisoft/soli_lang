@@ -23,6 +23,45 @@ use crate::serve::get_tokio_handle;
 /// Default SOAP 1.1 namespace
 const SOAP11_NS: &str = "http://schemas.xmlsoap.org/soap/envelope/";
 
+/// Decode + entity-unescape a text event.
+///
+/// quick-xml 0.41 split the old `BytesText::unescape()` (decode + resolve
+/// predefined entities) into `decode()` (bytes -> str) plus the free
+/// `escape::unescape()` (`&lt;` -> `<`). This helper restores the previous
+/// behaviour so text content is returned with predefined entities resolved.
+fn decode_text_event(e: &quick_xml::events::BytesText) -> Result<String, String> {
+    let decoded = e
+        .decode()
+        .map_err(|err| format!("XML text decode error: {}", err))?;
+    let unescaped = quick_xml::escape::unescape(&decoded)
+        .map_err(|err| format!("XML text unescape error: {}", err))?;
+    Ok(unescaped.into_owned())
+}
+
+/// Resolve a general entity reference (`Event::GeneralRef`) to its replacement
+/// text.
+///
+/// quick-xml 0.41 surfaces the five predefined entities (`&amp;` etc.) and
+/// numeric character references (`&#65;`) as their own event rather than
+/// inlining them into `Text`. We resolve those; an unknown (DTD-defined)
+/// entity yields `Err` so the caller can drop it — we never expand external
+/// entities (XXE defense).
+fn resolve_general_ref(e: &quick_xml::events::BytesRef) -> Result<String, String> {
+    if e.is_char_ref() {
+        return e
+            .resolve_char_ref()
+            .map_err(|err| format!("XML character reference error: {}", err))?
+            .map(|c| c.to_string())
+            .ok_or_else(|| "invalid numeric character reference".to_string());
+    }
+    let name = e
+        .decode()
+        .map_err(|err| format!("XML entity error: {}", err))?;
+    quick_xml::escape::resolve_predefined_entity(&name)
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("unknown general entity `&{};`", name))
+}
+
 pub fn register_soap_class(env: &mut Environment) {
     let mut soap_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
@@ -471,7 +510,7 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 stack.push((name, HashPairs::default()));
             }
             Ok(Event::Text(e)) => {
-                if let Ok(text) = e.unescape() {
+                if let Ok(text) = decode_text_event(&e) {
                     if current_text.len().saturating_add(text.len()) > SOAP_MAX_TEXT_BYTES {
                         return Err(format!(
                             "XML parsing error: element text exceeded {} bytes (likely DoS payload)",
@@ -534,6 +573,21 @@ fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 if let Some((_, parent)) = stack.last_mut() {
                     parent.insert(HashKey::String(name.into()), Value::Null);
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                // Predefined entities (`&amp;` etc.) and numeric character refs
+                // arrive as their own event in quick-xml 0.41; resolve them into
+                // the current text run. An unknown (DTD-defined) entity yields
+                // Err and is dropped — we never expand external entities (XXE).
+                if let Ok(text) = resolve_general_ref(&e) {
+                    if current_text.len().saturating_add(text.len()) > SOAP_MAX_TEXT_BYTES {
+                        return Err(format!(
+                            "XML parsing error: element text exceeded {} bytes (likely DoS payload)",
+                            SOAP_MAX_TEXT_BYTES
+                        ));
+                    }
+                    current_text.push_str(&text);
                 }
             }
             Ok(Event::Eof) => break,

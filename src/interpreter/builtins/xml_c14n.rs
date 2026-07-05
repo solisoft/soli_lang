@@ -33,7 +33,51 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use quick_xml::events::{BytesStart, Event};
-use quick_xml::Reader;
+use quick_xml::{Reader, XmlVersion};
+
+/// Decode + entity-unescape a text event.
+///
+/// quick-xml 0.41 removed `BytesText::unescape()` in favour of `decode()`
+/// (bytes -> str) plus the free `escape::unescape()` (`&lt;` -> `<`). This
+/// restores the original decode-then-resolve-predefined-entities behaviour
+/// used when canonicalizing text content.
+fn decode_text_event(e: &quick_xml::events::BytesText) -> Result<String, String> {
+    let decoded = e
+        .decode()
+        .map_err(|err| format!("XML text error: {}", err))?;
+    let unescaped =
+        quick_xml::escape::unescape(&decoded).map_err(|err| format!("XML text error: {}", err))?;
+    Ok(unescaped.into_owned())
+}
+
+/// Resolve a general entity reference (`Event::GeneralRef`) to its replacement
+/// text.
+///
+/// quick-xml 0.41 surfaces even the five predefined entities (`amp`, `lt`,
+/// `gt`, `apos`, `quot`) and numeric character references (`&#65;` / `&#x41;`)
+/// as their own event rather than inlining them into `Text`. We resolve those
+/// here; any other named entity would require a DTD (rejected up front as an
+/// XXE / entity-expansion defense), so an unknown name is an error.
+fn resolve_general_ref(e: &quick_xml::events::BytesRef) -> Result<String, String> {
+    if e.is_char_ref() {
+        return e
+            .resolve_char_ref()
+            .map_err(|err| format!("XML character reference error: {}", err))?
+            .map(|c| c.to_string())
+            .ok_or_else(|| "invalid numeric character reference".to_string());
+    }
+    let name = e
+        .decode()
+        .map_err(|err| format!("XML entity error: {}", err))?;
+    quick_xml::escape::resolve_predefined_entity(&name)
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            format!(
+                "general entity reference `&{};` is not allowed (XXE / entity-expansion defense)",
+                name
+            )
+        })
+}
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
@@ -129,8 +173,12 @@ fn build_element(e: &BytesStart) -> Result<Element, String> {
     for attr in e.attributes() {
         let attr = attr.map_err(|err| format!("XML attribute error: {}", err))?;
         let key = bytes_lossy(&attr.key.as_ref().to_vec());
+        // quick-xml 0.41: `unescape_value()` is deprecated in favour of
+        // `normalized_value()`, which for `Implicit1_0` performs the same
+        // decode + predefined-entity resolution (plus XML-spec attribute-value
+        // normalization, which a conformant parser applies before C14N anyway).
         let value = attr
-            .unescape_value()
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|err| format!("XML attribute value error: {}", err))?
             .into_owned();
         if key == "xmlns" {
@@ -203,10 +251,7 @@ fn parse_document(xml: &str) -> Result<Element, String> {
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e
-                    .unescape()
-                    .map_err(|err| format!("XML text error: {}", err))?
-                    .into_owned();
+                let text = decode_text_event(&e)?;
                 // Text outside the document element is discarded.
                 if !stack.is_empty() {
                     attach(&mut stack, &mut roots, Node::Text(text));
@@ -235,6 +280,19 @@ fn parse_document(xml: &str) -> Result<Element, String> {
                         format!("{} {}", target, content)
                     };
                     attach(&mut stack, &mut roots, Node::Pi(formatted));
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                // quick-xml 0.41 surfaces entity references — including the five
+                // predefined ones (`&amp;` etc.) and numeric character refs
+                // (`&#65;`) — as their own event instead of inlining them into
+                // `Text`. Resolve those to their replacement text (re-escaped by
+                // the output stage). Any *named* entity that isn't predefined
+                // could only be defined by a DTD, which we reject above; refuse
+                // it rather than silently dropping signed material.
+                let text = resolve_general_ref(&e)?;
+                if !stack.is_empty() {
+                    attach(&mut stack, &mut roots, Node::Text(text));
                 }
             }
             Ok(Event::Eof) => break,

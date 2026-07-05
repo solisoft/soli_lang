@@ -870,23 +870,24 @@ fn escape_for_script_tag(s: &str) -> String {
         .replace("]]>", "]]\\>")
 }
 
-/// SEC-051: in remote-allowed dev mode, refuse to embed the REPL token
-/// into the HTML error page for *public* peers. ALLOW_REMOTE pairs full
-/// server-side code execution with an HTML token leak — anyone who can
-/// render a dev-mode error response from the internet would otherwise
-/// scrape the credential.
+/// SEC-051: only embed the REPL execution token into the HTML error page
+/// for *loopback* peers. The in-page dev REPL is full server-side code
+/// execution; embedding its credential in a rendered page is a token leak
+/// to anyone who can reach that page. `peer_trusted` is loopback-only (see
+/// `is_trusted_dev_peer`), so a LAN or public peer never receives the token
+/// in-band.
 ///
-/// Loopback + RFC 1918 peers are treated as trusted: the page is
-/// already only reachable from someone on the host or LAN, so embedding
-/// the token there matches the existing loopback-only behavior and
-/// keeps the in-page REPL usable when the dev server is hit from a
-/// phone/laptop on the same network. Public peers still get a blanked
-/// token and must paste `SOLI_DEV_REPL_SECRET` manually.
+/// A non-loopback peer that legitimately needs the REPL must opt in with
+/// `SOLI_DEV_REPL_ALLOW_REMOTE=1` and authenticate by pasting
+/// `SOLI_DEV_REPL_SECRET` manually — the token is never auto-embedded for
+/// them. This closes the LAN-RCE exposure where a dev server bound to
+/// 0.0.0.0 on a shared network handed the execution credential to every
+/// peer that rendered a dev-mode error page.
 fn dev_repl_token_for_html(peer_trusted: bool) -> String {
-    if super::dev_repl_allows_remote() && !peer_trusted {
-        "\"\"".to_string()
-    } else {
+    if peer_trusted {
         serde_json::to_string(super::dev_repl_auth_token()).unwrap_or_else(|_| "\"\"".to_string())
+    } else {
+        "\"\"".to_string()
     }
 }
 

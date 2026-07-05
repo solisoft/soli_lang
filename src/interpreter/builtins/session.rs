@@ -759,6 +759,30 @@ pub fn clear_response_cookies() {
     RESPONSE_COOKIES.with(|c| c.borrow_mut().clear());
 }
 
+/// Reject cookie name/value characters that would let a caller inject extra
+/// cookie attributes (`;`) or split/abort the `Set-Cookie` header
+/// (CR/LF/NUL/control chars). The name additionally must be a token (no `=`
+/// or whitespace). Blocks both the cookie-attribute-injection (scope widening)
+/// and the header-injection DoS at the source.
+fn validate_cookie_pair(name: &str, value: &str) -> Result<(), String> {
+    let has_ctl_or_semi = |s: &str| s.bytes().any(|b| b < 0x20 || b == 0x7f || b == b';');
+    if name.is_empty() {
+        return Err("set_cookie() name must not be empty".to_string());
+    }
+    if has_ctl_or_semi(name) || name.bytes().any(|b| b == b'=' || b == b' ' || b == b'\t') {
+        return Err(
+            "set_cookie() name contains a forbidden character (control char, ';', '=', or space)"
+                .to_string(),
+        );
+    }
+    if has_ctl_or_semi(value) {
+        return Err(
+            "set_cookie() value contains a forbidden character (control char or ';')".to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Store a response cookie to be emitted as a Set-Cookie header.
 pub fn set_response_cookie(name: &str, value: &str) {
     // Trip the response cache dirty flag so a stale cached body
@@ -1282,6 +1306,7 @@ pub fn register_cookie_builtins(env: &mut Environment) {
                     ))
                 }
             };
+            validate_cookie_pair(&name, &value)?;
             set_response_cookie(&name, &value);
             Ok(Value::Null)
         })),

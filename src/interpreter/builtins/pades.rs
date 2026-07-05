@@ -424,10 +424,28 @@ fn verify_rsa(cert: &Certificate, attrs_der: &[u8], sig: &[u8]) -> bool {
     let Ok(em) = do_modexp(sig, &e, &n) else {
         return false;
     };
-    // The recovered EM must end with the SHA-256 DigestInfo of the signed attrs.
-    let mut expected = SHA256_DIGESTINFO_PREFIX.to_vec();
-    expected.extend_from_slice(&sha256(attrs_der));
-    em.ends_with(&expected)
+    // Full PKCS#1 v1.5 verification (RFC 8017 §9.2): reconstruct the ENTIRE
+    // encoded message `00 01 FF..FF 00 || DigestInfo` and require an exact
+    // match. The previous check only asserted `em.ends_with(DigestInfo)`,
+    // leaving the `00 01`/`0xFF` padding prefix unvalidated — which enables a
+    // Bleichenbacher '06 low-exponent (e=3) signature forgery (an attacker
+    // crafts `s` so `s^e` merely ends with the target DigestInfo).
+    let mut digest_info = SHA256_DIGESTINFO_PREFIX.to_vec();
+    digest_info.extend_from_slice(&sha256(attrs_der));
+    let k = em.len();
+    let dlen = digest_info.len();
+    // Room for `00 01`, at least 8 `0xFF` bytes, the `00` separator, and the
+    // DigestInfo.
+    if k < dlen + 11 {
+        return false;
+    }
+    let mut expected = Vec::with_capacity(k);
+    expected.push(0x00);
+    expected.push(0x01);
+    expected.resize(k - dlen - 1, 0xFF); // (k - dlen - 3) >= 8 bytes of 0xFF
+    expected.push(0x00);
+    expected.extend_from_slice(&digest_info);
+    em == expected
 }
 
 fn verify_ecdsa(cert: &Certificate, attrs_der: &[u8], sig: &[u8]) -> bool {
