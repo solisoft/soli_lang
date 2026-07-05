@@ -133,7 +133,28 @@ pub struct QueryBuilder {
     /// Post-COLLECT FILTER (HAVING). String references bare group/aggregate
     /// aliases (no doc. prefix); developer-trusted like string-form where().
     pub having: Option<String>,
+    /// `has_many through:` membership filter — set by the relation accessor.
+    /// Emitted with the FOR-head so it survives chained `.where()` calls;
+    /// the owner key rides in bind_vars as @__soli_through_fk.
+    pub through: Option<ThroughClause>,
 }
+
+/// The join-subquery filter a `through:` accessor seeds:
+/// `FILTER doc.{target_field} IN (FOR jt IN {join_collection}
+///  FILTER jt.{owner_fk} == @__soli_through_fk [AND jt.deleted_at == null]
+///  RETURN jt.{select_field})`
+#[derive(Debug, Clone)]
+pub struct ThroughClause {
+    pub join_collection: String,
+    pub owner_fk: String,
+    pub select_field: String,
+    pub target_field: String,
+    pub join_soft_delete: bool,
+}
+
+/// Bind-var name carrying the owner `_key` for a through filter. The
+/// `__soli_` prefix makes it survive `set_filter`'s bind replacement.
+pub const THROUGH_FK_BIND: &str = "__soli_through_fk";
 
 impl QueryBuilder {
     pub fn new(class_name: String, collection: String) -> Self {
@@ -164,6 +185,7 @@ impl QueryBuilder {
             group_fields: Vec::new(),
             aggregate_specs: Vec::new(),
             having: None,
+            through: None,
         }
     }
 
@@ -196,17 +218,20 @@ impl QueryBuilder {
             group_fields: Vec::new(),
             aggregate_specs: Vec::new(),
             having: None,
+            through: None,
         }
     }
 
-    /// The FOR-head shared by build_query / count / exists: a plain collection
-    /// scan, or the graph-traversal head when `traversal` is set. Keeping the
-    /// vertex variable named `doc` lets every downstream FILTER/SORT/RETURN
-    /// path work identically in both modes.
+    /// The FOR-head shared by build_query / count / exists / aggregations:
+    /// a plain collection scan, or the graph-traversal head when `traversal`
+    /// is set. Keeping the vertex variable named `doc` lets every downstream
+    /// FILTER/SORT/RETURN path work identically in both modes. A `through:`
+    /// membership filter rides here too, so it composes with every mode and
+    /// survives chained `.where()`.
     pub(crate) fn for_head(&self) -> String {
         let collection_str =
             crate::interpreter::symbol_string(self.collection).unwrap_or("unknown");
-        match &self.traversal {
+        let mut head = match &self.traversal {
             Some(t) => format!(
                 "FOR doc, edge IN {}..{} {} @{} {}",
                 t.min_depth,
@@ -216,7 +241,24 @@ impl QueryBuilder {
                 t.edge_collection
             ),
             None => format!("FOR doc IN {}", collection_str),
+        };
+        if let Some(through) = &self.through {
+            let join_guard = if through.join_soft_delete {
+                " AND jt.deleted_at == null"
+            } else {
+                ""
+            };
+            head.push_str(&format!(
+                " FILTER doc.{} IN (FOR jt IN {} FILTER jt.{} == @{}{} RETURN jt.{})",
+                through.target_field,
+                through.join_collection,
+                through.owner_fk,
+                THROUGH_FK_BIND,
+                join_guard,
+                through.select_field
+            ));
         }
+        head
     }
 
     pub fn set_similar(&mut self, query: String, field: String, top_k: usize) {
@@ -284,6 +326,12 @@ impl QueryBuilder {
         relation_name: String,
         relation: RelationDef,
     ) -> Result<(), String> {
+        if relation.through.is_some() {
+            return Err(format!(
+                "includes_count('{}'): through: relations can't be eager-loaded yet — count on the accessor instead",
+                relation_name
+            ));
+        }
         match relation.relation_type {
             RelationType::HasMany | RelationType::HasAndBelongsToMany => {}
             _ => {
@@ -570,9 +618,7 @@ impl QueryBuilder {
         func: AggregationFunc,
         agg_field: &str,
     ) -> (String, HashMap<String, serde_json::Value>) {
-        let collection_str =
-            crate::interpreter::symbol_string(self.collection).unwrap_or("unknown");
-        let mut query = format!("FOR doc IN {}", collection_str);
+        let mut query = self.for_head();
 
         if let Some(filter) = &self.filter {
             let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
@@ -1107,6 +1153,7 @@ fn execute_similar_pushdown(
 ) -> Value {
     let has_filters = qb.filter.is_some()
         || !qb.joins.is_empty()
+        || qb.through.is_some()
         || (qb.is_soft_delete_model && qb.soft_delete_mode != SoftDeleteMode::WithDeleted);
 
     let fetch_k = if has_filters {
@@ -1282,7 +1329,11 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
 
-    let query = if qb.joins.is_empty() && qb.filter.is_none() && qb.traversal.is_none() {
+    let query = if qb.joins.is_empty()
+        && qb.filter.is_none()
+        && qb.traversal.is_none()
+        && qb.through.is_none()
+    {
         format!("RETURN COLLECTION_COUNT(\"{}\")", collection)
     } else {
         format!("RETURN LENGTH({} RETURN 1)", query)
@@ -1565,10 +1616,7 @@ pub fn build_aggregation_query(
     func: AggregationFunc,
     field: &str,
 ) -> (String, HashMap<String, serde_json::Value>) {
-    let collection = crate::interpreter::symbol_string(qb.collection)
-        .unwrap_or("unknown")
-        .to_string();
-    let mut query = format!("FOR doc IN {}", collection);
+    let mut query = qb.for_head();
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb
         .bind_vars

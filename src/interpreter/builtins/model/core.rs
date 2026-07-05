@@ -1292,6 +1292,7 @@ impl Model {
                             let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                                 format!("No relation '{}' defined on {}", rel_name, class_name)
                             })?;
+                            super::relations::reject_through_relation("includes", &rel)?;
                             let fields = match v {
                                 Value::Array(arr) => {
                                     let names: Vec<String> = arr
@@ -1336,6 +1337,7 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
+                    super::relations::reject_through_relation("includes", &rel)?;
 
                     let filter = if arguments.len() >= 3 {
                         match &arguments[1] {
@@ -1398,6 +1400,7 @@ impl Model {
                         let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                             format!("No relation '{}' defined on {}", rel_name, class_name)
                         })?;
+                        super::relations::reject_through_relation("includes", &rel)?;
                         qb.add_include(
                             rel_name.to_string(),
                             rel,
@@ -1442,6 +1445,7 @@ impl Model {
                     let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                         format!("No relation '{}' defined on {}", rel_name, class_name)
                     })?;
+                    super::relations::reject_through_relation("includes", &rel)?;
                     qb.add_include_count(rel_name.to_string(), rel)?;
                 }
 
@@ -1499,6 +1503,7 @@ impl Model {
                 let rel = get_relation(&class_name, &rel_name).ok_or_else(|| {
                     format!("No relation '{}' defined on {}", rel_name, class_name)
                 })?;
+                super::relations::reject_through_relation("join", &rel)?;
 
                 let filter = match args.get(2) {
                     Some(Value::String(s)) => Some(s.to_string()),

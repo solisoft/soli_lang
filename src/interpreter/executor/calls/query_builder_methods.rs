@@ -324,6 +324,10 @@ impl Interpreter {
                             ),
                             span,
                         })?;
+                    crate::interpreter::builtins::model::relations::reject_through_relation(
+                        "includes", &rel,
+                    )
+                    .map_err(|message| RuntimeError::General { message, span })?;
                     let fields = match v {
                         Value::Array(arr) => {
                             let field_names: Vec<String> = arr
@@ -370,6 +374,10 @@ impl Interpreter {
                     message: format!("No relation '{}' defined on {}", rel_name, class_name),
                     span,
                 })?;
+            crate::interpreter::builtins::model::relations::reject_through_relation(
+                "includes", &rel,
+            )
+            .map_err(|message| RuntimeError::General { message, span })?;
 
             let filter = if arguments.len() >= 3 {
                 match &arguments[1] {
@@ -435,6 +443,10 @@ impl Interpreter {
                         message: format!("No relation '{}' defined on {}", rel_name, class_name),
                         span,
                     })?;
+                crate::interpreter::builtins::model::relations::reject_through_relation(
+                    "includes", &rel,
+                )
+                .map_err(|message| RuntimeError::General { message, span })?;
                 new_qb.add_include(
                     rel_name.to_string(),
                     rel,
@@ -557,6 +569,8 @@ impl Interpreter {
                 message: format!("No relation '{}' defined on {}", rel_name, class_name),
                 span,
             })?;
+        crate::interpreter::builtins::model::relations::reject_through_relation("join", &rel)
+            .map_err(|message| RuntimeError::General { message, span })?;
 
         let filter = match arguments.get(1) {
             Some(Value::String(s)) => Some(s.to_string()),
@@ -763,6 +777,14 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
+        if qb.borrow().through.is_some() {
+            return Err(RuntimeError::General {
+                message: "delete_all on a through: relation is not supported — it would remove \
+target rows, not join rows; delete the through relation's records instead"
+                    .to_string(),
+                span,
+            });
+        }
         Ok(execute_query_builder_delete_all(&qb.borrow()))
     }
 
@@ -774,6 +796,14 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+        }
+        if qb.borrow().through.is_some() {
+            return Err(RuntimeError::General {
+                message: "update_all on a through: relation is not supported — update the \
+through relation's records instead"
+                    .to_string(),
+                span,
+            });
         }
         {
             let qb_ref = qb.borrow();

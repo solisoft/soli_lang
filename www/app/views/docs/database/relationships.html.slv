@@ -456,6 +456,38 @@ end</code></pre>
         </ul>
     </div>
 
+    <h2 id="through" class="text-2xl font-bold text-white mb-6">Through Associations (through:)</h2>
+    <p class="text-gray-400 mb-4">
+        <code>has_many through:</code> traverses an intermediate relation &mdash; the join-model association. The accessor returns a <strong class="text-white">chainable QueryBuilder</strong> filtered by a single-query membership subquery (no N+1):
+    </p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class User < Model
+  has_many "memberships"
+  has_many "teams", through: "memberships"
+  # source: when the name doesn't match the through model's relation
+  has_many("employers", {"through": "memberships", "source": "company"})
+end
+
+class Membership < Model
+  belongs_to "user"
+  belongs_to "team"
+end
+
+user.teams.where("active == @a", {"a": true}).order("name").count()</code></pre>
+        </div>
+    </div>
+
+    <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">
+        <ul class="text-gray-300 text-sm space-y-3">
+            <li><strong class="text-white">Source inference.</strong> The relation on the through model is found by singularizing the name (<code>"teams"</code> &rarr; <code>"team"</code>); override with <code>source:</code>. Both <code>belongs_to</code> sources (join model) and <code>has_many</code> sources (distant children: <code>has_many "comments", through: "posts"</code>) work.</li>
+            <li><strong class="text-white">Soft-deleting through models</strong> automatically exclude soft-deleted join rows.</li>
+            <li><strong class="text-white">Lazy resolution.</strong> The chain resolves at first access; a missing through/source relation raises naming exactly what was searched and suggesting <code>source:</code>.</li>
+            <li><strong class="text-white">Read-only in v1.</strong> <code>delete_all</code>/<code>update_all</code> raise (they would hit <em>target</em> rows, not join rows), eager-loading a through relation raises, and <code>&lt;&lt;</code> writes aren't supported &mdash; create the join record explicitly.</li>
+        </ul>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">Manual Relationships</h2>
     <p class="text-gray-400 mb-4">For more control, implement relationships as custom instance methods:</p>
 

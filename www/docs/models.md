@@ -955,6 +955,49 @@ Semantics:
 - There is no per-operation rollback; wrap the delete in `Model.transaction`
   when the cascade must be atomic (every document write inside participates).
 
+### Through Associations
+
+`has_many through:` traverses an intermediate relation — the document-DB
+equivalent of Rails' join-model association:
+
+```soli
+class User < Model
+  has_many "memberships"
+  has_many "teams", through: "memberships"
+  # source: when the relation name doesn't match the through model's relation
+  has_many("employers", {"through": "memberships", "source": "company"})
+end
+
+class Membership < Model
+  belongs_to "user"
+  belongs_to "team"
+end
+
+user.teams                                  # chainable QueryBuilder
+user.teams.where("active == @a", {"a": true}).order("name").count()
+```
+
+How it works and what to know:
+
+- The accessor returns a **chainable QueryBuilder** over the target
+  collection, filtered by a single-query membership subquery
+  (`doc._key IN (FOR jt IN memberships FILTER jt.user_id == @k RETURN jt.team_id)`)
+  — no N+1, and chained `.where`/`.order`/`.count`/`.sum` all compose.
+- The **source** relation on the through model is inferred by singularizing
+  the relation name (`"teams"` → `"team"`); override with `source:`. Both
+  `belongs_to` sources (join-model shape above) and `has_many` sources
+  (distant children: `has_many "comments", through: "posts"`) work.
+- A **soft-deleting through model** automatically excludes soft-deleted join
+  rows.
+- Resolution happens lazily at first access (the through model may be defined
+  later); a missing through or source relation raises naming exactly what was
+  searched and suggesting `source:`.
+- **Read-only in v1**: `delete_all`/`update_all` on a through association
+  raise (they would hit *target* rows, not join rows — operate on the through
+  relation's records instead), eager-loading (`includes`, `join`,
+  `includes_count`) of a through relation raises, and `user.teams << team`
+  writes are not supported — create the join record explicitly.
+
 ### Manual Relationships
 
 You can also implement relationships as custom methods for more control:

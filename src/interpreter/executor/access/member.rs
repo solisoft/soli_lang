@@ -863,6 +863,45 @@ impl Interpreter {
         if inst_ref.class.is_model_subclass() {
             let class_name = &inst_ref.class.name;
             if let Some(relation) = get_relation(class_name, name) {
+                // has_many through: — resolve the intermediate + source
+                // relations lazily and return a QueryBuilder on the target
+                // collection whose FOR-head carries the membership subquery.
+                if relation.through.is_some() {
+                    use crate::interpreter::builtins::model::{
+                        get_model_class, resolve_through, QueryBuilder, ThroughClause,
+                        THROUGH_FK_BIND,
+                    };
+                    let resolution = resolve_through(class_name, &relation)
+                        .map_err(|e| RuntimeError::new(e, span))?;
+                    let target_class = get_model_class(&resolution.target_class_name)
+                        .unwrap_or_else(|| inst_ref.class.clone());
+                    // Owner key; unpersisted owners get an impossible NUL
+                    // sentinel so the query shape stays valid (and empty).
+                    let owner_key = match inst_ref.get("_key") {
+                        Some(Value::String(s)) => s.to_string(),
+                        _ => "\u{0}".to_string(),
+                    };
+                    drop(inst_ref);
+
+                    let mut qb = QueryBuilder::new_with_class(
+                        resolution.target_class_name.clone(),
+                        resolution.target_collection.clone(),
+                        target_class,
+                    );
+                    qb.through = Some(ThroughClause {
+                        join_collection: resolution.join_collection,
+                        owner_fk: resolution.owner_fk,
+                        select_field: resolution.select_field,
+                        target_field: resolution.target_field,
+                        join_soft_delete: resolution.join_soft_delete,
+                    });
+                    qb.bind_vars.insert(
+                        crate::interpreter::get_symbol(THROUGH_FK_BIND),
+                        serde_json::Value::String(owner_key),
+                    );
+                    return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));
+                }
+
                 // Preload-cache fast path: when .includes(:rel) merged the
                 // relation rows into instance.fields[name], serve them from
                 // there instead of issuing another query. HasMany is left

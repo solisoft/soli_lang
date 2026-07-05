@@ -299,7 +299,7 @@ pub use query::{
     execute_query_builder_first, execute_query_builder_group_by, execute_query_builder_grouped,
     execute_query_builder_time_bucket, execute_query_builder_update_all, parse_aggregate_spec_hash,
     AggregateSpec, AggregationFunc, IncludeClause, IncludeCountClause, JoinClause, QueryBuilder,
-    TimeBucketSpec,
+    ThroughClause, TimeBucketSpec, THROUGH_FK_BIND,
 };
 pub use registry::{
     clear_all_model_registries, clear_model_classes, get_collection_type, get_columnar_schema,
@@ -309,7 +309,8 @@ pub use registry::{
 };
 pub use relations::{
     build_relation, classify, get_relation, get_relations, parse_relation_options,
-    register_relation, singularize, DependentStrategy, RelationDef, RelationOptions, RelationType,
+    register_relation, resolve_through, singularize, DependentStrategy, RelationDef,
+    RelationOptions, RelationType, ThroughResolution,
 };
 pub use uploaders::{
     default_collection as default_upload_collection, get_uploader,
