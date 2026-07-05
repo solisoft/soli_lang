@@ -86,6 +86,10 @@ class-side helper with a different name instead.
 
 ## Querying
 
+For the complete query & method surface — every static/instance/QueryBuilder
+method, the raw `Solidb` client, SDBQL, transactions, search, and analytics — in
+one file, see [`docs/solidb-reference.md`](../../docs/solidb-reference.md).
+
 Three forms, in order of preference:
 
 ### 1. Hash form (safe — use this for user input)

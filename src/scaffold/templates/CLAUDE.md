@@ -314,6 +314,10 @@ let users = @sdbql{
 }
 ```
 
+For the **complete SolidB request & method surface in one place** — ORM,
+QueryBuilder, associations, the raw `Solidb` client, SDBQL, transactions,
+search, analytics, and migrations — see `docs/solidb-reference.md`.
+
 ## Views (`.html.slv`)
 
 ```erb
