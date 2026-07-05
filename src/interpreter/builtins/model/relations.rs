@@ -324,6 +324,89 @@ pub fn build_habtm_relation(
     }
 }
 
+/// A resolved `has_many through:` — everything the query layer needs to
+/// filter the target collection by membership in the intermediate relation.
+#[derive(Debug, Clone)]
+pub struct ThroughResolution {
+    pub target_class_name: String,
+    pub target_collection: String,
+    /// Collection of the intermediate (through) relation.
+    pub join_collection: String,
+    /// FK on the join row pointing back at the owner.
+    pub owner_fk: String,
+    /// What the subquery returns per join row (`jt.<select_field>`).
+    pub select_field: String,
+    /// Field on the target compared with `IN` (`doc.<target_field>`).
+    pub target_field: String,
+    /// Whether the through model soft-deletes (adds a `deleted_at` guard).
+    pub join_soft_delete: bool,
+}
+
+/// Resolve a `through:` relation lazily at access time (the through model
+/// may be defined after the owner). Errors name exactly what was searched.
+pub fn resolve_through(
+    owner_class: &str,
+    relation: &RelationDef,
+) -> Result<ThroughResolution, String> {
+    let through_name = relation
+        .through
+        .as_deref()
+        .expect("resolve_through called without through:");
+
+    let through_rel = get_relation(owner_class, through_name).ok_or_else(|| {
+        format!(
+            "has_many \"{}\", through: \"{}\" on {}: no relation \"{}\" is declared",
+            relation.name, through_name, owner_class, through_name
+        )
+    })?;
+    if through_rel.relation_type != RelationType::HasMany {
+        return Err(format!(
+            "has_many \"{}\", through: \"{}\" on {}: the through relation must be a has_many (for HABTM, declare a join model instead)",
+            relation.name, through_name, owner_class
+        ));
+    }
+
+    let source_name = relation
+        .source
+        .clone()
+        .unwrap_or_else(|| singularize(&relation.name));
+    let source_rel = get_relation(&through_rel.class_name, &source_name).ok_or_else(|| {
+        format!(
+            "has_many \"{}\", through: \"{}\" on {}: {} declares no relation \"{}\" — declare it or pick one with source:",
+            relation.name, through_name, owner_class, through_rel.class_name, source_name
+        )
+    })?;
+
+    let join_soft_delete = super::registry::is_soft_delete(&through_rel.class_name);
+
+    match source_rel.relation_type {
+        // user → memberships → teams: join rows carry team_id.
+        RelationType::BelongsTo => Ok(ThroughResolution {
+            target_class_name: source_rel.class_name.clone(),
+            target_collection: source_rel.collection.clone(),
+            join_collection: through_rel.collection.clone(),
+            owner_fk: through_rel.foreign_key.clone(),
+            select_field: source_rel.foreign_key.clone(),
+            target_field: "_key".to_string(),
+            join_soft_delete,
+        }),
+        // user → posts → comments: distant children carry post_id.
+        RelationType::HasMany => Ok(ThroughResolution {
+            target_class_name: source_rel.class_name.clone(),
+            target_collection: source_rel.collection.clone(),
+            join_collection: through_rel.collection.clone(),
+            owner_fk: through_rel.foreign_key.clone(),
+            select_field: "_key".to_string(),
+            target_field: source_rel.foreign_key.clone(),
+            join_soft_delete,
+        }),
+        _ => Err(format!(
+            "has_many \"{}\", through: \"{}\" on {}: source relation \"{}\" on {} must be a belongs_to or has_many — pick another with source:",
+            relation.name, through_name, owner_class, source_name, through_rel.class_name
+        )),
+    }
+}
+
 /// Register a relation for a model class in the MODEL_REGISTRY.
 pub fn register_relation(class_name: &str, relation: RelationDef) {
     let mut registry = MODEL_REGISTRY.write().unwrap();
